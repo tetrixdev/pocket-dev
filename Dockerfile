@@ -25,6 +25,11 @@ RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /
     apt-get update && apt-get install -y docker-ce-cli && \
     rm -rf /var/lib/apt/lists/*  # Clean apt cache to reduce image size
 
+# Install Node.js 22.x LTS
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*  # Clean apt cache to reduce image size
+
 # Install GitHub CLI
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
@@ -32,8 +37,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | g
     apt-get install gh -y && \
     rm -rf /var/lib/apt/lists/*  # Clean apt cache to reduce image size
 
-# Set up workspace directory
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+# Set up workspace and config directories
 RUN mkdir -p /workspace && chown pocketdev:pocketdev /workspace
+RUN mkdir -p /home/pocketdev/.claude && chown pocketdev:pocketdev /home/pocketdev/.claude
 
 # Copy scripts
 COPY scripts/check-permissions.sh /usr/local/bin/check-permissions

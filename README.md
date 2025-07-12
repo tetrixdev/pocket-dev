@@ -8,6 +8,7 @@ Web-accessible, mobile-friendly Docker-based development environment with Docker
 
 - Docker installed on your system
 - GitHub Personal Access Token with required permissions
+- Anthropic account or API key for Claude Code
 
 ### GitHub Token Setup
 
@@ -32,6 +33,7 @@ Web-accessible, mobile-friendly Docker-based development environment with Docker
 docker run -it -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd):/workspace \
+  -v pocketdev-claude-config:/home/pocketdev/.claude \
   -e GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx \
   -e TZ=Europe/Amsterdam \
   --name pocketdev \
@@ -64,10 +66,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/workspace
+      - pocketdev-claude-config:/home/pocketdev/.claude
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - TZ=${TZ:-UTC}
     restart: unless-stopped
+volumes:
+  pocketdev-claude-config:
 ```
 
 Run with:
@@ -84,8 +89,10 @@ docker attach pocketdev
 ### What's Included
 
 - Ubuntu 24.04 LTS base
+- Node.js 22.x LTS
 - Git version control
 - GitHub CLI (gh) - pre-authenticated with your token
+- Claude Code CLI - AI-powered development assistant
 - Docker CLI - for running containers from within PocketDev
 - Essential tools: curl, wget, unzip, nano
 
@@ -116,6 +123,7 @@ You can extend PocketDev by:
 docker run -it -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v $(pwd):/workspace \
+  -v pocketdev-claude-config:/home/pocketdev/.claude \
   -e GITHUB_TOKEN=your_github_token_here \
   --name pocketdev \
   tetrixdev/pocket-dev
@@ -125,6 +133,7 @@ docker attach pocketdev
 
 # Inside the container, you can:
 gh repo clone your-username/your-repo
+claude  # Start Claude Code AI assistant
 docker run -d -p 5432:5432 postgres:latest
 docker run -d -p 80:80 nginx:latest
 ```
