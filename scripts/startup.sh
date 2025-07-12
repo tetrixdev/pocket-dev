@@ -12,6 +12,9 @@ fi
 # Fix Docker permissions
 fix-docker-permissions
 
+# Setup Claude configuration
+setup-claude-config
+
 # If we're in interactive mode (has TTY), start bash with proper groups
 if [ -t 0 ]; then
     # Get the docker socket group ID to start bash with correct permissions

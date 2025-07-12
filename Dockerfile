@@ -47,8 +47,14 @@ RUN mkdir -p /home/pocketdev/.claude && chown pocketdev:pocketdev /home/pocketde
 # Copy scripts
 COPY scripts/check-permissions.sh /usr/local/bin/check-permissions
 COPY scripts/fix-docker-permissions.sh /usr/local/bin/fix-docker-permissions
+COPY scripts/setup-claude-config.sh /usr/local/bin/setup-claude-config
 COPY scripts/startup.sh /usr/local/bin/startup
-RUN chmod +x /usr/local/bin/check-permissions /usr/local/bin/fix-docker-permissions /usr/local/bin/startup
+RUN chmod +x /usr/local/bin/check-permissions /usr/local/bin/fix-docker-permissions /usr/local/bin/setup-claude-config /usr/local/bin/startup
+
+# Copy Claude configuration templates to safe location (not affected by volume mount)
+COPY claude-config/CLAUDE.md /opt/pocketdev-templates/CLAUDE.md
+COPY claude-config/settings.json /opt/pocketdev-templates/settings.json
+RUN chown pocketdev:pocketdev /opt/pocketdev-templates/CLAUDE.md /opt/pocketdev-templates/settings.json
 
 # Switch to non-root user
 USER pocketdev

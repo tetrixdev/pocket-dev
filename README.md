@@ -32,8 +32,8 @@ Web-accessible, mobile-friendly Docker-based development environment with Docker
 ```bash
 docker run -it -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v $(pwd):/workspace \
-  -v pocketdev-claude-config:/home/pocketdev/.claude \
+  -v pocketdev-workspace:/workspace \
+  -v pocketdev-home:/home/pocketdev \
   -e GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx \
   -e TZ=Europe/Amsterdam \
   --name pocketdev \
@@ -65,14 +65,15 @@ services:
     tty: true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - .:/workspace
-      - pocketdev-claude-config:/home/pocketdev/.claude
+      - pocketdev-workspace:/workspace
+      - pocketdev-home:/home/pocketdev
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - TZ=${TZ:-UTC}
     restart: unless-stopped
 volumes:
-  pocketdev-claude-config:
+  pocketdev-workspace:
+  pocketdev-home:
 ```
 
 Run with:
@@ -122,8 +123,8 @@ You can extend PocketDev by:
 # Start PocketDev
 docker run -it -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -v $(pwd):/workspace \
-  -v pocketdev-claude-config:/home/pocketdev/.claude \
+  -v pocketdev-workspace:/workspace \
+  -v pocketdev-home:/home/pocketdev \
   -e GITHUB_TOKEN=your_github_token_here \
   --name pocketdev \
   tetrixdev/pocket-dev
