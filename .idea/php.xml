@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="MessDetectorOptionsConfiguration">
+    <option name="transferred" value="true" />
+  </component>
+  <component name="PHPCSFixerOptionsConfiguration">
+    <option name="transferred" value="true" />
+  </component>
+  <component name="PHPCodeSnifferOptionsConfiguration">
+    <option name="highlightLevel" value="WARNING" />
+    <option name="transferred" value="true" />
+  </component>
+  <component name="PhpCodeSniffer">
+    <phpcs_settings>
+      <phpcs_by_interpreter asDefaultInterpreter="true" interpreter_id="63caa66e-4d8d-42d0-acc5-f0e290ff8f8a" timeout="30000" />
+    </phpcs_settings>
+  </component>
+  <component name="PhpIncludePathManager">
+    <include_path>
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/css-selector" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/deprecation-contracts" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/http-foundation" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/polyfill-ctype" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/clock" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/routing" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/mime" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/polyfill-php80" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/polyfill-mbstring" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/process" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/polyfill-php83" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/finder" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/polyfill-intl-grapheme" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/console" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/mailer" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/http-kernel" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/var-dumper" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/uid" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/error-handler" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/polyfill-uuid" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/event-dispatcher-contracts" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/translation-contracts" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/translation" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/event-dispatcher" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/service-contracts" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/doctrine/inflector" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/doctrine/lexer" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/carbonphp/carbon-doctrine-types" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/fruitcake/php-cors" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/phpoption/phpoption" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/ralouphie/getallheaders" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/webmozart/assert" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/guzzlehttp/promises" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/guzzlehttp/uri-template" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/guzzlehttp/psr7" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/guzzlehttp/guzzle" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/nunomaduro/termwind" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/tijsverkoyen/css-to-inline-styles" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/composer" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/dragonmantank/cron-expression" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/graham-campbell/result-type" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psr/simple-cache" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psr/clock" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psr/container" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psr/http-factory" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psr/http-message" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psr/log" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psr/http-client" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psr/event-dispatcher" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/psy/psysh" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/voku/portable-ascii" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/brick/math" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/nette/schema" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/nette/utils" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/nikic/php-parser" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/league/flysystem" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/league/config" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/league/uri" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/league/flysystem-local" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/league/commonmark" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/league/mime-type-detection" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/league/uri-interfaces" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/nesbot/carbon" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/ramsey/uuid" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/ramsey/collection" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/vlucas/phpdotenv" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/dflydev/dot-access-data" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/egulias/email-validator" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/laravel/prompts" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/laravel/tinker" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/laravel/framework" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/laravel/serializable-closure" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/monolog/monolog" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/polyfill-intl-normalizer" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/polyfill-intl-idn" />
+      <path value="$PROJECT_DIR$/laravel-app/vendor/symfony/string" />
+    </include_path>
+  </component>
+  <component name="PhpProjectSharedConfiguration" php_language_level="8.2" />
+  <component name="PhpStan">
+    <PhpStan_settings>
+      <phpstan_by_interpreter asDefaultInterpreter="true" interpreter_id="63caa66e-4d8d-42d0-acc5-f0e290ff8f8a" timeout="60000" />
+    </PhpStan_settings>
+  </component>
+  <component name="PhpStanOptionsConfiguration">
+    <option name="transferred" value="true" />
+  </component>
+  <component name="PhpUnit">
+    <phpunit_settings>
+      <PhpUnitSettings configuration_file_path="$PROJECT_DIR$/laravel-app/phpunit.xml" custom_loader_path="$PROJECT_DIR$/laravel-app/vendor/autoload.php" use_configuration_file="true" />
+    </phpunit_settings>
+  </component>
+  <component name="Psalm">
+    <Psalm_settings>
+      <psalm_fixer_by_interpreter asDefaultInterpreter="true" interpreter_id="63caa66e-4d8d-42d0-acc5-f0e290ff8f8a" timeout="60000" />
+    </Psalm_settings>
+  </component>
+  <component name="PsalmOptionsConfiguration">
+    <option name="transferred" value="true" />
+  </component>
+</project>

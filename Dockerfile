@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     lsb-release \
     sudo \
+    net-tools \
     && rm -rf /var/lib/apt/lists/*  # Clean apt cache to reduce image size
 
 # Create a non-root user and add to sudoers
@@ -37,12 +38,31 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | g
     apt-get install gh -y && \
     rm -rf /var/lib/apt/lists/*  # Clean apt cache to reduce image size
 
+# Add PHP 8.4 repository and install Nginx and PHP-FPM
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository ppa:ondrej/php -y && \
+    apt-get update && \
+    apt-get install -y nginx php8.4-fpm && \
+    rm -rf /var/lib/apt/lists/*  # Clean apt cache to reduce image size
+
+# Install TTYD for web-based terminal
+RUN apt-get update && \
+    apt-get install -y wget && \
+    wget -O /usr/local/bin/ttyd https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 && \
+    chmod +x /usr/local/bin/ttyd && \
+    rm -rf /var/lib/apt/lists/*  # Clean apt cache to reduce image size
+
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
 # Set up workspace and config directories
 RUN mkdir -p /workspace && chown pocketdev:pocketdev /workspace
 RUN mkdir -p /home/pocketdev/.claude && chown pocketdev:pocketdev /home/pocketdev/.claude
+RUN mkdir -p /config && chmod 755 /config
+
+# Expose port 80 for web access
+EXPOSE 80
 
 # Copy scripts
 COPY scripts/check-permissions.sh /usr/local/bin/check-permissions
@@ -55,6 +75,12 @@ RUN chmod +x /usr/local/bin/check-permissions /usr/local/bin/fix-docker-permissi
 COPY claude-config/CLAUDE.md /opt/pocketdev-templates/CLAUDE.md
 COPY claude-config/settings.json /opt/pocketdev-templates/settings.json
 RUN chown pocketdev:pocketdev /opt/pocketdev-templates/CLAUDE.md /opt/pocketdev-templates/settings.json
+
+# Copy web files and configure Nginx
+COPY web-config/nginx/default.conf /etc/nginx/sites-available/default
+COPY web-config/html/ /var/www/html/
+RUN rm -f /etc/nginx/sites-enabled/default && \
+    ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
 # Switch to non-root user
 USER pocketdev

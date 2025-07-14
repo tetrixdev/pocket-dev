@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
+    <title>PocketDev - Mobile Terminal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            height: 100vh; /* Fallback for browsers without dvh support */
+            height: 100dvh; /* Dynamic viewport height for mobile */
+            overflow: hidden;
+            background: #1a1a1a;
+            color: white;
+            width: 100%;
+        }
+
+        .mobile-container {
+            height: 100vh; /* Fallback for browsers without dvh support */
+            height: 100dvh; /* Dynamic viewport height for mobile */
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .terminal-container {
+            flex: 1 1 70%;
+            min-height: 0;
+            position: relative;
+            background: #000;
+            border-bottom: 2px solid #333;
+            overflow: hidden;
+        }
+
+        #terminal-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+        }
+
+        .voice-controls {
+            flex: 0 0 30%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            justify-content: center;
+            align-items: center;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .voice-button {
+            min-height: 60px;
+            width: 80%;
+            max-width: 300px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn-idle {
+            background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+            color: white;
+        }
+
+        .btn-idle:hover {
+            background: linear-gradient(135deg, #3182ce 0%, #2b77cb 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn-recording {
+            background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+
+        .btn-processing {
+            background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+            color: white;
+            cursor: not-allowed;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .status-display {
+            font-size: 0.9rem;
+            text-align: center;
+            min-height: 1.5rem;
+            opacity: 0.8;
+        }
+
+        .transcript-preview {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 0.75rem;
+            min-height: 60px;
+            font-size: 0.9rem;
+            font-family: monospace;
+            overflow-y: auto;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+
+        .usage-info {
+            font-size: 0.8rem;
+            opacity: 0.6;
+            text-align: center;
+        }
+
+        /* Landscape orientation adjustments */
+        @media (orientation: landscape) and (max-height: 600px) {
+            .mobile-container {
+                flex-direction: row;
+            }
+            .terminal-container {
+                flex: 1 1 75%;
+                border-bottom: none;
+                border-right: 2px solid #333;
+            }
+            .voice-controls {
+                flex: 0 0 25%;
+                padding: 0.5rem;
+            }
+            .voice-button {
+                min-height: 50px;
+                font-size: 1rem;
+            }
+            .transcript-preview {
+                min-height: 40px;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Small screen adjustments */
+        @media (max-width: 400px) {
+            .voice-controls {
+                padding: 0.75rem;
+                gap: 0.75rem;
+            }
+            .voice-button {
+                min-height: 55px;
+                font-size: 1.1rem;
+                width: 90%;
+            }
+        }
+
+        /* Error states */
+        .error {
+            color: #fc8181 !important;
+        }
+
+        .success {
+            color: #68d391 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="mobile-container">
+        <div class="terminal-container">
+            <iframe id="terminal-frame" src="/terminal/"></iframe>
+        </div>
+        
+        <div class="voice-controls">
+            <button id="voice-btn" class="voice-button btn-idle">🎤 Start Dictation</button>
+            <div id="status" class="status-display"></div>
+            <div id="transcript" class="transcript-preview">Voice transcription will appear here...</div>
+            <div id="usage-info" class="usage-info"></div>
+        </div>
+    </div>
+
+    <script src="voice-handler.js"></script>
+    <script src="terminal-integration.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

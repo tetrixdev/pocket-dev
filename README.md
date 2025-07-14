@@ -34,7 +34,10 @@ docker run -it -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v pocketdev-workspace:/workspace \
   -v pocketdev-home:/home/pocketdev \
+  -v ./.env:/config/.env:ro \
+  -p 80:80 \
   -e GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx \
+  -e OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx \
   -e TZ=Europe/Amsterdam \
   --name pocketdev \
   tetrixdev/pocket-dev
@@ -52,6 +55,7 @@ To detach without stopping: Press `Ctrl+P`, then `Ctrl+Q`
 Create a `.env` file:
 ```env
 GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
 TZ=Europe/Amsterdam
 ```
 
@@ -63,12 +67,16 @@ services:
     container_name: pocketdev
     stdin_open: true
     tty: true
+    ports:
+      - "80:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - pocketdev-workspace:/workspace
       - pocketdev-home:/home/pocketdev
+      - ./.env:/config/.env:ro
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - TZ=${TZ:-UTC}
     restart: unless-stopped
 volumes:
@@ -85,11 +93,21 @@ docker attach pocketdev
 ### Environment Variables
 
 - `GITHUB_TOKEN` (required) - Your GitHub Personal Access Token
+- `OPENAI_API_KEY` (optional) - Your OpenAI API key for voice transcription features
 - `TZ` (optional) - Your timezone (defaults to UTC)
 
 ### What's Included
 
 - Ubuntu 24.04 LTS base
+- **Mobile Voice Terminal**:
+  - TTYD web-based terminal with mobile optimization
+  - OpenAI Whisper API integration for voice-to-text
+  - Mobile-responsive interface with touch-friendly controls
+  - Keyboard fallback for traditional input
+- **Web Interface**:
+  - Nginx web server for terminal access
+  - Responsive design for mobile and desktop
+  - Real-time voice transcription and command injection
 - Node.js 22.x LTS
 - Git version control
 - GitHub CLI (gh) - pre-authenticated with your token
@@ -120,23 +138,59 @@ You can extend PocketDev by:
 ### Example Usage
 
 ```bash
-# Start PocketDev
+# Start PocketDev with web interface and voice features
 docker run -it -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v pocketdev-workspace:/workspace \
   -v pocketdev-home:/home/pocketdev \
+  -v ./.env:/config/.env:ro \
+  -p 80:80 \
   -e GITHUB_TOKEN=your_github_token_here \
+  -e OPENAI_API_KEY=your_openai_api_key_here \
   --name pocketdev \
   tetrixdev/pocket-dev
 
-# Attach to the container
+# Access the mobile terminal interface
+# Web Terminal: http://localhost
+# Voice features: Tap microphone button to dictate commands
+
+# Attach to the container for direct access
 docker attach pocketdev
 
 # Inside the container, you can:
 gh repo clone your-username/your-repo
 claude  # Start Claude Code AI assistant
 docker run -d -p 5432:5432 postgres:latest
-docker run -d -p 80:80 nginx:latest
+```
+
+### Mobile Voice Features
+
+- **Voice Commands**: Tap the microphone button to record voice commands
+- **Real-time Transcription**: Speech is converted to text using OpenAI Whisper API
+- **Mobile Optimized**: Responsive design works on phones and tablets
+- **Cost Efficient**: ~$0.006 per minute of voice input (~$1.50/month for regular use)
+
+### Android HTTPS Requirement for Voice Input
+
+Modern browsers require HTTPS for microphone access. For local development on Android:
+
+**Option 1: Use `chrome://flags/` (Recommended)**
+1. Open Chrome on Android
+2. Go to `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
+3. Add your local IP address (e.g., `http://192.168.1.100`)
+4. Restart Chrome
+
+**Option 2: Use Android Chrome Dev Tools**
+1. Enable Developer Options on Android
+2. Enable USB Debugging
+3. Connect to computer via USB
+4. Use Chrome DevTools port forwarding
+
+**Option 3: Use Self-Signed Certificate**
+```bash
+# Generate self-signed cert and run with HTTPS
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+# Then configure nginx with SSL
 ```
 
 ## Building from Source
