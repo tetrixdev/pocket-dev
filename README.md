@@ -1,202 +1,403 @@
-# PocketDev
+# Laravel Docker Setup
 
-Web-accessible, mobile-friendly Docker-based development environment with Docker-out-of-Docker (DooD) support.
+A lightweight, production-ready Docker setup for Laravel applications with PHP 8.4-FPM, Nginx, and PostgreSQL.
 
-## Quick Start
+## Features
 
-### Prerequisites
+- 🐘 **PHP 8.4-FPM** with PostgreSQL, Composer, and Node.js 22 LTS
+- 🌐 **Nginx 1.29** optimized for Laravel
+- 🗄️ **PostgreSQL 17** with persistent data storage
+- 🔥 **Vite Dev Server** with hot reload support
+- 🔧 **Health checks** for all services
+- 📦 **One-command setup** for new and existing projects
+- 🔄 **Environment management** (development/production)
+- 🚀 **Production-ready** configuration
 
-- Docker installed on your system
-- GitHub Personal Access Token with required permissions
-- Anthropic account or API key for Claude Code
+## New Project Setup
 
-### GitHub Token Setup
-
-1. Go to GitHub Settings → Developer settings → Personal access tokens → Tokens (classic)
-2. Generate a new token with these **required** permissions:
-   - `repo` - Full repository access
-   - `workflow` - Update GitHub Action workflows
-   - `user:email` - Access user email addresses
-
-3. **Optional permissions** (add based on your development needs):
-   - `write:packages` & `read:packages` - Push/pull Docker images to GitHub Container Registry (ghcr.io)
-   - `gist` - Create and manage gists for code snippets
-   - `notifications` - Manage GitHub notifications
-   - `admin:repo_hook` - Manage repository webhooks
-   - `codespace` - Manage GitHub Codespaces (if using)
-
-### Running PocketDev
-
-#### Option 1: Docker Run
+Create an empty folder with your desired project name, then copy and paste this:
 
 ```bash
-docker run -it -d \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v pocketdev-workspace:/workspace \
-  -v pocketdev-home:/home/pocketdev \
-  -v ./.env:/config/.env:ro \
-  -p 80:80 \
-  -e GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx \
-  -e OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx \
-  -e TZ=Europe/Amsterdam \
-  --name pocketdev \
-  tetrixdev/pocket-dev
+# Install Laravel
+composer create-project laravel/laravel www
+
+# Download Docker setup
+curl -L https://github.com/tetrixdev/slim-docker-laravel-setup/archive/main.tar.gz | tar -xz --strip-components=1
+
+# Run setup (will prompt for project name and production URL)
+./setup.sh
+
+# Start containers
+docker-compose up -d
+
+# Your app is ready at http://localhost
 ```
 
-Then attach to the container:
+## Existing Project Setup
+
+Navigate to your existing Laravel project root directory, then copy and paste this:
+
 ```bash
-docker attach pocketdev
+# Download Docker setup
+curl -L https://github.com/tetrixdev/slim-docker-laravel-setup/archive/main.tar.gz | tar -xz --strip-components=1
+
+# Run setup (will automatically move Laravel files to www/ folder)
+./setup.sh
+
+# Start containers
+docker-compose up -d
+
+# Your app is ready at http://localhost
 ```
 
-To detach without stopping: Press `Ctrl+P`, then `Ctrl+Q`
+## Local Development Testing
 
-#### Option 2: Docker Compose
+For testing this Docker setup locally during development:
 
-Create a `.env` file:
+### Setup Test Project
+```bash
+mkdir ~/projects/test-project
+cd ~/projects/test-project
+
+# Install Laravel
+composer create-project laravel/laravel www
+
+# Copy Docker setup from your local development directory (including dotfiles)
+cp -r ./../slim-docker-laravel-setup/. .
+
+# Run setup
+./setup.sh
+
+# Start containers
+docker-compose up -d
+```
+
+### Cleanup Test Environment
+```bash
+cd ~/projects/test-project
+
+# Stop and remove containers, networks, and volumes
+docker-compose down -v
+
+sudo rm -rf ~/projects/test-project/
+```
+
+## Project Structure
+
+After running setup, your project will have:
+
+```
+your-laravel-project/
+├── .github/
+│   └── workflows/
+│       └── docker-build.yml    # GitHub Action for building production images
+├── docker/                     # Docker configuration files
+│   ├── local/                  # Local development files
+│   │   └── php/
+│   │       ├── Dockerfile      # Development PHP build
+│   │       └── entrypoint.sh   # Development entrypoint
+│   ├── shared/                 # Shared configuration files
+│   │   ├── nginx/
+│   │   │   └── default.conf    # Nginx configuration
+│   │   └── php/
+│   │       ├── Dockerfile      # Shared PHP base image
+│   │       └── local.ini       # PHP configuration
+│   └── production/             # Ready-to-deploy package
+│   ├── nginx/
+│   │   └── Dockerfile          # Production Nginx build
+│   ├── php/
+│   │   ├── Dockerfile          # Production PHP build
+│   │   └── entrypoint.sh       # Production entrypoint
+│   ├── README.md               # Production deployment guide
+│   ├── compose.yml             # Production Docker Compose (uses pre-built images)
+│   └── .env.example            # Production environment template
+├── www/                        # Your Laravel application
+│   ├── app/
+│   ├── config/
+│   └── ...
+├── compose.yml                 # Development Docker Compose
+├── .env                        # Current environment
+└── .env.example                # Environment template
+```
+
+### File Purposes
+
+- **Development files**: `docker/local/`, `compose.yml` - build locally for development
+- **Shared configuration**: `docker/shared/` - shared base image and configuration files used by both environments
+- **Production deployment**: `docker/production/` - ready-to-deploy package with instructions
+- **CI/CD**: `.github/workflows/docker-build.yml` - builds production images on release
+
+## Laravel Configuration
+
+No Laravel configuration changes are required! The setup automatically handles:
+
+- **Database configuration**: Uses environment variables that work with Laravel's default `config/database.php`
+- **Vite configuration**: Automatically adds Docker-compatible server settings to `vite.config.js` for hot reload support
+
+## Services
+
+### PHP-FPM Container
+- **Image**: Custom PHP 8.4-FPM
+- **Extensions**: PDO, PostgreSQL, Zip
+- **Tools**: Composer, Node.js 22 LTS, npm
+- **Port**: 9000 (internal)
+- **Vite Dev Server**: 5173
+
+### Nginx Container
+- **Image**: nginx:1.29-alpine
+- **Port**: 80 (configurable via `NGINX_PORT`)
+- **Configuration**: Optimized for Laravel
+
+### PostgreSQL Container
+- **Image**: postgres:17-alpine
+- **Port**: 5432 (configurable via `DB_PORT`)
+- **Data**: Persistent volume storage
+- **Credentials**: Configurable via environment variables
+
+## Environment Variables
+
+### Development (.env)
 ```env
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
-OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
-TZ=Europe/Amsterdam
+APP_NAME=your-project
+APP_ENV=local
+APP_DEBUG=true
+DB_CONNECTION=pgsql
+DB_HOST=your-project-postgres
+DB_DATABASE=your-project
+DB_USERNAME=your-project
+DB_PASSWORD=generated-secure-password
+NGINX_PORT=80
+VITE_PORT=5173
 ```
 
-Create a `docker-compose.yml` file:
-```yaml
-services:
-  pocketdev:
-    image: tetrixdev/pocket-dev
-    container_name: pocketdev
-    stdin_open: true
-    tty: true
-    ports:
-      - "80:80"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - pocketdev-workspace:/workspace
-      - pocketdev-home:/home/pocketdev
-      - ./.env:/config/.env:ro
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - TZ=${TZ:-UTC}
-    restart: unless-stopped
-volumes:
-  pocketdev-workspace:
-  pocketdev-home:
+### Production (docker/production/.env.example)
+```env
+APP_NAME=your-project
+APP_ENV=production
+APP_DEBUG=false
+DB_CONNECTION=pgsql
+DB_HOST=your-project-postgres
+DB_DATABASE=your-project
+DB_USERNAME=your-project
+DB_PASSWORD=CHANGE_THIS_PASSWORD
+NGINX_PORT=80
 ```
 
-Run with:
+## Usage Commands
+
+### Start Services
 ```bash
 docker-compose up -d
-docker attach pocketdev
 ```
 
-### Environment Variables
+### Stop Services
+```bash
+docker-compose down
+```
 
-- `GITHUB_TOKEN` (required) - Your GitHub Personal Access Token
-- `OPENAI_API_KEY` (optional) - Your OpenAI API key for voice transcription features
-- `TZ` (optional) - Your timezone (defaults to UTC)
+### View Logs
+```bash
+# All services
+docker-compose logs -f
 
-### What's Included
+# Specific service
+docker-compose logs -f your-project-php
+```
 
-- Ubuntu 24.04 LTS base
-- **Mobile Voice Terminal**:
-  - TTYD web-based terminal with mobile optimization
-  - OpenAI Whisper API integration for voice-to-text
-  - Mobile-responsive interface with touch-friendly controls
-  - Keyboard fallback for traditional input
-- **Web Interface**:
-  - Nginx web server for terminal access
-  - Responsive design for mobile and desktop
-  - Real-time voice transcription and command injection
-- Node.js 22.x LTS
-- Git version control
-- GitHub CLI (gh) - pre-authenticated with your token
-- Claude Code CLI - AI-powered development assistant
-- Docker CLI - for running containers from within PocketDev
-- Essential tools: curl, wget, unzip, nano
+### Execute Commands in PHP Container
+```bash
+# Laravel Artisan
+docker-compose exec your-project-php php artisan migrate
 
-### Docker-out-of-Docker (DooD)
+# Composer
+docker-compose exec your-project-php composer install
 
-PocketDev uses DooD approach, meaning you can run any Docker containers from within the development environment. This allows you to:
+# npm
+docker-compose exec your-project-php npm install
+```
 
-- Run databases (PostgreSQL, Redis, etc.)
-- Spin up web servers (Nginx, Apache, etc.)
-- Test your applications in containers
-- Use official Docker images
+### Switch to Production
+```bash
+# Copy production environment
+cp docker/production/.env.example .env
+# Update database password to secure value
+sed -i "s/CHANGE_THIS_PASSWORD/your-secure-password/" .env
+docker-compose restart
+```
 
-### Customization
+## Development Workflow
 
-You can extend PocketDev by:
-
-1. **Forking this repository** and modifying the Dockerfile
-2. **Using Docker inheritance**:
-   ```dockerfile
-   FROM tetrixdev/pocket-dev
-   RUN apt-get update && apt-get install -y your-tools
+1. **Start development environment**:
+   ```bash
+   # .env is already set up for development
+   docker-compose up -d
    ```
 
-### Example Usage
+2. **Install dependencies** (if needed):
+   ```bash
+   docker-compose exec your-project-php composer install
+   docker-compose exec your-project-php npm install
+   ```
 
+3. **Run migrations**:
+   ```bash
+   docker-compose exec your-project-php php artisan migrate
+   ```
+
+4. **Generate application key** (if needed):
+   ```bash
+   docker-compose exec your-project-php php artisan key:generate
+   ```
+
+5. **Access your application** at `http://localhost`
+
+## Architecture
+
+### Container Stack
+- **PHP-FPM Container**: PHP 8.4-FPM with PostgreSQL extensions, Composer, and Node.js 22 LTS
+- **Nginx Container**: nginx:1.29-alpine configured for Laravel routing  
+- **PostgreSQL Container**: postgres:17-alpine with persistent data storage
+
+### Container Networking
+Services communicate via Docker's internal network:
+- PHP-FPM: accessible internally on port 9000
+- PostgreSQL: accessible internally on port 5432  
+- Nginx: exposed on configurable port (default 80)
+- Vite dev server: exposed on configurable port (default 5173)
+
+### Health Checks
+All containers have health checks configured:
+- PHP-FPM: `php-fpm -t`
+- Nginx: `curl -f http://localhost:80/`
+- PostgreSQL: `pg_isready`
+
+### Automated Container Initialization
+The PHP container's entrypoint script automatically:
+- Sets proper file permissions for Laravel storage
+- Generates APP_KEY if missing
+- Creates storage symlink
+- Installs npm dependencies  
+- Starts Vite dev server in background
+- Runs composer install and Laravel optimization commands
+- Executes database migrations
+
+### Data Persistence
+PostgreSQL data is stored in a named Docker volume `postgres-data` for persistence across container restarts.
+
+## Environment Management
+
+### Switch Between Environments
 ```bash
-# Start PocketDev with web interface and voice features
-docker run -it -d \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v pocketdev-workspace:/workspace \
-  -v pocketdev-home:/home/pocketdev \
-  -v ./.env:/config/.env:ro \
-  -p 80:80 \
-  -e GITHUB_TOKEN=your_github_token_here \
-  -e OPENAI_API_KEY=your_openai_api_key_here \
-  --name pocketdev \
-  tetrixdev/pocket-dev
+# Switch to production
+cp docker/production/.env.example .env
+sed -i "s/CHANGE_THIS_PASSWORD/your-secure-password/" .env
+docker-compose restart
 
-# Access the mobile terminal interface
-# Web Terminal: http://localhost
-# Voice features: Tap microphone button to dictate commands
-
-# Attach to the container for direct access
-docker attach pocketdev
-
-# Inside the container, you can:
-gh repo clone your-username/your-repo
-claude  # Start Claude Code AI assistant
-docker run -d -p 5432:5432 postgres:latest
+# Switch back to development
+cp .env.example .env
+sed -i "s/DB_PASSWORD=laravel/DB_PASSWORD=$(tr -dc 'A-Za-z0-9@#%^&*()_+-=' < /dev/urandom | head -c 32)/" .env
+docker-compose restart
 ```
 
-### Mobile Voice Features
+## Production Deployment
 
-- **Voice Commands**: Tap the microphone button to record voice commands
-- **Real-time Transcription**: Speech is converted to text using OpenAI Whisper API
-- **Mobile Optimized**: Responsive design works on phones and tablets
-- **Cost Efficient**: ~$0.006 per minute of voice input (~$1.50/month for regular use)
+The setup automatically creates a GitHub Action workflow that builds production-ready Docker images when you create releases.
 
-### Android HTTPS Requirement for Voice Input
+### Automated Image Building
 
-Modern browsers require HTTPS for microphone access. For local development on Android:
+1. **Push your Laravel project to GitHub**
+2. **Create a release** (tag like `v1.0.0`)
+3. **GitHub Action automatically builds**:
+   - `ghcr.io/your-username/your-project-php:v1.0.0` (Laravel app with dependencies)
+   - `ghcr.io/your-username/your-project-nginx:v1.0.0` (Nginx with baked config)
 
-**Option 1: Use `chrome://flags/` (Recommended)**
-1. Open Chrome on Android
-2. Go to `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
-3. Add your local IP address (e.g., `http://192.168.1.100`)
-4. Restart Chrome
+### Production Deployment
 
-**Option 2: Use Android Chrome Dev Tools**
-1. Enable Developer Options on Android
-2. Enable USB Debugging
-3. Connect to computer via USB
-4. Use Chrome DevTools port forwarding
+The `docker/production/` folder contains everything needed for production deployment:
 
-**Option 3: Use Self-Signed Certificate**
+1. **Copy deployment package to server**:
+   ```bash
+   scp -r docker/production/ user@server:/path/to/deployment/
+   cd /path/to/deployment/production/
+   ```
+
+2. **Configure production environment**:
+   ```bash
+   cp .env.example .env
+   # Edit .env to set DB_PASSWORD and APP_URL
+   nano .env
+   ```
+
+3. **Deploy using pre-built images**:
+   ```bash
+   # Deploy latest version
+   docker-compose up -d
+   
+   # Deploy specific version
+   IMAGE_TAG=v1.0.0 docker-compose up -d
+   ```
+
+3. **Production benefits**:
+   - ✅ Fast deployments (no build time)
+   - ✅ Dependencies pre-installed
+   - ✅ Assets pre-built (no Node.js needed)
+   - ✅ Optimized for production
+
+## Troubleshooting
+
+### Common Issues
+
+**Laravel Storage Permissions:**
 ```bash
-# Generate self-signed cert and run with HTTPS
-openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
-# Then configure nginx with SSL
+docker-compose exec {PROJECT_NAME}-php chown -R www-data:www-data storage bootstrap/cache
+docker-compose exec {PROJECT_NAME}-php chmod -R 775 storage bootstrap/cache
 ```
 
-## Building from Source
+**Database Connection Problems:**
+- Check containers are running: `docker-compose ps`
+- Verify credentials in `.env` file
+- Restart PostgreSQL: `docker-compose restart {PROJECT_NAME}-postgres`
 
-```bash
-git clone https://github.com/tetrixdev/pocket-dev.git
-cd pocket-dev
-docker build -t pocket-dev .
+**Nginx 502 Bad Gateway:**
+- Check PHP-FPM logs: `docker-compose logs {PROJECT_NAME}-php`
+- Restart PHP container: `docker-compose restart {PROJECT_NAME}-php`
+
+**Vite Development Server Issues:**
+- Check Vite is running: `docker-compose logs {PROJECT_NAME}-php | grep vite`
+- Manually start: `docker-compose exec {PROJECT_NAME}-php npm run dev`
+
+## Advanced Configuration
+
+### Custom PHP Configuration
+Edit `docker/shared/php/local.ini` to customize PHP settings:
+```ini
+upload_max_filesize=40M
+post_max_size=40M
+memory_limit=256M
+max_execution_time=120
 ```
+
+### Custom Nginx Configuration
+Edit `docker/shared/nginx/default.conf` for custom Nginx settings.
+
+### Additional Services
+Add services like Redis, Memcached, or Elasticsearch by extending the `compose.yml`.
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test with a fresh Laravel installation
+5. Submit a pull request
+
+## License
+
+This project is open-sourced software licensed under the MIT license.
+
+## Support
+
+For issues and questions:
+- Check the [Troubleshooting](#troubleshooting) section
+- Review Docker and Laravel logs
+- Open an issue on GitHub

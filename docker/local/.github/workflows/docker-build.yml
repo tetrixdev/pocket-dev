@@ -1,0 +1,58 @@
+name: Laravel Docker Build
+
+on:
+  release:
+    types: [prereleased, released]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout the files
+
+      # Set up Docker Buildx for caching support
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login to GitHub Container Registry
+      - name: Login to container registry
+        run: docker login ghcr.io --username=${{ github.actor }} --password=${{ secrets.GITHUB_TOKEN }}
+
+      # Build and push Laravel PHP application image using production Dockerfile
+      - name: Build and push {{PROJECT_NAME}}-php image
+        run: |
+          docker buildx build \
+            --file docker/production/php/Dockerfile \
+            --progress plain \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-php:cache \
+            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-php:cache,mode=max \
+            --tag ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-php:${{ github.event.release.tag_name }} \
+            --tag ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-php:latest \
+            --push \
+            .
+
+      # Build and push Laravel Nginx image
+      - name: Build and push {{PROJECT_NAME}}-nginx image
+        run: |
+          docker buildx build \
+            --file docker/production/nginx/Dockerfile \
+            --progress plain \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-nginx:cache \
+            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-nginx:cache,mode=max \
+            --tag ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-nginx:${{ github.event.release.tag_name }} \
+            --tag ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-nginx:latest \
+            --push \
+            .
+
+      # Output image information
+      - name: Image build complete
+        run: |
+          echo "✅ Images built and pushed:"
+          echo "📦 ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-php:${{ github.event.release.tag_name }}"
+          echo "📦 ghcr.io/${{ github.repository_owner }}/{{PROJECT_NAME}}-nginx:${{ github.event.release.tag_name }}"
+          echo ""
+          echo "🚀 Deploy with: cd docker/production && docker-compose up -d"
