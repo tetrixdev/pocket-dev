@@ -12,6 +12,22 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# =============================================================================
+# CUSTOM CODE START - PocketDev specific additions
+# =============================================================================
+
+# Install additional development tools
+RUN apt-get update && apt-get install -y \
+    wget \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && rm -rf /var/lib/apt/lists/*
+
+# =============================================================================
+# CUSTOM CODE END
+# =============================================================================
+
 # Install PHP extensions
 RUN docker-php-ext-install pdo pdo_pgsql zip
 
@@ -32,6 +48,43 @@ RUN mkdir -p /var/www/storage/framework/{sessions,views,cache} \
 
 # Set working directory
 WORKDIR /var/www
+
+# =============================================================================
+# CUSTOM CODE START - PocketDev specific additions
+# =============================================================================
+
+# Install Docker CLI (for socket mounting, not Docker-in-Docker)
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y docker-ce-cli \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install ttyd for web terminal (pinned to version 1.7.7)
+RUN wget -q https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 -O /usr/local/bin/ttyd \
+    && chmod +x /usr/local/bin/ttyd
+
+# Install Claude Code via npm
+RUN npm install -g @anthropic-ai/claude-code
+
+# Add root user to docker group for socket access
+RUN groupadd -g 999 docker || true \
+    && usermod -aG docker root
+
+# Create workspace directory for development (separate from web files)
+RUN mkdir -p /workspace
+
+# =============================================================================
+# CUSTOM CODE END
+# =============================================================================
 
 # =============================================================================
 # PRODUCTION SECTION (production-specific configuration and optimization)

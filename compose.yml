@@ -14,6 +14,13 @@ services:
       - .env:/var/www/.env
       - ./docker/shared/php/local.ini:/usr/local/etc/php/conf.d/local.ini
       - ./docker/local/php/entrypoint.sh:/entrypoint.sh
+      # =============================================================================
+      # CUSTOM CODE START - PocketDev specific additions
+      # =============================================================================
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket for Docker CLI access
+      # =============================================================================
+      # CUSTOM CODE END
+      # =============================================================================
     networks:
       - pocket-dev
     depends_on:

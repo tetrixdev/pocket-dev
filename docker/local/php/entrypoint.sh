@@ -32,17 +32,49 @@ if [ -f "package.json" ]; then
     echo "Starting Vite dev server in background..."
     npm run dev &
     VITE_PID=$!
-    
+
+    # =============================================================================
+    # CUSTOM CODE START - PocketDev specific additions
+    # =============================================================================
+
     # Function to handle shutdown signals
-    shutdown() {
-        echo "Shutting down..."
-        kill $VITE_PID 2>/dev/null || true
-        exit 0
-    }
+    # shutdown() {
+    #     echo "Shutting down..."
+    #     kill $VITE_PID 2>/dev/null || true
+    #     exit 0
+    # }
     
     # Trap signals for graceful shutdown
-    trap shutdown SIGTERM SIGINT
+    # trap shutdown SIGTERM SIGINT
+
+    # =============================================================================
+    # CUSTOM CODE END
+    # =============================================================================
 fi
+
+# =============================================================================
+# CUSTOM CODE START - PocketDev specific additions
+# =============================================================================
+
+# Initialize workspace directory and start ttyd web terminal
+echo "Setting up development workspace..."
+ttyd --port 7681 --writable --cwd /workspace bash &
+TTYD_PID=$!
+
+# Custom shutdown function to handle both Vite and ttyd processes
+shutdown() {
+    echo "Shutting down..."
+    [ -n "$VITE_PID" ] && kill $VITE_PID 2>/dev/null || true
+    kill $TTYD_PID 2>/dev/null || true
+    exit 0
+}
+
+# Trap signals for graceful shutdown
+trap shutdown SIGTERM SIGINT
+
+# =============================================================================
+# CUSTOM CODE END
+# =============================================================================
 
 composer install
 composer dump-autoload -o
