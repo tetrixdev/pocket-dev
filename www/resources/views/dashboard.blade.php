@@ -56,64 +56,49 @@
             <!-- Status Display -->
             <div class="status-display">
                 <div 
-                    class="text-sm p-2 rounded mb-2 transition-all duration-300"
+                    class="text-sm p-2 rounded mb-2 transition-all duration-300 bg-gray-700 text-gray-100 border border-gray-600"
                     :class="statusClass"
                     x-text="status || defaultStatus"
-                ></div>
-                
-                <!-- Keyboard shortcuts help -->
-                <div x-show="!status && !isRecording && !isProcessing" class="text-xs text-gray-400 mb-2">
-                    💡 Shortcuts: Ctrl+Enter (send), Ctrl+Shift+C (clear), Esc (stop)
+                >
+                    🎙️ Press "Start Recording" to begin voice input
                 </div>
                 
-                <!-- Transcription Preview -->
-                <div x-show="transcription" class="bg-gray-700 p-2 rounded text-sm mb-2">
-                    <div class="text-gray-300 text-xs mb-1">Preview: (Ctrl+Enter to send)</div>
-                    <div 
-                        x-text="transcription" 
-                        class="text-green-300"
-                        tabindex="0"
-                        @keydown.ctrl.enter.prevent="sendToTerminal()"
-                    ></div>
-                </div>
+                
             </div>
 
-            <!-- Control Buttons Grid -->
-            <div class="grid grid-cols-2 gap-3">
-                <!-- Record/Stop Button -->
+            <!-- Control Buttons -->
+            <div class="flex flex-col gap-3">
+                <!-- Record/Stop Button (Full Width) -->
                 <button 
                     @click="toggleRecording()"
-                    class="control-btn px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4"
+                    class="control-btn bg-blue-600 hover:bg-blue-700 focus:ring-blue-300 px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4 w-full"
                     :class="recordingButtonClass"
                     :disabled="isProcessing"
                     x-text="recordingButtonText"
-                ></button>
-
-                <!-- Manual Send Button (backup) -->
-                <button 
-                    @click="sendToTerminal()"
-                    class="control-btn bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-green-300"
-                    :disabled="!transcription || isProcessing"
-                    x-show="transcription"
                 >
-                    🚀 Send Now
+                    🎙️ Start Recording
                 </button>
 
-                <!-- Clear Terminal Line -->
-                <button 
-                    @click="clearTerminalLine()"
-                    class="control-btn bg-yellow-600 hover:bg-yellow-700 px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-yellow-300"
-                >
-                    🗑️ Clear Line
-                </button>
+                <!-- Other Buttons (Half Width Grid) -->
+                <div class="grid grid-cols-2 gap-3">
+                    <!-- Clear Terminal Line -->
+                    <button 
+                        @click="clearTerminalLine()"
+                        class="control-btn bg-yellow-600 hover:bg-yellow-700 px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-yellow-300"
+                        :disabled="isRecording || isProcessing"
+                    >
+                        🗑️ Clear Line
+                    </button>
 
-                <!-- New Line Button -->
-                <button 
-                    @click="sendNewLine()"
-                    class="control-btn bg-purple-600 hover:bg-purple-700 px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-purple-300"
-                >
-                    ↵ New Line
-                </button>
+                    <!-- New Line Button -->
+                    <button 
+                        @click="sendNewLine()"
+                        class="control-btn bg-purple-600 hover:bg-purple-700 px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-purple-300"
+                        :disabled="isRecording || isProcessing"
+                    >
+                        ↵ New Line
+                    </button>
+                </div>
             </div>
 
         </div>
@@ -607,7 +592,7 @@
                         
                         if (data.transcription && data.transcription.trim().length > 0) {
                             this.transcription = data.transcription;
-                            this.updateStatus('✅ Audio transcribed - sending to terminal...', 'success');
+                            this.updateStatus(`✅ Transcribed: "${data.transcription}" - sending to terminal...`, 'success');
                             
                             // Automatically send to terminal after transcription
                             await this.sendToTerminal();
@@ -631,9 +616,9 @@
                         if (window.terminalCommunication) {
                             const success = window.terminalCommunication.sendTextToTerminal(this.transcription);
                             if (success) {
-                                this.updateStatus('✅ Command sent to terminal', 'success');
+                                this.updateStatus(`✅ Command sent: "${this.transcription}"`, 'success');
                             } else {
-                                this.updateStatus('❌ Failed to send to terminal', 'error');
+                                this.updateStatus(`❌ Failed to send: "${this.transcription}"`, 'error');
                             }
                         } else {
                             this.updateStatus('❌ Terminal not ready', 'error');
