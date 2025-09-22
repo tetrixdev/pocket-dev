@@ -1,7 +1,7 @@
 FROM nginx:1.29-alpine
 
 # Copy processed nginx configuration
-COPY docker/shared/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY docker-laravel/shared/nginx/default.conf /etc/nginx/conf.d/default.conf
 
 # Copy Laravel public directory from PHP container build context
 COPY www/public /var/www/public

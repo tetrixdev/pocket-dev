@@ -24,10 +24,10 @@ This folder contains everything needed to deploy **pocket-dev** to production.
 3. **Deploy with pre-built images**:
    ```bash
    # Deploy latest version
-   docker-compose up -d
+   docker compose up -d
    
    # Deploy specific version
-   IMAGE_TAG=v1.0.0 docker-compose up -d
+   IMAGE_TAG=v1.0.0 docker compose up -d
    ```
 
 ## What's Included
@@ -65,19 +65,19 @@ DB_PORT=5432
 
 ```bash
 # Start services
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop services
-docker-compose down
+docker compose down
 
 # Update to latest version
-docker-compose pull && docker-compose up -d
+docker compose pull && docker compose up -d
 
 # Deploy specific version
-IMAGE_TAG=v1.2.0 docker-compose up -d
+IMAGE_TAG=v1.2.0 docker compose up -d
 ```
 
 ## Health Checks
@@ -86,25 +86,25 @@ All services include health checks. Monitor with:
 
 ```bash
 # Check service health
-docker-compose ps
+docker compose ps
 
 # View container logs
-docker-compose logs pocket-dev-php
-docker-compose logs pocket-dev-nginx
-docker-compose logs pocket-dev-postgres
+docker compose logs pocket-dev-php
+docker compose logs pocket-dev-nginx
+docker compose logs pocket-dev-postgres
 ```
 
 ## Database Management
 
 ```bash
 # Run migrations
-docker-compose exec pocket-dev-php php artisan migrate --force
+docker compose exec pocket-dev-php php artisan migrate --force
 
 # Clear caches
-docker-compose exec pocket-dev-php php artisan optimize:clear
+docker compose exec pocket-dev-php php artisan optimize:clear
 
 # Access database
-docker-compose exec pocket-dev-postgres psql -U pocket-dev -d pocket-dev
+docker compose exec pocket-dev-postgres psql -U pocket-dev -d pocket-dev
 ```
 
 ## SSL/HTTPS Setup
@@ -127,12 +127,12 @@ your-domain.com {
 
 **Container won't start:**
 ```bash
-docker-compose logs service-name
+docker compose logs service-name
 ```
 
 **Database connection issues:**
 - Check `DB_*` variables in `.env`
-- Ensure PostgreSQL container is healthy: `docker-compose ps`
+- Ensure PostgreSQL container is healthy: `docker compose ps`
 
 **Image pull failures:**
 - Ensure you have access to `ghcr.io/tetrixdev/pocket-dev-*`
@@ -147,6 +147,6 @@ docker-compose logs service-name
 
 ## Support
 
-- Check application logs: `docker-compose logs pocket-dev-php`
-- Review Laravel logs: `docker-compose exec pocket-dev-php tail -f storage/logs/laravel.log`
-- Database logs: `docker-compose logs pocket-dev-postgres`
+- Check application logs: `docker compose logs pocket-dev-php`
+- Review Laravel logs: `docker compose exec pocket-dev-php tail -f storage/logs/laravel.log`
+- Database logs: `docker compose logs pocket-dev-postgres`
