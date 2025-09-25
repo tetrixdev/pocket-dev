@@ -66,11 +66,9 @@ RUN npm install -g @anthropic-ai/claude-code
 # CUSTOM INSTALLATION END
 # =============================================================================
 
-# Create development user and set up permissions
+# Create development user (runtime user mapping will override this)
 RUN useradd -m -s /bin/bash devuser \
-    && echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
-    && groupadd -g 999 docker || true \
-    && usermod -aG docker devuser
+    && echo "devuser ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 # Create workspace directory for development
 RUN mkdir -p /workspace \

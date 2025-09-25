@@ -75,6 +75,9 @@ services:
     container_name: pocket-dev-ttyd
     restart: unless-stopped
     working_dir: /workspace
+    user: "1001:1001"
+    group_add:
+      - "1000"
     ports:
       - "${TTYD_PORT:-7681}:7681"
     volumes:
