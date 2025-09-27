@@ -58,7 +58,7 @@
 
         <!-- Terminal Section (70% height) -->
         <div class="terminal-section flex-[0.7] p-4">
-            <div class="terminal-container h-full">
+            <div class="terminal-container h-full relative">
                 <iframe
                     id="terminal-iframe"
                     class="terminal-iframe"
@@ -66,6 +66,21 @@
                     @load="onTerminalLoad()"
                     @touchstart="handleMobileTouch($event)">
                 </iframe>
+
+                <!-- Loading/Retry Spinner Overlay -->
+                <div x-show="isRetrying"
+                     class="absolute inset-0 bg-gray-900 bg-opacity-80 flex items-center justify-center z-10"
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="transition ease-in duration-300"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0">
+                    <div class="text-center">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                        <p class="text-white text-sm" x-text="status"></p>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -146,6 +161,7 @@
                 terminalUrl: null,
                 terminalIframe: null,
                 terminalLoaded: false,
+                isRetrying: true, // Start with spinner visible
 
                 // Voice recording
                 hasOpenAI: hasOpenAI,
@@ -165,6 +181,56 @@
 
                     // Setup postMessage listener for iframe communication
                     this.setupMessageListener();
+
+                    // Setup iframe retry mechanism
+                    this.setupIframeRetry();
+
+                    // Start loading the terminal
+                    this.loadTerminalWithRetry();
+                },
+
+                setupIframeRetry() {
+                    this.maxRetries = 3;
+                    this.retryCount = 0;
+                    this.retryDelay = 2000; // 2 seconds
+                },
+
+                async loadTerminalWithRetry() {
+                    const iframe = document.getElementById('terminal-iframe');
+                    if (!iframe) return;
+
+                    this.retryCount++;
+                    this.isRetrying = true;
+                    this.status = `Loading terminal (attempt ${this.retryCount}/${this.maxRetries})...`;
+
+                    try {
+                        // Test the URL first with fetch
+                        const response = await fetch(this.terminalUrl, {
+                            method: 'HEAD',
+                            cache: 'no-cache'
+                        });
+
+                        if (response.ok) {
+                            // If URL is accessible, load the iframe
+                            iframe.src = this.terminalUrl;
+                            console.log(`✅ Terminal URL accessible, loading iframe (attempt ${this.retryCount})`);
+                        } else {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                    } catch (error) {
+                        console.warn(`⚠️ Terminal load attempt ${this.retryCount} failed:`, error.message);
+
+                        if (this.retryCount < this.maxRetries) {
+                            this.status = `Connection failed, retrying in ${this.retryDelay/1000}s...`;
+                            setTimeout(() => {
+                                this.loadTerminalWithRetry();
+                            }, this.retryDelay);
+                        } else {
+                            this.status = 'Terminal connection failed after multiple attempts';
+                            this.isRetrying = false;
+                            console.error('🚨 Terminal failed to load after all retry attempts');
+                        }
+                    }
                 },
 
                 setupMessageListener() {
@@ -177,28 +243,97 @@
                 },
 
                 onTerminalLoad() {
-                    console.log('✅ Terminal iframe loaded via nginx proxy');
+                    console.log('📄 Iframe loaded, checking if it\'s the actual terminal...');
                     this.terminalIframe = document.getElementById('terminal-iframe');
-                    this.terminalLoaded = true;
-                    this.status = 'Terminal ready - same origin access enabled';
 
-                    // Test same-origin access
-                    this.testSameOriginAccess();
+                    // Don't hide spinner yet - need to verify it's actually the terminal
+                    // Test same-origin access to confirm it's working
+                    setTimeout(() => {
+                        this.verifyTerminalWorking();
+                    }, 500); // Small delay to let iframe fully initialize
+                },
+
+                onTerminalError() {
+                    console.warn('⚠️ Terminal iframe error detected');
+                    if (this.retryCount < this.maxRetries) {
+                        this.isRetrying = true;
+                        this.status = 'Terminal error, retrying...';
+                        setTimeout(() => {
+                            this.loadTerminalWithRetry();
+                        }, this.retryDelay);
+                    } else {
+                        this.isRetrying = false;
+                        this.status = 'Terminal failed to load';
+                    }
+                },
+
+                verifyTerminalWorking() {
+                    try {
+                        // Check if iframe loaded an error page by looking at the title or content
+                        const iframeDoc = this.terminalIframe.contentDocument;
+
+                        if (!iframeDoc) {
+                            console.warn('⚠️ Cannot access iframe content - still loading or error');
+                            this.retryIfNeeded();
+                            return;
+                        }
+
+                        // Check if it's a 502 error page
+                        const title = iframeDoc.title;
+                        const bodyText = iframeDoc.body?.textContent || '';
+
+                        if (title.includes('502') || bodyText.includes('502 Bad Gateway') || bodyText.includes('Bad Gateway')) {
+                            console.warn('⚠️ Iframe loaded 502 error page, retrying...');
+                            this.retryIfNeeded();
+                            return;
+                        }
+
+                        // Check if it's the actual terminal (ttyd page should have specific content)
+                        if (title.includes('ttyd') || bodyText.includes('terminal') || iframeDoc.querySelector('#terminal')) {
+                            console.log('✅ Terminal successfully loaded and verified!');
+                            this.terminalLoaded = true;
+                            this.isRetrying = false; // Hide spinner - terminal is working!
+                            this.status = 'Terminal ready - connection successful';
+                            this.retryCount = 0; // Reset retry count
+
+                            // Test same-origin access for additional features
+                            this.testSameOriginAccess();
+                        } else {
+                            console.warn('⚠️ Iframe loaded unknown content, retrying...');
+                            this.retryIfNeeded();
+                        }
+
+                    } catch (error) {
+                        console.warn('⚠️ Error verifying terminal:', error.message);
+                        this.retryIfNeeded();
+                    }
+                },
+
+                retryIfNeeded() {
+                    if (this.retryCount < this.maxRetries) {
+                        this.status = `Connection failed, retrying in ${this.retryDelay/1000}s...`;
+                        setTimeout(() => {
+                            this.loadTerminalWithRetry();
+                        }, this.retryDelay);
+                    } else {
+                        this.status = 'Terminal connection failed after multiple attempts';
+                        this.isRetrying = false; // Hide spinner after max retries
+                        console.error('🚨 Terminal failed to load after all retry attempts');
+                    }
                 },
 
                 testSameOriginAccess() {
                     try {
                         const iframeDoc = this.terminalIframe.contentDocument;
                         if (iframeDoc) {
-                            console.log('🎉 Same-origin access successful! contentDocument available');
+                            console.log('🎉 Same-origin access confirmed - keyboard injection enabled');
                             this.status = 'Terminal ready - keyboard injection enabled';
                         } else {
-                            console.warn('⚠️ contentDocument still null - proxy may not be working');
-                            this.status = 'Terminal loaded but iframe access blocked';
+                            this.status = 'Terminal ready - limited access';
                         }
                     } catch (error) {
                         console.warn('⚠️ Same-origin test failed:', error.message);
-                        this.status = 'Terminal loaded but cross-origin restrictions remain';
+                        this.status = 'Terminal ready - cross-origin restrictions apply';
                     }
                 },
 
@@ -299,91 +434,58 @@
                     }
                 },
 
+                // Helper method for terminal access
+                getTerminalInstance() {
+                    if (!this.terminalIframe || !this.terminalLoaded) {
+                        this.status = 'Terminal not ready';
+                        return null;
+                    }
+
+                    try {
+                        const iframeWin = this.terminalIframe.contentWindow;
+                        if (iframeWin.term) {
+                            return iframeWin.term;
+                        } else {
+                            console.warn('⚠️ No terminal object found');
+                            this.status = 'No terminal object available';
+                            return null;
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ Terminal access failed:', error.message);
+                        this.status = 'Terminal access failed';
+                        return null;
+                    }
+                },
+
                 // Terminal control methods using direct terminal access
                 sendCommand(command) {
-                    if (this.terminalIframe && this.terminalLoaded) {
-                        console.log('📤 Sending command via direct terminal access:', command);
-
-                        try {
-                            const iframeWin = this.terminalIframe.contentWindow;
-
-                            // Use direct terminal access with Ctrl+Enter twice and space
-                            if (iframeWin.term) {
-                                iframeWin.term.input(command + ' \x0A\x0A');
-                                console.log('✅ Command sent via term.input (with Ctrl+Enter twice)');
-                                this.status = `Sent: ${command}`;
-                                return;
-                            } else if (iframeWin.terminal) {
-                                iframeWin.terminal.input(command + ' \x0A\x0A');
-                                console.log('✅ Command sent via terminal.input (with Ctrl+Enter twice)');
-                                this.status = `Sent: ${command}`;
-                                return;
-                            } else {
-                                console.warn('⚠️ No terminal object found');
-                                this.status = 'No terminal object available';
-                            }
-                        } catch (error) {
-                            console.warn('⚠️ Terminal access failed:', error.message);
-                            this.status = 'Command send failed';
-                        }
+                    console.log('📤 Sending command via direct terminal access:', command);
+                    const term = this.getTerminalInstance();
+                    if (term) {
+                        term.input(command + ' ');
+                        console.log('✅ Command sent via term.input (with space)');
+                        this.status = `Sent: ${command}`;
                     }
                 },
 
                 async clearLine() {
-                    if (this.terminalIframe && this.terminalLoaded) {
-                        try {
-                            const iframeWin = this.terminalIframe.contentWindow;
-
-                            // Send escape twice with 50ms delay between them
-                            if (iframeWin.term) {
-                                iframeWin.term.input('\x1b');
-                                await new Promise(resolve => setTimeout(resolve, 50));
-                                iframeWin.term.input('\x1b');
-                                console.log('✅ Clear line sent via term.input (escape twice with delay)');
-                                this.status = 'Line cleared';
-                                return;
-                            } else if (iframeWin.terminal) {
-                                iframeWin.terminal.input('\x1b');
-                                await new Promise(resolve => setTimeout(resolve, 50));
-                                iframeWin.terminal.input('\x1b');
-                                console.log('✅ Clear line sent via terminal.input (escape twice with delay)');
-                                this.status = 'Line cleared';
-                                return;
-                            } else {
-                                console.warn('⚠️ No terminal object found');
-                                this.status = 'No terminal object available';
-                            }
-                        } catch (error) {
-                            console.warn('⚠️ Clear line failed:', error.message);
-                            this.status = 'Clear line failed';
-                        }
+                    const term = this.getTerminalInstance();
+                    if (term) {
+                        // Send escape twice with 100ms delay between them
+                        term.input('\x1b');
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        term.input('\x1b');
+                        console.log('✅ Clear line sent via term.input (escape twice with delay)');
+                        this.status = 'Line cleared';
                     }
                 },
 
                 sendNewLine() {
-                    if (this.terminalIframe && this.terminalLoaded) {
-                        try {
-                            const iframeWin = this.terminalIframe.contentWindow;
-
-                            // Send Enter key using direct terminal access
-                            if (iframeWin.term) {
-                                iframeWin.term.input('\r');
-                                console.log('✅ Enter key sent via term.input');
-                                this.status = 'Enter key sent';
-                                return;
-                            } else if (iframeWin.terminal) {
-                                iframeWin.terminal.input('\r');
-                                console.log('✅ Enter key sent via terminal.input');
-                                this.status = 'Enter key sent';
-                                return;
-                            } else {
-                                console.warn('⚠️ No terminal object found');
-                                this.status = 'No terminal object available';
-                            }
-                        } catch (error) {
-                            console.warn('⚠️ Send enter failed:', error.message);
-                            this.status = 'Enter send failed';
-                        }
+                    const term = this.getTerminalInstance();
+                    if (term) {
+                        term.input('\r');
+                        console.log('✅ Enter key sent via term.input');
+                        this.status = 'Enter key sent';
                     }
                 },
 

@@ -30,7 +30,7 @@ class OpenAIService
             ->timeout(30) // 30 second timeout for audio processing
             ->attach('file', file_get_contents($audioFile->getRealPath()), $audioFile->getClientOriginalName())
             ->post($this->baseUrl . '/audio/transcriptions', [
-                'model' => 'whisper-1',
+                'model' => 'gpt-4o-transcribe',
                 'response_format' => 'text',
                 'language' => 'en', // Optimize for English, but Whisper can auto-detect
             ]);
@@ -68,52 +68,5 @@ class OpenAIService
 
             throw $e;
         }
-    }
-
-    public function enhanceCommand(string $transcription): string
-    {
-        // Future enhancement: use GPT to improve voice-to-command conversion
-        // For now, just clean up common voice transcription issues
-
-        $enhanced = $this->cleanTranscription($transcription);
-
-        return $enhanced;
-    }
-
-    private function cleanTranscription(string $text): string
-    {
-        // Basic cleanup for common voice transcription issues
-        $cleanupRules = [
-            // Common voice-to-text corrections for terminal commands
-            '/\blist\b/i' => 'ls',
-            '/\blist files\b/i' => 'ls -la',
-            '/\bchange directory\b/i' => 'cd',
-            '/\bmake directory\b/i' => 'mkdir',
-            '/\bremove file\b/i' => 'rm',
-            '/\bcopy file\b/i' => 'cp',
-            '/\bmove file\b/i' => 'mv',
-            '/\bprint working directory\b/i' => 'pwd',
-            '/\bclear screen\b/i' => 'clear',
-            '/\bgit status\b/i' => 'git status',
-            '/\bgit add all\b/i' => 'git add .',
-            '/\bgit commit\b/i' => 'git commit',
-            '/\bdocker compose up\b/i' => 'docker compose up',
-            '/\bdocker compose down\b/i' => 'docker compose down',
-            '/\bnpm install\b/i' => 'npm install',
-            '/\bnpm run dev\b/i' => 'npm run dev',
-            '/\bcomposer install\b/i' => 'composer install',
-            '/\bartisan\b/i' => 'php artisan',
-        ];
-
-        $cleaned = $text;
-        foreach ($cleanupRules as $pattern => $replacement) {
-            $cleaned = preg_replace($pattern, $replacement, $cleaned);
-        }
-
-        // Clean up extra spaces and common punctuation issues
-        $cleaned = preg_replace('/\s+/', ' ', $cleaned);
-        $cleaned = trim($cleaned);
-
-        return $cleaned;
     }
 }
