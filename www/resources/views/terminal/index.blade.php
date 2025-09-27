@@ -159,9 +159,9 @@
                 showQuickCommands: false,
 
                 init() {
-                    // Convert WebSocket URL to HTTP URL for iframe
-                    this.terminalUrl = wsUrl.replace('ws://', 'http://').replace('wss://', 'https://').split('/?')[0];
-                    console.log('🚀 Terminal URL:', this.terminalUrl);
+                    // Use nginx proxy URL for same-origin access
+                    this.terminalUrl = '/terminal-ws/';
+                    console.log('🚀 Terminal URL (via nginx proxy):', this.terminalUrl);
 
                     // Setup postMessage listener for iframe communication
                     this.setupMessageListener();
@@ -169,18 +169,37 @@
 
                 setupMessageListener() {
                     window.addEventListener('message', (event) => {
-                        // Only accept messages from the terminal iframe
-                        if (event.origin === new URL(this.terminalUrl).origin) {
+                        // Only accept messages from same origin (since we're using nginx proxy)
+                        if (event.origin === window.location.origin) {
                             console.log('📥 Received message from terminal:', event.data);
                         }
                     });
                 },
 
                 onTerminalLoad() {
-                    console.log('✅ Terminal iframe loaded');
+                    console.log('✅ Terminal iframe loaded via nginx proxy');
                     this.terminalIframe = document.getElementById('terminal-iframe');
                     this.terminalLoaded = true;
-                    this.status = 'Terminal ready';
+                    this.status = 'Terminal ready - same origin access enabled';
+
+                    // Test same-origin access
+                    this.testSameOriginAccess();
+                },
+
+                testSameOriginAccess() {
+                    try {
+                        const iframeDoc = this.terminalIframe.contentDocument;
+                        if (iframeDoc) {
+                            console.log('🎉 Same-origin access successful! contentDocument available');
+                            this.status = 'Terminal ready - keyboard injection enabled';
+                        } else {
+                            console.warn('⚠️ contentDocument still null - proxy may not be working');
+                            this.status = 'Terminal loaded but iframe access blocked';
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ Same-origin test failed:', error.message);
+                        this.status = 'Terminal loaded but cross-origin restrictions remain';
+                    }
                 },
 
                 handleMobileTouch(event) {
@@ -280,65 +299,90 @@
                     }
                 },
 
-                // Terminal control methods using clipboard/postMessage
+                // Terminal control methods using direct terminal access
                 sendCommand(command) {
                     if (this.terminalIframe && this.terminalLoaded) {
-                        console.log('📤 Sending command to terminal:', command);
+                        console.log('📤 Sending command via direct terminal access:', command);
 
-                        // Focus the iframe first
-                        this.terminalIframe.focus();
-
-                        // Try to send command via postMessage
                         try {
-                            this.terminalIframe.contentWindow.postMessage({
-                                type: 'command',
-                                data: command + '\r'
-                            }, this.terminalUrl);
+                            const iframeWin = this.terminalIframe.contentWindow;
+
+                            // Use direct terminal access with Ctrl+Enter twice and space
+                            if (iframeWin.term) {
+                                iframeWin.term.input(command + ' \x0A\x0A');
+                                console.log('✅ Command sent via term.input (with Ctrl+Enter twice)');
+                                this.status = `Sent: ${command}`;
+                                return;
+                            } else if (iframeWin.terminal) {
+                                iframeWin.terminal.input(command + ' \x0A\x0A');
+                                console.log('✅ Command sent via terminal.input (with Ctrl+Enter twice)');
+                                this.status = `Sent: ${command}`;
+                                return;
+                            } else {
+                                console.warn('⚠️ No terminal object found');
+                                this.status = 'No terminal object available';
+                            }
                         } catch (error) {
-                            console.warn('⚠️ PostMessage failed, falling back to clipboard method');
-                            // Fallback: Use clipboard to send command
-                            this.sendViaClipboard(command);
+                            console.warn('⚠️ Terminal access failed:', error.message);
+                            this.status = 'Command send failed';
                         }
                     }
                 },
 
-                async sendViaClipboard(command) {
-                    try {
-                        await navigator.clipboard.writeText(command);
-                        this.terminalIframe.focus();
-                        console.log('📋 Command copied to clipboard, focus on terminal to paste');
-                        this.status = `Copied to clipboard: ${command}`;
-                    } catch (error) {
-                        console.error('Failed to copy to clipboard:', error);
-                        this.status = 'Failed to send command';
-                    }
-                },
-
-                clearLine() {
+                async clearLine() {
                     if (this.terminalIframe && this.terminalLoaded) {
-                        // Send Ctrl+U (clear line) character
-                        this.terminalIframe.focus();
                         try {
-                            this.terminalIframe.contentWindow.postMessage({
-                                type: 'key',
-                                data: '\x15'  // Ctrl+U
-                            }, this.terminalUrl);
+                            const iframeWin = this.terminalIframe.contentWindow;
+
+                            // Send escape twice with 50ms delay between them
+                            if (iframeWin.term) {
+                                iframeWin.term.input('\x1b');
+                                await new Promise(resolve => setTimeout(resolve, 50));
+                                iframeWin.term.input('\x1b');
+                                console.log('✅ Clear line sent via term.input (escape twice with delay)');
+                                this.status = 'Line cleared';
+                                return;
+                            } else if (iframeWin.terminal) {
+                                iframeWin.terminal.input('\x1b');
+                                await new Promise(resolve => setTimeout(resolve, 50));
+                                iframeWin.terminal.input('\x1b');
+                                console.log('✅ Clear line sent via terminal.input (escape twice with delay)');
+                                this.status = 'Line cleared';
+                                return;
+                            } else {
+                                console.warn('⚠️ No terminal object found');
+                                this.status = 'No terminal object available';
+                            }
                         } catch (error) {
-                            console.warn('⚠️ Clear line via postMessage failed');
+                            console.warn('⚠️ Clear line failed:', error.message);
+                            this.status = 'Clear line failed';
                         }
                     }
                 },
 
                 sendNewLine() {
                     if (this.terminalIframe && this.terminalLoaded) {
-                        this.terminalIframe.focus();
                         try {
-                            this.terminalIframe.contentWindow.postMessage({
-                                type: 'key',
-                                data: '\r'  // Enter key
-                            }, this.terminalUrl);
+                            const iframeWin = this.terminalIframe.contentWindow;
+
+                            // Send Enter key using direct terminal access
+                            if (iframeWin.term) {
+                                iframeWin.term.input('\r');
+                                console.log('✅ Enter key sent via term.input');
+                                this.status = 'Enter key sent';
+                                return;
+                            } else if (iframeWin.terminal) {
+                                iframeWin.terminal.input('\r');
+                                console.log('✅ Enter key sent via terminal.input');
+                                this.status = 'Enter key sent';
+                                return;
+                            } else {
+                                console.warn('⚠️ No terminal object found');
+                                this.status = 'No terminal object available';
+                            }
                         } catch (error) {
-                            console.warn('⚠️ Send newline via postMessage failed');
+                            console.warn('⚠️ Send enter failed:', error.message);
+                            this.status = 'Enter send failed';
                         }
                     }
                 },
