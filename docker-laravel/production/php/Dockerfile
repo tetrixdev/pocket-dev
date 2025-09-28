@@ -43,8 +43,8 @@ COPY www/ /var/www/
 # Install Composer dependencies (production optimized)
 RUN composer install --no-dev --optimize-autoloader --no-interaction --verbose
 
-# Install npm dependencies and build assets
-RUN npm ci --only=production \
+# Install npm dependencies (including dev deps for build), build assets, then clean up
+RUN npm ci \
     && npm run build \
     && rm -rf node_modules
 
