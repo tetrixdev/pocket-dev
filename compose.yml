@@ -94,7 +94,7 @@ services:
   pocket-dev-ttyd:
     build:
       context: .
-      dockerfile: docker-ttyd/Dockerfile
+      dockerfile: docker-ttyd/shared/Dockerfile
     container_name: pocket-dev-ttyd
     restart: unless-stopped
     working_dir: /workspace
@@ -110,7 +110,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspace-data:/workspace
       - user-data:/home/devuser
-      - ./docker-ttyd/entrypoint.sh:/entrypoint.sh
+      - ./docker-ttyd/shared/entrypoint.sh:/entrypoint.sh
     networks:
       - pocket-dev
     healthcheck:
