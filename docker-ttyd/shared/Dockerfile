@@ -81,7 +81,7 @@ WORKDIR /workspace
 USER devuser
 
 # Copy and set up entrypoint
-COPY docker-ttyd/entrypoint.sh /entrypoint.sh
+COPY docker-ttyd/shared/entrypoint.sh /entrypoint.sh
 USER root
 RUN chmod +x /entrypoint.sh
 USER devuser
