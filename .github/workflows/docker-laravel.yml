@@ -41,7 +41,7 @@ jobs:
             --file docker-laravel/production/php/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-php:cache \
+            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-php:cache,ignore-error=true \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-php:cache,mode=max \
             --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }} \
             --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-php:latest \
@@ -55,7 +55,7 @@ jobs:
             --file docker-laravel/production/nginx/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:cache \
+            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:cache,ignore-error=true \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:cache,mode=max \
             --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }} \
             --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:latest \
@@ -69,7 +69,7 @@ jobs:
             --file docker-ttyd/shared/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:cache \
+            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:cache,ignore-error=true \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:cache,mode=max \
             --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:${{ github.event.release.tag_name }} \
             --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:latest \
@@ -83,7 +83,7 @@ jobs:
             --file docker-proxy/shared/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache \
+            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache,ignore-error=true \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache,mode=max \
             --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }} \
             --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:latest \
