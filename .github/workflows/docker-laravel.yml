@@ -1,4 +1,4 @@
-name: Laravel Docker Build
+name: PocketDev Docker Build
 
 on:
   release:
@@ -20,11 +20,11 @@ jobs:
       - name: Login to container registry
         run: docker login ghcr.io --username=${{ github.actor }} --password=${{ secrets.GITHUB_TOKEN }}
 
-      # Build and push Laravel PHP application image using production Dockerfile
+      # Build and push Laravel PHP application image
       - name: Build and push pocket-dev-php image
         run: |
           docker buildx build \
-            --file docker/production/php/Dockerfile \
+            --file docker-laravel/production/php/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-php:cache \
@@ -38,7 +38,7 @@ jobs:
       - name: Build and push pocket-dev-nginx image
         run: |
           docker buildx build \
-            --file docker/production/nginx/Dockerfile \
+            --file docker-laravel/production/nginx/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:cache \
@@ -48,11 +48,41 @@ jobs:
             --push \
             .
 
+      # Build and push TTYD terminal image
+      - name: Build and push pocket-dev-ttyd image
+        run: |
+          docker buildx build \
+            --file docker-ttyd/Dockerfile \
+            --progress plain \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:cache \
+            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:cache,mode=max \
+            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:${{ github.event.release.tag_name }} \
+            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:latest \
+            --push \
+            .
+
+      # Build and push Proxy image
+      - name: Build and push pocket-dev-proxy image
+        run: |
+          docker buildx build \
+            --file docker-proxy/shared/Dockerfile \
+            --progress plain \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-from=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache \
+            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache,mode=max \
+            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }} \
+            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:latest \
+            --push \
+            .
+
       # Output image information
       - name: Image build complete
         run: |
           echo "✅ Images built and pushed:"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }}"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }}"
+          echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-ttyd:${{ github.event.release.tag_name }}"
+          echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }}"
           echo ""
-          echo "🚀 Deploy with: cd docker/production && docker-compose up -d"
+          echo "🚀 Deploy with: cd deploy && docker-compose up -d"

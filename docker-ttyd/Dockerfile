@@ -47,7 +47,7 @@ RUN wget -q https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.x86_64 
     && chmod +x /usr/local/bin/ttyd
 
 # Install Claude Code via npm
-RUN npm install -g @anthropic-ai/claude-code
+RUN sudo npm i -g @anthropic-ai/claude-code
 
 # =============================================================================
 # GENERIC INSTALLATION END

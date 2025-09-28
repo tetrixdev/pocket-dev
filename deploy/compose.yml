@@ -1,9 +1,7 @@
 services:
-  # Main nginx reverse proxy - handles both Laravel and TTYD with security
+  # Production nginx reverse proxy with security
   pocket-dev-proxy:
-    build:
-      context: .
-      dockerfile: docker-proxy/shared/Dockerfile
+    image: ghcr.io/tetrixdev/pocket-dev-proxy:${IMAGE_TAG:-latest}
     container_name: pocket-dev-proxy
     restart: unless-stopped
     ports:
@@ -25,20 +23,12 @@ services:
       start_period: 15s
 
   pocket-dev-php:
-    build:
-      context: .
-      dockerfile: docker-laravel/local/php/Dockerfile
+    image: ghcr.io/tetrixdev/pocket-dev-php:${IMAGE_TAG:-latest}
     container_name: pocket-dev-php
     restart: unless-stopped
     working_dir: /var/www
-    entrypoint: ["/entrypoint.sh"]
-    ports:
-      - "${VITE_PORT:-5173}:5173"
     volumes:
-      - ./www:/var/www
-      - .env:/var/www/.env
-      - ./docker-laravel/shared/php/local.ini:/usr/local/etc/php/conf.d/local.ini
-      - ./docker-laravel/local/php/entrypoint.sh:/entrypoint.sh
+      - .env:/var/www/.env:ro
     networks:
       - pocket-dev
     depends_on:
@@ -49,15 +39,12 @@ services:
       interval: 15s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
   pocket-dev-nginx:
-    image: nginx:1.29-alpine
+    image: ghcr.io/tetrixdev/pocket-dev-nginx:${IMAGE_TAG:-latest}
     container_name: pocket-dev-nginx
     restart: unless-stopped
-    volumes:
-      - ./www:/var/www
-      - ./docker-laravel/shared/nginx/default.conf:/etc/nginx/conf.d/default.conf
     networks:
       - pocket-dev
     depends_on:
@@ -68,7 +55,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
   pocket-dev-postgres:
     image: postgres:17-alpine
@@ -77,7 +64,7 @@ services:
     environment:
       POSTGRES_DB: pocket-dev
       POSTGRES_USER: pocket-dev
-      POSTGRES_PASSWORD: "${DB_PASSWORD:-laravel}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
@@ -92,9 +79,7 @@ services:
       start_period: 10s
 
   pocket-dev-ttyd:
-    build:
-      context: .
-      dockerfile: docker-ttyd/Dockerfile
+    image: ghcr.io/tetrixdev/pocket-dev-ttyd:${IMAGE_TAG:-latest}
     container_name: pocket-dev-ttyd
     restart: unless-stopped
     working_dir: /workspace
@@ -105,12 +90,10 @@ services:
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
-      - GH_TOKEN=${GIT_TOKEN:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspace-data:/workspace
       - user-data:/home/devuser
-      - ./docker-ttyd/entrypoint.sh:/entrypoint.sh
     networks:
       - pocket-dev
     healthcheck:
