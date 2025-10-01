@@ -16,7 +16,7 @@ fi
 
 # Check if using insecure default password (production check)
 if [ "$ENVIRONMENT" = "production" ]; then
-    if [ "$BASIC_AUTH_PASS" = "CHANGE_THIS_PASSWORD_NOW" ] || [ "$BASIC_AUTH_PASS" = "CHANGE_THIS_PASSWORD" ]; then
+    if [ "$BASIC_AUTH_PASS" = "CHANGE_BASIC_AUTH_PASS" ]; then
         echo "❌ ERROR: You must change the default BASIC_AUTH_PASS value!"
         echo "   Current value: $BASIC_AUTH_PASS"
         echo "   Please set a secure password in your .env file"

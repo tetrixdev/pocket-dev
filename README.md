@@ -204,94 +204,43 @@ GitHub Actions automatically builds production Docker images when you create rel
    - `ghcr.io/your-username/pocket-dev-ttyd:v1.0.0`
    - `ghcr.io/your-username/pocket-dev-proxy:v1.0.0`
 
-### Production Deployment
+### Deploying to Production
 
-The `deploy/` folder contains everything needed for production:
+⚠️ **Important:** PocketDev is designed to run on standard web ports (80 for HTTP, 443 for HTTPS behind a reverse proxy). If you must use a non-standard port, you need to set `ASSET_URL` in your `.env` matching your full URL with port.
 
-1. **Copy deployment package to server**:
+**Prerequisites:** Docker and Docker Compose installed on your server.
+
+**Steps:**
+
+1. **Download deployment files**:
    ```bash
-   scp -r deploy/ user@server:/path/to/deployment/
-   cd /path/to/deployment/deploy/
+   mkdir pocket-dev && cd pocket-dev
+   wget https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/compose.yml
+   wget https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/.env.example
+   wget https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/README.md
    ```
 
-2. **Configure production environment**:
+2. **Configure environment**:
    ```bash
    cp .env.example .env
-   nano .env
+   # Edit .env with your preferred editor
    ```
 
-   Update these critical settings:
+   **Required: Update all values starting with `CHANGE_`** - Every variable with this prefix must be changed. Other variables use sensible defaults.
+
+3. **Generate Laravel application key**:
    ```bash
-   APP_ENV=production
-   APP_DEBUG=false
-   APP_URL=https://your-domain.com
-   DB_PASSWORD=your_secure_database_password
-   BASIC_AUTH_PASS=your_secure_admin_password
+   docker compose run --rm pocket-dev-php php artisan key:generate
    ```
 
-3. **Deploy with pre-built images**:
+4. **Deploy**:
    ```bash
-   # Deploy latest version
    docker compose up -d
-
-   # Deploy specific version
-   IMAGE_TAG=v1.0.0 docker compose up -d
    ```
 
-## 🔧 Environment Variables
-
-### Development (.env)
-
-```bash
-# Application
-APP_NAME=pocket-dev
-APP_ENV=local
-APP_DEBUG=true
-
-# Database
-DB_CONNECTION=pgsql
-DB_HOST=pocket-dev-postgres
-DB_DATABASE=pocket-dev
-DB_USERNAME=pocket-dev
-DB_PASSWORD=auto-generated
-
-# Ports
-NGINX_PORT=80
-VITE_PORT=5173
-TTYD_PORT=7681
-
-# Git credentials
-GIT_TOKEN=ghp_your_token
-GIT_USER_NAME="Your Name"
-GIT_USER_EMAIL=your.email@domain.com
-
-# Security (REQUIRED)
-BASIC_AUTH_USER=your_username
-BASIC_AUTH_PASS=your_secure_password
-
-# Optional IP whitelist
-IP_WHITELIST=192.168.1.0/24
-```
-
-### Production (deploy/.env)
-
-```bash
-# Application
-APP_ENV=production
-APP_DEBUG=false
-APP_URL=https://your-domain.com
-
-# Database
-DB_PASSWORD=CHANGE_THIS_PASSWORD
-
-# Security
-BASIC_AUTH_USER=admin
-BASIC_AUTH_PASS=CHANGE_THIS_PASSWORD
-IP_WHITELIST=your.office.ip/32
-
-# Image version
-IMAGE_TAG=v1.0.0
-```
+5. **Access**:
+   - **Main App**: http://your-domain.com
+   - **Terminal**: http://your-domain.com/terminal
 
 ## 🐛 Troubleshooting
 

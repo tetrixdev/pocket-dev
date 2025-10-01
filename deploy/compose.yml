@@ -28,7 +28,7 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     volumes:
-      - .env:/var/www/.env:ro
+      - .env:/var/www/.env
     networks:
       - pocket-dev
     depends_on:
