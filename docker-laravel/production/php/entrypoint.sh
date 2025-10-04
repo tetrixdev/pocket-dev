@@ -3,6 +3,7 @@ set -e
 
 echo "Starting Laravel production container..."
 
+# TODO fix this to work correctly, check slim-docker-setup for latest changes because i think it worked before, although we never tried production update so actually that's probably not true!
 # Generate Laravel application key if not set
 if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
     echo "Generating Laravel application key..."

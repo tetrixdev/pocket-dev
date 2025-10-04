@@ -228,14 +228,14 @@ GitHub Actions automatically builds production Docker images when you create rel
 
    **Required: Update all values starting with `CHANGE_`** - Every variable with this prefix must be changed. Other variables use sensible defaults.
 
-3. **Generate Laravel application key**:
-   ```bash
-   docker compose run --rm pocket-dev-php php artisan key:generate
-   ```
-
-4. **Deploy**:
+3. **Deploy**:
    ```bash
    docker compose up -d
+   ```
+
+4. **Generate Laravel application key**:
+   ```bash
+   docker exec pocket-dev-php php artisan key:generate
    ```
 
 5. **Access**:
