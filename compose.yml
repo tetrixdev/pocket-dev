@@ -9,6 +9,8 @@ services:
     ports:
       - "${NGINX_PORT:-80}:80"
     environment:
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
+      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
       - BASIC_AUTH_USER=${BASIC_AUTH_USER}
       - BASIC_AUTH_PASS=${BASIC_AUTH_PASS}
       - IP_WHITELIST=${IP_WHITELIST:-}

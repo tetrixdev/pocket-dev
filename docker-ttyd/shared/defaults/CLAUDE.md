@@ -58,18 +58,22 @@ networks:
     external: true
 ```
 
+**Important Notes:**
+- Docker Compose automatically merges `compose.yml` and `compose.override.yml` when you run any `docker compose` commands
+- When making changes to your service configuration, maintain both files to keep the project portable
+- The override file is environment-specific and should not be committed to version control
+
 **3. Add to .gitignore:**
 
 ```
 compose.override.yml
 ```
 
-**Important Notes:**
-- Docker Compose automatically merges `compose.yml` and `compose.override.yml` when you run any `docker compose` commands
-- When making changes to your service configuration, maintain both files to keep the project portable
-- The override file is environment-specific and should not be committed to version control
+**4. Environment Files (.env):**
 
-**3. Start your containers:**
+If the project requires a `.env` file, **always ask the user to create it manually** before continuing. Never create, read, or edit `.env` files as they typically contain secrets and credentials.
+
+**5. Start your containers:**
 
 ```bash
 docker compose up -d
@@ -89,15 +93,30 @@ nano /etc/nginx-proxy-config/nginx.conf.template
 
 ```nginx
 location /demo {
-    proxy_pass http://demo-nginx:80/;  # Trailing slash strips /demo prefix
+    set $upstream http://demo-nginx:80;
+    proxy_pass $upstream/;  # Trailing slash strips /demo prefix
+    proxy_http_version 1.1;
+
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSocket support (always include)
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    # Timeouts for long-running requests
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+
+    # Docker DNS resolution
+    resolver 127.0.0.11 valid=30s;
+    proxy_redirect off;
 }
 ```
 
-**Note:** The trailing slash in `proxy_pass http://demo-nginx:80/;` strips the location prefix, so `/demo/page` becomes `/page`.
+**Note:** The trailing slash in `proxy_pass $upstream/;` strips the location prefix, so `/demo/page` becomes `/page`.
 
 **3. Test and apply the configuration:**
 
@@ -110,6 +129,38 @@ docker exec pocket-dev-proxy sh -c "envsubst '\$IP_ALLOWED \$AUTH_ENABLED' < /et
 ```
 
 **4. Access your app:** http://localhost/demo
+
+### Advanced: Mounting Individual Config Files
+
+**Important Limitation:** The `volume.subpath` feature only works for **directories**, not individual files. If your compose.yml mounts individual config files (e.g., `./config/nginx.conf:/etc/nginx/nginx.conf`), you need to use the symlink approach:
+
+```yaml
+# compose.override.yml - for services mounting individual config files
+services:
+  my-service:
+    volumes:
+      - type: volume
+        source: pocket-dev-workspace
+        target: /workspace
+      - my-service-config:/etc/myapp/config  # Writable config location
+    command: >
+      sh -c "ln -sf /workspace/myproject/config/* /etc/myapp/config/ &&
+             exec original-entrypoint-command"
+    networks:
+      - pocket-dev-public
+
+volumes:
+  pocket-dev-workspace:
+    external: true
+  my-service-config:
+    driver: local
+```
+
+This approach:
+1. Mounts workspace at `/workspace`
+2. Creates a writable volume for the config directory
+3. Symlinks config files from workspace into the writable location on startup
+4. Then executes the original entrypoint
 
 ### Proxy Configuration Rules
 

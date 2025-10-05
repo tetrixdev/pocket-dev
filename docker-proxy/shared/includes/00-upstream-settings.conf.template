@@ -1,0 +1,15 @@
+# =============================================================================
+# GLOBAL UPSTREAM SETTINGS
+# =============================================================================
+
+# Hide Nginx version number for security
+server_tokens off;
+
+# Required for WebSocket over proxy_pass
+proxy_http_version 1.1;
+
+# Setting headers to allow upgrading HTTP connection to WebSocket
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' keep-alive;
+}

@@ -61,6 +61,38 @@ A complete, secure development environment with Laravel + PostgreSQL + AI-powere
    - **Terminal**: http://localhost/terminal-ws/
    - **Claude Code**: Use the web terminal interface for AI-powered development
 
+## 🌍 Production Deployment
+
+### 1. Configure Production Mode
+
+Add these environment variables to your `.env`:
+
+```bash
+# Production deployment settings
+DEPLOYMENT_MODE=production
+DOMAIN_NAME=your-domain.com
+```
+
+**What this enables:**
+- **IP Blocking**: Blocks direct IP access, only accepts requests to your domain
+- **Security**: Prevents automated bot attacks scanning IP ranges
+
+### 2. Set Up SSL/HTTPS (Required)
+
+After deploying, configure SSL with certbot:
+
+```bash
+docker exec pocket-dev-proxy certbot --nginx -d your-domain.com
+```
+
+Certbot will automatically:
+- Generate and install SSL certificates
+- Configure HTTPS
+- Create HTTP → HTTPS redirect
+- Set up automatic certificate renewal
+
+**Note:** All other settings (basic auth, git credentials, IP whitelist) work the same in both local and production.
+
 ## 🛠️ Architecture
 
 ### Container Services

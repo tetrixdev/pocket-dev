@@ -21,6 +21,11 @@ http {
     auth_basic_user_file /etc/nginx/.htpasswd;
 
     # =============================================================================
+    # INCLUDE UPSTREAM SETTINGS
+    # =============================================================================
+    include /etc/nginx/conf.d/00-upstream-settings.conf;
+
+    # =============================================================================
     # CORE UPSTREAM SERVERS - DO NOT MODIFY
     # =============================================================================
     upstream laravel {
@@ -42,11 +47,19 @@ http {
     # Add custom upstreams here
 
     # =============================================================================
+    # INCLUDE DEFAULT SERVER (IP BLOCKING) - DO NOT MODIFY
+    # =============================================================================
+    include /etc/nginx/conf.d/01-default-server.conf;
+
+    # =============================================================================
     # MAIN SERVER BLOCK
     # =============================================================================
     server {
-        listen 80;
-        server_name localhost;
+        listen 80${DEFAULT_SERVER};
+        server_name ${DOMAIN_NAME};
+
+        # Allow large file uploads (up to 256MB)
+        client_max_body_size 256M;
 
         # Security variables (set by entrypoint)
         set $ip_allowed "${IP_ALLOWED}";
@@ -59,17 +72,36 @@ http {
             return 403 "Access denied from your IP address";
         }
 
+        # Root directory for maintenance page
+        root /var/www/html;
+
+        # Enable error interception for maintenance mode
+        proxy_intercept_errors on;
+        error_page 502 503 /maintenance.html;
+
+        # Serve local maintenance page (internal only)
+        location = /maintenance.html {
+            internal;
+        }
+
         # =============================================================================
         # CORE ROUTES - DO NOT MODIFY
         # =============================================================================
 
         # Laravel application (default)
         location / {
-            proxy_pass http://laravel;
+            set $upstream http://laravel;
+            proxy_pass $upstream;
+            proxy_http_version 1.1;
+
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Docker DNS resolution
+            resolver 127.0.0.11 valid=30s;
+            proxy_redirect off;
         }
 
         # TTYD terminal proxy (same-origin for iframe)
@@ -77,7 +109,8 @@ http {
             # Remove the /terminal-ws prefix when forwarding to ttyd
             rewrite ^/terminal-ws/(.*)$ /$1 break;
 
-            proxy_pass http://ttyd;
+            set $upstream http://ttyd;
+            proxy_pass $upstream;
             proxy_http_version 1.1;
 
             # Headers for regular HTTP requests
@@ -88,7 +121,7 @@ http {
 
             # WebSocket support
             proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
+            proxy_set_header Connection $connection_upgrade;
 
             # Remove X-Frame-Options to allow iframe embedding
             proxy_hide_header X-Frame-Options;
@@ -104,18 +137,38 @@ http {
 
             # Connection reuse
             proxy_socket_keepalive on;
+
+            # Docker DNS resolution
+            resolver 127.0.0.11 valid=30s;
+            proxy_redirect off;
         }
 
         # =============================================================================
         # CUSTOM ROUTES - ADD YOUR PROXY ROUTES HERE
         # Example:
         #     location /myapp {
-        #         proxy_pass http://my-container-name:80/;
+        #         set $upstream http://my-container-name:80;
+        #         proxy_pass $upstream/;  # Trailing slash strips /myapp prefix
+        #         proxy_http_version 1.1;
+        #
         #         proxy_set_header Host $host;
         #         proxy_set_header X-Real-IP $remote_addr;
         #         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         #         proxy_set_header X-Forwarded-Proto $scheme;
+        #
+        #         # WebSocket support (always include, no harm if not using WebSocket)
+        #         proxy_set_header Upgrade $http_upgrade;
+        #         proxy_set_header Connection $connection_upgrade;
+        #
+        #         # Timeouts for long-running requests
+        #         proxy_read_timeout 300s;
+        #         proxy_send_timeout 300s;
+        #
+        #         # Docker DNS resolution
+        #         resolver 127.0.0.11 valid=30s;
+        #         proxy_redirect off;
         #     }
+        #
         # Note: Trailing slash in proxy_pass strips the location prefix
         #       /myapp/page → http://my-container-name:80/page
         # =============================================================================
