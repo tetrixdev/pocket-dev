@@ -275,6 +275,35 @@ GitHub Actions automatically builds production Docker images when you create rel
    - **Main App**: http://your-domain.com
    - **Terminal**: http://your-domain.com/terminal
 
+## 🔄 Hard Reset (Development)
+
+If you're developing pocket-dev and need to do a complete clean rebuild:
+
+**Quick One-Liner:**
+```bash
+docker ps -a --filter volume=pocket-dev-workspace --format "{{.Names}}" | xargs -r docker stop && docker ps -a --filter volume=pocket-dev-workspace --format "{{.Names}}" | xargs -r docker rm && docker compose down -v && docker compose up -d --build
+```
+
+**Step by Step:**
+```bash
+# 1. Stop and remove user containers using workspace volume
+docker ps -a --filter volume=pocket-dev-workspace --format "{{.Names}}" | xargs -r docker stop
+docker ps -a --filter volume=pocket-dev-workspace --format "{{.Names}}" | xargs -r docker rm
+
+# 2. Bring down pocket-dev with volume removal
+docker compose down -v
+
+# 3. Rebuild and start
+docker compose up -d --build
+```
+
+**When to use:**
+- After modifying files in `docker-ttyd/shared/defaults/`
+- After changing Dockerfiles or entrypoints
+- When you need fresh volumes for testing
+
+See `CLAUDE.md` in the project root for detailed development instructions.
+
 ## 🐛 Troubleshooting
 
 ### Common Issues

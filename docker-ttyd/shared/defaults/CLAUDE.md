@@ -1,205 +1,167 @@
-# Claude Code Instructions
+# Pocket-Dev Environment Overview
 
-## Environment Overview
+## Where You Are
 
-You're running inside a Docker container (pocket-dev-ttyd) with special capabilities:
+You are running inside the **pocket-dev-ttyd** container, which is part of the pocket-dev development environment.
 
-- **Docker Access**: You can run docker commands to manage containers
-- **Nginx Proxy Access**: You can safely add new routes to the reverse proxy
-- **Network**: User containers should connect to `pocket-dev-public` network
-- **Working Directory**: `/workspace` for user projects
+**Current context:**
+- **Container:** pocket-dev-ttyd
+- **Working directory:** `/home/linux/projects/pocket-dev` (pocket-dev's own source code)
+- **User workspace:** `/workspace` (where user projects should be created)
+- **Home directory:** `/home/devuser` (persistent across restarts)
 
-## Working with Docker Compose Projects in Pocket-Dev
+**Important:** Always create user projects in **subdirectories** of `/workspace`, never in `/workspace` itself or in the pocket-dev root directory. For example: `/workspace/my-project/`.
 
-### Understanding the Sibling Container Pattern
+## Critical Architectural Rule
 
-When you run `docker compose` from inside pocket-dev, the Docker daemon on the host creates your containers (sibling containers), not the ttyd container. This means relative paths like `.` don't resolve correctly because the Docker daemon can't see inside the `pocket-dev-workspace` volume.
+⚠️ **NOTHING IS WEB-ACCESSIBLE WITHOUT GOING THROUGH pocket-dev-proxy**
 
-**Solution:** Maintain two compose files - a portable `compose.yml` and a pocket-dev-specific `compose.override.yml`.
+**This means:**
+- ❌ Files in `/workspace` are **NOT** automatically accessible in browser
+- ❌ Creating HTML files does **NOT** make them web-accessible
+- ❌ Running a container does **NOT** make it web-accessible
+- ✅ **ONLY** projects configured through the proxy are accessible
 
-**Key Principle:** Any volume mount using relative paths (`.` or `./path`) in your standard `compose.yml` must be rewritten in `compose.override.yml` to use the `pocket-dev-workspace` volume with a `subpath` pointing to your project directory. This applies to all services - web servers, databases, application servers, etc.
-
-### Setting Up Docker Compose Projects
-
-**IMPORTANT:** Always create user projects in subdirectories of `/workspace`, never in `/workspace` itself or in the pocket-dev root directory. For example: `/workspace/my-project/`.
-
-**1. Create your standard compose.yml** (commit this to git):
-
-```yaml
-services:
-  demo-nginx:
-    image: nginx:alpine
-    container_name: demo-nginx
-    volumes:
-      - .:/usr/share/nginx/html
-    ports:
-      - "80:80"
-```
-
-**2. Create compose.override.yml** (pocket-dev only - add to .gitignore):
-
-```yaml
-services:
-  demo-nginx:
-    volumes:
-      - type: volume
-        source: pocket-dev-workspace
-        target: /usr/share/nginx/html
-        volume:
-          subpath: demo  # Replace 'demo' with your project directory
-    ports: []  # Remove port exposure - use proxy instead
-    networks:
-      - pocket-dev-public
-
-volumes:
-  pocket-dev-workspace:
-    external: true
-
-networks:
-  pocket-dev-public:
-    external: true
-```
-
-**Important Notes:**
-- Docker Compose automatically merges `compose.yml` and `compose.override.yml` when you run any `docker compose` commands
-- When making changes to your service configuration, maintain both files to keep the project portable
-- The override file is environment-specific and should not be committed to version control
-
-**3. Add to .gitignore:**
+Think of pocket-dev like a building:
+- `pocket-dev-proxy` = the front door with security (port 80, basic auth, IP filtering)
+- User containers = individual rooms
+- Proxy routes = hallways connecting the front door to each room
+- Networks = which floor rooms are on
 
 ```
-compose.override.yml
+Internet → http://localhost/myapp
+         ↓
+    pocket-dev-proxy (port 80)
+         ↓ (checks /myapp route)
+    myapp-container (on pocket-dev-public network)
 ```
 
-**4. Environment Files (.env):**
+**If the user wants something accessible in their browser, you MUST use the pocket-dev-docker agent.**
 
-If the project requires a `.env` file, **always ask the user to create it manually** before continuing. Never create, read, or edit `.env` files as they typically contain secrets and credentials.
+## Pocket-Dev Architecture
 
-**5. Start your containers:**
+### Container Services
 
-```bash
-docker compose up -d
-```
+**Core services** (on `pocket-dev` internal network):
+- `pocket-dev-proxy` - Nginx reverse proxy (exposed on port 80)
+- `pocket-dev-php` - Laravel application with PHP 8.4-FPM
+- `pocket-dev-nginx` - Laravel web server
+- `pocket-dev-postgres` - PostgreSQL 17 database
+- `pocket-dev-ttyd` - Terminal server (you are here!)
 
-### Adding Nginx Proxy Routes
+**User containers** must be on `pocket-dev-public` network to be accessible through the proxy.
 
-**IMPORTANT:** Start your containers first before adding proxy routes. The nginx config test will fail if it references containers that don't exist yet.
+### Networks
 
-**1. Edit the proxy config:**
+- `pocket-dev` - Internal network for core services only
+- `pocket-dev-public` - Shared network that user containers must join
+  - `pocket-dev-proxy` bridges both networks
 
+### Volumes
+
+- `pocket-dev-workspace` - Your project files (`/workspace`)
+- `pocket-dev-user` - Home directory with configs
+- `pocket-dev-postgres` - Database data
+- `pocket-dev-proxy-config` - Nginx configuration (mounted at `/etc/nginx-proxy-config`)
+
+### Sibling Container Pattern
+
+When you run `docker compose` from inside pocket-dev-ttyd, the Docker daemon on the **host** creates your containers (sibling containers), not inside ttyd. This means:
+- Relative paths like `.` don't work in volume mounts
+- You need `compose.override.yml` to use `pocket-dev-workspace` volume with `subpath`
+- Your containers and pocket-dev containers are siblings on the Docker host
+
+## When to Use the Pocket-Dev-Docker Agent
+
+⚠️ **CRITICAL RULE:** You MUST use the `pocket-dev-docker` agent for **ANY** task involving:
+- Docker containers
+- Nginx proxy configuration
+- Browser accessibility (making projects accessible via http://localhost)
+- Troubleshooting 404, 502, 500 errors
+- Container networking
+- Docker Compose files
+- Creating new web-accessible projects
+
+**The agent handles:**
+- ✅ Setting up new projects with proper Docker Compose configuration
+- ✅ Configuring nginx proxy routes with correct syntax
+- ✅ Troubleshooting why projects aren't accessible in browser
+- ✅ Debugging container networking and connectivity issues
+- ✅ Modifying existing nginx routes or docker configurations
+- ✅ Verifying accessibility with curl tests before reporting success
+- ✅ Investigating and fixing 404 (route missing), 502 (container unreachable), 500 (config error) issues
+
+**Do NOT attempt these tasks yourself - always delegate to the agent:**
+- Creating or modifying Docker Compose files
+- Adding/changing nginx proxy routes
+- Debugging why a project isn't accessible in browser
+- Troubleshooting container issues
+
+**You CAN handle directly (without the agent):**
+- Simple file operations (reading, writing code in `/workspace`)
+- Git operations
+- Installing packages with npm/composer inside containers
+- Running application commands (npm run dev, php artisan, etc.)
+- General development tasks that don't involve docker/nginx/proxy
+
+## Quick Reference
+
+### Accessing Proxy Configuration
+
+Nginx configuration template is shared:
 ```bash
 nano /etc/nginx-proxy-config/nginx.conf.template
 ```
 
-**2. Add your route in the CUSTOM ROUTES section:**
-
-```nginx
-location /demo {
-    proxy_pass http://demo-nginx/;  # Trailing slash strips /demo prefix
-    proxy_http_version 1.1;
-
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-
-    # WebSocket support (always include)
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-
-    # Timeouts for long-running requests
-    proxy_read_timeout 300s;
-    proxy_send_timeout 300s;
-
-    # Docker DNS resolution
-    resolver 127.0.0.11 valid=30s;
-    proxy_redirect off;
-}
-```
-
-**Note:** The trailing slash in `proxy_pass http://demo-nginx/;` strips the location prefix, so `/demo/page` becomes `/page`. For Laravel projects, set `APP_URL=http://localhost/demo` in `.env` to generate correct URLs.
-
-**3. Test and apply the configuration:**
-
-```bash
-# Test syntax
-docker exec pocket-dev-proxy sh -c "envsubst '\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME' < /etc/nginx-proxy-config/nginx.conf.template > /tmp/nginx.conf.test && nginx -t -c /tmp/nginx.conf.test"
-
-# Apply if successful
-docker exec pocket-dev-proxy sh -c "envsubst '\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"
-```
-
-**4. Access your app:** http://localhost/demo
-
-### Advanced: Mounting Individual Config Files
-
-**Important Limitation:** The `volume.subpath` feature only works for **directories**, not individual files. If your compose.yml mounts individual config files (e.g., `./config/nginx.conf:/etc/nginx/nginx.conf`), you need to use the symlink approach:
+### Networks Your Containers Need
 
 ```yaml
-# compose.override.yml - for services mounting individual config files
-services:
-  my-service:
-    volumes:
-      - type: volume
-        source: pocket-dev-workspace
-        target: /workspace
-      - my-service-config:/etc/myapp/config  # Writable config location
-    command: >
-      sh -c "ln -sf /workspace/myproject/config/* /etc/myapp/config/ &&
-             exec original-entrypoint-command"
-    networks:
-      - pocket-dev-public
-
-volumes:
-  pocket-dev-workspace:
-    external: true
-  my-service-config:
-    driver: local
+# In compose.override.yml
+networks:
+  - pocket-dev-public  # Required for web access through proxy
 ```
 
-This approach:
-1. Mounts workspace at `/workspace`
-2. Creates a writable volume for the config directory
-3. Symlinks config files from workspace into the writable location on startup
-4. Then executes the original entrypoint
+### Testing If Your Route Works
 
-### Proxy Configuration Rules
-
-**IMPORTANT:**
-1. ⚠️ **NEVER modify the CORE CONFIGURATION section** - it contains critical routes for the application
-2. ✅ **ONLY add routes in the CUSTOM ROUTES section**
-3. ✅ **ALWAYS test config before applying**
-4. ✅ **Use trailing slash** in `proxy_pass` when you want to strip the location prefix
-
-## Safety Reminders
-
-- ✅ Always test nginx config before reloading
-- ✅ Use `nginx -s reload` (graceful) not restart
-- ✅ Keep backups of working configs
-- ⚠️ Never modify core routes (/, /terminal-ws/, /health)
-- ⚠️ Don't expose ports on user containers - use proxy routes
-- ⚠️ User containers must use `pocket-dev-public` network only
-
-## Troubleshooting
-
-For detailed troubleshooting steps, see `/home/devuser/.claude/TROUBLESHOOTING.md`.
-
-**Quick debugging commands:**
 ```bash
-# Check nginx logs
-docker logs pocket-dev-proxy --tail 50
+# Test if proxy route is accessible (bypasses basic auth for testing)
+docker exec pocket-dev-proxy curl -f http://localhost/your-route
 
-# Test nginx config syntax
-docker exec pocket-dev-proxy nginx -t
+# Or from outside (requires basic auth)
+curl -u username:password http://localhost/your-route
+```
 
-# Verify container is running and networked
-docker ps | grep your-container
-docker inspect your-container | grep pocket-dev-public
+### Common Issues
 
-# Check what's in the container
-docker exec your-container ls -la /workspace
+**404 Not Found:**
+- Missing proxy route in nginx config
+- Container not on `pocket-dev-public` network
+- Container not running
+
+**502 Bad Gateway:**
+- Container is not running
+- Container name doesn't match proxy_pass
+- Container not on `pocket-dev-public` network
+
+**Connection refused:**
+- Check container logs: `docker logs container-name`
+- Verify container is healthy: `docker ps`
+
+For detailed troubleshooting, see `/home/devuser/.claude/TROUBLESHOOTING.md`
+
+## Environment Variables
+
+Proxy configuration uses these variables (set in entrypoint):
+- `$IP_ALLOWED` - IP whitelist check result
+- `$AUTH_ENABLED` - Basic auth status
+- `$DEFAULT_SERVER` - Server flag for deployment mode
+- `$DOMAIN_NAME` - Domain name (localhost for local, your-domain.com for production)
+
+When testing nginx config, always include all variables:
+```bash
+envsubst '\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME'
 ```
 
 ---
 
-Happy coding! Remember: test before reload, and keep the core config safe! 🚀
+**For detailed Docker Compose and nginx setup procedures, invoke the pocket-dev-setup agent.**

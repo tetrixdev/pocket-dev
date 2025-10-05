@@ -65,6 +65,14 @@ if [ ! -f "/home/devuser/.tmux.conf" ]; then
     echo "✅ .tmux.conf initialized (mouse scrolling enabled)"
 fi
 
+# Copy agents directory if it doesn't exist
+if [ ! -d "/home/devuser/.claude/agents" ]; then
+    echo "⚙️  Creating default agents..."
+    mkdir -p /home/devuser/.claude/agents
+    cp -r /defaults/agents/* /home/devuser/.claude/agents/
+    echo "✅ Agents initialized"
+fi
+
 echo "🎯 Starting ttyd terminal server..."
 
 # Start ttyd with authentication support and persistent tmux session
