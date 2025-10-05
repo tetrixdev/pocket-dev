@@ -90,7 +90,7 @@ http {
 
         # Laravel application (default)
         location / {
-            set $upstream http://laravel;
+            set $upstream http://pocket-dev-nginx:80;
             proxy_pass $upstream;
             proxy_http_version 1.1;
 
@@ -109,7 +109,7 @@ http {
             # Remove the /terminal-ws prefix when forwarding to ttyd
             rewrite ^/terminal-ws/(.*)$ /$1 break;
 
-            set $upstream http://ttyd;
+            set $upstream http://pocket-dev-ttyd:7681;
             proxy_pass $upstream;
             proxy_http_version 1.1;
 
