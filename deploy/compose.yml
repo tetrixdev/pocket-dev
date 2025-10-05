@@ -105,12 +105,16 @@ services:
 
 networks:
   pocket-dev:
+    name: pocket-dev
     driver: bridge
 
 volumes:
   postgres-data:
+    name: pocket-dev-postgres
     driver: local
   workspace-data:
+    name: pocket-dev-workspace
     driver: local
   user-data:
+    name: pocket-dev-user
     driver: local

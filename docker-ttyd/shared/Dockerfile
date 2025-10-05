@@ -7,6 +7,8 @@ FROM ubuntu:24.04
 # Set environment variables for non-interactive installation
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 
 # Install essential system dependencies
 RUN apt-get update && apt-get install -y \
@@ -20,7 +22,12 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     sudo \
     build-essential \
+    tmux \
+    locales \
     && rm -rf /var/lib/apt/lists/*
+
+# Generate and set UTF-8 locale for proper Unicode character support
+RUN locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
 # Install Docker CLI (for socket mounting, not Docker-in-Docker)
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
@@ -76,6 +83,10 @@ RUN mkdir -p /workspace \
 
 # Set working directory
 WORKDIR /workspace
+
+# Copy default configuration files
+COPY docker-ttyd/shared/defaults /defaults
+RUN chmod -R 755 /defaults
 
 # Switch to development user
 USER devuser

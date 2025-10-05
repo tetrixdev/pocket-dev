@@ -28,21 +28,11 @@
             font-size: 1.1rem;
             touch-action: manipulation;
             user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        /* Responsive layout adjustments */
-        @media (orientation: landscape) and (max-width: 1024px) {
-            .mobile-container {
-                flex-direction: row !important;
-            }
-            .terminal-section {
-                flex: 0.75 !important;
-            }
-            .control-section {
-                flex: 0.25 !important;
-                max-width: 300px;
-            }
-        }
 
         /* Mobile keyboard focus fixes */
         @media (max-width: 768px) {
@@ -53,11 +43,11 @@
     </style>
 </head>
 <body class="bg-gray-900 text-white overflow-hidden">
-    <div class="mobile-container h-screen flex flex-col"
+    <div class="mobile-container h-[100dvh] flex flex-col pb-[144px]"
          x-data="terminalApp('{{ $wsUrl }}', {{ $hasOpenAI ? 'true' : 'false' }})">
 
-        <!-- Terminal Section (70% height) -->
-        <div class="terminal-section flex-[0.7] p-4">
+        <!-- Terminal Section (full height minus bottom nav) -->
+        <div class="terminal-section flex-1 p-4">
             <div class="terminal-container h-full relative">
                 <iframe
                     id="terminal-iframe"
@@ -84,72 +74,48 @@
             </div>
         </div>
 
-        <!-- Control Section (30% height) -->
-        <div class="control-section flex-[0.3] bg-gray-800 p-4 flex flex-col gap-3">
-
-            <!-- Connection Status -->
-            <div class="flex items-center gap-2">
-                <div class="w-3 h-3 rounded-full"
-                     :class="terminalLoaded ? 'bg-green-500' : 'bg-yellow-500'">
-                </div>
-                <span class="text-sm" x-text="terminalLoaded ? 'Terminal Ready' : 'Loading Terminal...'"></span>
-            </div>
-
-            <!-- Status Display -->
-            <div class="status-display">
-                <div class="text-sm p-2 rounded mb-2 transition-all duration-300 bg-gray-700 text-gray-100 border border-gray-600"
-                     :class="statusClass"
-                     x-text="status">
-                    Ready for voice input
-                </div>
-            </div>
-
-            <!-- Control Buttons -->
-            <div class="flex flex-col gap-3">
-
-                <!-- Voice Recording Button (Full Width) -->
+        <!-- Fixed Bottom Navigation -->
+        <div class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 safe-area-bottom z-50">
+            <div class="grid grid-cols-2 gap-2 p-2">
+                <!-- Voice Recording or Status -->
                 <template x-if="hasOpenAI">
                     <button @click="toggleRecording()"
-                            class="control-btn px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4 w-full"
+                            class="control-btn px-3 py-2 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-2 text-sm"
                             :class="recordingButtonClass"
                             :disabled="isProcessing || !terminalLoaded"
                             x-text="recordingButtonText">
-                        🎙️ Start Recording
+                        🎙️ Record
                     </button>
                 </template>
-
-                <!-- Quick Action Buttons (Half Width Grid) -->
-                <div class="grid grid-cols-2 gap-3">
-                    <!-- Clear Line Button -->
-                    <button @click="clearLine()"
-                            class="control-btn bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-300 px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4"
-                            :disabled="!terminalLoaded">
-                        🗑️ Clear Line
-                    </button>
-
-                    <!-- New Line Button -->
-                    <button @click="sendNewLine()"
-                            class="control-btn bg-purple-600 hover:bg-purple-700 focus:ring-purple-300 px-4 py-3 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-4"
-                            :disabled="!terminalLoaded">
-                        ↵ Enter
-                    </button>
-                </div>
-
-                <!-- Quick Commands (if needed) -->
-                <template x-if="showQuickCommands">
-                    <div class="grid grid-cols-2 gap-2">
-                        <button @click="sendCommand('ls -la')"
-                                class="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded"
-                                :disabled="!terminalLoaded">
-                            ls -la
-                        </button>
-                        <button @click="sendCommand('git status')"
-                                class="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded"
-                                :disabled="!terminalLoaded">
-                            git status
-                        </button>
+                <template x-if="!hasOpenAI">
+                    <div class="flex items-center gap-2 px-3 py-2">
+                        <div class="w-2 h-2 rounded-full"
+                             :class="terminalLoaded ? 'bg-green-500' : 'bg-yellow-500'">
+                        </div>
+                        <span class="text-xs" x-text="terminalLoaded ? 'Ready' : 'Loading...'"></span>
                     </div>
                 </template>
+
+                <button @click="sendNewLine()"
+                        class="control-btn bg-purple-600 hover:bg-purple-700 focus:ring-purple-300 px-3 py-2 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-2 text-sm"
+                        :disabled="!terminalLoaded">
+                    ↵ Enter
+                </button>
+            </div>
+
+            <!-- Additional quick actions row -->
+            <div class="grid grid-cols-2 gap-2 p-2 pt-0">
+                <button @click="clearLine()"
+                        class="control-btn bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-300 px-3 py-2 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-2 text-sm"
+                        :disabled="!terminalLoaded">
+                    🗑️ Clear
+                </button>
+
+                <!-- Config Navigation -->
+                <a href="/config"
+                   class="control-btn bg-gray-700 hover:bg-gray-600 focus:ring-gray-300 px-3 py-2 rounded-lg font-semibold transition-all duration-200 focus:outline-none focus:ring-2 text-center text-sm">
+                    ⚙️ Configuration
+                </a>
             </div>
         </div>
     </div>
@@ -409,7 +375,7 @@
                         const formData = new FormData();
                         formData.append('audio', audioBlob, 'recording.webm');
 
-                        const response = await fetch('/terminal/transcribe', {
+                        const response = await fetch('/transcribe', {
                             method: 'POST',
                             body: formData,
                             headers: {

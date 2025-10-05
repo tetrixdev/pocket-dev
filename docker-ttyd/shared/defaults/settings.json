@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(docker:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(pandoc:*)",
+      "Bash(xlsx2csv:*)",
+      "Bash(extract_msg:*)",
+
+      "mcp__browsermcp__browser_navigate",
+      "mcp__browsermcp__browser_snapshot",
+      "mcp__browsermcp__browser_click",
+      "mcp__browsermcp__browser_hover",
+      "mcp__browsermcp__browser_type",
+      "mcp__browsermcp__browser_select_option",
+      "mcp__browsermcp__browser_press_key",
+      "mcp__browsermcp__browser_wait",
+      "mcp__browsermcp__browser_get_console_logs",
+      "mcp__browsermcp__browser_screenshot",
+
+      "Read(//etc/nginx-proxy-config/**)",
+      "Edit(//etc/nginx-proxy-config/**)",
+      "Read(/workspace/**)",
+      "Edit(/workspace/**)",
+      "Write(/workspace/**)",
+      "Read(//tmp/**)",
+      "Write(//tmp/**)",
+      "Read(//home/devuser/.claude/**)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Edit(**/.env)",
+      "Write(**/.env)"
+    ]
+  },
+  "model": "sonnet"
+}

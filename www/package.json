@@ -8,6 +8,7 @@
     },
     "dependencies": {
         "alpinejs": "^3.14.1",
+        "highlight.js": "^11.10.0",
         "htmx.org": "^2.0.3"
     },
     "devDependencies": {

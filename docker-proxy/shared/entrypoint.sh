@@ -57,11 +57,18 @@ else
     echo "ℹ️  IP whitelist disabled (all IPs allowed)"
 fi
 
-# Process nginx configuration template
+# Initialize proxy config from default template if it doesn't exist
+if [ ! -f "/etc/nginx-proxy-config/nginx.conf.template" ]; then
+    echo "📝 Initializing nginx config from default template..."
+    cp /etc/nginx/nginx.conf.template /etc/nginx-proxy-config/nginx.conf.template
+    echo "✅ Default template copied to proxy config volume"
+fi
+
+# Process nginx configuration template from proxy config volume
 export AUTH_ENABLED
 export IP_ALLOWED
 
-envsubst '${AUTH_ENABLED} ${IP_ALLOWED}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst '${AUTH_ENABLED} ${IP_ALLOWED}' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf
 
 echo "🚀 Proxy configuration complete"
 echo "   - IP Filter: $([ -n "$IP_WHITELIST" ] && echo "enabled" || echo "disabled")"

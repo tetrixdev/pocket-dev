@@ -12,11 +12,14 @@ services:
       - BASIC_AUTH_USER=${BASIC_AUTH_USER}
       - BASIC_AUTH_PASS=${BASIC_AUTH_PASS}
       - IP_WHITELIST=${IP_WHITELIST:-}
+    volumes:
+      - proxy-config-data:/etc/nginx-proxy-config
     depends_on:
       - pocket-dev-nginx
       - pocket-dev-ttyd
     networks:
       - pocket-dev
+      - pocket-dev-public
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
       interval: 10s
@@ -32,6 +35,8 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     entrypoint: ["/entrypoint.sh"]
+    group_add:
+      - "1001"
     ports:
       - "${VITE_PORT:-5173}:5173"
     volumes:
@@ -39,6 +44,9 @@ services:
       - .env:/var/www/.env
       - ./docker-laravel/shared/php/local.ini:/usr/local/etc/php/conf.d/local.ini
       - ./docker-laravel/local/php/entrypoint.sh:/entrypoint.sh
+      - /var/run/docker.sock:/var/run/docker.sock
+      - proxy-config-data:/etc/nginx-proxy-config
+      - user-data:/ttyd-user-home
     networks:
       - pocket-dev
     depends_on:
@@ -111,6 +119,7 @@ services:
       - workspace-data:/workspace
       - user-data:/home/devuser
       - ./docker-ttyd/shared/entrypoint.sh:/entrypoint.sh
+      - proxy-config-data:/etc/nginx-proxy-config
     networks:
       - pocket-dev
     healthcheck:
@@ -122,12 +131,22 @@ services:
 
 networks:
   pocket-dev:
+    name: pocket-dev
+    driver: bridge
+  pocket-dev-public:
+    name: pocket-dev-public
     driver: bridge
 
 volumes:
   postgres-data:
+    name: pocket-dev-postgres
     driver: local
   workspace-data:
+    name: pocket-dev-workspace
     driver: local
   user-data:
+    name: pocket-dev-user
+    driver: local
+  proxy-config-data:
+    name: pocket-dev-proxy-config
     driver: local

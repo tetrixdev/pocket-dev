@@ -80,9 +80,10 @@ A complete, secure development environment with Laravel + PostgreSQL + AI-powere
 
 ### Volume Strategy
 
-- **workspace-data**: Persistent project files and development workspace
-- **user-data**: User home directory (configs, SSH keys, etc.)
-- **postgres-data**: Database persistence
+- **pocket-dev-workspace**: Persistent project files and development workspace
+- **pocket-dev-user**: User home directory (configs, SSH keys, etc.)
+- **pocket-dev-postgres**: Database persistence
+- **pocket-dev-proxy-config**: Proxy configuration data
 
 ## 📁 Project Structure
 
