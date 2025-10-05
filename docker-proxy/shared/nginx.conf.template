@@ -90,8 +90,7 @@ http {
 
         # Laravel application (default)
         location / {
-            set $upstream http://pocket-dev-nginx:80;
-            proxy_pass $upstream;
+            proxy_pass http://laravel;
             proxy_http_version 1.1;
 
             proxy_set_header Host $host;
@@ -109,8 +108,7 @@ http {
             # Remove the /terminal-ws prefix when forwarding to ttyd
             rewrite ^/terminal-ws/(.*)$ /$1 break;
 
-            set $upstream http://pocket-dev-ttyd:7681;
-            proxy_pass $upstream;
+            proxy_pass http://ttyd;
             proxy_http_version 1.1;
 
             # Headers for regular HTTP requests
@@ -147,8 +145,7 @@ http {
         # CUSTOM ROUTES - ADD YOUR PROXY ROUTES HERE
         # Example:
         #     location /myapp {
-        #         set $upstream http://my-container-name:80;
-        #         proxy_pass $upstream/;  # Trailing slash strips /myapp prefix
+        #         proxy_pass http://my-container-name/;  # Trailing slash strips /myapp prefix
         #         proxy_http_version 1.1;
         #
         #         proxy_set_header Host $host;
@@ -170,7 +167,7 @@ http {
         #     }
         #
         # Note: Trailing slash in proxy_pass strips the location prefix
-        #       /myapp/page → http://my-container-name:80/page
+        #       /myapp/page → http://my-container-name/page
         # =============================================================================
 
         # Add custom routes here

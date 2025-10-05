@@ -21,6 +21,8 @@ When you run `docker compose` from inside pocket-dev, the Docker daemon on the h
 
 ### Setting Up Docker Compose Projects
 
+**IMPORTANT:** Always create user projects in subdirectories of `/workspace`, never in `/workspace` itself or in the pocket-dev root directory. For example: `/workspace/my-project/`.
+
 **1. Create your standard compose.yml** (commit this to git):
 
 ```yaml
@@ -93,8 +95,7 @@ nano /etc/nginx-proxy-config/nginx.conf.template
 
 ```nginx
 location /demo {
-    set $upstream http://demo-nginx:80;
-    proxy_pass $upstream/;  # Trailing slash strips /demo prefix
+    proxy_pass http://demo-nginx/;  # Trailing slash strips /demo prefix
     proxy_http_version 1.1;
 
     proxy_set_header Host $host;
@@ -116,16 +117,16 @@ location /demo {
 }
 ```
 
-**Note:** The trailing slash in `proxy_pass $upstream/;` strips the location prefix, so `/demo/page` becomes `/page`.
+**Note:** The trailing slash in `proxy_pass http://demo-nginx/;` strips the location prefix, so `/demo/page` becomes `/page`. For Laravel projects, set `APP_URL=http://localhost/demo` in `.env` to generate correct URLs.
 
 **3. Test and apply the configuration:**
 
 ```bash
 # Test syntax
-docker exec pocket-dev-proxy sh -c "envsubst '\$IP_ALLOWED \$AUTH_ENABLED' < /etc/nginx-proxy-config/nginx.conf.template > /tmp/nginx.conf.test && nginx -t -c /tmp/nginx.conf.test"
+docker exec pocket-dev-proxy sh -c "envsubst '\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME' < /etc/nginx-proxy-config/nginx.conf.template > /tmp/nginx.conf.test && nginx -t -c /tmp/nginx.conf.test"
 
 # Apply if successful
-docker exec pocket-dev-proxy sh -c "envsubst '\$IP_ALLOWED \$AUTH_ENABLED' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"
+docker exec pocket-dev-proxy sh -c "envsubst '\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"
 ```
 
 **4. Access your app:** http://localhost/demo
