@@ -42,14 +42,6 @@ if [ ! -f "/home/devuser/.claude/CLAUDE.md" ]; then
     echo "✅ CLAUDE.md initialized"
 fi
 
-# Copy default TROUBLESHOOTING.md if it doesn't exist
-if [ ! -f "/home/devuser/.claude/TROUBLESHOOTING.md" ]; then
-    echo "📝 Creating default TROUBLESHOOTING.md..."
-    mkdir -p /home/devuser/.claude
-    cp /defaults/TROUBLESHOOTING.md /home/devuser/.claude/TROUBLESHOOTING.md
-    echo "✅ TROUBLESHOOTING.md initialized"
-fi
-
 # Copy default settings.json if it doesn't exist
 if [ ! -f "/home/devuser/.claude/settings.json" ]; then
     echo "⚙️  Creating default settings.json..."

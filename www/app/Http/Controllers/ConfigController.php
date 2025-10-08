@@ -39,7 +39,7 @@ class ConfigController extends Controller
                 'container_path' => '/etc/nginx-proxy-config/nginx.conf.template',
                 'syntax' => 'nginx',
                 'validate' => true,
-                'reload_cmd' => 'sh -c "envsubst \'\$IP_ALLOWED \$AUTH_ENABLED\' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"',
+                'reload_cmd' => 'sh -c "envsubst \'\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME\' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"',
             ],
         ];
     }

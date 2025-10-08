@@ -28,8 +28,8 @@
       "Edit(/workspace/**)",
       "Write(/workspace/**)",
       "Read(//tmp/**)",
-      "Write(//tmp/**)",
-      "Read(//home/devuser/.claude/**)"
+      "Edit(//tmp/**)",
+      "Write(//tmp/**)"
     ],
     "deny": [
       "Read(**/.env)",
