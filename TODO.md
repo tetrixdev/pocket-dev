@@ -1,40 +1,514 @@
-# PocketDev TODO List
+# PocketDev TODO
 
-## 1. Consolidate Docker TTYD Structure
+This file tracks improvements and features needed for the PocketDev Claude Code integration.
 
-Move Docker TTYD files into a shared folder structure for consistency with docker-proxy:
+## 🔴 Critical Bugs (Fix Immediately)
 
-- **Current structure:** Files directly under `docker-ttyd/`
-- **Target structure:** Move to `docker-ttyd/shared/`
-- **Files to move:**
-  - `docker-ttyd/Dockerfile` → `docker-ttyd/shared/Dockerfile`
-  - `docker-ttyd/entrypoint.sh` → `docker-ttyd/shared/entrypoint.sh`
-- **Update references:**
-  - `compose.yml` - Update dockerfile path
-  - `.github/workflows/docker-laravel.yml` - Update dockerfile path
+### Chat Interface Issues
+- [ ] **User messages disappear after response**
+  - **Issue**: Line 71 in `chat.html` wipes `messages.innerHTML` when creating new session
+  - **Fix**: Only clear messages when explicitly creating a new session, not on first message
+  - **Impact**: Users lose context of what they asked
 
-## 2. Enhance GitHub Actions Build Process
+- [ ] **Session list is empty**
+  - **Issue**: Sidebar shows no sessions even though they're stored in database
+  - **Fix**: Add `loadSessions()` function that calls `/api/claude/sessions` and populates sidebar
+  - **Impact**: Users can't access previous conversations
 
-Add dependency installation steps to the CI/CD pipeline:
+- [ ] **No session persistence on page reload**
+  - **Issue**: Refreshing page loses current session
+  - **Fix**: Store `sessionId` in localStorage or URL parameter
+  - **Impact**: Users lose work when accidentally refreshing
 
-- **Add to `.github/workflows/docker-laravel.yml`:**
-  - Add `composer install` command for PHP dependencies
-  - Add `npm ci` command for Node.js dependencies
-- **Purpose:** Ensure all dependencies are properly installed during the build process
-- **Location:** Add these steps before the Docker build steps
+## 🟡 High Priority (Next Sprint)
 
-## 3. Update Deployment to Use GitHub Container Registry Images
+### Session Management
+- [ ] **Load session list on page load**
+  - Fetch from `/api/claude/sessions`
+  - Display in sidebar with titles and timestamps
+  - Show active session indicator
+  - Auto-generate smart titles from first message (instead of "New Session")
 
-Modify deployment configuration to use pre-built images from GitHub Container Registry:
+- [ ] **Session switching**
+  - Click session in sidebar to load it
+  - Load session messages from `/api/claude/sessions/{id}`
+  - Preserve current session before switching
+  - Highlight active session
 
-- **Current:** Building images locally during deployment
-- **Target:** Pull and use images from `ghcr.io/${{ github.repository_owner }}/pocket-dev-*`
-- **Images to update:**
-  - `pocket-dev-php`
-  - `pocket-dev-nginx`
-  - `pocket-dev-ttyd`
-  - `pocket-dev-proxy`
-- **Files to modify:**
-  - Production docker-compose file (or deployment scripts)
-  - Ensure image tags match the GitHub Actions output
-- **Benefit:** Faster deployments using pre-built, tested images
+- [ ] **Session actions**
+  - Rename session (inline editing)
+  - Delete session (with confirmation)
+  - Archive/unarchive sessions
+  - Pin important sessions to top
+
+- [ ] **Session search/filter**
+  - Search by content or title
+  - Filter by date range
+  - Filter by project path
+  - Sort by: newest, oldest, most active
+
+### UI/UX Improvements
+- [ ] **Markdown rendering**
+  - Add markdown parser (marked.js or similar)
+  - Render Claude's markdown responses properly
+  - Support for headers, lists, links, etc.
+
+- [ ] **Code syntax highlighting**
+  - Add Prism.js or highlight.js
+  - Auto-detect language in code blocks
+  - Support for common languages (PHP, JavaScript, Python, SQL, etc.)
+
+- [ ] **Copy code button**
+  - Add copy button to code blocks
+  - Show "Copied!" feedback
+  - Copy to clipboard API
+
+- [ ] **Message timestamps**
+  - Show time for each message
+  - Format: "Just now", "5 min ago", or full timestamp
+
+- [ ] **Better loading states**
+  - Animated thinking indicator
+  - Show "Claude is typing..." with animation
+  - Progress indicator for long responses
+
+- [ ] **Error handling**
+  - Friendly error messages (not just raw errors)
+  - Retry button for failed messages
+  - Network status indicator
+  - Handle token expiry gracefully
+
+### Streaming Responses
+- [ ] **Implement streaming in UI**
+  - Use `/api/claude/sessions/{session}/stream` endpoint
+  - Use Server-Sent Events (EventSource)
+  - Show response as it's being generated
+  - Much better UX than waiting for full response
+
+- [ ] **Streaming UI updates**
+  - Stream text character-by-character or chunk-by-chunk
+  - Show "stop generating" button
+  - Handle stream errors
+  - Reconnect on connection loss
+
+## 🟢 Medium Priority (Future Sprints)
+
+### Authentication Improvements
+- [ ] **Token expiry warnings**
+  - Show warning when token expires in < 7 days
+  - Show countdown in auth page
+  - Auto-redirect to auth when token expires
+
+- [ ] **Token auto-refresh**
+  - Implement refresh token logic
+  - Auto-refresh before expiry
+  - Handle refresh failures
+
+- [ ] **Multiple auth methods**
+  - Support API key authentication (for pay-per-use)
+  - Support both OAuth and API key simultaneously
+  - Let user choose preferred method
+
+### Chat Features
+- [ ] **Export conversation**
+  - Export as Markdown
+  - Export as JSON
+  - Export as PDF
+  - Include metadata (timestamps, model, cost)
+
+- [ ] **Clear conversation**
+  - Clear current session messages
+  - Keep session but reset conversation
+  - Confirmation dialog
+
+- [ ] **Edit messages**
+  - Edit sent messages
+  - Re-run from edited message
+  - Branch conversations
+
+- [ ] **Message reactions**
+  - Thumbs up/down on responses
+  - Store feedback in database
+  - Use for analytics
+
+### Cost Tracking & Analytics
+- [ ] **Cost display**
+  - Show cost per message (already in response)
+  - Show session total cost
+  - Show daily/weekly/monthly costs
+  - Cost breakdown by model
+
+- [ ] **Usage analytics**
+  - Token usage charts
+  - Messages per day/week/month
+  - Most active sessions
+  - Model usage breakdown
+
+- [ ] **Cost limits**
+  - Set daily/weekly/monthly cost limits
+  - Warning when approaching limit
+  - Disable when limit exceeded
+  - Admin override
+
+### Project Management
+- [ ] **Multiple project support**
+  - Select project path when creating session
+  - Quick-switch between projects
+  - Project-specific sessions
+  - Recent projects list
+
+- [ ] **Project settings**
+  - Default working directory per project
+  - Allowed tools per project
+  - Model preference per project
+  - Permission mode per project
+
+### Voice Input (Already Configured)
+- [ ] **Test voice transcription**
+  - Verify OpenAI Whisper integration works
+  - Add microphone button to chat input
+  - Show recording indicator
+  - Handle permissions
+
+- [ ] **Voice settings**
+  - Choose transcription provider (OpenAI vs browser)
+  - Language selection
+  - Auto-send after transcription option
+
+## 🔵 Low Priority (Nice to Have)
+
+### Advanced Features
+- [ ] **Multi-turn conversations**
+  - Show conversation as tree/branches
+  - Allow exploring different paths
+  - Visual representation of conversation flow
+
+- [ ] **Collaborative sessions**
+  - Share session with other users
+  - Real-time collaboration
+  - Comments/annotations
+
+- [ ] **Templates/Prompts**
+  - Save common prompts
+  - Prompt library
+  - Share prompts between users
+  - Variables in prompts
+
+- [ ] **Keyboard shortcuts**
+  - Cmd/Ctrl + Enter to send
+  - Cmd/Ctrl + K for new session
+  - Cmd/Ctrl + / for search
+  - Arrow keys for navigation
+
+- [ ] **Dark/Light mode toggle**
+  - Currently only dark mode
+  - Add light mode option
+  - System preference detection
+  - Persist preference
+
+### Performance
+- [ ] **Lazy loading sessions**
+  - Don't load all sessions at once
+  - Pagination or infinite scroll
+  - Load messages on-demand
+
+- [ ] **Database indexing**
+  - Index `claude_sessions.last_activity_at`
+  - Index `claude_sessions.status`
+  - Index for full-text search on messages
+
+- [ ] **Caching**
+  - Cache session list (Redis)
+  - Cache auth status
+  - Invalidate on updates
+
+- [ ] **Asset optimization**
+  - Minify JavaScript
+  - Use local copies of Tailwind
+  - Image optimization
+  - Lazy load libraries
+
+### Mobile Responsiveness
+- [ ] **Mobile layout**
+  - Collapsible sidebar
+  - Touch-friendly buttons
+  - Mobile-optimized input
+  - Better keyboard handling
+
+- [ ] **PWA support**
+  - Add manifest.json
+  - Service worker for offline
+  - Install prompt
+  - Push notifications
+
+## 🔧 Technical Debt & Refactoring
+
+### Code Quality
+- [ ] **Replace vanilla JS with proper framework**
+  - **Option 1**: Fix Livewire implementation (already partially there)
+  - **Option 2**: Use Vue.js or React
+  - **Option 3**: Alpine.js (lightweight)
+  - **Decision needed**: Discuss architecture choice
+
+- [ ] **Separate concerns in chat.html**
+  - Move JavaScript to separate file
+  - Use modules for organization
+  - Add build step (Vite)
+
+- [ ] **Better state management**
+  - Currently everything is global variables
+  - Use proper state management pattern
+  - Handle state persistence
+
+- [ ] **Error handling patterns**
+  - Consistent error handling across app
+  - Error boundary pattern
+  - User-friendly error messages
+  - Error logging/reporting
+
+### Testing
+- [ ] **Unit tests for ClaudeCodeService**
+  - Test query() method
+  - Test streamQuery() method
+  - Mock proc_open calls
+  - Test error scenarios
+
+- [ ] **Unit tests for Controllers**
+  - Test ClaudeController endpoints
+  - Test ClaudeAuthController
+  - Mock ClaudeCodeService
+
+- [ ] **Integration tests**
+  - Test full auth flow
+  - Test session creation → query → response
+  - Test streaming
+  - Test error paths
+
+- [ ] **E2E tests**
+  - Use Laravel Dusk or Playwright
+  - Test complete user workflows
+  - Test authentication
+  - Test chat interactions
+
+- [ ] **Test coverage**
+  - Set up code coverage reporting
+  - Aim for >80% coverage on core services
+  - CI/CD integration
+
+### API Improvements
+- [ ] **API rate limiting**
+  - Prevent abuse
+  - Per-user limits
+  - Graceful degradation
+
+- [ ] **API versioning**
+  - Version API endpoints (/api/v1/claude/...)
+  - Allow breaking changes
+  - Deprecation strategy
+
+- [ ] **API documentation**
+  - OpenAPI/Swagger spec
+  - Auto-generated docs
+  - Example requests/responses
+  - Authentication docs
+
+- [ ] **Webhook support**
+  - Webhook for session events
+  - Webhook for cost alerts
+  - Webhook configuration UI
+
+### Security
+- [ ] **CSRF protection audit**
+  - Verify all POST endpoints have CSRF
+  - Test CSRF token validation
+  - Document CSRF requirements
+
+- [ ] **Input validation**
+  - Validate all inputs server-side
+  - Sanitize user content
+  - Prevent injection attacks
+
+- [ ] **XSS prevention**
+  - Audit HTML escaping in chat
+  - Test with malicious inputs
+  - CSP headers
+
+- [ ] **Rate limiting**
+  - Per-user rate limits
+  - Per-IP rate limits
+  - Configurable limits
+
+- [ ] **Audit logging**
+  - Log authentication events
+  - Log API usage
+  - Log errors and failures
+  - Retention policy
+
+## 🗑️ TTYD Removal Plan
+
+### Phase 1: Ensure Independence (Do First)
+- [ ] **Verify authentication works without TTYD**
+  - Test `claude setup-token` in PHP container
+  - Ensure credentials can be created independently
+  - Document process for users
+
+- [ ] **Test all functionality without TTYD**
+  - Chat interface works
+  - Authentication works
+  - All API endpoints work
+  - No dependencies on TTYD paths
+
+- [ ] **Update documentation**
+  - Remove TTYD references from user docs
+  - Update README.md
+  - Update CLAUDE.md
+  - Create migration guide for existing users
+
+### Phase 2: Remove Container (After Phase 1)
+- [ ] **Remove TTYD from docker-compose.yml**
+  - Remove service definition
+  - Remove volume mounts
+  - Remove network dependencies
+
+- [ ] **Remove TTYD Dockerfile**
+  - Delete `docker-ttyd/` directory
+  - Or mark as deprecated
+
+- [ ] **Update CI/CD**
+  - Stop building TTYD image
+  - Remove from GitHub Actions
+  - Remove from GHCR
+
+- [ ] **Clean up routing**
+  - Remove `/terminal` routes
+  - Remove TerminalController
+  - Remove terminal views
+
+### Phase 3: Alternative Terminal (Optional)
+- [ ] **Evaluate need for terminal access**
+  - Do users actually need terminal?
+  - Can Claude Code replace it?
+  - Survey users
+
+- [ ] **If needed, implement alternative**
+  - Option 1: Web-based terminal in PHP container
+  - Option 2: SSH access only
+  - Option 3: No terminal (Claude Code only)
+
+## 📚 Documentation
+
+### User Documentation
+- [ ] **Getting Started Guide**
+  - Installation steps
+  - First-time setup
+  - Authentication guide
+  - Basic usage tutorial
+
+- [ ] **Feature Documentation**
+  - Session management
+  - Authentication methods
+  - Voice input usage
+  - Export/import
+
+- [ ] **Troubleshooting Guide**
+  - Common errors and fixes
+  - Authentication issues
+  - Performance issues
+  - Network problems
+
+- [ ] **FAQ**
+  - Pricing/cost questions
+  - Feature requests
+  - Limitations
+  - Roadmap
+
+### Developer Documentation
+- [ ] **Architecture documentation**
+  - System design
+  - Data flow diagrams
+  - Container architecture
+  - API architecture
+
+- [ ] **API documentation**
+  - Endpoint reference
+  - Authentication
+  - Request/response examples
+  - Error codes
+
+- [ ] **Contributing guide**
+  - Development setup
+  - Code style
+  - Testing requirements
+  - PR process
+
+- [ ] **Deployment guide**
+  - Production setup
+  - Environment variables
+  - Scaling considerations
+  - Backup strategies
+
+## 🎨 Design System
+
+- [ ] **Consistent color palette**
+  - Define primary/secondary colors
+  - Error/warning/success states
+  - Dark mode colors
+  - Document in style guide
+
+- [ ] **Typography system**
+  - Font sizes
+  - Line heights
+  - Font weights
+  - Headings hierarchy
+
+- [ ] **Spacing system**
+  - Consistent padding/margins
+  - Grid system
+  - Component spacing
+
+- [ ] **Component library**
+  - Buttons
+  - Forms
+  - Cards
+  - Modals
+  - Toast notifications
+
+## 🚀 Future Features (Dream Big)
+
+- [ ] **AI-powered features**
+  - Auto-suggest prompts
+  - Smart session titles from conversation content
+  - Conversation summarization
+  - Related sessions suggestions
+
+- [ ] **Integration with other tools**
+  - GitHub integration (create issues, PRs)
+  - Jira integration
+  - Slack notifications
+  - Email notifications
+
+- [ ] **Multi-model support**
+  - Switch between Claude models mid-conversation
+  - Compare responses from different models
+  - Model recommendations based on task
+
+- [ ] **Custom tools/plugins**
+  - Allow users to define custom tools
+  - Plugin marketplace
+  - Community-contributed tools
+
+---
+
+## Notes
+
+**Priority Legend:**
+- 🔴 Critical - Fix ASAP, blocks users
+- 🟡 High - Important for good UX
+- 🟢 Medium - Nice to have, plan for future
+- 🔵 Low - Long-term improvements
+
+**Update this file as you work:**
+- Check off items as completed: `- [x]`
+- Add new items as they come up
+- Re-prioritize as needed
+- Add notes/blockers inline
