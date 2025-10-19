@@ -187,4 +187,144 @@ class ClaudeController extends Controller
             'version' => $this->claude->getVersion(),
         ]);
     }
+
+    /**
+     * List sessions from Claude's storage.
+     */
+    public function listClaudeSessions(Request $request): JsonResponse
+    {
+        $home = getenv('HOME') ?: '/home/appuser';
+        $projectPath = $request->input('project_path', '/var/www');
+
+        // Convert path to directory name (e.g., /var/www -> -var-www)
+        $dirName = str_replace('/', '-', $projectPath);
+        $sessionsDir = "{$home}/.claude/projects/{$dirName}";
+
+        if (!is_dir($sessionsDir)) {
+            return response()->json(['sessions' => []]);
+        }
+
+        $sessions = [];
+        $files = glob("{$sessionsDir}/*.jsonl");
+
+        foreach ($files as $file) {
+            $sessionId = basename($file, '.jsonl');
+
+            // Read first line to get initial prompt
+            if ($handle = fopen($file, 'r')) {
+                $firstLine = fgets($handle);
+                fclose($handle);
+
+                if ($firstLine) {
+                    $data = json_decode($firstLine, true);
+                    $sessions[] = [
+                        'id' => $sessionId,
+                        'timestamp' => $data['timestamp'] ?? null,
+                        'prompt' => $this->extractPrompt($data),
+                        'file_size' => filesize($file),
+                        'modified' => filemtime($file),
+                    ];
+                }
+            }
+        }
+
+        // Sort by modified time (newest first)
+        usort($sessions, fn($a, $b) => $b['modified'] - $a['modified']);
+
+        return response()->json(['sessions' => $sessions]);
+    }
+
+    /**
+     * Load a specific session history from Claude's storage.
+     */
+    public function loadClaudeSession(Request $request, string $sessionId): JsonResponse
+    {
+        $home = getenv('HOME') ?: '/home/appuser';
+        $projectPath = $request->input('project_path', '/var/www');
+
+        // Convert path to directory name
+        $dirName = str_replace('/', '-', $projectPath);
+        $sessionFile = "{$home}/.claude/projects/{$dirName}/{$sessionId}.jsonl";
+
+        if (!file_exists($sessionFile)) {
+            return response()->json(['error' => 'Session not found'], 404);
+        }
+
+        $messages = [];
+        $handle = fopen($sessionFile, 'r');
+
+        while (($line = fgets($handle)) !== false) {
+            $data = json_decode($line, true);
+
+            if ($data && isset($data['type']) && in_array($data['type'], ['user', 'assistant'])) {
+                $messages[] = [
+                    'role' => $data['type'],
+                    'content' => $this->extractContent($data),
+                    'timestamp' => $data['timestamp'] ?? null,
+                ];
+            }
+        }
+
+        fclose($handle);
+
+        return response()->json([
+            'session_id' => $sessionId,
+            'messages' => $messages,
+        ]);
+    }
+
+    /**
+     * Extract prompt from session data.
+     */
+    protected function extractPrompt(array $data): string
+    {
+        if (isset($data['message']['content'])) {
+            $content = $data['message']['content'];
+
+            if (is_string($content)) {
+                // Try to parse as JSON first
+                $decoded = json_decode($content, true);
+                if (isset($decoded['prompt'])) {
+                    return substr($decoded['prompt'], 0, 100);
+                }
+                return substr($content, 0, 100);
+            }
+
+            if (is_array($content) && isset($content[0]['text'])) {
+                return substr($content[0]['text'], 0, 100);
+            }
+        }
+
+        return 'Unnamed session';
+    }
+
+    /**
+     * Extract message content from session data.
+     */
+    protected function extractContent(array $data): string
+    {
+        if (!isset($data['message']['content'])) {
+            return '';
+        }
+
+        $content = $data['message']['content'];
+
+        // Handle string content
+        if (is_string($content)) {
+            return $content;
+        }
+
+        // Handle array content (API response format)
+        if (is_array($content)) {
+            $text = '';
+            foreach ($content as $item) {
+                if (isset($item['type']) && $item['type'] === 'text' && isset($item['text'])) {
+                    $text .= $item['text'];
+                }
+            }
+            return $text;
+        }
+
+        return '';
+    }
 }

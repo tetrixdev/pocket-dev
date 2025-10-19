@@ -5,6 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Claude Code Chat</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <!-- Code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        /* Markdown styling */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content h1 { font-size: 1.5em; font-weight: bold; margin: 1em 0 0.5em; }
+        .markdown-content h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.5em; }
+        .markdown-content h3 { font-size: 1.1em; font-weight: bold; margin: 1em 0 0.5em; }
+        .markdown-content p { margin: 0.5em 0; }
+        .markdown-content ul, .markdown-content ol { margin: 0.5em 0; padding-left: 2em; }
+        .markdown-content li { margin: 0.25em 0; }
+        .markdown-content code { background: #374151; padding: 0.2em 0.4em; border-radius: 0.25em; font-size: 0.9em; }
+        .markdown-content pre { background: #1f2937; padding: 1em; border-radius: 0.5em; overflow-x: auto; margin: 1em 0; }
+        .markdown-content pre code { background: none; padding: 0; }
+        .markdown-content blockquote { border-left: 4px solid #4b5563; padding-left: 1em; margin: 1em 0; color: #9ca3af; }
+        .markdown-content a { color: #60a5fa; text-decoration: underline; }
+        .markdown-content table { border-collapse: collapse; margin: 1em 0; width: 100%; }
+        .markdown-content th, .markdown-content td { border: 1px solid #4b5563; padding: 0.5em; text-align: left; }
+        .markdown-content th { background: #374151; font-weight: bold; }
+    </style>
 </head>
 <body class="antialiased bg-gray-900 text-gray-100">
     <div class="flex h-screen">
@@ -13,7 +38,10 @@
                 <h2 class="text-lg font-semibold">Claude Code</h2>
                 <button onclick="newSession()" class="mt-2 w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">New Session</button>
             </div>
-            <div class="p-4 border-t border-gray-700 text-xs text-gray-400 mt-auto">
+            <div id="sessions-list" class="flex-1 overflow-y-auto p-2">
+                <div class="text-center text-gray-500 text-xs mt-4">Loading sessions...</div>
+            </div>
+            <div class="p-4 border-t border-gray-700 text-xs text-gray-400">
                 <div>Project: /var/www</div>
                 <a href="/claude/auth" class="text-blue-400 hover:text-blue-300">Auth Settings</a>
             </div>
@@ -37,6 +65,26 @@
         const baseUrl = 'http://192.168.1.175';
         let sessionId = null;
 
+        // Configure marked.js for markdown rendering
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, { language: lang }).value;
+                    } catch (err) {}
+                }
+                return hljs.highlightAuto(code).value;
+            }
+        });
+
+        // Helper to render markdown
+        function renderMarkdown(text) {
+            const html = marked.parse(text);
+            return html;
+        }
+
         // Check authentication on page load
         async function checkAuth() {
             try {
@@ -58,7 +106,58 @@
         }
 
         // Initialize on page load
-        checkAuth();
+        checkAuth().then(authenticated => {
+            if (authenticated) {
+                loadSessionsList();
+            }
+        });
+
+        async function loadSessionsList() {
+            try {
+                const response = await fetch(baseUrl + '/api/claude/claude-sessions?project_path=/var/www');
+                const data = await response.json();
+
+                const sessionsList = document.getElementById('sessions-list');
+
+                if (!data.sessions || data.sessions.length === 0) {
+                    sessionsList.innerHTML = '<div class="text-center text-gray-500 text-xs mt-4">No sessions yet</div>';
+                    return;
+                }
+
+                sessionsList.innerHTML = data.sessions.map(session => `
+                    <div onclick="loadSession('${session.id}')" class="p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors">
+                        <div class="text-xs text-gray-300 truncate">${escapeHtml(session.prompt)}</div>
+                        <div class="text-xs text-gray-500 mt-1">${new Date(session.modified * 1000).toLocaleDateString()}</div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load sessions:', err);
+                document.getElementById('sessions-list').innerHTML = '<div class="text-center text-red-400 text-xs mt-4">Failed to load</div>';
+            }
+        }
+
+        async function loadSession(sessionId) {
+            try {
+                const response = await fetch(baseUrl + `/api/claude/claude-sessions/${sessionId}?project_path=/var/www`);
+                const data = await response.json();
+
+                if (!data.messages) {
+                    console.error('No messages in session');
+                    return;
+                }
+
+                // Clear current messages
+                document.getElementById('messages').innerHTML = '';
+
+                // Display all messages from the session
+                for (const msg of data.messages) {
+                    addMsg(msg.role, msg.content);
+                }
+            } catch (err) {
+                console.error('Failed to load session:', err);
+                alert('Failed to load session');
+            }
+        }
 
         async function newSession() {
             const response = await fetch(baseUrl + '/api/claude/sessions', {
@@ -185,6 +284,9 @@
                     updateMsg(assistantMsgId, 'No response received from Claude');
                 }
 
+                // Reload session list after message completes
+                loadSessionsList();
+
             } catch (err) {
                 if (!assistantMsgId) assistantMsgId = addMsg('assistant', '');
                 updateMsg(assistantMsgId, 'Error: ' + err.message);
@@ -200,7 +302,7 @@
             let html;
 
             if (isThinking) {
-                // Thinking blocks have a distinct collapsible style
+                // Thinking blocks have a distinct collapsible style (plain text, no markdown)
                 html = `
                     <div id="${id}" class="flex justify-start">
                         <div class="max-w-3xl w-full">
@@ -222,13 +324,15 @@
                     </div>
                 `;
             } else {
-                // Regular messages (user/assistant/error)
+                // Regular messages
                 const bgColor = isUser ? 'bg-blue-600' : (role === 'error' ? 'bg-red-900' : 'bg-gray-800');
+                // User messages: plain text, Assistant messages: markdown
+                const renderedContent = isUser ? escapeHtml(content) : renderMarkdown(content);
                 html = `
                     <div id="${id}" class="flex ${isUser ? 'justify-end' : 'justify-start'}">
                         <div class="max-w-3xl">
                             <div class="px-4 py-3 rounded-lg ${bgColor}">
-                                <div class="text-sm whitespace-pre-wrap">${escapeHtml(content)}</div>
+                                <div class="text-sm ${isUser ? 'whitespace-pre-wrap' : 'markdown-content'}">${renderedContent}</div>
                             </div>
                         </div>
                     </div>
@@ -260,16 +364,22 @@
                 // Check if this is a thinking block by looking for the -content div
                 const thinkingContent = document.getElementById(id + '-content');
                 if (thinkingContent) {
-                    // It's a thinking block
+                    // It's a thinking block - plain text
                     const contentDiv = thinkingContent.querySelector('.whitespace-pre-wrap');
                     if (contentDiv) {
                         contentDiv.textContent = content;
                     }
                 } else {
-                    // Regular message
-                    const contentDiv = msgElement.querySelector('.whitespace-pre-wrap');
-                    if (contentDiv) {
-                        contentDiv.textContent = content;
+                    // Regular message - check if it's markdown or plain text
+                    const markdownDiv = msgElement.querySelector('.markdown-content');
+                    const plainTextDiv = msgElement.querySelector('.whitespace-pre-wrap');
+
+                    if (markdownDiv) {
+                        // Assistant message - render markdown
+                        markdownDiv.innerHTML = renderMarkdown(content);
+                    } else if (plainTextDiv) {
+                        // User message - plain text
+                        plainTextDiv.textContent = content;
                     }
                 }
 

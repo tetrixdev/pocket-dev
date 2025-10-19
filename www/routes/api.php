@@ -16,4 +16,8 @@ Route::prefix('claude')->group(function () {
     // Queries
     Route::post('sessions/{session}/query', [ClaudeController::class, 'query']);
     Route::post('sessions/{session}/stream', [ClaudeController::class, 'streamQuery']);
+
+    // Claude's native session files
+    Route::get('claude-sessions', [ClaudeController::class, 'listClaudeSessions']);
+    Route::get('claude-sessions/{sessionId}', [ClaudeController::class, 'loadClaudeSession']);
 });
