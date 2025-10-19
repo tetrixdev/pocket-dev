@@ -82,17 +82,12 @@
             addMsg('user', prompt);
             document.getElementById('prompt').value = '';
 
-            // Add fun thinking message
-            const thinkingMessages = [
-                'Claude is pondering your request...',
-                'Firing up the AI neurons...',
-                'Claude is on it...',
-                'Consulting the code gods...',
-                'Let me think about that...',
-                'Processing your brilliant idea...'
-            ];
-            const randomThinking = thinkingMessages[Math.floor(Math.random() * thinkingMessages.length)];
-            const assistantMsgId = addMsg('assistant', randomThinking);
+            // Prepare for assistant response
+            let thinkingMsgId = null;
+            let assistantMsgId = null;
+            let thinkingContent = '';
+            let textContent = '';
+            let currentBlockType = null;
 
             try {
                 // Send prompt to start streaming
@@ -111,7 +106,6 @@
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
-                let fullResponse = '';
 
                 while (true) {
                     const {done, value} = await reader.read();
@@ -129,28 +123,53 @@
 
                                 // Handle error in result
                                 if (data.type === 'result' && data.is_error) {
+                                    if (!assistantMsgId) assistantMsgId = addMsg('assistant', '');
                                     updateMsg(assistantMsgId, 'Error: ' + data.result);
                                     continue;
                                 }
 
                                 // Handle streaming events (partial messages)
                                 if (data.type === 'stream_event' && data.event) {
-                                    if (data.event.type === 'content_block_delta' && data.event.delta && data.event.delta.text) {
-                                        fullResponse += data.event.delta.text;
-                                        updateMsg(assistantMsgId, fullResponse);
+                                    const event = data.event;
+
+                                    // Track content block start
+                                    if (event.type === 'content_block_start') {
+                                        currentBlockType = event.content_block?.type;
+                                    }
+
+                                    // Handle thinking deltas
+                                    if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta') {
+                                        thinkingContent += event.delta.thinking || '';
+                                        if (!thinkingMsgId) {
+                                            thinkingMsgId = addMsg('thinking', thinkingContent);
+                                        } else {
+                                            updateMsg(thinkingMsgId, thinkingContent);
+                                        }
+                                    }
+
+                                    // Handle text deltas
+                                    if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                                        textContent += event.delta.text || '';
+                                        if (!assistantMsgId) {
+                                            assistantMsgId = addMsg('assistant', textContent);
+                                        } else {
+                                            updateMsg(assistantMsgId, textContent);
+                                        }
                                     }
                                 }
 
                                 // Handle complete assistant messages (fallback for non-streaming)
                                 if (data.type === 'assistant' && data.message && data.message.content) {
-                                    // Extract text from content array
                                     for (const contentItem of data.message.content) {
                                         if (contentItem.type === 'text' && contentItem.text) {
-                                            fullResponse += contentItem.text;
+                                            textContent += contentItem.text;
+                                            if (!assistantMsgId) {
+                                                assistantMsgId = addMsg('assistant', textContent);
+                                            } else {
+                                                updateMsg(assistantMsgId, textContent);
+                                            }
                                         }
                                     }
-                                    // Update the message with accumulated text
-                                    updateMsg(assistantMsgId, fullResponse);
                                 }
 
                             } catch (parseErr) {
@@ -161,11 +180,13 @@
                 }
 
                 // If we didn't get any content, show error
-                if (!fullResponse) {
+                if (!textContent && !thinkingContent) {
+                    if (!assistantMsgId) assistantMsgId = addMsg('assistant', '');
                     updateMsg(assistantMsgId, 'No response received from Claude');
                 }
 
             } catch (err) {
+                if (!assistantMsgId) assistantMsgId = addMsg('assistant', '');
                 updateMsg(assistantMsgId, 'Error: ' + err.message);
                 console.error('Stream error:', err);
             }
@@ -174,17 +195,45 @@
         function addMsg(role, content) {
             const id = 'msg-' + Date.now() + '-' + Math.random();
             const isUser = role === 'user';
-            const bgColor = isUser ? 'bg-blue-600' : (role === 'error' ? 'bg-red-900' : 'bg-gray-800');
+            const isThinking = role === 'thinking';
 
-            const html = `
-                <div id="${id}" class="flex ${isUser ? 'justify-end' : 'justify-start'}">
-                    <div class="max-w-3xl">
-                        <div class="px-4 py-3 rounded-lg ${bgColor}">
-                            <div class="text-sm whitespace-pre-wrap">${escapeHtml(content)}</div>
+            let html;
+
+            if (isThinking) {
+                // Thinking blocks have a distinct collapsible style
+                html = `
+                    <div id="${id}" class="flex justify-start">
+                        <div class="max-w-3xl w-full">
+                            <div class="border border-purple-500/30 rounded-lg bg-purple-900/20 overflow-hidden">
+                                <div class="flex items-center gap-2 px-4 py-2 bg-purple-900/30 border-b border-purple-500/20 cursor-pointer" onclick="toggleThinking('${id}')">
+                                    <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                    </svg>
+                                    <span class="text-sm font-semibold text-purple-300">Thinking</span>
+                                    <svg id="${id}-icon" class="w-4 h-4 text-purple-400 ml-auto transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                                <div id="${id}-content" class="px-4 py-3">
+                                    <div class="text-xs text-purple-200 whitespace-pre-wrap font-mono">${escapeHtml(content)}</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            } else {
+                // Regular messages (user/assistant/error)
+                const bgColor = isUser ? 'bg-blue-600' : (role === 'error' ? 'bg-red-900' : 'bg-gray-800');
+                html = `
+                    <div id="${id}" class="flex ${isUser ? 'justify-end' : 'justify-start'}">
+                        <div class="max-w-3xl">
+                            <div class="px-4 py-3 rounded-lg ${bgColor}">
+                                <div class="text-sm whitespace-pre-wrap">${escapeHtml(content)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
 
             const container = document.getElementById('messages');
             container.innerHTML += html;
@@ -193,17 +242,40 @@
             return id;
         }
 
+        function toggleThinking(id) {
+            const content = document.getElementById(id + '-content');
+            const icon = document.getElementById(id + '-icon');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                content.style.display = 'none';
+                icon.style.transform = 'rotate(-90deg)';
+            }
+        }
+
         function updateMsg(id, content) {
             const msgElement = document.getElementById(id);
             if (msgElement) {
-                const contentDiv = msgElement.querySelector('.whitespace-pre-wrap');
-                if (contentDiv) {
-                    contentDiv.textContent = content;
-
-                    // Auto-scroll to bottom
-                    const container = document.getElementById('messages');
-                    container.scrollTop = container.scrollHeight;
+                // Check if this is a thinking block by looking for the -content div
+                const thinkingContent = document.getElementById(id + '-content');
+                if (thinkingContent) {
+                    // It's a thinking block
+                    const contentDiv = thinkingContent.querySelector('.whitespace-pre-wrap');
+                    if (contentDiv) {
+                        contentDiv.textContent = content;
+                    }
+                } else {
+                    // Regular message
+                    const contentDiv = msgElement.querySelector('.whitespace-pre-wrap');
+                    if (contentDiv) {
+                        contentDiv.textContent = content;
+                    }
                 }
+
+                // Auto-scroll to bottom
+                const container = document.getElementById('messages');
+                container.scrollTop = container.scrollHeight;
             }
         }
 
