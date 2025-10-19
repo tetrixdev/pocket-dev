@@ -2,6 +2,152 @@
 
 This file tracks improvements and features needed for the PocketDev Claude Code integration.
 
+## 🟣 Tech Stack Migration (High Priority)
+
+**Decision**: Migrate from Vanilla JS to Alpine.js + HTMX  
+**See**: `TECH_STACK.md` for full analysis and rationale
+
+### Phase 0: Cleanup (This Week)
+- [x] **Delete Livewire implementation**
+  - Remove `www/app/Livewire/ClaudeChat.php`
+  - Remove `www/resources/views/livewire/claude-chat.blade.php`
+  - Remove Livewire routes from `web.php` (keep auth routes)
+  - Converted to proper Laravel Blade view (`chat.blade.php`)
+
+- [x] **Delete test files**
+  - Remove `www/app/Livewire/SimpleTest.php`
+  - Remove `www/resources/views/livewire/simple-test.blade.php`
+
+- [x] **Delete old documentation**
+  - Remove `HANDOVER_DOCUMENTATION.md` (1,360 lines - replaced by CLAUDE.md)
+  - Remove `IMPLEMENTATION_GUIDE.md` (599 lines - obsolete)
+  - Remove `QUICK_START.md` (93 lines - obsolete)
+  - Remove `www/IMPLEMENTATION_COMPLETE.md` (277 lines - obsolete)
+
+### Phase 1: Fix Vanilla JS (This Week)
+Fix critical bugs before migrating to ensure we understand requirements:
+
+- [ ] **Fix disappearing messages bug**
+  - Line 71 in `chat.html` - only clear on explicit "New Session" click
+  - Keep messages when auto-creating session
+
+- [ ] **Add session list to sidebar**
+  - Fetch from `/api/claude/sessions` on load
+  - Display with click handlers
+  - Show active session
+
+- [ ] **Add localStorage persistence**
+  - Store `sessionId` in localStorage
+  - Restore on page load
+  - Clear on logout
+
+- [ ] **Add markdown rendering**
+  - Include marked.js CDN
+  - Render Claude responses as markdown
+  - Preserve code blocks
+
+- [x] **Implement streaming with EventSource**
+  - Use `/api/claude/sessions/{id}/stream` endpoint
+  - Show response as it generates
+  - Handle connection errors
+
+### Phase 2: Learn Alpine + HTMX (1-2 Days)
+- [ ] **Complete Alpine.js tutorial**
+  - Work through https://alpinejs.dev/start-here
+  - Understand x-data, x-show, x-for, x-model
+  - Learn Alpine Store pattern
+
+- [ ] **Complete HTMX tutorial**
+  - Read https://htmx.org/docs/
+  - Understand hx-get, hx-post, hx-swap
+  - Learn SSE extension
+
+- [ ] **Build prototype component**
+  - Create simple Alpine + HTMX example
+  - Test streaming with SSE
+  - Verify understanding
+
+### Phase 3: Incremental Migration (2-3 Weeks)
+Migrate one component at a time, keep app working throughout:
+
+- [ ] **Add libraries to chat.html**
+  - Add Alpine.js CDN
+  - Add HTMX CDN
+  - Add HTMX SSE extension
+  - Test page still works
+
+- [ ] **Create Alpine Store**
+  - Global state: sessionId, sessions[], authenticated
+  - Persist to localStorage
+  - Test state reactivity
+
+- [ ] **Migrate Session List (easiest first)**
+  - Convert to Alpine x-for loop
+  - Add reactive click handlers
+  - Update on session changes
+  - **Test thoroughly before proceeding**
+
+- [ ] **Migrate Authentication Check**
+  - Convert to Alpine x-data
+  - Reactive redirect logic
+  - Update store on auth status
+
+- [ ] **Migrate Message Display**
+  - Convert to Alpine template
+  - Reactive message list
+  - Markdown rendering in template
+
+- [ ] **Migrate Message Input**
+  - HTMX form submission
+  - Clear input after send
+  - Show loading state
+
+- [ ] **Migrate Streaming**
+  - HTMX SSE extension
+  - Stream to message container
+  - Handle connection errors
+  - Add "stop generating" button
+
+- [ ] **Remove vanilla JavaScript**
+  - Delete old event handlers
+  - Remove manual DOM manipulation
+  - Clean up global variables
+  - **Test entire app**
+
+### Phase 4: Polish & Optimize (1 Week)
+- [ ] **Add build step (optional)**
+  - Set up Vite for production
+  - Bundle Alpine + HTMX
+  - Minify JavaScript
+  - Optimize assets
+
+- [ ] **Update documentation**
+  - Update CLAUDE.md with Alpine patterns
+  - Add Alpine examples to docs
+  - Update README if needed
+
+- [ ] **Performance testing**
+  - Test with long sessions
+  - Test rapid message sending
+  - Test multiple tabs
+  - Optimize if needed
+
+**Estimated Total Time**: 3-4 weeks of incremental work
+
+**Benefits**:
+- ✅ Cleaner, more maintainable code
+- ✅ Reactive UI updates automatically
+- ✅ Better developer experience
+- ✅ Easier to add features
+- ✅ Still lightweight (only 29kb)
+
+**See TECH_STACK.md for**:
+- Full Alpine + HTMX code examples
+- Why we chose this over Livewire/React/Vue
+- Detailed migration steps
+- Architecture patterns
+
+
 ## 🔴 Critical Bugs (Fix Immediately)
 
 ### Chat Interface Issues
@@ -79,17 +225,17 @@ This file tracks improvements and features needed for the PocketDev Claude Code 
   - Handle token expiry gracefully
 
 ### Streaming Responses
-- [ ] **Implement streaming in UI**
+- [x] **Implement streaming in UI**
   - Use `/api/claude/sessions/{session}/stream` endpoint
   - Use Server-Sent Events (EventSource)
   - Show response as it's being generated
   - Much better UX than waiting for full response
 
-- [ ] **Streaming UI updates**
+- [x] **Streaming UI updates**
   - Stream text character-by-character or chunk-by-chunk
-  - Show "stop generating" button
+  - Show "stop generating" button (future enhancement)
   - Handle stream errors
-  - Reconnect on connection loss
+  - Reconnect on connection loss (future enhancement)
 
 ## 🟢 Medium Priority (Future Sprints)
 

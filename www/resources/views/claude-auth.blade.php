@@ -135,7 +135,7 @@
             <!-- Back to Chat -->
             @if($status["authenticated"])
             <div class="text-center">
-                <a href="{{ url('/chat.html') }}" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg">
+                <a href="{{ url('/') }}" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg">
                     Go to Chat
                 </a>
             </div>

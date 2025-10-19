@@ -13,8 +13,10 @@ class ClaudeAuthController extends Controller
 
     public function __construct()
     {
-        // Credentials path for www-data user
-        $this->credentialsPath = "/var/www/.claude/.credentials.json";
+        // Credentials path - use HOME environment variable from PHP-FPM process
+        // The PHP-FPM process runs with HOME=/home/appuser, so Claude CLI looks there
+        $home = getenv('HOME') ?: '/home/appuser';
+        $this->credentialsPath = "{$home}/.claude/.credentials.json";
     }
 
     /**

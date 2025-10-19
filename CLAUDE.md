@@ -91,10 +91,14 @@ API routes (no auth required from internal):
 
 ## Development Commands
 
+Run these from `/home/linux/projects/pocket-dev/` on the HOST.
+
 ### Working on PocketDev Infrastructure
 
 **Hard Reset** (after changing Docker images, entrypoints, or defaults):
 ```bash
+# Run from: /home/linux/projects/pocket-dev/
+
 # Quick one-liner
 docker ps -a --filter volume=pocket-dev-workspace --format "{{.Names}}" | xargs -r docker stop && \
 docker ps -a --filter volume=pocket-dev-workspace --format "{{.Names}}" | xargs -r docker rm && \
@@ -108,14 +112,15 @@ docker compose up -d --build
 ```
 
 **When hard reset is required:**
-- Modified `docker-ttyd/shared/defaults/` (agent instructions copied to image)
-- Changed Dockerfile or entrypoint scripts
+- Modified `/home/linux/projects/pocket-dev/docker-ttyd/shared/defaults/` (copied to image on build)
+- Changed Dockerfiles or entrypoint scripts
 - Updated nginx templates in `docker-proxy/shared/`
 - Need fresh volumes for testing
 
 **When NOT needed:**
-- Laravel code changes in `/www` (mounted volume)
+- Laravel code changes (www/ is a mounted volume, changes are instant)
 - Git operations or README updates
+- Frontend/backend code (no rebuild needed)
 
 **Single service rebuild:**
 ```bash
@@ -190,19 +195,19 @@ docker run --rm -v pocket-dev-workspace:/data alpine ls -la /data
 
 ## Critical File Paths
 
-### Credentials Location
-- **TTYD**: `/home/devuser/.claude/.credentials.json` (devuser:devuser)
-- **PHP**: `/var/www/.claude/.credentials.json` (www-data:www-data)
+### Credentials Location (Inside Containers)
+- **TTYD container**: `/home/devuser/.claude/.credentials.json` (devuser:devuser)
+- **PHP container**: `/var/www/.claude/.credentials.json` (www-data:www-data)
 
 These paths are NOT the same. Authentication in one container does not automatically work in the other.
 
-### Configuration Files
-- `www/config/claude.php` - Claude Code service configuration
-- `.env` - Environment variables (not in repo, copy from `.env.example`)
-- `docker-proxy/shared/nginx.conf.template` - Proxy configuration template
+### Configuration Files (HOST Paths)
+- `/home/linux/projects/pocket-dev/www/config/claude.php` - Claude Code service configuration
+- `/home/linux/projects/pocket-dev/.env` - Environment variables (not in repo, copy from `.env.example`)
+- `/home/linux/projects/pocket-dev/docker-proxy/shared/nginx.conf.template` - Proxy configuration template
 
-### Default Files (Copied to Images)
-- `docker-ttyd/shared/defaults/` - Files copied to TTYD container on build
+### Default Files (Copied to Images on Build)
+- `/home/linux/projects/pocket-dev/docker-ttyd/shared/defaults/` - Files copied to TTYD container
 - Changes here require full rebuild
 
 ## Common Pitfalls

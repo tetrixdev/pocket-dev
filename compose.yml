@@ -36,9 +36,12 @@ services:
     container_name: pocket-dev-php
     restart: unless-stopped
     working_dir: /var/www
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    environment:
+      - HOME=/home/appuser
+      - COMPOSER_HOME=/tmp/.composer
+      - NPM_CONFIG_CACHE=/tmp/.npm
     entrypoint: ["/entrypoint.sh"]
-    group_add:
-      - "1001"
     ports:
       - "${VITE_PORT:-5173}:5173"
     volumes:
@@ -48,7 +51,8 @@ services:
       - ./docker-laravel/local/php/entrypoint.sh:/entrypoint.sh
       - /var/run/docker.sock:/var/run/docker.sock
       - proxy-config-data:/etc/nginx-proxy-config
-      - user-data:/ttyd-user-home
+      - user-data:/home/appuser
+      - .:/pocketdev-source
     networks:
       - pocket-dev
     depends_on:
@@ -108,9 +112,7 @@ services:
     container_name: pocket-dev-ttyd
     restart: unless-stopped
     working_dir: /workspace
-    user: "1001:1001"
-    group_add:
-      - "1000"
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     environment:
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USER_NAME=${GIT_USER_NAME:-}

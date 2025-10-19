@@ -111,6 +111,11 @@ class ClaudeController extends Controller
         $session->addMessage('user', $request->input('prompt'));
 
         return response()->stream(function () use ($request, $session) {
+            // Disable all output buffering for true streaming
+            while (ob_get_level() > 0) {
+                ob_end_flush();
+            }
+
             $options = array_merge(
                 $request->input('options', []),
                 ['cwd' => $session->project_path]
@@ -121,7 +126,6 @@ class ClaudeController extends Controller
                     $request->input('prompt'),
                     function ($message) {
                         echo "data: " . json_encode($message) . "\n\n";
-                        ob_flush();
                         flush();
                     },
                     $options
@@ -131,6 +135,7 @@ class ClaudeController extends Controller
             } catch (\Exception $e) {
                 $session->markFailed();
                 echo "data: " . json_encode(['error' => $e->getMessage()]) . "\n\n";
+                flush();
             }
         }, 200, [
             'Content-Type' => 'text/event-stream',

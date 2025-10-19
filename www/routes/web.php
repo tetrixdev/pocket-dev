@@ -2,8 +2,8 @@
 
 use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\ConfigController;
+use App\Http\Controllers\SafeModeController;
 use App\Http\Controllers\TerminalController;
-use App\Livewire\ClaudeChat;
 use Illuminate\Support\Facades\Route;
 
 // Claude authentication routes - MUST be before wildcard routes
@@ -13,9 +13,14 @@ Route::post("/claude/auth/upload", [ClaudeAuthController::class, "upload"])->nam
 Route::post("/claude/auth/upload-json", [ClaudeAuthController::class, "uploadJson"])->name("claude.auth.uploadJson");
 Route::delete("/claude/auth/logout", [ClaudeAuthController::class, "logout"])->name("claude.auth.logout");
 
-// Claude chat routes
-Route::get("/", ClaudeChat::class)->name("claude.index");
-Route::get("/claude/{sessionId?}", ClaudeChat::class)->name("claude.session");
+// Safe Mode emergency fallback interface - MUST be before wildcard routes
+Route::get("/claude/safe-mode", [SafeModeController::class, "index"])->name("claude.safe-mode");
+Route::post("/claude/safe-mode/query", [SafeModeController::class, "query"])->name("claude.safe-mode.query");
+Route::get("/claude/safe-mode/new", [SafeModeController::class, "newSession"])->name("claude.safe-mode.new-session");
+Route::get("/claude/safe-mode/sessions", [SafeModeController::class, "listSessions"])->name("claude.safe-mode.list-sessions");
+
+// Claude chat routes - Blade view with streaming
+Route::view("/", "chat")->name("claude.index");
 
 Route::get("/terminal", [TerminalController::class, "index"])->name("terminal.index");
 Route::post("/transcribe", [TerminalController::class, "transcribe"])->name("terminal.transcribe");

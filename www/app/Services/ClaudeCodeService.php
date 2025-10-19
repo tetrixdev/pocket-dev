@@ -194,7 +194,8 @@ class ClaudeCodeService
             2 => ["pipe", "w"]   // stderr
         ];
 
-        $command = "{$this->cliPath} --print --output-format stream-json";
+        // --include-partial-messages enables token-by-token streaming from Claude API
+        $command = "{$this->cliPath} --print --output-format stream-json --verbose --include-partial-messages";
         $cwd = $cwd ?? config('claude.working_directory');
 
         $this->log('debug', 'Executing Claude Code (streaming)', [
