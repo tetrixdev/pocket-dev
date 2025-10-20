@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class ClaudeSession extends Model
 {
     protected $fillable = [
         'title',
         'project_path',
+        'claude_session_id',
         'messages',
         'context',
         'model',
@@ -22,6 +24,20 @@ class ClaudeSession extends Model
         'context' => 'array',
         'last_activity_at' => 'datetime',
     ];
+
+    /**
+     * Boot the model and generate UUID for claude_session_id if not set.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($session) {
+            if (empty($session->claude_session_id)) {
+                $session->claude_session_id = (string) Str::uuid();
+            }
+        });
+    }
 
     public function addMessage(string $role, mixed $content): void
     {

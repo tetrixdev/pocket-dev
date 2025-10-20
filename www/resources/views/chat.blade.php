@@ -42,7 +42,8 @@
                 <div class="text-center text-gray-500 text-xs mt-4">Loading sessions...</div>
             </div>
             <div class="p-4 border-t border-gray-700 text-xs text-gray-400">
-                <div>Project: /var/www</div>
+                <div>Working Dir: /workspace</div>
+                <div class="text-gray-500">Access: /workspace, /pocketdev-source</div>
                 <a href="/claude/auth" class="text-blue-400 hover:text-blue-300">Auth Settings</a>
             </div>
         </div>
@@ -54,16 +55,62 @@
                 </div>
             </div>
             <div class="border-t border-gray-700 p-4">
-                <form onsubmit="sendMessage(event)" class="flex gap-2">
+                <form onsubmit="sendMessage(event)" class="flex gap-2 items-stretch">
                     <input type="text" id="prompt" placeholder="Ask Claude to help with your code..." class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white">
-                    <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg">Send</button>
+                    <button type="button" id="thinkingBadge" onclick="cycleThinkingMode()" class="px-4 py-3 rounded-lg font-medium text-sm cursor-pointer transition-all duration-200 hover:opacity-80 flex items-center justify-center" title="Click to toggle extended thinking (or press Shift+T)&#10;Off → Ultrathink (32K tokens)">
+                        <span id="thinkingIcon">🧠</span>
+                        <span id="thinkingText" class="ml-1">Off</span>
+                    </button>
+                    <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center justify-center">Send</button>
                 </form>
             </div>
         </div>
     </div>
     <script>
         const baseUrl = 'http://192.168.1.175';
-        let sessionId = null;
+        let sessionId = null;  // Database session ID
+        let claudeSessionId = null;  // Claude UUID for CLI
+
+        // Thinking mode management
+        // Only Ultrathink is supported in Claude Code CLI v2.0+ when using --print mode
+        const thinkingModes = [
+            { level: 0, name: 'Off', icon: '🧠', color: 'bg-gray-600 text-gray-200', keyword: null, budget: 0 },
+            { level: 1, name: 'Ultrathink', icon: '🌟', color: 'bg-yellow-600 text-white', keyword: 'ultrathink', budget: 32000 }
+        ];
+
+        let currentThinkingLevel = 0;
+
+        // Load thinking mode from localStorage
+        const savedThinkingLevel = localStorage.getItem('thinkingLevel');
+        if (savedThinkingLevel !== null) {
+            currentThinkingLevel = parseInt(savedThinkingLevel);
+            updateThinkingBadge();
+        }
+
+        // Cycle through thinking modes
+        function cycleThinkingMode() {
+            currentThinkingLevel = (currentThinkingLevel + 1) % thinkingModes.length;
+            updateThinkingBadge();
+            localStorage.setItem('thinkingLevel', currentThinkingLevel);
+        }
+
+        // Update thinking badge visual
+        function updateThinkingBadge() {
+            const mode = thinkingModes[currentThinkingLevel];
+            const badge = document.getElementById('thinkingBadge');
+            const icon = document.getElementById('thinkingIcon');
+            const text = document.getElementById('thinkingText');
+
+            // Remove all color classes
+            badge.className = badge.className.replace(/bg-\w+-\d+/g, '').replace(/text-\w+-\d+/g, '');
+
+            // Add new color classes
+            badge.className += ' ' + mode.color;
+
+            // Update content
+            icon.textContent = mode.icon;
+            text.textContent = mode.name;
+        }
 
         // Configure marked.js for markdown rendering
         marked.setOptions({
@@ -112,9 +159,20 @@
             }
         });
 
+        // Initialize thinking badge on load
+        updateThinkingBadge();
+
+        // Add keyboard shortcut for thinking toggle (Shift+T)
+        document.getElementById('prompt').addEventListener('keydown', function(e) {
+            if (e.shiftKey && e.key.toLowerCase() === 't') {
+                e.preventDefault();
+                cycleThinkingMode();
+            }
+        });
+
         async function loadSessionsList() {
             try {
-                const response = await fetch(baseUrl + '/api/claude/claude-sessions?project_path=/var/www');
+                const response = await fetch(baseUrl + '/api/claude/claude-sessions?project_path=/');
                 const data = await response.json();
 
                 const sessionsList = document.getElementById('sessions-list');
@@ -124,34 +182,69 @@
                     return;
                 }
 
-                sessionsList.innerHTML = data.sessions.map(session => `
-                    <div onclick="loadSession('${session.id}')" class="p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors">
-                        <div class="text-xs text-gray-300 truncate">${escapeHtml(session.prompt)}</div>
-                        <div class="text-xs text-gray-500 mt-1">${new Date(session.modified * 1000).toLocaleDateString()}</div>
-                    </div>
-                `).join('');
+                sessionsList.innerHTML = data.sessions.map(session => {
+                    const preview = session.prompt.substring(0, 50);
+                    const date = new Date(session.modified * 1000).toLocaleDateString();
+
+                    return `
+                        <div onclick="loadSession('${escapeHtml(session.id)}')" class="p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors">
+                            <div class="text-xs text-gray-300 truncate">${escapeHtml(preview)}</div>
+                            <div class="text-xs text-gray-500 mt-1">${date}</div>
+                        </div>
+                    `;
+                }).join('');
             } catch (err) {
                 console.error('Failed to load sessions:', err);
                 document.getElementById('sessions-list').innerHTML = '<div class="text-center text-red-400 text-xs mt-4">Failed to load</div>';
             }
         }
 
-        async function loadSession(sessionId) {
+        async function loadSession(loadClaudeSessionId) {
             try {
-                const response = await fetch(baseUrl + `/api/claude/claude-sessions/${sessionId}?project_path=/var/www`);
+                const response = await fetch(baseUrl + `/api/claude/claude-sessions/${loadClaudeSessionId}?project_path=/`);
                 const data = await response.json();
 
-                if (!data.messages) {
+                if (!data || !data.messages) {
                     console.error('No messages in session');
                     return;
                 }
 
-                // Clear current messages
-                document.getElementById('messages').innerHTML = '';
+                // Store the Claude session ID for continuing this conversation
+                claudeSessionId = loadClaudeSessionId;
 
-                // Display all messages from the session
+                // Try to find existing database session with this claude_session_id
+                try {
+                    const dbResponse = await fetch(baseUrl + '/api/claude/sessions?project_path=/');
+                    const dbData = await dbResponse.json();
+                    const existingSession = dbData.data?.find(s => s.claude_session_id === claudeSessionId);
+                    if (existingSession) {
+                        sessionId = existingSession.id;
+                    } else {
+                        // Create a database session for this Claude session
+                        const createResponse = await fetch(baseUrl + '/api/claude/sessions', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                title: data.messages[0]?.content?.substring(0, 50) || 'Loaded Session',
+                                project_path: '/',
+                                claude_session_id: claudeSessionId
+                            })
+                        });
+                        const createData = await createResponse.json();
+                        sessionId = createData.session.id;
+                    }
+                } catch (err) {
+                    console.warn('Could not create/find database session:', err);
+                    sessionId = null;
+                }
+
+                // Clear current messages and tool block mapping
+                document.getElementById('messages').innerHTML = '';
+                Object.keys(loadedToolBlocks).forEach(key => delete loadedToolBlocks[key]);
+
+                // Display all messages from the session, parsing content arrays
                 for (const msg of data.messages) {
-                    addMsg(msg.role, msg.content);
+                    parseAndDisplayMessage(msg.role, msg.content);
                 }
             } catch (err) {
                 console.error('Failed to load session:', err);
@@ -159,41 +252,199 @@
             }
         }
 
+        // Store tool blocks when loading old conversations for result linking
+        const loadedToolBlocks = {};
+
+        function parseAndDisplayMessage(role, content) {
+            // Content can be a string or an array of content blocks
+            if (typeof content === 'string') {
+                addMsg(role, content);
+                return;
+            }
+
+            if (Array.isArray(content)) {
+                // Parse each content block
+                for (const block of content) {
+                    if (block.type === 'text' && block.text) {
+                        addMsg(role, block.text);
+                    } else if (block.type === 'thinking' && block.thinking) {
+                        const thinkingId = addMsg('thinking', block.thinking);
+                        // Collapse by default for old messages
+                        setTimeout(() => collapseBlock(thinkingId), 10);
+                    } else if (block.type === 'tool_use') {
+                        const toolData = {
+                            name: block.name || 'Unknown Tool',
+                            input: JSON.stringify(block.input || {}),
+                            result: null
+                        };
+                        const toolId = addMsg('tool', toolData);
+                        // Store for result linking
+                        if (block.id) {
+                            loadedToolBlocks[block.id] = { toolId, toolData };
+                        }
+                        // Collapse by default for old messages
+                        setTimeout(() => collapseBlock(toolId), 10);
+                    } else if (block.type === 'tool_result' && block.tool_use_id) {
+                        // Link result to tool block
+                        const toolInfo = loadedToolBlocks[block.tool_use_id];
+                        if (toolInfo) {
+                            toolInfo.toolData.result = block.content;
+                            updateMsg(toolInfo.toolId, toolInfo.toolData);
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Fallback for unexpected format
+            addMsg(role, JSON.stringify(content));
+        }
+
         async function newSession() {
+            // Create a new database session (which will have a Claude session UUID)
             const response = await fetch(baseUrl + '/api/claude/sessions', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({title: 'New Session', project_path: '/var/www'})
+                body: JSON.stringify({title: 'New Session', project_path: '/'})
             });
             const data = await response.json();
             sessionId = data.session.id;
+            claudeSessionId = data.session.claude_session_id;
             document.getElementById('messages').innerHTML = '<div class="text-center text-gray-400 mt-20"><h3 class="text-xl mb-2">Session Started</h3></div>';
+            // Reload the sessions list to show the new session
+            setTimeout(() => loadSessionsList(), 500);
+        }
+
+        function formatToolCall(content) {
+            const toolName = content.name || 'Unknown Tool';
+            let inputData = {};
+
+            // Try to parse the input JSON
+            try {
+                inputData = JSON.parse(content.input || '{}');
+            } catch (e) {
+                // If parsing fails, treat as incomplete/streaming
+                inputData = { _raw: content.input };
+            }
+
+            // Create tool-specific title
+            let title = toolName;
+            if (toolName === 'Bash' && inputData.description) {
+                title = `Bash: ${inputData.description}`;
+            } else if (toolName === 'Read' && inputData.file_path) {
+                title = `Read: ${inputData.file_path}`;
+            } else if (toolName === 'Write' && inputData.file_path) {
+                title = `Write: ${inputData.file_path}`;
+            } else if (toolName === 'Edit' && inputData.file_path) {
+                title = `Edit: ${inputData.file_path}`;
+            } else if (toolName === 'Glob' && inputData.pattern) {
+                title = `Glob: ${inputData.pattern}`;
+            } else if (toolName === 'Grep' && inputData.pattern) {
+                title = `Grep: ${inputData.pattern}`;
+            }
+
+            // Format body with key-value pairs
+            let body = '';
+
+            if (inputData._raw) {
+                // Streaming/incomplete JSON
+                body = `<div class="font-mono text-gray-400">${escapeHtml(inputData._raw)}</div>`;
+            } else {
+                // Format based on tool type
+                if (toolName === 'Bash') {
+                    body += `<div><span class="text-blue-300 font-semibold">Command:</span> <code class="text-blue-100 bg-blue-950/50 px-2 py-1 rounded">${escapeHtml(inputData.command || '')}</code></div>`;
+                    if (inputData.description) {
+                        body += `<div><span class="text-blue-300 font-semibold">Description:</span> ${escapeHtml(inputData.description)}</div>`;
+                    }
+                } else if (toolName === 'Read') {
+                    body += `<div><span class="text-blue-300 font-semibold">File:</span> ${escapeHtml(inputData.file_path || '')}</div>`;
+                } else if (toolName === 'Write') {
+                    body += `<div><span class="text-blue-300 font-semibold">File:</span> ${escapeHtml(inputData.file_path || '')}</div>`;
+                    if (inputData.content) {
+                        const preview = inputData.content.length > 200 ? inputData.content.substring(0, 200) + '...' : inputData.content;
+                        body += `<div><span class="text-blue-300 font-semibold">Content:</span><pre class="mt-1 text-blue-100 bg-blue-950/50 px-2 py-1 rounded whitespace-pre-wrap">${escapeHtml(preview)}</pre></div>`;
+                    }
+                } else if (toolName === 'Edit') {
+                    body += `<div><span class="text-blue-300 font-semibold">File:</span> ${escapeHtml(inputData.file_path || '')}</div>`;
+                    if (inputData.old_string) {
+                        body += `<div><span class="text-blue-300 font-semibold">Find:</span><pre class="mt-1 text-red-200 bg-red-950/30 px-2 py-1 rounded whitespace-pre-wrap">${escapeHtml(inputData.old_string.substring(0, 150))}${inputData.old_string.length > 150 ? '...' : ''}</pre></div>`;
+                    }
+                    if (inputData.new_string) {
+                        body += `<div><span class="text-blue-300 font-semibold">Replace:</span><pre class="mt-1 text-green-200 bg-green-950/30 px-2 py-1 rounded whitespace-pre-wrap">${escapeHtml(inputData.new_string.substring(0, 150))}${inputData.new_string.length > 150 ? '...' : ''}</pre></div>`;
+                    }
+                } else if (toolName === 'Glob') {
+                    body += `<div><span class="text-blue-300 font-semibold">Pattern:</span> <code class="text-blue-100">${escapeHtml(inputData.pattern || '')}</code></div>`;
+                    if (inputData.path) {
+                        body += `<div><span class="text-blue-300 font-semibold">Path:</span> ${escapeHtml(inputData.path)}</div>`;
+                    }
+                } else if (toolName === 'Grep') {
+                    body += `<div><span class="text-blue-300 font-semibold">Pattern:</span> <code class="text-blue-100">${escapeHtml(inputData.pattern || '')}</code></div>`;
+                    if (inputData.path) {
+                        body += `<div><span class="text-blue-300 font-semibold">Path:</span> ${escapeHtml(inputData.path)}</div>`;
+                    }
+                    if (inputData.output_mode) {
+                        body += `<div><span class="text-blue-300 font-semibold">Mode:</span> ${escapeHtml(inputData.output_mode)}</div>`;
+                    }
+                } else {
+                    // Generic fallback - show all parameters
+                    for (const [key, value] of Object.entries(inputData)) {
+                        const displayValue = typeof value === 'string' && value.length > 100
+                            ? value.substring(0, 100) + '...'
+                            : JSON.stringify(value);
+                        body += `<div><span class="text-blue-300 font-semibold">${escapeHtml(key)}:</span> ${escapeHtml(displayValue)}</div>`;
+                    }
+                }
+            }
+
+            // Add result section if available
+            if (content.result) {
+                const resultText = typeof content.result === 'string' ? content.result : JSON.stringify(content.result, null, 2);
+                const resultPreview = resultText.length > 500 ? resultText.substring(0, 500) + '...' : resultText;
+                body += `<div class="mt-3 pt-3 border-t border-blue-500/20">
+                    <div class="text-blue-300 font-semibold mb-1">Result:</div>
+                    <pre class="text-green-200 bg-blue-950/50 px-2 py-1 rounded whitespace-pre-wrap text-xs">${escapeHtml(resultPreview)}</pre>
+                </div>`;
+            }
+
+            return { title, body };
         }
 
         async function sendMessage(e) {
             e.preventDefault();
-            const prompt = document.getElementById('prompt').value;
-            if (!prompt.trim()) return;
+            const originalPrompt = document.getElementById('prompt').value;
+            if (!originalPrompt.trim()) return;
 
             if (!sessionId) await newSession();
 
-            // Show user message immediately
-            addMsg('user', prompt);
+            // Prepend thinking keyword if thinking is enabled
+            const thinkingMode = thinkingModes[currentThinkingLevel];
+            const promptToSend = thinkingMode.keyword
+                ? `${thinkingMode.keyword}: ${originalPrompt}`
+                : originalPrompt;
+
+            // Show original user message (without prefix) in UI
+            addMsg('user', originalPrompt);
             document.getElementById('prompt').value = '';
 
             // Prepare for assistant response
             let thinkingMsgId = null;
             let assistantMsgId = null;
+            let toolCallMsgId = null;
             let thinkingContent = '';
             let textContent = '';
+            let toolCallContent = '';
             let currentBlockType = null;
+            let currentToolName = '';
+            let currentToolId = '';
+            let lastExpandedBlockId = null;
+            let toolBlockMap = {};  // Map tool_use_id to block ID for updating results
 
             try {
-                // Send prompt to start streaming
+                // Send prompt with thinking keyword to start streaming
                 const response = await fetch(`${baseUrl}/api/claude/sessions/${sessionId}/stream`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({prompt: prompt})
+                    body: JSON.stringify({prompt: promptToSend})
                 });
 
                 // Check if request was successful
@@ -234,6 +485,28 @@
                                     // Track content block start
                                     if (event.type === 'content_block_start') {
                                         currentBlockType = event.content_block?.type;
+
+                                        // If starting a new collapsible block (thinking or tool_use), collapse the previous one
+                                        if ((currentBlockType === 'thinking' || currentBlockType === 'tool_use') && lastExpandedBlockId) {
+                                            collapseBlock(lastExpandedBlockId);
+                                        }
+
+                                        // Reset block tracking when starting new content blocks
+                                        if (currentBlockType === 'thinking') {
+                                            // New thinking block - reset
+                                            thinkingContent = '';
+                                            thinkingMsgId = null;
+                                        } else if (currentBlockType === 'text') {
+                                            // New text block - reset
+                                            textContent = '';
+                                            assistantMsgId = null;
+                                        } else if (currentBlockType === 'tool_use') {
+                                            // New tool block
+                                            currentToolName = event.content_block?.name || 'Unknown Tool';
+                                            currentToolId = event.content_block?.id || '';
+                                            toolCallContent = '';
+                                            toolCallMsgId = null;
+                                        }
                                     }
 
                                     // Handle thinking deltas
@@ -241,13 +514,35 @@
                                         thinkingContent += event.delta.thinking || '';
                                         if (!thinkingMsgId) {
                                             thinkingMsgId = addMsg('thinking', thinkingContent);
+                                            lastExpandedBlockId = thinkingMsgId;
                                         } else {
                                             updateMsg(thinkingMsgId, thinkingContent);
                                         }
                                     }
 
+                                    // Handle tool use deltas (input_json_delta)
+                                    if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta') {
+                                        toolCallContent += event.delta.partial_json || '';
+                                        if (!toolCallMsgId) {
+                                            toolCallMsgId = addMsg('tool', {name: currentToolName, input: toolCallContent, result: null});
+                                            lastExpandedBlockId = toolCallMsgId;
+                                            // Store mapping for result updates
+                                            if (currentToolId) {
+                                                toolBlockMap[currentToolId] = toolCallMsgId;
+                                            }
+                                        } else {
+                                            updateMsg(toolCallMsgId, {name: currentToolName, input: toolCallContent, result: null});
+                                        }
+                                    }
+
                                     // Handle text deltas
                                     if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
+                                        // If we have an expanded block (thinking/tool), collapse it when text starts
+                                        if (lastExpandedBlockId) {
+                                            collapseBlock(lastExpandedBlockId);
+                                            lastExpandedBlockId = null;
+                                        }
+
                                         textContent += event.delta.text || '';
                                         if (!assistantMsgId) {
                                             assistantMsgId = addMsg('assistant', textContent);
@@ -257,18 +552,43 @@
                                     }
                                 }
 
-                                // Handle complete assistant messages (fallback for non-streaming)
-                                if (data.type === 'assistant' && data.message && data.message.content) {
-                                    for (const contentItem of data.message.content) {
-                                        if (contentItem.type === 'text' && contentItem.text) {
-                                            textContent += contentItem.text;
-                                            if (!assistantMsgId) {
-                                                assistantMsgId = addMsg('assistant', textContent);
-                                            } else {
-                                                updateMsg(assistantMsgId, textContent);
+                                // Handle tool results (come as user messages)
+                                if (data.type === 'user' && data.message && data.message.content) {
+                                    for (const item of data.message.content) {
+                                        if (item.type === 'tool_result' && item.tool_use_id) {
+                                            const blockId = toolBlockMap[item.tool_use_id];
+                                            if (blockId) {
+                                                // Get the current tool data from the block
+                                                const block = document.getElementById(blockId);
+                                                if (block) {
+                                                    // Update with result
+                                                    const toolData = {
+                                                        name: currentToolName,
+                                                        input: toolCallContent,
+                                                        result: item.content
+                                                    };
+                                                    updateMsg(blockId, toolData);
+                                                }
                                             }
+                                            // Reset tool call tracking for next tool
+                                            toolCallMsgId = null;
+                                            toolCallContent = '';
                                         }
                                     }
+                                }
+
+                                // Handle complete assistant messages (fallback for non-streaming only)
+                                if (data.type === 'assistant' && data.message && data.message.content) {
+                                    // Only use this if we haven't received any streaming deltas
+                                    if (!assistantMsgId) {
+                                        for (const contentItem of data.message.content) {
+                                            if (contentItem.type === 'text' && contentItem.text) {
+                                                textContent += contentItem.text;
+                                            }
+                                        }
+                                        assistantMsgId = addMsg('assistant', textContent);
+                                    }
+                                    // If we already have content from streaming, ignore this complete message
                                 }
 
                             } catch (parseErr) {
@@ -298,6 +618,7 @@
             const id = 'msg-' + Date.now() + '-' + Math.random();
             const isUser = role === 'user';
             const isThinking = role === 'thinking';
+            const isTool = role === 'tool';
 
             let html;
 
@@ -307,7 +628,7 @@
                     <div id="${id}" class="flex justify-start">
                         <div class="max-w-3xl w-full">
                             <div class="border border-purple-500/30 rounded-lg bg-purple-900/20 overflow-hidden">
-                                <div class="flex items-center gap-2 px-4 py-2 bg-purple-900/30 border-b border-purple-500/20 cursor-pointer" onclick="toggleThinking('${id}')">
+                                <div class="flex items-center gap-2 px-4 py-2 bg-purple-900/30 border-b border-purple-500/20 cursor-pointer" onclick="toggleBlock('${id}')">
                                     <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                                     </svg>
@@ -318,6 +639,30 @@
                                 </div>
                                 <div id="${id}-content" class="px-4 py-3">
                                     <div class="text-xs text-purple-200 whitespace-pre-wrap font-mono">${escapeHtml(content)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (isTool) {
+                // Tool call blocks with smart formatting
+                const toolData = formatToolCall(content);
+                html = `
+                    <div id="${id}" class="flex justify-start">
+                        <div class="max-w-3xl w-full">
+                            <div class="border border-blue-500/30 rounded-lg bg-blue-900/20 overflow-hidden">
+                                <div class="flex items-center gap-2 px-4 py-2 bg-blue-900/30 border-b border-blue-500/20 cursor-pointer" onclick="toggleBlock('${id}')">
+                                    <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <span id="${id}-title" class="text-sm font-semibold text-blue-300">${toolData.title}</span>
+                                    <svg id="${id}-icon" class="w-4 h-4 text-blue-400 ml-auto transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
+                                <div id="${id}-content" class="px-4 py-3">
+                                    <div id="${id}-body" class="text-xs text-blue-200 space-y-2">${toolData.body}</div>
                                 </div>
                             </div>
                         </div>
@@ -346,7 +691,7 @@
             return id;
         }
 
-        function toggleThinking(id) {
+        function toggleBlock(id) {
             const content = document.getElementById(id + '-content');
             const icon = document.getElementById(id + '-icon');
             if (content.style.display === 'none') {
@@ -358,16 +703,43 @@
             }
         }
 
+        function collapseBlock(id) {
+            const content = document.getElementById(id + '-content');
+            const icon = document.getElementById(id + '-icon');
+            if (content && icon) {
+                content.style.display = 'none';
+                icon.style.transform = 'rotate(-90deg)';
+            }
+        }
+
         function updateMsg(id, content) {
             const msgElement = document.getElementById(id);
             if (msgElement) {
-                // Check if this is a thinking block by looking for the -content div
-                const thinkingContent = document.getElementById(id + '-content');
-                if (thinkingContent) {
-                    // It's a thinking block - plain text
-                    const contentDiv = thinkingContent.querySelector('.whitespace-pre-wrap');
-                    if (contentDiv) {
-                        contentDiv.textContent = content;
+                // Check if this is a collapsible block (thinking or tool) by looking for the -content div
+                const blockContent = document.getElementById(id + '-content');
+                if (blockContent) {
+                    // Check if it's a tool block or thinking block
+                    if (typeof content === 'object' && content.name !== undefined) {
+                        // Tool block - reformat with updated data
+                        const toolData = formatToolCall(content);
+
+                        // Update title
+                        const titleSpan = document.getElementById(id + '-title');
+                        if (titleSpan) {
+                            titleSpan.innerHTML = toolData.title;
+                        }
+
+                        // Update body
+                        const bodyDiv = document.getElementById(id + '-body');
+                        if (bodyDiv) {
+                            bodyDiv.innerHTML = toolData.body;
+                        }
+                    } else {
+                        // Thinking block - plain text
+                        const contentDiv = blockContent.querySelector('.whitespace-pre-wrap');
+                        if (contentDiv) {
+                            contentDiv.textContent = content;
+                        }
                     }
                 } else {
                     // Regular message - check if it's markdown or plain text

@@ -59,8 +59,13 @@ class ClaudeCodeService
     {
         $this->log('info', 'Starting Claude Code query', ['prompt' => $prompt]);
 
-        $input = $this->prepareInput($prompt, $options);
-        $result = $this->execute($input, $options['cwd'] ?? null);
+        $mergedOptions = array_merge($this->defaultOptions, $options);
+        $result = $this->execute(
+            $prompt,
+            $mergedOptions,
+            $options['sessionId'] ?? null,
+            $options['isFirstMessage'] ?? true
+        );
 
         $this->log('info', 'Claude Code query completed successfully');
 
@@ -80,40 +85,63 @@ class ClaudeCodeService
     {
         $this->log('info', 'Starting Claude Code streaming query', ['prompt' => $prompt]);
 
-        $input = $this->prepareInput($prompt, $options);
-        $this->executeStreaming($input, $callback, $options['cwd'] ?? null);
+        $mergedOptions = array_merge($this->defaultOptions, $options);
+        $this->executeStreaming(
+            $prompt,
+            $callback,
+            $mergedOptions,
+            $options['sessionId'] ?? null,
+            $options['isFirstMessage'] ?? true
+        );
 
         $this->log('info', 'Claude Code streaming query completed');
     }
 
     /**
-     * Prepare the input JSON for Claude Code CLI.
+     * Build CLI command flags from options.
      *
-     * @param string $prompt
      * @param array $options
-     * @return string JSON-encoded input
+     * @return string CLI flags
      */
-    protected function prepareInput(string $prompt, array $options): string
+    protected function buildCommandFlags(array $options): string
     {
-        $mergedOptions = array_merge($this->defaultOptions, $options);
+        $flags = '';
 
-        $input = [
-            'prompt' => $prompt,
-            'options' => array_filter($mergedOptions, fn($value) => $value !== null)
-        ];
+        // Add model flag
+        if (!empty($options['model'])) {
+            $flags .= " --model {$options['model']}";
+        }
 
-        return json_encode($input, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        // Add permission mode flag
+        if (!empty($options['permission_mode'])) {
+            $flags .= " --permission-mode {$options['permission_mode']}";
+        }
+
+        // Add allowed tools flag
+        if (!empty($options['allowed_tools']) && is_array($options['allowed_tools'])) {
+            $tools = implode(',', $options['allowed_tools']);
+            $flags .= " --allowed-tools {$tools}";
+        }
+
+        // Add max turns flag
+        if (!empty($options['max_turns'])) {
+            $flags .= " --max-turns {$options['max_turns']}";
+        }
+
+        return $flags;
     }
 
     /**
      * Execute Claude Code CLI synchronously.
      *
-     * @param string $input JSON input
-     * @param string|null $cwd Working directory
+     * @param string $prompt Plain text prompt
+     * @param array $options Merged options array
+     * @param string|null $sessionId Claude session UUID
+     * @param bool $isFirstMessage Whether this is the first message in the session
      * @return array Parsed JSON response
      * @throws ClaudeCodeException
      */
-    protected function execute(string $input, ?string $cwd = null): array
+    protected function execute(string $prompt, array $options, ?string $sessionId = null, bool $isFirstMessage = true): array
     {
         $descriptorspec = [
             0 => ["pipe", "r"],  // stdin
@@ -122,11 +150,27 @@ class ClaudeCodeService
         ];
 
         $command = "{$this->cliPath} --print --output-format json";
-        $cwd = $cwd ?? config('claude.working_directory');
+
+        // Add session management flags
+        if ($sessionId) {
+            if ($isFirstMessage) {
+                $command .= " --session-id {$sessionId}";
+            } else {
+                $command .= " --resume {$sessionId}";
+            }
+        }
+
+        // Add option flags
+        $command .= $this->buildCommandFlags($options);
+
+        $cwd = $options['cwd'] ?? config('claude.working_directory');
 
         $this->log('debug', 'Executing Claude Code', [
             'command' => $command,
-            'cwd' => $cwd
+            'cwd' => $cwd,
+            'sessionId' => $sessionId,
+            'isFirstMessage' => $isFirstMessage,
+            'prompt_length' => strlen($prompt)
         ]);
 
         $process = proc_open($command, $descriptorspec, $pipes, $cwd);
@@ -135,8 +179,8 @@ class ClaudeCodeService
             throw new ClaudeCodeException('Failed to start Claude Code process');
         }
 
-        // Write input
-        fwrite($pipes[0], $input);
+        // Write plain text prompt to stdin
+        fwrite($pipes[0], $prompt);
         fclose($pipes[0]);
 
         // Apply timeout if configured
@@ -180,13 +224,15 @@ class ClaudeCodeService
     /**
      * Execute Claude Code CLI with streaming output.
      *
-     * @param string $input JSON input
+     * @param string $prompt Plain text prompt
      * @param callable $callback Callback to handle each chunk
-     * @param string|null $cwd Working directory
+     * @param array $options Merged options array
+     * @param string|null $sessionId Claude session UUID
+     * @param bool $isFirstMessage Whether this is the first message in the session
      * @return void
      * @throws ClaudeCodeException
      */
-    protected function executeStreaming(string $input, callable $callback, ?string $cwd = null): void
+    protected function executeStreaming(string $prompt, callable $callback, array $options, ?string $sessionId = null, bool $isFirstMessage = true): void
     {
         $descriptorspec = [
             0 => ["pipe", "r"],  // stdin
@@ -196,11 +242,27 @@ class ClaudeCodeService
 
         // --include-partial-messages enables token-by-token streaming from Claude API
         $command = "{$this->cliPath} --print --output-format stream-json --verbose --include-partial-messages";
-        $cwd = $cwd ?? config('claude.working_directory');
+
+        // Add session management flags
+        if ($sessionId) {
+            if ($isFirstMessage) {
+                $command .= " --session-id {$sessionId}";
+            } else {
+                $command .= " --resume {$sessionId}";
+            }
+        }
+
+        // Add option flags
+        $command .= $this->buildCommandFlags($options);
+
+        $cwd = $options['cwd'] ?? config('claude.working_directory');
 
         $this->log('debug', 'Executing Claude Code (streaming)', [
             'command' => $command,
-            'cwd' => $cwd
+            'cwd' => $cwd,
+            'sessionId' => $sessionId,
+            'isFirstMessage' => $isFirstMessage,
+            'prompt_length' => strlen($prompt)
         ]);
 
         $process = proc_open($command, $descriptorspec, $pipes, $cwd);
@@ -209,8 +271,8 @@ class ClaudeCodeService
             throw new ClaudeCodeException('Failed to start Claude Code process');
         }
 
-        // Write input
-        fwrite($pipes[0], $input);
+        // Write plain text prompt to stdin
+        fwrite($pipes[0], $prompt);
         fclose($pipes[0]);
 
         // Set non-blocking mode for streaming

@@ -63,11 +63,18 @@ class ClaudeController extends Controller
         }
 
         try {
+            // Determine if this is the first message
+            $isFirstMessage = $session->turn_count == 0;
+
             $session->addMessage('user', $request->input('prompt'));
 
             $options = array_merge(
                 $request->input('options', []),
-                ['cwd' => $session->project_path]
+                [
+                    'cwd' => $session->project_path,
+                    'sessionId' => $session->claude_session_id,
+                    'isFirstMessage' => $isFirstMessage
+                ]
             );
 
             $response = $this->claude->query(
@@ -108,9 +115,12 @@ class ClaudeController extends Controller
             ], 422);
         }
 
+        // Determine if this is the first message (before adding current message)
+        $isFirstMessage = $session->turn_count == 0;
+
         $session->addMessage('user', $request->input('prompt'));
 
-        return response()->stream(function () use ($request, $session) {
+        return response()->stream(function () use ($request, $session, $isFirstMessage) {
             // Disable all output buffering for true streaming
             while (ob_get_level() > 0) {
                 ob_end_flush();
@@ -118,18 +128,87 @@ class ClaudeController extends Controller
 
             $options = array_merge(
                 $request->input('options', []),
-                ['cwd' => $session->project_path]
+                [
+                    'cwd' => $session->project_path,
+                    'sessionId' => $session->claude_session_id,
+                    'isFirstMessage' => $isFirstMessage
+                ]
             );
+
+            // Accumulate the assistant's response content (structured)
+            $assistantContent = [];
+            $currentBlockIndex = -1;
 
             try {
                 $this->claude->streamQuery(
                     $request->input('prompt'),
-                    function ($message) {
+                    function ($message) use (&$assistantContent, &$currentBlockIndex) {
+                        // Track assistant message content blocks
+                        if (isset($message['type']) && $message['type'] === 'assistant') {
+                            // Complete assistant message with content array
+                            if (isset($message['message']['content']) && is_array($message['message']['content'])) {
+                                $assistantContent = $message['message']['content'];
+                            }
+                        }
+
+                        // Track content blocks during streaming
+                        if (isset($message['event']['type'])) {
+                            $eventType = $message['event']['type'];
+
+                            if ($eventType === 'content_block_start') {
+                                $currentBlockIndex++;
+                                $block = $message['event']['content_block'] ?? [];
+                                $assistantContent[$currentBlockIndex] = $block;
+                            } elseif ($eventType === 'content_block_delta' && $currentBlockIndex >= 0) {
+                                $delta = $message['event']['delta'] ?? [];
+
+                                // Accumulate text deltas
+                                if (isset($delta['text'])) {
+                                    if (!isset($assistantContent[$currentBlockIndex]['type'])) {
+                                        $assistantContent[$currentBlockIndex]['type'] = 'text';
+                                    }
+                                    if (!isset($assistantContent[$currentBlockIndex]['text'])) {
+                                        $assistantContent[$currentBlockIndex]['text'] = '';
+                                    }
+                                    $assistantContent[$currentBlockIndex]['text'] .= $delta['text'];
+                                }
+
+                                // Accumulate thinking deltas
+                                if (isset($delta['thinking'])) {
+                                    if (!isset($assistantContent[$currentBlockIndex]['thinking'])) {
+                                        $assistantContent[$currentBlockIndex]['thinking'] = '';
+                                    }
+                                    $assistantContent[$currentBlockIndex]['thinking'] .= $delta['thinking'];
+                                }
+
+                                // Accumulate tool input JSON deltas
+                                if (isset($delta['partial_json'])) {
+                                    if (!isset($assistantContent[$currentBlockIndex]['input_json'])) {
+                                        $assistantContent[$currentBlockIndex]['input_json'] = '';
+                                    }
+                                    $assistantContent[$currentBlockIndex]['input_json'] .= $delta['partial_json'];
+                                }
+                            }
+                        }
+
                         echo "data: " . json_encode($message) . "\n\n";
                         flush();
                     },
                     $options
                 );
+
+                // Parse tool input JSON and save structured content
+                foreach ($assistantContent as &$block) {
+                    if (isset($block['input_json'])) {
+                        $block['input'] = json_decode($block['input_json'], true);
+                        unset($block['input_json']);
+                    }
+                }
+
+                // Save the accumulated assistant response with full structure
+                if (!empty($assistantContent)) {
+                    $session->addMessage('assistant', $assistantContent);
+                }
 
                 $session->markCompleted();
             } catch (\Exception $e) {
@@ -210,21 +289,35 @@ class ClaudeController extends Controller
         foreach ($files as $file) {
             $sessionId = basename($file, '.jsonl');
 
-            // Read first line to get initial prompt
+            // Read lines to get the first real user prompt (skip "Warmup" messages)
             if ($handle = fopen($file, 'r')) {
-                $firstLine = fgets($handle);
+                $prompt = 'Unnamed session';
+                $timestamp = null;
+
+                while (($line = fgets($handle)) !== false) {
+                    $data = json_decode($line, true);
+
+                    if ($data && $data['type'] === 'user') {
+                        $extractedPrompt = $this->extractPrompt($data);
+
+                        // Skip "Warmup" messages and look for the first real prompt
+                        if (strtolower(trim($extractedPrompt)) !== 'warmup') {
+                            $prompt = $extractedPrompt;
+                            $timestamp = $data['timestamp'] ?? null;
+                            break;
+                        }
+                    }
+                }
+
                 fclose($handle);
 
-                if ($firstLine) {
-                    $data = json_decode($firstLine, true);
-                    $sessions[] = [
-                        'id' => $sessionId,
-                        'timestamp' => $data['timestamp'] ?? null,
-                        'prompt' => $this->extractPrompt($data),
-                        'file_size' => filesize($file),
-                        'modified' => filemtime($file),
-                    ];
-                }
+                $sessions[] = [
+                    'id' => $sessionId,
+                    'timestamp' => $timestamp,
+                    'prompt' => $prompt,
+                    'file_size' => filesize($file),
+                    'modified' => filemtime($file),
+                ];
             }
         }
 
@@ -282,11 +375,12 @@ class ClaudeController extends Controller
             $content = $data['message']['content'];
 
             if (is_string($content)) {
-                // Try to parse as JSON first
+                // Try to parse as JSON first (CLI sends {"prompt":"..."})
                 $decoded = json_decode($content, true);
-                if (isset($decoded['prompt'])) {
+                if (json_last_error() === JSON_ERROR_NONE && isset($decoded['prompt'])) {
                     return substr($decoded['prompt'], 0, 100);
                 }
+                // Otherwise return the plain string content
                 return substr($content, 0, 100);
             }
 
@@ -300,8 +394,9 @@ class ClaudeController extends Controller
 
     /**
      * Extract message content from session data.
+     * Returns the full content structure including thinking, tool calls, etc.
      */
-    protected function extractContent(array $data): string
+    protected function extractContent(array $data): mixed
     {
         if (!isset($data['message']['content'])) {
             return '';
@@ -309,22 +404,7 @@ class ClaudeController extends Controller
 
         $content = $data['message']['content'];
 
-        // Handle string content
-        if (is_string($content)) {
-            return $content;
-        }
-
-        // Handle array content (API response format)
-        if (is_array($content)) {
-            $text = '';
-            foreach ($content as $item) {
-                if (isset($item['type']) && $item['type'] === 'text' && isset($item['text'])) {
-                    $text .= $item['text'];
-                }
-            }
-            return $text;
-        }
-
-        return '';
+        // Return content as-is (could be string or structured array)
+        return $content;
     }
 }

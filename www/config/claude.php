@@ -93,11 +93,33 @@ return [
     |--------------------------------------------------------------------------
     |
     | Default working directory for Claude Code operations.
-    | Defaults to the Laravel base path.
+    | This is where Claude Code will start and where relative paths resolve from.
+    |
+    | Set to '/' to allow access to both /workspace and /pocketdev-source.
+    | Claude Code restricts file access to the working directory and subdirectories.
     |
     */
 
-    'working_directory' => env('CLAUDE_WORKING_DIR', base_path()),
+    'working_directory' => env('CLAUDE_WORKING_DIR', '/'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Accessible Directories
+    |--------------------------------------------------------------------------
+    |
+    | List of directories that Claude Code commonly needs to access.
+    | This is for documentation purposes - Claude Code can access any directory
+    | the www-data user has permissions for.
+    |
+    | Primary: /workspace (default working directory for user projects)
+    | Secondary: /pocketdev-source (PocketDev source code)
+    |
+    */
+
+    'accessible_directories' => [
+        'workspace' => '/workspace',
+        'source' => '/pocketdev-source',
+    ],
 
     /*
     |--------------------------------------------------------------------------
