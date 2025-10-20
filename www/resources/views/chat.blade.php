@@ -429,15 +429,16 @@
             // Prepare for assistant response
             let thinkingMsgId = null;
             let assistantMsgId = null;
-            let toolCallMsgId = null;
             let thinkingContent = '';
             let textContent = '';
-            let toolCallContent = '';
             let currentBlockType = null;
-            let currentToolName = '';
-            let currentToolId = '';
             let lastExpandedBlockId = null;
+
+            // Tool call tracking (can have multiple parallel tools)
+            let toolBlocks = {};  // Map block index to {msgId, name, content, toolId}
+            let currentBlockIndex = -1;
             let toolBlockMap = {};  // Map tool_use_id to block ID for updating results
+            let hasReceivedStreamingDeltas = false;  // Track if we're in streaming mode
 
             try {
                 // Send prompt with thinking keyword to start streaming
@@ -485,6 +486,7 @@
                                     // Track content block start
                                     if (event.type === 'content_block_start') {
                                         currentBlockType = event.content_block?.type;
+                                        currentBlockIndex = event.index ?? currentBlockIndex + 1;
 
                                         // If starting a new collapsible block (thinking or tool_use), collapse the previous one
                                         if ((currentBlockType === 'thinking' || currentBlockType === 'tool_use') && lastExpandedBlockId) {
@@ -501,16 +503,21 @@
                                             textContent = '';
                                             assistantMsgId = null;
                                         } else if (currentBlockType === 'tool_use') {
-                                            // New tool block
-                                            currentToolName = event.content_block?.name || 'Unknown Tool';
-                                            currentToolId = event.content_block?.id || '';
-                                            toolCallContent = '';
-                                            toolCallMsgId = null;
+                                            // New tool block - initialize tracking for this specific block index
+                                            const toolName = event.content_block?.name || 'Unknown Tool';
+                                            const toolId = event.content_block?.id || '';
+                                            toolBlocks[currentBlockIndex] = {
+                                                msgId: null,
+                                                name: toolName,
+                                                content: '',
+                                                toolId: toolId
+                                            };
                                         }
                                     }
 
                                     // Handle thinking deltas
                                     if (event.type === 'content_block_delta' && event.delta?.type === 'thinking_delta') {
+                                        hasReceivedStreamingDeltas = true;
                                         thinkingContent += event.delta.thinking || '';
                                         if (!thinkingMsgId) {
                                             thinkingMsgId = addMsg('thinking', thinkingContent);
@@ -522,32 +529,59 @@
 
                                     // Handle tool use deltas (input_json_delta)
                                     if (event.type === 'content_block_delta' && event.delta?.type === 'input_json_delta') {
-                                        toolCallContent += event.delta.partial_json || '';
-                                        if (!toolCallMsgId) {
-                                            toolCallMsgId = addMsg('tool', {name: currentToolName, input: toolCallContent, result: null});
-                                            lastExpandedBlockId = toolCallMsgId;
-                                            // Store mapping for result updates
-                                            if (currentToolId) {
-                                                toolBlockMap[currentToolId] = toolCallMsgId;
+                                        hasReceivedStreamingDeltas = true;
+                                        const blockIndex = event.index ?? currentBlockIndex;
+                                        const toolBlock = toolBlocks[blockIndex];
+
+                                        if (toolBlock) {
+                                            toolBlock.content += event.delta.partial_json || '';
+
+                                            if (!toolBlock.msgId) {
+                                                // Create new tool block
+                                                toolBlock.msgId = addMsg('tool', {
+                                                    name: toolBlock.name,
+                                                    input: toolBlock.content,
+                                                    result: null
+                                                });
+                                                lastExpandedBlockId = toolBlock.msgId;
+
+                                                // Store mapping for result updates
+                                                if (toolBlock.toolId) {
+                                                    toolBlockMap[toolBlock.toolId] = toolBlock.msgId;
+                                                }
+                                            } else {
+                                                // Update existing tool block
+                                                updateMsg(toolBlock.msgId, {
+                                                    name: toolBlock.name,
+                                                    input: toolBlock.content,
+                                                    result: null
+                                                });
                                             }
-                                        } else {
-                                            updateMsg(toolCallMsgId, {name: currentToolName, input: toolCallContent, result: null});
                                         }
                                     }
 
                                     // Handle text deltas
                                     if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
-                                        // If we have an expanded block (thinking/tool), collapse it when text starts
-                                        if (lastExpandedBlockId) {
-                                            collapseBlock(lastExpandedBlockId);
-                                            lastExpandedBlockId = null;
-                                        }
-
+                                        hasReceivedStreamingDeltas = true;
                                         textContent += event.delta.text || '';
-                                        if (!assistantMsgId) {
-                                            assistantMsgId = addMsg('assistant', textContent);
-                                        } else {
+
+                                        // Only create block after we have at least some real content (not just whitespace/newlines)
+                                        const trimmedContent = textContent.trim();
+
+                                        if (assistantMsgId) {
+                                            // Block already exists, just update it
                                             updateMsg(assistantMsgId, textContent);
+                                        } else if (trimmedContent.length >= 3) {
+                                            // Create new block only when we have substantial content (at least 3 chars)
+                                            // This prevents brief empty blocks from appearing
+
+                                            // If we have an expanded block (thinking/tool), collapse it when real text starts
+                                            if (lastExpandedBlockId) {
+                                                collapseBlock(lastExpandedBlockId);
+                                                lastExpandedBlockId = null;
+                                            }
+
+                                            assistantMsgId = addMsg('assistant', textContent);
                                         }
                                     }
                                 }
@@ -556,39 +590,47 @@
                                 if (data.type === 'user' && data.message && data.message.content) {
                                     for (const item of data.message.content) {
                                         if (item.type === 'tool_result' && item.tool_use_id) {
-                                            const blockId = toolBlockMap[item.tool_use_id];
-                                            if (blockId) {
-                                                // Get the current tool data from the block
-                                                const block = document.getElementById(blockId);
-                                                if (block) {
+                                            const msgId = toolBlockMap[item.tool_use_id];
+                                            if (msgId) {
+                                                // Find the tool block that matches this message ID
+                                                let toolBlockData = null;
+                                                for (const idx in toolBlocks) {
+                                                    if (toolBlocks[idx].msgId === msgId) {
+                                                        toolBlockData = toolBlocks[idx];
+                                                        break;
+                                                    }
+                                                }
+
+                                                if (toolBlockData) {
                                                     // Update with result
                                                     const toolData = {
-                                                        name: currentToolName,
-                                                        input: toolCallContent,
+                                                        name: toolBlockData.name,
+                                                        input: toolBlockData.content,
                                                         result: item.content
                                                     };
-                                                    updateMsg(blockId, toolData);
+                                                    updateMsg(msgId, toolData);
                                                 }
                                             }
-                                            // Reset tool call tracking for next tool
-                                            toolCallMsgId = null;
-                                            toolCallContent = '';
                                         }
                                     }
                                 }
 
                                 // Handle complete assistant messages (fallback for non-streaming only)
                                 if (data.type === 'assistant' && data.message && data.message.content) {
-                                    // Only use this if we haven't received any streaming deltas
-                                    if (!assistantMsgId) {
+                                    // Only use this if we're NOT in streaming mode and haven't created a block yet
+                                    if (!hasReceivedStreamingDeltas && !assistantMsgId) {
+                                        let completeText = '';
                                         for (const contentItem of data.message.content) {
                                             if (contentItem.type === 'text' && contentItem.text) {
-                                                textContent += contentItem.text;
+                                                completeText += contentItem.text;
                                             }
                                         }
-                                        assistantMsgId = addMsg('assistant', textContent);
+                                        // Only create block if there's actual content
+                                        if (completeText.trim().length > 0) {
+                                            assistantMsgId = addMsg('assistant', completeText);
+                                        }
                                     }
-                                    // If we already have content from streaming, ignore this complete message
+                                    // If we're streaming or already have content, ignore this complete message
                                 }
 
                             } catch (parseErr) {
