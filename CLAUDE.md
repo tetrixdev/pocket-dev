@@ -45,12 +45,14 @@ docker exec pocket-dev-php chown -R www-data:www-data /var/www/.claude
   - Handles both sync and streaming responses
   - Credentials path: `/var/www/.claude/.credentials.json` (www-data user)
 
-- `app/Models/ClaudeSession.php` - Database model for chat sessions
-  - Stores conversation history as JSON in `messages` column
-  - Tracks turn count, project path, model used
+- `app/Models/ClaudeSession.php` - Database model for session metadata
+  - Stores only metadata: title, project_path, claude_session_id, turn_count, status
+  - Messages stored in Claude's native .jsonl files (single source of truth)
+  - Uses `incrementTurn()` to track conversation progress
 
 - `app/Http/Controllers/Api/ClaudeController.php` - RESTful API
-  - 7 endpoints: list/create/show/delete sessions, query, stream, status
+  - 6 endpoints: status, list/create sessions, stream, list/load .jsonl sessions
+  - Streaming passes through Claude CLI output without storing content
   - Returns Claude's JSON response structure with `result` field
 
 - `app/Http/Controllers/ClaudeAuthController.php` - Authentication management
@@ -84,9 +86,11 @@ Web routes (in order - placement matters):
 API routes (no auth required from internal):
 ```
 /api/claude/status - CLI availability check
-/api/claude/sessions - CRUD operations
-/api/claude/sessions/{session}/query - Synchronous query
+/api/claude/sessions - List sessions (metadata only)
+/api/claude/sessions - Create session (metadata only)
 /api/claude/sessions/{session}/stream - Streaming query (SSE)
+/api/claude/claude-sessions - List Claude's native .jsonl sessions
+/api/claude/claude-sessions/{sessionId} - Load messages from .jsonl file
 ```
 
 ## Development Commands
@@ -235,12 +239,13 @@ curl -u admin:damage1993 -X POST http://192.168.1.175/claude/auth/upload-json \
   -H "Content-Type: application/json" \
   -d '{"json":"{\"claudeAiOauth\":{\"accessToken\":\"...\",\"refreshToken\":\"...\",\"expiresAt\":...}}"}'
 
-# 3. Test query
+# 3. Test streaming query
 curl -u admin:damage1993 -X POST http://192.168.1.175/api/claude/sessions \
   -H "Content-Type: application/json" \
   -d '{"title":"Test","project_path":"/var/www"}'
 
-curl -u admin:damage1993 -X POST http://192.168.1.175/api/claude/sessions/1/query \
+# Use /stream endpoint (returns Server-Sent Events)
+curl -u admin:damage1993 -N -X POST http://192.168.1.175/api/claude/sessions/1/stream \
   -H "Content-Type: application/json" \
   -d '{"prompt":"What is 5+3?"}'
 ```
