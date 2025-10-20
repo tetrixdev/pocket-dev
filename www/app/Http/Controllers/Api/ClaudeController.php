@@ -45,58 +45,6 @@ class ClaudeController extends Controller
         ], 201);
     }
 
-    /**
-     * Send a query to Claude (non-streaming).
-     */
-    public function query(Request $request, ClaudeSession $session): JsonResponse
-    {
-        $validator = Validator::make($request->all(), [
-            'prompt' => 'required|string',
-            'options' => 'nullable|array',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'error' => 'Validation failed',
-                'messages' => $validator->errors()
-            ], 422);
-        }
-
-        try {
-            // Determine if this is the first message
-            $isFirstMessage = $session->turn_count == 0;
-
-            $session->addMessage('user', $request->input('prompt'));
-
-            $options = array_merge(
-                $request->input('options', []),
-                [
-                    'cwd' => $session->project_path,
-                    'sessionId' => $session->claude_session_id,
-                    'isFirstMessage' => $isFirstMessage
-                ]
-            );
-
-            $response = $this->claude->query(
-                $request->input('prompt'),
-                $options
-            );
-
-            $session->addMessage('assistant', $response);
-
-            return response()->json([
-                'session' => $session->fresh(),
-                'response' => $response,
-            ]);
-        } catch (\Exception $e) {
-            $session->markFailed();
-
-            return response()->json([
-                'error' => 'Query failed',
-                'message' => $e->getMessage(),
-            ], 500);
-        }
-    }
 
     /**
      * Send a streaming query to Claude (Server-Sent Events).
@@ -115,10 +63,11 @@ class ClaudeController extends Controller
             ], 422);
         }
 
-        // Determine if this is the first message (before adding current message)
+        // Determine if this is the first message
         $isFirstMessage = $session->turn_count == 0;
 
-        $session->addMessage('user', $request->input('prompt'));
+        // Increment turn count (messages are stored in .jsonl by Claude CLI)
+        $session->incrementTurn();
 
         return response()->stream(function () use ($request, $session, $isFirstMessage) {
             // Disable all output buffering for true streaming
@@ -135,80 +84,17 @@ class ClaudeController extends Controller
                 ]
             );
 
-            // Accumulate the assistant's response content (structured)
-            $assistantContent = [];
-            $currentBlockIndex = -1;
-
             try {
                 $this->claude->streamQuery(
                     $request->input('prompt'),
-                    function ($message) use (&$assistantContent, &$currentBlockIndex) {
-                        // Track assistant message content blocks
-                        if (isset($message['type']) && $message['type'] === 'assistant') {
-                            // Complete assistant message with content array
-                            if (isset($message['message']['content']) && is_array($message['message']['content'])) {
-                                $assistantContent = $message['message']['content'];
-                            }
-                        }
-
-                        // Track content blocks during streaming
-                        if (isset($message['event']['type'])) {
-                            $eventType = $message['event']['type'];
-
-                            if ($eventType === 'content_block_start') {
-                                $currentBlockIndex++;
-                                $block = $message['event']['content_block'] ?? [];
-                                $assistantContent[$currentBlockIndex] = $block;
-                            } elseif ($eventType === 'content_block_delta' && $currentBlockIndex >= 0) {
-                                $delta = $message['event']['delta'] ?? [];
-
-                                // Accumulate text deltas
-                                if (isset($delta['text'])) {
-                                    if (!isset($assistantContent[$currentBlockIndex]['type'])) {
-                                        $assistantContent[$currentBlockIndex]['type'] = 'text';
-                                    }
-                                    if (!isset($assistantContent[$currentBlockIndex]['text'])) {
-                                        $assistantContent[$currentBlockIndex]['text'] = '';
-                                    }
-                                    $assistantContent[$currentBlockIndex]['text'] .= $delta['text'];
-                                }
-
-                                // Accumulate thinking deltas
-                                if (isset($delta['thinking'])) {
-                                    if (!isset($assistantContent[$currentBlockIndex]['thinking'])) {
-                                        $assistantContent[$currentBlockIndex]['thinking'] = '';
-                                    }
-                                    $assistantContent[$currentBlockIndex]['thinking'] .= $delta['thinking'];
-                                }
-
-                                // Accumulate tool input JSON deltas
-                                if (isset($delta['partial_json'])) {
-                                    if (!isset($assistantContent[$currentBlockIndex]['input_json'])) {
-                                        $assistantContent[$currentBlockIndex]['input_json'] = '';
-                                    }
-                                    $assistantContent[$currentBlockIndex]['input_json'] .= $delta['partial_json'];
-                                }
-                            }
-                        }
-
+                    function ($message) {
+                        // Simply pass through all messages to the client
+                        // Messages are automatically saved to .jsonl by Claude CLI
                         echo "data: " . json_encode($message) . "\n\n";
                         flush();
                     },
                     $options
                 );
-
-                // Parse tool input JSON and save structured content
-                foreach ($assistantContent as &$block) {
-                    if (isset($block['input_json'])) {
-                        $block['input'] = json_decode($block['input_json'], true);
-                        unset($block['input_json']);
-                    }
-                }
-
-                // Save the accumulated assistant response with full structure
-                if (!empty($assistantContent)) {
-                    $session->addMessage('assistant', $assistantContent);
-                }
 
                 $session->markCompleted();
             } catch (\Exception $e) {
@@ -238,23 +124,6 @@ class ClaudeController extends Controller
         return response()->json($sessions);
     }
 
-    /**
-     * Get a specific session.
-     */
-    public function show(ClaudeSession $session): JsonResponse
-    {
-        return response()->json($session);
-    }
-
-    /**
-     * Delete a session.
-     */
-    public function destroy(ClaudeSession $session): JsonResponse
-    {
-        $session->delete();
-
-        return response()->json(['message' => 'Session deleted'], 200);
-    }
 
     /**
      * Check if Claude CLI is available.

@@ -11,8 +11,6 @@ class ClaudeSession extends Model
         'title',
         'project_path',
         'claude_session_id',
-        'messages',
-        'context',
         'model',
         'turn_count',
         'status',
@@ -20,8 +18,6 @@ class ClaudeSession extends Model
     ];
 
     protected $casts = [
-        'messages' => 'array',
-        'context' => 'array',
         'last_activity_at' => 'datetime',
     ];
 
@@ -39,15 +35,8 @@ class ClaudeSession extends Model
         });
     }
 
-    public function addMessage(string $role, mixed $content): void
+    public function incrementTurn(): void
     {
-        $messages = $this->messages ?? [];
-        $messages[] = [
-            'role' => $role,
-            'content' => $content,
-            'timestamp' => now()->toISOString(),
-        ];
-        $this->messages = $messages;
         $this->turn_count++;
         $this->last_activity_at = now();
         $this->save();

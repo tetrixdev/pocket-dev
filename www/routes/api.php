@@ -7,17 +7,14 @@ Route::prefix('claude')->group(function () {
     // Status check
     Route::get('status', [ClaudeController::class, 'status']);
 
-    // Session management
+    // Session management (metadata only)
     Route::get('sessions', [ClaudeController::class, 'index']);
     Route::post('sessions', [ClaudeController::class, 'createSession']);
-    Route::get('sessions/{session}', [ClaudeController::class, 'show']);
-    Route::delete('sessions/{session}', [ClaudeController::class, 'destroy']);
 
-    // Queries
-    Route::post('sessions/{session}/query', [ClaudeController::class, 'query']);
+    // Streaming queries
     Route::post('sessions/{session}/stream', [ClaudeController::class, 'streamQuery']);
 
-    // Claude's native session files
+    // Claude's native session files (.jsonl)
     Route::get('claude-sessions', [ClaudeController::class, 'listClaudeSessions']);
     Route::get('claude-sessions/{sessionId}', [ClaudeController::class, 'loadClaudeSession']);
 });
