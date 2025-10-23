@@ -166,4 +166,29 @@ return [
         'level' => env('CLAUDE_LOG_LEVEL', 'info'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Thinking Modes
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for extended thinking modes. Each mode sets the
+    | MAX_THINKING_TOKENS environment variable for Claude CLI.
+    |
+    | Based on official Claude Code documentation:
+    | - Off: No extended thinking (MAX_THINKING_TOKENS=0)
+    | - Think: ~5K tokens for basic reasoning
+    | - Think Hard: ~10K tokens for moderate reasoning
+    | - Think Harder: ~20K tokens for complex reasoning
+    | - Ultrathink: ~32K tokens for maximum reasoning
+    |
+    */
+
+    'thinking_modes' => [
+        0 => ['name' => 'Off', 'tokens' => 0],
+        1 => ['name' => 'Think', 'tokens' => 4000],          // Official: routine debugging, basic refactoring
+        2 => ['name' => 'Think Hard', 'tokens' => 10000],    // Official "megathink": architectural decisions
+        3 => ['name' => 'Think Harder', 'tokens' => 20000],  // Custom: between megathink and ultrathink
+        4 => ['name' => 'Ultrathink', 'tokens' => 32000],    // Official: most challenging tasks
+    ],
+
 ];

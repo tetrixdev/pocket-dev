@@ -54,6 +54,7 @@ class ClaudeController extends Controller
         $validator = Validator::make($request->all(), [
             'prompt' => 'required|string',
             'options' => 'nullable|array',
+            'thinking_level' => 'nullable|integer|min:0|max:4',
         ]);
 
         if ($validator->fails()) {
@@ -80,9 +81,15 @@ class ClaudeController extends Controller
                 [
                     'cwd' => $session->project_path,
                     'sessionId' => $session->claude_session_id,
-                    'isFirstMessage' => $isFirstMessage
+                    'isFirstMessage' => $isFirstMessage,
+                    'thinking_level' => $request->input('thinking_level', 0)
                 ]
             );
+
+            \Log::info('[Claude Code] About to call streamQuery', [
+                'thinking_level' => $request->input('thinking_level', 0),
+                'options' => $options
+            ]);
 
             try {
                 $this->claude->streamQuery(
@@ -96,10 +103,15 @@ class ClaudeController extends Controller
                     $options
                 );
 
+                \Log::info('[Claude Code] streamQuery completed successfully');
                 $session->markCompleted();
             } catch (\Exception $e) {
+                \Log::error('[Claude Code] streamQuery failed', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
                 $session->markFailed();
-                echo "data: " . json_encode(['error' => $e->getMessage()]) . "\n\n";
+                echo "data: " . json_encode(['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]) . "\n\n";
                 flush();
             }
         }, 200, [

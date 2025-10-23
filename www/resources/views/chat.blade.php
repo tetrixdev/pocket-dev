@@ -57,7 +57,7 @@
             <div class="border-t border-gray-700 p-4">
                 <form onsubmit="sendMessage(event)" class="flex gap-2 items-stretch">
                     <input type="text" id="prompt" placeholder="Ask Claude to help with your code..." class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white">
-                    <button type="button" id="thinkingBadge" onclick="cycleThinkingMode()" class="px-4 py-3 rounded-lg font-medium text-sm cursor-pointer transition-all duration-200 hover:opacity-80 flex items-center justify-center" title="Click to toggle extended thinking (or press Shift+T)&#10;Off → Ultrathink (32K tokens)">
+                    <button type="button" id="thinkingBadge" onclick="cycleThinkingMode()" class="px-4 py-3 rounded-lg font-medium text-sm cursor-pointer transition-all duration-200 hover:opacity-80 flex items-center justify-center" title="Click to toggle extended thinking (or press Shift+T)&#10;Off → Think (4K) → Think Hard (10K) → Think Harder (20K) → Ultrathink (32K)">
                         <span id="thinkingIcon">🧠</span>
                         <span id="thinkingText" class="ml-1">Off</span>
                     </button>
@@ -72,10 +72,13 @@
         let claudeSessionId = null;  // Claude UUID for CLI
 
         // Thinking mode management
-        // Only Ultrathink is supported in Claude Code CLI v2.0+ when using --print mode
+        // Using MAX_THINKING_TOKENS environment variable (official method for headless/print mode)
         const thinkingModes = [
-            { level: 0, name: 'Off', icon: '🧠', color: 'bg-gray-600 text-gray-200', keyword: null, budget: 0 },
-            { level: 1, name: 'Ultrathink', icon: '🌟', color: 'bg-yellow-600 text-white', keyword: 'ultrathink', budget: 32000 }
+            { level: 0, name: 'Off', icon: '🧠', color: 'bg-gray-600 text-gray-200', tokens: 0 },
+            { level: 1, name: 'Think', icon: '💭', color: 'bg-blue-600 text-white', tokens: 4000 },
+            { level: 2, name: 'Think Hard', icon: '🤔', color: 'bg-purple-600 text-white', tokens: 10000 },
+            { level: 3, name: 'Think Harder', icon: '🧩', color: 'bg-pink-600 text-white', tokens: 20000 },
+            { level: 4, name: 'Ultrathink', icon: '🌟', color: 'bg-yellow-600 text-white', tokens: 32000 }
         ];
 
         let currentThinkingLevel = 0;
@@ -416,13 +419,7 @@
 
             if (!sessionId) await newSession();
 
-            // Prepend thinking keyword if thinking is enabled
-            const thinkingMode = thinkingModes[currentThinkingLevel];
-            const promptToSend = thinkingMode.keyword
-                ? `${thinkingMode.keyword}: ${originalPrompt}`
-                : originalPrompt;
-
-            // Show original user message (without prefix) in UI
+            // Show user message in UI
             addMsg('user', originalPrompt);
             document.getElementById('prompt').value = '';
 
@@ -441,11 +438,14 @@
             let hasReceivedStreamingDeltas = false;  // Track if we're in streaming mode
 
             try {
-                // Send prompt with thinking keyword to start streaming
+                // Send prompt with thinking level to start streaming
                 const response = await fetch(`${baseUrl}/api/claude/sessions/${sessionId}/stream`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({prompt: promptToSend})
+                    body: JSON.stringify({
+                        prompt: originalPrompt,
+                        thinking_level: currentThinkingLevel
+                    })
                 });
 
                 // Check if request was successful

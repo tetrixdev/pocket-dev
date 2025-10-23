@@ -64,7 +64,8 @@ class ClaudeCodeService
             $prompt,
             $mergedOptions,
             $options['sessionId'] ?? null,
-            $options['isFirstMessage'] ?? true
+            $options['isFirstMessage'] ?? true,
+            $options['thinking_level'] ?? 0
         );
 
         $this->log('info', 'Claude Code query completed successfully');
@@ -91,7 +92,8 @@ class ClaudeCodeService
             $callback,
             $mergedOptions,
             $options['sessionId'] ?? null,
-            $options['isFirstMessage'] ?? true
+            $options['isFirstMessage'] ?? true,
+            $options['thinking_level'] ?? 0
         );
 
         $this->log('info', 'Claude Code streaming query completed');
@@ -138,10 +140,11 @@ class ClaudeCodeService
      * @param array $options Merged options array
      * @param string|null $sessionId Claude session UUID
      * @param bool $isFirstMessage Whether this is the first message in the session
+     * @param int $thinkingLevel Thinking mode level (0-4)
      * @return array Parsed JSON response
      * @throws ClaudeCodeException
      */
-    protected function execute(string $prompt, array $options, ?string $sessionId = null, bool $isFirstMessage = true): array
+    protected function execute(string $prompt, array $options, ?string $sessionId = null, bool $isFirstMessage = true, int $thinkingLevel = 0): array
     {
         $descriptorspec = [
             0 => ["pipe", "r"],  // stdin
@@ -165,15 +168,21 @@ class ClaudeCodeService
 
         $cwd = $options['cwd'] ?? config('claude.working_directory');
 
+        // Build environment variables
+        $env = $this->buildEnvironment($thinkingLevel);
+
         $this->log('debug', 'Executing Claude Code', [
             'command' => $command,
             'cwd' => $cwd,
             'sessionId' => $sessionId,
             'isFirstMessage' => $isFirstMessage,
-            'prompt_length' => strlen($prompt)
+            'prompt_length' => strlen($prompt),
+            'thinking_level' => $thinkingLevel,
+            'max_thinking_tokens' => is_array($env) ? ($env['MAX_THINKING_TOKENS'] ?? 0) : 0
         ]);
 
-        $process = proc_open($command, $descriptorspec, $pipes, $cwd);
+        // Pass null to inherit parent environment if no custom env needed
+        $process = proc_open($command, $descriptorspec, $pipes, $cwd, $env);
 
         if (!is_resource($process)) {
             throw new ClaudeCodeException('Failed to start Claude Code process');
@@ -229,10 +238,11 @@ class ClaudeCodeService
      * @param array $options Merged options array
      * @param string|null $sessionId Claude session UUID
      * @param bool $isFirstMessage Whether this is the first message in the session
+     * @param int $thinkingLevel Thinking mode level (0-4)
      * @return void
      * @throws ClaudeCodeException
      */
-    protected function executeStreaming(string $prompt, callable $callback, array $options, ?string $sessionId = null, bool $isFirstMessage = true): void
+    protected function executeStreaming(string $prompt, callable $callback, array $options, ?string $sessionId = null, bool $isFirstMessage = true, int $thinkingLevel = 0): void
     {
         $descriptorspec = [
             0 => ["pipe", "r"],  // stdin
@@ -257,15 +267,21 @@ class ClaudeCodeService
 
         $cwd = $options['cwd'] ?? config('claude.working_directory');
 
+        // Build environment variables
+        $env = $this->buildEnvironment($thinkingLevel);
+
         $this->log('debug', 'Executing Claude Code (streaming)', [
             'command' => $command,
             'cwd' => $cwd,
             'sessionId' => $sessionId,
             'isFirstMessage' => $isFirstMessage,
-            'prompt_length' => strlen($prompt)
+            'prompt_length' => strlen($prompt),
+            'thinking_level' => $thinkingLevel,
+            'max_thinking_tokens' => is_array($env) ? ($env['MAX_THINKING_TOKENS'] ?? 0) : 0
         ]);
 
-        $process = proc_open($command, $descriptorspec, $pipes, $cwd);
+        // Pass null to inherit parent environment if no custom env needed
+        $process = proc_open($command, $descriptorspec, $pipes, $cwd, $env);
 
         if (!is_resource($process)) {
             throw new ClaudeCodeException('Failed to start Claude Code process');
@@ -322,6 +338,48 @@ class ClaudeCodeService
         if ($returnCode !== 0) {
             throw new ProcessFailedException($returnCode, $stderr);
         }
+    }
+
+    /**
+     * Build environment variables for Claude CLI process.
+     *
+     * @param int $thinkingLevel Thinking mode level (0-4)
+     * @return array|null Environment variables (null to inherit parent environment)
+     */
+    protected function buildEnvironment(int $thinkingLevel): ?array
+    {
+        // Get thinking mode configuration
+        $thinkingModes = config('claude.thinking_modes', []);
+        $thinkingConfig = $thinkingModes[$thinkingLevel] ?? $thinkingModes[0];
+
+        // If thinking is disabled, don't pass custom environment
+        // This allows inheriting the parent environment completely
+        if ($thinkingConfig['tokens'] === 0) {
+            return null;
+        }
+
+        // Build environment array for proc_open
+        // We need to explicitly build this because we're adding MAX_THINKING_TOKENS
+        $env = [];
+
+        // Copy essential environment variables
+        $essentialVars = ['PATH', 'HOME', 'USER', 'SHELL', 'TERM', 'LANG', 'LC_ALL'];
+        foreach ($essentialVars as $var) {
+            $value = getenv($var);
+            if ($value !== false) {
+                $env[$var] = $value;
+            }
+        }
+
+        // Ensure HOME is set for Claude CLI credentials
+        if (!isset($env['HOME'])) {
+            $env['HOME'] = '/var/www';
+        }
+
+        // Set MAX_THINKING_TOKENS based on thinking level
+        $env['MAX_THINKING_TOKENS'] = (string) $thinkingConfig['tokens'];
+
+        return $env;
     }
 
     /**
