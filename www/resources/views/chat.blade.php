@@ -204,6 +204,7 @@
 
         async function loadSession(loadClaudeSessionId) {
             try {
+                console.log('[FRONTEND-LOAD] Loading session:', loadClaudeSessionId);
                 const response = await fetch(baseUrl + `/api/claude/claude-sessions/${loadClaudeSessionId}?project_path=/`);
                 const data = await response.json();
 
@@ -211,6 +212,20 @@
                     console.error('No messages in session');
                     return;
                 }
+
+                console.log('[FRONTEND-LOAD] Received messages from .jsonl:', {
+                    message_count: data.messages.length,
+                    messages: data.messages.map((m, idx) => ({
+                        index: idx,
+                        role: m.role,
+                        content_type: typeof m.content,
+                        content_preview: typeof m.content === 'string'
+                            ? m.content.substring(0, 50)
+                            : Array.isArray(m.content)
+                                ? m.content.map(b => b.type).join(',')
+                                : 'unknown'
+                    }))
+                });
 
                 // Store the Claude session ID for continuing this conversation
                 claudeSessionId = loadClaudeSessionId;
@@ -222,6 +237,7 @@
                     const existingSession = dbData.data?.find(s => s.claude_session_id === claudeSessionId);
                     if (existingSession) {
                         sessionId = existingSession.id;
+                        console.log('[FRONTEND-LOAD] Found existing DB session:', sessionId);
                     } else {
                         // Create a database session for this Claude session
                         const createResponse = await fetch(baseUrl + '/api/claude/sessions', {
@@ -235,6 +251,7 @@
                         });
                         const createData = await createResponse.json();
                         sessionId = createData.session.id;
+                        console.log('[FRONTEND-LOAD] Created new DB session:', sessionId);
                     }
                 } catch (err) {
                     console.warn('Could not create/find database session:', err);
@@ -245,10 +262,12 @@
                 document.getElementById('messages').innerHTML = '';
                 Object.keys(loadedToolBlocks).forEach(key => delete loadedToolBlocks[key]);
 
+                console.log('[FRONTEND-LOAD] Displaying messages from .jsonl file');
                 // Display all messages from the session, parsing content arrays
                 for (const msg of data.messages) {
                     parseAndDisplayMessage(msg.role, msg.content);
                 }
+                console.log('[FRONTEND-LOAD] Finished loading session');
             } catch (err) {
                 console.error('Failed to load session:', err);
                 alert('Failed to load session');
@@ -419,6 +438,12 @@
 
             if (!sessionId) await newSession();
 
+            console.log('[FRONTEND-SEND] Sending new message', {
+                sessionId,
+                claudeSessionId,
+                prompt_preview: originalPrompt.substring(0, 50)
+            });
+
             // Show user message in UI
             addMsg('user', originalPrompt);
             document.getElementById('prompt').value = '';
@@ -438,6 +463,7 @@
             let hasReceivedStreamingDeltas = false;  // Track if we're in streaming mode
 
             try {
+                console.log('[FRONTEND-SEND] Initiating streaming request');
                 // Send prompt with thinking level to start streaming
                 const response = await fetch(`${baseUrl}/api/claude/sessions/${sessionId}/stream`, {
                     method: 'POST',
@@ -470,7 +496,13 @@
                         if (line.startsWith('data: ')) {
                             try {
                                 const data = JSON.parse(line.substring(6));
-                                console.log('Stream data:', data);
+                                console.log('[FRONTEND-SSE] Received SSE event:', {
+                                    type: data.type,
+                                    event_type: data.event?.type,
+                                    is_error: data.is_error,
+                                    message_role: data.message?.role,
+                                    data_preview: JSON.stringify(data).substring(0, 100)
+                                });
 
                                 // Handle error in result
                                 if (data.type === 'result' && data.is_error) {
@@ -657,10 +689,16 @@
         }
 
         function addMsg(role, content) {
-            const id = 'msg-' + Date.now() + '-' + Math.random();
+            const id = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1000000000);
             const isUser = role === 'user';
             const isThinking = role === 'thinking';
             const isTool = role === 'tool';
+
+            console.log('[FRONTEND-UI] addMsg called', {
+                role,
+                content_preview: typeof content === 'string' ? content.substring(0, 50) : typeof content,
+                stack: new Error().stack.split('\n')[2] // Show caller
+            });
 
             let html;
 

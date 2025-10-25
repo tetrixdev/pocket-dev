@@ -15,6 +15,9 @@ class ClaudeSession extends Model
         'turn_count',
         'status',
         'last_activity_at',
+        'process_pid',
+        'process_status',
+        'last_message_index',
     ];
 
     protected $casts = [
@@ -60,5 +63,71 @@ class ClaudeSession extends Model
     public function scopeRecent($query, int $days = 7)
     {
         return $query->where('last_activity_at', '>=', now()->subDays($days));
+    }
+
+    /**
+     * Start streaming process.
+     */
+    public function startStreaming(int $pid): void
+    {
+        $this->update([
+            'process_pid' => $pid,
+            'process_status' => 'streaming',
+            'last_activity_at' => now(),
+        ]);
+    }
+
+    /**
+     * Update process status.
+     */
+    public function updateProcessStatus(string $status): void
+    {
+        $this->update([
+            'process_status' => $status,
+            'last_activity_at' => now(),
+        ]);
+    }
+
+    /**
+     * Increment message index.
+     */
+    public function incrementMessageIndex(): void
+    {
+        $this->increment('last_message_index');
+        $this->touch('last_activity_at');
+    }
+
+    /**
+     * Mark streaming as completed.
+     * Note: This only marks the PROCESS as completed, not the session.
+     * The session remains 'active' for multiple turns of conversation.
+     */
+    public function completeStreaming(): void
+    {
+        $this->update([
+            'process_status' => 'completed',
+            'process_pid' => null,
+            // Don't change session status - it should remain 'active' for multi-turn conversations
+            'last_activity_at' => now(),
+        ]);
+    }
+
+    /**
+     * Mark streaming as cancelled.
+     */
+    public function cancelStreaming(): void
+    {
+        $this->update([
+            'process_status' => 'cancelled',
+            'process_pid' => null,
+        ]);
+    }
+
+    /**
+     * Check if process is currently streaming.
+     */
+    public function isStreaming(): bool
+    {
+        return in_array($this->process_status, ['starting', 'streaming']);
     }
 }

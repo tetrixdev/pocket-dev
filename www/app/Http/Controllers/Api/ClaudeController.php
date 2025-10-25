@@ -51,6 +51,13 @@ class ClaudeController extends Controller
      */
     public function streamQuery(Request $request, ClaudeSession $session): StreamedResponse
     {
+        \Log::info('[ClaudeController] streamQuery called', [
+            'session_id' => $session->id,
+            'claude_session_id' => $session->claude_session_id,
+            'prompt_length' => strlen($request->input('prompt')),
+            'prompt_preview' => substr($request->input('prompt'), 0, 50),
+        ]);
+
         $validator = Validator::make($request->all(), [
             'prompt' => 'required|string',
             'options' => 'nullable|array',
@@ -58,6 +65,9 @@ class ClaudeController extends Controller
         ]);
 
         if ($validator->fails()) {
+            \Log::error('[ClaudeController] Validation failed', [
+                'errors' => $validator->errors()
+            ]);
             return response()->json([
                 'error' => 'Validation failed',
                 'messages' => $validator->errors()
@@ -67,7 +77,15 @@ class ClaudeController extends Controller
         // Determine if this is the first message
         $isFirstMessage = $session->turn_count == 0;
 
-        // Increment turn count (messages are stored in .jsonl by Claude CLI)
+        \Log::info('[ClaudeController] Starting stream', [
+            'session_id' => $session->id,
+            'turn_count' => $session->turn_count,
+            'is_first_message' => $isFirstMessage,
+            'current_process_pid' => $session->process_pid,
+            'current_process_status' => $session->process_status,
+        ]);
+
+        // Increment turn count
         $session->incrementTurn();
 
         return response()->stream(function () use ($request, $session, $isFirstMessage) {
@@ -80,38 +98,234 @@ class ClaudeController extends Controller
                 $request->input('options', []),
                 [
                     'cwd' => $session->project_path,
-                    'sessionId' => $session->claude_session_id,
-                    'isFirstMessage' => $isFirstMessage,
-                    'thinking_level' => $request->input('thinking_level', 0)
+                    'model' => config('claude.model'),
+                    'permission_mode' => config('claude.permission_mode'),
                 ]
             );
 
-            \Log::info('[Claude Code] About to call streamQuery', [
-                'thinking_level' => $request->input('thinking_level', 0),
-                'options' => $options
-            ]);
+            $stdoutPath = "/tmp/claude-{$session->claude_session_id}-stdout.jsonl";
 
             try {
-                $this->claude->streamQuery(
-                    $request->input('prompt'),
-                    function ($message) {
-                        // Simply pass through all messages to the client
-                        // Messages are automatically saved to .jsonl by Claude CLI
-                        echo "data: " . json_encode($message) . "\n\n";
-                        flush();
-                    },
-                    $options
-                );
+                // Refresh session from DB to get latest process state
+                $session->refresh();
 
-                \Log::info('[Claude Code] streamQuery completed successfully');
-                $session->markCompleted();
+                // Determine if this is a new turn or reconnection to in-progress stream
+                $hasPid = !empty($session->process_pid);
+                $processAlive = $hasPid ? $this->claude->isProcessAlive($session->process_pid) : false;
+                $isNewTurn = !$hasPid || !$processAlive;
+
+                \Log::info('[ClaudeController] DEBUG: Stream type detection', [
+                    'session_process_pid' => $session->process_pid,
+                    'session_process_status' => $session->process_status,
+                    'session_status' => $session->status,
+                    'has_pid' => $hasPid,
+                    'process_alive_check' => $processAlive,
+                    'is_new_turn' => $isNewTurn,
+                    'logic' => 'is_new_turn = !has_pid || !process_alive'
+                ]);
+
+                // Start background process if this is a new turn
+                if ($isNewTurn) {
+                    \Log::info('[ClaudeController] Starting NEW background process for new turn');
+
+                    $pid = $this->claude->startBackgroundProcess(
+                        $request->input('prompt'),
+                        $options,
+                        $session->claude_session_id,
+                        $isFirstMessage,
+                        $request->input('thinking_level', 0)
+                    );
+
+                    $session->startStreaming($pid);
+
+                    // Log file status immediately after process start
+                    \Log::info('[ClaudeController] Background process started', [
+                        'pid' => $pid,
+                        'file_exists_before_sleep' => file_exists($stdoutPath),
+                        'file_size_before_sleep' => file_exists($stdoutPath) ? filesize($stdoutPath) : 0
+                    ]);
+
+                    // Give process a moment to start writing
+                    usleep(100000); // 100ms
+
+                    \Log::info('[ClaudeController] After 100ms sleep', [
+                        'file_exists_after_sleep' => file_exists($stdoutPath),
+                        'file_size_after_sleep' => file_exists($stdoutPath) ? filesize($stdoutPath) : 0
+                    ]);
+                }
+
+                // Read existing lines ONLY if reconnecting to in-progress stream
+                // For new turns, skip old data and start from current file position
+                $linesSent = 0;
+                if (!$isNewTurn && file_exists($stdoutPath)) {
+                    \Log::info('[ClaudeController] RECONNECTION: Replaying existing lines from in-progress stream');
+                    $existingLines = @file($stdoutPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+                    \Log::info('[ClaudeController] Reading existing lines', [
+                        'file_size' => filesize($stdoutPath),
+                        'lines_count' => count($existingLines),
+                        'line_previews' => array_map(function($line) {
+                            $decoded = json_decode($line, true);
+                            return [
+                                'type' => $decoded['type'] ?? 'unknown',
+                                'message_role' => $decoded['message']['role'] ?? null,
+                                'event_type' => $decoded['event']['type'] ?? null,
+                            ];
+                        }, array_slice($existingLines, 0, 5))
+                    ]);
+                    foreach ($existingLines as $idx => $line) {
+                        \Log::debug("[ClaudeController] Sending existing line {$idx}: " . substr($line, 0, 100));
+                        echo "data: {$line}\n\n";
+                        flush();
+                        $linesSent++;
+                    }
+                } elseif ($isNewTurn && file_exists($stdoutPath)) {
+                    \Log::info('[ClaudeController] NEW TURN: Skipping old data, will tail only new content', [
+                        'existing_file_size' => filesize($stdoutPath)
+                    ]);
+                } else {
+                    \Log::warning('[ClaudeController] Output file does not exist yet');
+                }
+
+                // Track file position for tailing
+                $lastSize = file_exists($stdoutPath) ? filesize($stdoutPath) : 0;
+                $lastPosition = $lastSize; // Start from current position (end of file for new turns, or after replayed lines for reconnection)
+
+                \Log::info('[ClaudeController] Starting tail with clearstatcache approach', [
+                    'existing_lines' => $linesSent,
+                    'pid' => $session->process_pid,
+                    'file_exists' => file_exists($stdoutPath),
+                    'initial_file_size' => $lastSize,
+                    'starting_position' => $lastPosition
+                ]);
+
+                // Tail for new lines while process is running
+                $maxWaitTime = 300; // 5 minutes max
+                $startTime = time();
+                $loopCount = 0;
+                $linesRead = 0;
+                $noGrowthCount = 0;
+
+                while (true) {
+                    $loopCount++;
+
+                    // Clear stat cache to get fresh file size
+                    clearstatcache(false, $stdoutPath);
+                    $currentSize = file_exists($stdoutPath) ? filesize($stdoutPath) : 0;
+
+                    // Check if file has grown
+                    if ($currentSize > $lastSize) {
+                        $noGrowthCount = 0; // Reset no-growth counter
+
+                        // Open file, seek to last position, read new data
+                        $file = fopen($stdoutPath, 'r');
+                        if ($file) {
+                            fseek($file, $lastPosition);
+
+                            // Read all new lines
+                            while (!feof($file)) {
+                                $line = fgets($file);
+                                if ($line !== false && trim($line) !== '') {
+                                    $linesRead++;
+                                    echo "data: " . trim($line) . "\n\n";
+                                    flush();
+                                }
+                            }
+
+                            // Update position
+                            $lastPosition = ftell($file);
+                            fclose($file);
+
+                            $lastSize = $currentSize;
+                        }
+                    } else {
+                        // No growth detected
+                        $noGrowthCount++;
+
+                        // Check if process finished
+                        $processAlive = $this->claude->isProcessAlive($session->process_pid);
+
+                        if (!$processAlive) {
+                            // Process died, do one final read to catch any remaining data
+                            clearstatcache(false, $stdoutPath);
+                            $finalSize = file_exists($stdoutPath) ? filesize($stdoutPath) : 0;
+
+                            if ($finalSize > $lastSize) {
+                                $file = fopen($stdoutPath, 'r');
+                                if ($file) {
+                                    fseek($file, $lastPosition);
+                                    while (!feof($file)) {
+                                        $line = fgets($file);
+                                        if ($line !== false && trim($line) !== '') {
+                                            $linesRead++;
+                                            echo "data: " . trim($line) . "\n\n";
+                                            flush();
+                                        }
+                                    }
+                                    fclose($file);
+                                }
+                            }
+
+                            \Log::info('[ClaudeController] Process finished', [
+                                'loop_iterations' => $loopCount,
+                                'lines_read_in_tail' => $linesRead,
+                                'final_file_size' => $finalSize
+                            ]);
+                            break;
+                        }
+
+                        // If no growth for 10 seconds after process died, assume done
+                        if (!$processAlive && $noGrowthCount > 200) {
+                            \Log::info('[ClaudeController] No growth after process finished', [
+                                'no_growth_iterations' => $noGrowthCount
+                            ]);
+                            break;
+                        }
+                    }
+
+                    // Check timeout
+                    if ((time() - $startTime) > $maxWaitTime) {
+                        \Log::warning('[ClaudeController] Timeout reached', [
+                            'loop_iterations' => $loopCount,
+                            'lines_read_in_tail' => $linesRead
+                        ]);
+                        break;
+                    }
+
+                    // Wait 50ms before next check
+                    usleep(50000);
+
+                    // Log every 100 iterations (every ~5 seconds)
+                    if ($loopCount % 100 === 0) {
+                        \Log::info('[ClaudeController] Tail loop status', [
+                            'loop_count' => $loopCount,
+                            'lines_read' => $linesRead,
+                            'process_alive' => $this->claude->isProcessAlive($session->process_pid),
+                            'current_file_size' => $currentSize,
+                            'last_position' => $lastPosition,
+                            'elapsed_seconds' => time() - $startTime
+                        ]);
+                    }
+                }
+
+                \Log::info('[ClaudeController] Closing and completing', [
+                    'total_lines_sent' => $linesSent,
+                    'lines_read_in_tail' => $linesRead,
+                    'total_loop_iterations' => $loopCount
+                ]);
+
+                $session->completeStreaming();
+
+                \Log::info('[ClaudeController] Session state after completion', [
+                    'process_pid' => $session->process_pid,
+                    'process_status' => $session->process_status,
+                ]);
+
             } catch (\Exception $e) {
-                \Log::error('[Claude Code] streamQuery failed', [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                \Log::error('[ClaudeController] Streaming failed', [
+                    'error' => $e->getMessage()
                 ]);
                 $session->markFailed();
-                echo "data: " . json_encode(['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]) . "\n\n";
+                echo "data: " . json_encode(['type' => 'error', 'error' => $e->getMessage()]) . "\n\n";
                 flush();
             }
         }, 200, [
@@ -121,6 +335,53 @@ class ClaudeController extends Controller
             'X-Accel-Buffering' => 'no',
         ]);
     }
+
+    /**
+     * Get historical streaming messages for reconnection.
+     */
+    public function getStreamingHistory(ClaudeSession $session): JsonResponse
+    {
+        $stdoutPath = "/tmp/claude-{$session->claude_session_id}-stdout.jsonl";
+
+        if (!file_exists($stdoutPath)) {
+            return response()->json(['messages' => []]);
+        }
+
+        // Read all messages from stdout file
+        $lines = @file($stdoutPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $messages = [];
+
+        if ($lines) {
+            foreach ($lines as $line) {
+                $message = json_decode($line, true);
+                if ($message) {
+                    $messages[] = $message;
+                }
+            }
+        }
+
+        return response()->json([
+            'messages' => $messages,
+            'last_index' => count($messages),
+        ]);
+    }
+
+    /**
+     * Get session status.
+     */
+    public function getSessionStatus(ClaudeSession $session): JsonResponse
+    {
+        return response()->json([
+            'session_id' => $session->id,
+            'claude_session_id' => $session->claude_session_id,
+            'process_pid' => $session->process_pid,
+            'process_status' => $session->process_status,
+            'last_message_index' => $session->last_message_index,
+            'turn_count' => $session->turn_count,
+            'status' => $session->status,
+        ]);
+    }
+
 
     /**
      * Get all sessions.
@@ -287,5 +548,49 @@ class ClaudeController extends Controller
 
         // Return content as-is (could be string or structured array)
         return $content;
+    }
+
+    /**
+     * Cancel a running Claude request and write interruption marker.
+     */
+    public function cancel(Request $request, string $id): JsonResponse
+    {
+        $session = ClaudeSession::findOrFail($id);
+
+        // Mark as cancelling
+        $session->updateProcessStatus('cancelled');
+
+        // Try to kill the Claude CLI process
+        $killed = false;
+        if ($session->process_pid) {
+            $killed = $this->claude->killProcess($session->process_pid);
+
+            // Wait 1 second for in-flight blocks to flush to disk
+            if ($killed) {
+                sleep(1);
+            }
+        }
+
+        // Write interruption marker to session file
+        $this->claude->writeInterruptionMarker(
+            $session->claude_session_id,
+            $session->project_path
+        );
+
+        // Clean up
+        $session->cancelStreaming();
+
+        \Log::info('[Claude Code] Request cancelled by user', [
+            'session_id' => $session->id,
+            'claude_session_id' => $session->claude_session_id,
+            'process_killed' => $killed
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Request cancelled',
+            'process_killed' => $killed,
+            'process_status' => 'cancelled'
+        ]);
     }
 }
