@@ -526,6 +526,7 @@ class ClaudeController extends Controller
     private function calculateMessageCost(?array $usage, ?string $modelName): ?float
     {
         if (!$usage || !$modelName) {
+            \Log::debug('[COST-CALC] Missing usage or model', ['usage' => !!$usage, 'model' => $modelName]);
             return null;
         }
 
@@ -533,6 +534,12 @@ class ClaudeController extends Controller
         $pricing = \App\Models\ModelPricing::where('model_name', $modelName)->first();
 
         if (!$pricing || !$pricing->input_price_per_million || !$pricing->output_price_per_million) {
+            \Log::debug('[COST-CALC] No pricing configured for model', [
+                'model' => $modelName,
+                'pricing_exists' => !!$pricing,
+                'has_input_price' => $pricing ? !!$pricing->input_price_per_million : false,
+                'has_output_price' => $pricing ? !!$pricing->output_price_per_million : false
+            ]);
             return null;
         }
 
@@ -552,7 +559,18 @@ class ClaudeController extends Controller
         $cacheReadCost = ($cacheReadTokens / 1000000) * $pricing->input_price_per_million * $cacheReadMultiplier;
         $outputCost = ($outputTokens / 1000000) * $pricing->output_price_per_million;
 
-        return $inputCost + $cacheWriteCost + $cacheReadCost + $outputCost;
+        $totalCost = $inputCost + $cacheWriteCost + $cacheReadCost + $outputCost;
+
+        \Log::debug('[COST-CALC] Calculated cost', [
+            'model' => $modelName,
+            'inputTokens' => $inputTokens,
+            'cacheCreationTokens' => $cacheCreationTokens,
+            'cacheReadTokens' => $cacheReadTokens,
+            'outputTokens' => $outputTokens,
+            'totalCost' => $totalCost
+        ]);
+
+        return $totalCost;
     }
 
     /**

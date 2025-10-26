@@ -379,8 +379,17 @@
                 resetSessionCost();
 
                 console.log('[FRONTEND-LOAD] Displaying messages from .jsonl file');
+                console.log('[FRONTEND-LOAD] Sample message data:', data.messages[0]);
+
                 // Display all messages from the session, parsing content arrays
                 for (const msg of data.messages) {
+                    console.log('[FRONTEND-LOAD] Processing message:', {
+                        role: msg.role,
+                        hasUsage: !!msg.usage,
+                        hasModel: !!msg.model,
+                        cost: msg.cost,
+                        costType: typeof msg.cost
+                    });
                     parseAndDisplayMessage(msg.role, msg.content, msg.timestamp, msg.usage, msg.model, msg.cost);
                 }
                 console.log('[FRONTEND-LOAD] Finished loading session');
