@@ -37,6 +37,9 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    group_add:
+      - "1000"
+      - "1001"
     environment:
       - HOME=/home/appuser
       - COMPOSER_HOME=/tmp/.composer
