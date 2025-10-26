@@ -492,7 +492,8 @@ class ClaudeController extends Controller
             $data = json_decode($line, true);
 
             if ($data && isset($data['type']) && in_array($data['type'], ['user', 'assistant'])) {
-                $usage = $data['usage'] ?? null;
+                // Usage can be at root level OR inside message object
+                $usage = $data['usage'] ?? $data['message']['usage'] ?? null;
                 $model = $data['message']['model'] ?? null;
 
                 // Calculate cost server-side
