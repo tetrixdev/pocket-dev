@@ -491,7 +491,10 @@ class ClaudeController extends Controller
         while (($line = fgets($handle)) !== false) {
             $data = json_decode($line, true);
 
-            if ($data && isset($data['type']) && in_array($data['type'], ['user', 'assistant'])) {
+            // Filter out sidechain messages (warmup and other parallel conversations)
+            $isSidechain = $data['isSidechain'] ?? false;
+
+            if ($data && isset($data['type']) && in_array($data['type'], ['user', 'assistant']) && !$isSidechain) {
                 // Usage can be at root level OR inside message object
                 $usage = $data['usage'] ?? $data['message']['usage'] ?? null;
                 $model = $data['message']['model'] ?? null;
