@@ -42,6 +42,23 @@
                 <div class="text-center text-gray-500 text-xs mt-4">Loading sessions...</div>
             </div>
             <div class="p-4 border-t border-gray-700 text-xs text-gray-400">
+                <div class="mb-3 pb-3 border-b border-gray-700">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex items-center gap-1">
+                            <span class="text-gray-300 font-semibold">Session Cost</span>
+                            <button onclick="openPricingModal()" class="text-gray-400 hover:text-gray-200 transition-colors" title="Configure pricing">
+                                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                            </button>
+                        </div>
+                        <span id="session-cost" class="text-green-400 font-mono">$0.00</span>
+                    </div>
+                    <div class="text-gray-500" style="font-size: 10px;">
+                        <span id="total-tokens">0 tokens</span>
+                    </div>
+                </div>
                 <div>Working Dir: /workspace</div>
                 <div class="text-gray-500">Access: /workspace, /pocketdev-source</div>
                 <a href="/claude/auth" class="text-blue-400 hover:text-blue-300">Auth Settings</a>
@@ -95,6 +112,18 @@
             updateThinkingBadge();
         }
 
+        // Cost tracking
+        let sessionTotalCost = 0;
+        let sessionTotalTokens = 0;
+
+        // Claude 4.5 Sonnet pricing (as of Jan 2025) - default values
+        const PRICING = {
+            input: 3.00 / 1000000,           // $3 per million input tokens
+            output: 15.00 / 1000000,         // $15 per million output tokens
+            cacheWriteMultiplier: 1.25,      // Cache write is 1.25× input price
+            cacheReadMultiplier: 0.1         // Cache read is 0.1× input price
+        };
+
         // Cycle through thinking modes
         function cycleThinkingMode() {
             currentThinkingLevel = (currentThinkingLevel + 1) % thinkingModes.length;
@@ -138,6 +167,64 @@
         function renderMarkdown(text) {
             const html = marked.parse(text);
             return html;
+        }
+
+        // Helper to format timestamp (same format as sidebar)
+        function formatTimestamp(timestamp) {
+            const date = timestamp ? new Date(timestamp) : new Date();
+            const dateStr = date.toLocaleDateString('en-GB').replace(/\//g, '-'); // DD-MM-YYYY format
+            const timeStr = date.toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            }); // 23:15 format
+            return `${dateStr} ${timeStr}`;
+        }
+
+        // Helper to calculate cost from usage
+        function calculateCost(usage) {
+            if (!usage) {
+                return 0;
+            }
+
+            // Calculate token counts
+            const inputTokens = (usage.input_tokens || 0);
+            const cacheCreationTokens = (usage.cache_creation_input_tokens || 0);
+            const cacheReadTokens = (usage.cache_read_input_tokens || 0);
+            const outputTokens = (usage.output_tokens || 0);
+
+            // Apply multipliers correctly
+            const inputCost = inputTokens * PRICING.input;
+            const cacheWriteCost = cacheCreationTokens * PRICING.input * PRICING.cacheWriteMultiplier;
+            const cacheReadCost = cacheReadTokens * PRICING.input * PRICING.cacheReadMultiplier;
+            const outputCost = outputTokens * PRICING.output;
+
+            console.log('[COST-CALC]', {
+                inputTokens, inputCost: inputCost.toFixed(6),
+                cacheCreationTokens, cacheWriteCost: cacheWriteCost.toFixed(6),
+                cacheReadTokens, cacheReadCost: cacheReadCost.toFixed(6),
+                outputTokens, outputCost: outputCost.toFixed(6),
+                total: (inputCost + cacheWriteCost + cacheReadCost + outputCost).toFixed(6)
+            });
+
+            return inputCost + cacheWriteCost + cacheReadCost + outputCost;
+        }
+
+        // Helper to update session cost display
+        function updateSessionCost(additionalCost, additionalTokens) {
+            sessionTotalCost += additionalCost;
+            sessionTotalTokens += additionalTokens;
+
+            document.getElementById('session-cost').textContent = '$' + sessionTotalCost.toFixed(4);
+            document.getElementById('total-tokens').textContent = sessionTotalTokens.toLocaleString() + ' tokens';
+        }
+
+        // Helper to reset session cost
+        function resetSessionCost() {
+            sessionTotalCost = 0;
+            sessionTotalTokens = 0;
+            document.getElementById('session-cost').textContent = '$0.00';
+            document.getElementById('total-tokens').textContent = '0 tokens';
         }
 
         // Check authentication on page load
@@ -207,7 +294,7 @@
                 sessionsList.innerHTML = data.sessions.map(session => {
                     const preview = session.prompt.substring(0, 50);
                     const datetime = new Date(session.modified * 1000);
-                    const dateStr = datetime.toLocaleDateString('en-GB'); // DD/MM/YYYY format
+                    const dateStr = datetime.toLocaleDateString('en-GB').replace(/\//g, '-'); // DD-MM-YYYY format
                     const timeStr = datetime.toLocaleTimeString('en-GB', {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -288,10 +375,13 @@
                 document.getElementById('messages').innerHTML = '';
                 Object.keys(loadedToolBlocks).forEach(key => delete loadedToolBlocks[key]);
 
+                // Reset session cost before loading (will be recalculated from message usage data)
+                resetSessionCost();
+
                 console.log('[FRONTEND-LOAD] Displaying messages from .jsonl file');
                 // Display all messages from the session, parsing content arrays
                 for (const msg of data.messages) {
-                    parseAndDisplayMessage(msg.role, msg.content);
+                    parseAndDisplayMessage(msg.role, msg.content, msg.timestamp, msg.usage, msg.model);
                 }
                 console.log('[FRONTEND-LOAD] Finished loading session');
 
@@ -310,10 +400,31 @@
         // Store tool blocks when loading old conversations for result linking
         const loadedToolBlocks = {};
 
-        function parseAndDisplayMessage(role, content) {
+        function parseAndDisplayMessage(role, content, timestamp = null, usage = null, model = null) {
+            // Calculate cost if usage data is available
+            let cost = null;
+            if (usage) {
+                cost = calculateCost(usage);
+                // Calculate total tokens including cache tokens
+                const totalTokens = (usage.input_tokens || 0) +
+                                  (usage.cache_creation_input_tokens || 0) +
+                                  (usage.cache_read_input_tokens || 0) +
+                                  (usage.output_tokens || 0);
+                // Add to session total for historical messages
+                updateSessionCost(cost, totalTokens);
+
+                console.log('[FRONTEND-LOAD] Historical message cost:', {
+                    role,
+                    usage,
+                    cost,
+                    totalTokens,
+                    model
+                });
+            }
+
             // Content can be a string or an array of content blocks
             if (typeof content === 'string') {
-                addMsg(role, content);
+                addMsg(role, content, timestamp, cost, usage, model);
                 return;
             }
 
@@ -321,7 +432,11 @@
                 // Parse each content block
                 for (const block of content) {
                     if (block.type === 'text' && block.text) {
-                        addMsg(role, block.text);
+                        // Only add cost to the first text block (the main message)
+                        addMsg(role, block.text, timestamp, cost, usage, model);
+                        // Set cost/usage to null after first block to avoid duplicates
+                        cost = null;
+                        usage = null;
                     } else if (block.type === 'thinking' && block.thinking) {
                         const thinkingId = addMsg('thinking', block.thinking);
                         // Collapse by default for old messages
@@ -352,7 +467,7 @@
             }
 
             // Fallback for unexpected format
-            addMsg(role, JSON.stringify(content));
+            addMsg(role, JSON.stringify(content), timestamp, cost);
         }
 
         async function newSession() {
@@ -372,6 +487,9 @@
                 '',
                 `/session/${claudeSessionId}`
             );
+
+            // Reset session cost for new session
+            resetSessionCost();
 
             document.getElementById('messages').innerHTML = '<div class="text-center text-gray-400 mt-20"><h3 class="text-xl mb-2">Session Started</h3></div>';
             // Reload the sessions list to show the new session
@@ -502,6 +620,10 @@
             let currentBlockIndex = -1;
             let toolBlockMap = {};  // Map tool_use_id to block ID for updating results
             let hasReceivedStreamingDeltas = false;  // Track if we're in streaming mode
+
+            // Usage and cost tracking for this message
+            let messageUsage = null;
+            let messageCost = 0;
 
             try {
                 console.log('[FRONTEND-SEND] Initiating streaming request');
@@ -657,6 +779,17 @@
                                             assistantMsgId = addMsg('assistant', textContent);
                                         }
                                     }
+
+                                    // Handle usage data (message_delta with usage field)
+                                    if (event.type === 'message_delta' && event.usage) {
+                                        messageUsage = event.usage;
+                                        console.log('[FRONTEND-SSE] Received usage data:', messageUsage);
+                                    }
+
+                                    // Handle message_stop event (also may contain usage)
+                                    if (event.type === 'message_stop') {
+                                        console.log('[FRONTEND-SSE] Message stopped');
+                                    }
                                 }
 
                                 // Handle tool results (come as user messages)
@@ -719,6 +852,54 @@
                     updateMsg(assistantMsgId, 'No response received from Claude');
                 }
 
+                // Calculate and update cost if we have usage data
+                if (messageUsage && assistantMsgId) {
+                    messageCost = calculateCost(messageUsage);
+                    // Calculate total tokens including cache tokens
+                    const totalTokens = (messageUsage.input_tokens || 0) +
+                                      (messageUsage.cache_creation_input_tokens || 0) +
+                                      (messageUsage.cache_read_input_tokens || 0) +
+                                      (messageUsage.output_tokens || 0);
+
+                    // Get current model from config
+                    const currentModel = 'claude-sonnet-4-5-20250929'; // Default, will be from response in future
+
+                    // Store usage data for breakdown modal
+                    window.messageUsageData = window.messageUsageData || {};
+                    window.messageUsageData[assistantMsgId] = {
+                        usage: messageUsage,
+                        model: currentModel,
+                        cost: messageCost
+                    };
+
+                    console.log('[FRONTEND-COST] Message cost calculated:', {
+                        usage: messageUsage,
+                        cost: messageCost,
+                        totalTokens: totalTokens,
+                        model: currentModel
+                    });
+
+                    // Update session totals
+                    updateSessionCost(messageCost, totalTokens);
+
+                    // Add cost to the assistant message
+                    const msgElement = document.getElementById(assistantMsgId);
+                    if (msgElement) {
+                        const costText = `$${messageCost.toFixed(4)}`;
+                        const metadataDiv = msgElement.querySelector('.text-xs.mt-2');
+                        if (metadataDiv) {
+                            const currentContent = metadataDiv.innerHTML;
+                            metadataDiv.innerHTML = currentContent + `<span class="text-gray-500 px-2">•</span><span class="text-green-400">${costText}</span>` +
+                                `<button onclick="showCostBreakdown('${assistantMsgId}')" class="text-gray-500 hover:text-gray-300 transition-colors ml-2" title="View cost breakdown">
+                                    <svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                </button>`;
+                        }
+                    }
+                }
+
                 // Reload session list after message completes
                 loadSessionsList();
 
@@ -729,7 +910,7 @@
             }
         }
 
-        function addMsg(role, content) {
+        function addMsg(role, content, timestamp = null, cost = null, usage = null, model = null) {
             const id = 'msg-' + Date.now() + '-' + Math.floor(Math.random() * 1000000000);
             const isUser = role === 'user';
             const isThinking = role === 'thinking';
@@ -738,8 +919,18 @@
             console.log('[FRONTEND-UI] addMsg called', {
                 role,
                 content_preview: typeof content === 'string' ? content.substring(0, 50) : typeof content,
+                timestamp,
+                cost,
+                usage,
+                model,
                 stack: new Error().stack.split('\n')[2] // Show caller
             });
+
+            // Store usage data for breakdown modal
+            if (usage && model) {
+                window.messageUsageData = window.messageUsageData || {};
+                window.messageUsageData[id] = { usage, model, cost };
+            }
 
             let html;
 
@@ -794,11 +985,35 @@
                 const bgColor = isUser ? 'bg-blue-600' : (role === 'error' ? 'bg-red-900' : 'bg-gray-800');
                 // User messages: plain text, Assistant messages: markdown
                 const renderedContent = isUser ? escapeHtml(content) : renderMarkdown(content);
+
+                // Format timestamp and cost
+                const timestampText = formatTimestamp(timestamp);
+                const costText = cost !== null && cost !== undefined ? `$${cost.toFixed(4)}` : null;
+
+                console.log('[FRONTEND-UI] Message metadata:', { timestamp, cost, usage, model, hasCost: !!costText });
+
+                // Build metadata string
+                let metadata = `<span class="text-gray-400">${timestampText}</span>`;
+                if (costText) {
+                    metadata += `<span class="text-gray-500 px-2">•</span><span class="text-green-400">${costText}</span>`;
+                    // Add cog icon if we have usage data
+                    if (usage && model) {
+                        console.log('[FRONTEND-UI] Adding cog icon for message:', id);
+                        metadata += `<button onclick="showCostBreakdown('${id}')" class="text-gray-500 hover:text-gray-300 transition-colors ml-2" title="View cost breakdown">
+                            <svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </button>`;
+                    }
+                }
+
                 html = `
                     <div id="${id}" class="flex ${isUser ? 'justify-end' : 'justify-start'}">
                         <div class="max-w-3xl">
                             <div class="px-4 py-3 rounded-lg ${bgColor}">
                                 <div class="text-sm ${isUser ? 'whitespace-pre-wrap' : 'markdown-content'}">${renderedContent}</div>
+                                <div class="text-xs mt-2 flex ${isUser ? 'justify-end' : 'justify-start'}">${metadata}</div>
                             </div>
                         </div>
                     </div>
@@ -885,6 +1100,249 @@
         function escapeHtml(text) {
             return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
+
+        // Cost breakdown modal
+        async function showCostBreakdown(messageId) {
+            const data = window.messageUsageData?.[messageId];
+            if (!data) {
+                console.error('No usage data found for message:', messageId);
+                return;
+            }
+
+            const { usage, model, cost } = data;
+
+            // Fetch pricing for this model
+            const response = await fetch(`${baseUrl}/api/pricing/${encodeURIComponent(model)}`);
+            const pricing = await response.json();
+
+            // Calculate breakdown
+            const inputTokens = usage.input_tokens || 0;
+            const cacheWriteTokens = usage.cache_creation_input_tokens || 0;
+            const cacheReadTokens = usage.cache_read_input_tokens || 0;
+            const outputTokens = usage.output_tokens || 0;
+
+            const inputPrice = pricing.input_price_per_million || 0;
+            const outputPrice = pricing.output_price_per_million || 0;
+            const cacheWriteMult = pricing.cache_write_multiplier || 1.25;
+            const cacheReadMult = pricing.cache_read_multiplier || 0.1;
+
+            // Calculate costs
+            const inputCost = (inputTokens / 1000000) * inputPrice;
+            const cacheWriteCost = (cacheWriteTokens / 1000000) * inputPrice * cacheWriteMult;
+            const cacheReadCost = (cacheReadTokens / 1000000) * inputPrice * cacheReadMult;
+            const outputCost = (outputTokens / 1000000) * outputPrice;
+            const totalCost = inputCost + cacheWriteCost + cacheReadCost + outputCost;
+
+            // Populate breakdown modal
+            document.getElementById('breakdown-model').textContent = model;
+            document.getElementById('breakdown-input-tokens').textContent = inputTokens.toLocaleString();
+            document.getElementById('breakdown-input-cost').textContent = `$${inputCost.toFixed(6)}`;
+            document.getElementById('breakdown-cache-write-tokens').textContent = cacheWriteTokens.toLocaleString();
+            document.getElementById('breakdown-cache-write-cost').textContent = `$${cacheWriteCost.toFixed(6)}`;
+            document.getElementById('breakdown-cache-read-tokens').textContent = cacheReadTokens.toLocaleString();
+            document.getElementById('breakdown-cache-read-cost').textContent = `$${cacheReadCost.toFixed(6)}`;
+            document.getElementById('breakdown-output-tokens').textContent = outputTokens.toLocaleString();
+            document.getElementById('breakdown-output-cost').textContent = `$${outputCost.toFixed(6)}`;
+            document.getElementById('breakdown-total-cost').textContent = `$${totalCost.toFixed(4)}`;
+
+            // Store current model for editing
+            window.currentBreakdownModel = model;
+
+            // Show modal
+            document.getElementById('breakdown-modal').classList.remove('hidden');
+        }
+
+        function closeBreakdownModal() {
+            document.getElementById('breakdown-modal').classList.add('hidden');
+        }
+
+        function openPricingFromBreakdown() {
+            closeBreakdownModal();
+            currentPricingModel = window.currentBreakdownModel;
+            openPricingModal();
+        }
+
+        // Pricing modal management
+        let currentPricingModel = null;
+
+        async function openPricingModal() {
+            try {
+                // Get the current model being used (from last message or default)
+                if (!currentPricingModel) {
+                    currentPricingModel = 'claude-sonnet-4-5-20250929';
+                }
+
+                console.log('[PRICING] Opening pricing modal for model:', currentPricingModel);
+
+                // Fetch current pricing
+                const response = await fetch(`${baseUrl}/api/pricing/${encodeURIComponent(currentPricingModel)}`);
+                const pricing = await response.json();
+
+                console.log('[PRICING] Fetched pricing:', pricing);
+
+                // Populate modal
+                document.getElementById('pricing-model-name').textContent = currentPricingModel;
+                document.getElementById('input-price').value = pricing.input_price_per_million || '';
+                document.getElementById('cache-write-multiplier').value = pricing.cache_write_multiplier || 1.25;
+                document.getElementById('cache-read-multiplier').value = pricing.cache_read_multiplier || 0.1;
+                document.getElementById('output-price').value = pricing.output_price_per_million || '';
+
+                // Show modal
+                document.getElementById('pricing-modal').classList.remove('hidden');
+            } catch (err) {
+                console.error('[PRICING] Error opening modal:', err);
+                alert('Error loading pricing settings: ' + err.message);
+            }
+        }
+
+        function closePricingModal() {
+            document.getElementById('pricing-modal').classList.add('hidden');
+        }
+
+        async function savePricing() {
+            const inputPrice = parseFloat(document.getElementById('input-price').value);
+            const cacheWriteMultiplier = parseFloat(document.getElementById('cache-write-multiplier').value);
+            const cacheReadMultiplier = parseFloat(document.getElementById('cache-read-multiplier').value);
+            const outputPrice = parseFloat(document.getElementById('output-price').value);
+
+            if (isNaN(inputPrice) || isNaN(outputPrice)) {
+                alert('Please enter valid pricing values');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${baseUrl}/api/pricing/${encodeURIComponent(currentPricingModel)}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        input_price_per_million: inputPrice,
+                        cache_write_multiplier: cacheWriteMultiplier,
+                        cache_read_multiplier: cacheReadMultiplier,
+                        output_price_per_million: outputPrice
+                    })
+                });
+
+                if (response.ok) {
+                    // Update pricing in memory and reload costs
+                    PRICING.input = inputPrice / 1000000;
+                    PRICING.output = outputPrice / 1000000;
+                    PRICING.cacheWriteMultiplier = cacheWriteMultiplier;
+                    PRICING.cacheReadMultiplier = cacheReadMultiplier;
+
+                    alert('Pricing saved successfully!');
+                    closePricingModal();
+
+                    // Optionally reload the session to recalculate costs
+                    if (claudeSessionId) {
+                        loadSession(claudeSessionId);
+                    }
+                } else {
+                    alert('Failed to save pricing');
+                }
+            } catch (err) {
+                console.error('Error saving pricing:', err);
+                alert('Error saving pricing');
+            }
+        }
     </script>
+
+    <!-- Cost Breakdown Modal -->
+    <div id="breakdown-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 max-w-lg w-full mx-4">
+            <h2 class="text-xl font-semibold text-gray-100 mb-4">💰 Cost Breakdown</h2>
+
+            <div class="mb-4">
+                <div class="text-sm text-gray-400 mb-2">Model:</div>
+                <div id="breakdown-model" class="text-gray-200 font-mono text-sm bg-gray-900 px-3 py-2 rounded"></div>
+            </div>
+
+            <div class="space-y-2 mb-4">
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-gray-400">Input Tokens:</span>
+                    <div class="flex gap-4">
+                        <span id="breakdown-input-tokens" class="text-gray-200 font-mono"></span>
+                        <span id="breakdown-input-cost" class="text-green-400 font-mono min-w-[80px] text-right"></span>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-gray-400">Cache Write (1.25×):</span>
+                    <div class="flex gap-4">
+                        <span id="breakdown-cache-write-tokens" class="text-gray-200 font-mono"></span>
+                        <span id="breakdown-cache-write-cost" class="text-green-400 font-mono min-w-[80px] text-right"></span>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-gray-400">Cache Read (0.1×):</span>
+                    <div class="flex gap-4">
+                        <span id="breakdown-cache-read-tokens" class="text-gray-200 font-mono"></span>
+                        <span id="breakdown-cache-read-cost" class="text-green-400 font-mono min-w-[80px] text-right"></span>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-gray-400">Output Tokens:</span>
+                    <div class="flex gap-4">
+                        <span id="breakdown-output-tokens" class="text-gray-200 font-mono"></span>
+                        <span id="breakdown-output-cost" class="text-green-400 font-mono min-w-[80px] text-right"></span>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-700 pt-2 mt-2">
+                    <div class="flex justify-between items-center font-semibold">
+                        <span class="text-gray-200">Total:</span>
+                        <span id="breakdown-total-cost" class="text-green-400 font-mono text-lg"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="openPricingFromBreakdown()" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">Edit Pricing</button>
+                <button onclick="closeBreakdownModal()" class="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-200 font-medium">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pricing Modal -->
+    <div id="pricing-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 class="text-xl font-semibold text-gray-100 mb-4">⚙️ Pricing Settings</h2>
+
+            <div class="mb-4">
+                <div class="text-sm text-gray-400 mb-2">Model:</div>
+                <div id="pricing-model-name" class="text-gray-200 font-mono text-sm bg-gray-900 px-3 py-2 rounded"></div>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Input Price (per million tokens):</label>
+                    <input type="number" id="input-price" step="0.01" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500" placeholder="e.g., 3.00">
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Cache Write Multiplier:</label>
+                    <input type="number" id="cache-write-multiplier" step="0.01" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500" placeholder="e.g., 1.25">
+                    <div class="text-xs text-gray-500 mt-1">Cache write = input price × multiplier</div>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Cache Read Multiplier:</label>
+                    <input type="number" id="cache-read-multiplier" step="0.01" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500" placeholder="e.g., 0.1">
+                    <div class="text-xs text-gray-500 mt-1">Cache read = input price × multiplier</div>
+                </div>
+
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Output Price (per million tokens):</label>
+                    <input type="number" id="output-price" step="0.01" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500" placeholder="e.g., 15.00">
+                </div>
+            </div>
+
+            <div class="flex gap-2 mt-6">
+                <button onclick="savePricing()" class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">Save</button>
+                <button onclick="closePricingModal()" class="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-200 font-medium">Cancel</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\ClaudeController;
+use App\Http\Controllers\Api\PricingController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('claude')->group(function () {
@@ -22,3 +23,7 @@ Route::prefix('claude')->group(function () {
     Route::get('claude-sessions', [ClaudeController::class, 'listClaudeSessions']);
     Route::get('claude-sessions/{sessionId}', [ClaudeController::class, 'loadClaudeSession']);
 });
+
+// Model pricing
+Route::get('pricing/{modelName}', [PricingController::class, 'show']);
+Route::post('pricing/{modelName}', [PricingController::class, 'store']);

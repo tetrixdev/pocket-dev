@@ -496,6 +496,8 @@ class ClaudeController extends Controller
                     'role' => $data['type'],
                     'content' => $this->extractContent($data),
                     'timestamp' => $data['timestamp'] ?? null,
+                    'usage' => $data['usage'] ?? null,
+                    'model' => $data['message']['model'] ?? null,
                 ];
             }
         }
