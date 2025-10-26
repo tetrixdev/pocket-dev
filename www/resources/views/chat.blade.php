@@ -381,7 +381,7 @@
                 console.log('[FRONTEND-LOAD] Displaying messages from .jsonl file');
                 // Display all messages from the session, parsing content arrays
                 for (const msg of data.messages) {
-                    parseAndDisplayMessage(msg.role, msg.content, msg.timestamp, msg.usage, msg.model);
+                    parseAndDisplayMessage(msg.role, msg.content, msg.timestamp, msg.usage, msg.model, msg.cost);
                 }
                 console.log('[FRONTEND-LOAD] Finished loading session');
 
@@ -400,11 +400,9 @@
         // Store tool blocks when loading old conversations for result linking
         const loadedToolBlocks = {};
 
-        function parseAndDisplayMessage(role, content, timestamp = null, usage = null, model = null) {
-            // Calculate cost if usage data is available
-            let cost = null;
-            if (usage) {
-                cost = calculateCost(usage);
+        function parseAndDisplayMessage(role, content, timestamp = null, usage = null, model = null, cost = null) {
+            // Use server-calculated cost (no client-side calculation needed)
+            if (cost !== null && cost !== undefined) {
                 // Calculate total tokens including cache tokens
                 const totalTokens = (usage.input_tokens || 0) +
                                   (usage.cache_creation_input_tokens || 0) +
@@ -413,7 +411,7 @@
                 // Add to session total for historical messages
                 updateSessionCost(cost, totalTokens);
 
-                console.log('[FRONTEND-LOAD] Historical message cost:', {
+                console.log('[FRONTEND-LOAD] Historical message cost (server-calculated):', {
                     role,
                     usage,
                     cost,
