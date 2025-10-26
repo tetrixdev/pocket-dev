@@ -183,9 +183,10 @@ Migrate one component at a time, keep app working throughout:
   - Show "Copied!" feedback
   - Copy to clipboard API
 
-- [ ] **Message timestamps**
+- [x] **Message timestamps** ✅ (Implemented 2025-10-26)
   - Show time for each message
   - Format: "Just now", "5 min ago", or full timestamp
+  - Displays below each message
 
 - [ ] **Better loading states**
   - Animated thinking indicator
@@ -236,27 +237,23 @@ Migrate one component at a time, keep app working throughout:
   - Export as PDF
   - Include metadata (timestamps, model, cost)
 
-- [ ] **Clear conversation**
-  - Clear current session messages
-  - Keep session but reset conversation
-  - Confirmation dialog
-
 - [ ] **Edit messages**
   - Edit sent messages
   - Re-run from edited message
   - Branch conversations
 
-- [ ] **Message reactions**
-  - Thumbs up/down on responses
-  - Store feedback in database
-  - Use for analytics
-
 ### Cost Tracking & Analytics
-- [ ] **Cost display**
-  - Show cost per message (already in response)
-  - Show session total cost
+- [x] **Cost display** ✅ (Implemented 2025-10-26)
+  - Show cost per message (calculated from usage data)
+  - Show session total cost (displayed in sidebar)
+  - Token count tracking
+  - Cost breakdown: $3/M input tokens, $15/M output tokens (Claude 4.5 Sonnet)
+  - Note: Only tracks costs for current session, not historical messages
+
+- [ ] **Extended cost tracking**
   - Show daily/weekly/monthly costs
   - Cost breakdown by model
+  - Persist costs to database
 
 - [ ] **Usage analytics**
   - Token usage charts

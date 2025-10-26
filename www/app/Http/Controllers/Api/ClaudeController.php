@@ -492,10 +492,23 @@ class ClaudeController extends Controller
             $data = json_decode($line, true);
 
             if ($data && isset($data['type']) && in_array($data['type'], ['user', 'assistant'])) {
+                // Usage can be at root level OR inside message object
+                $usage = $data['usage'] ?? $data['message']['usage'] ?? null;
+                $model = $data['message']['model'] ?? null;
+
+                // Calculate cost server-side
+                $cost = null;
+                if ($usage && $model) {
+                    $cost = $this->calculateMessageCost($usage, $model);
+                }
+
                 $messages[] = [
                     'role' => $data['type'],
                     'content' => $this->extractContent($data),
                     'timestamp' => $data['timestamp'] ?? null,
+                    'usage' => $usage,
+                    'model' => $model,
+                    'cost' => $cost,
                 ];
             }
         }
@@ -506,6 +519,59 @@ class ClaudeController extends Controller
             'session_id' => $sessionId,
             'messages' => $messages,
         ]);
+    }
+
+    /**
+     * Calculate cost for a message based on usage and model pricing.
+     */
+    private function calculateMessageCost(?array $usage, ?string $modelName): ?float
+    {
+        if (!$usage || !$modelName) {
+            \Log::debug('[COST-CALC] Missing usage or model', ['usage' => !!$usage, 'model' => $modelName]);
+            return null;
+        }
+
+        // Get pricing for this model
+        $pricing = \App\Models\ModelPricing::where('model_name', $modelName)->first();
+
+        if (!$pricing || !$pricing->input_price_per_million || !$pricing->output_price_per_million) {
+            \Log::debug('[COST-CALC] No pricing configured for model', [
+                'model' => $modelName,
+                'pricing_exists' => !!$pricing,
+                'has_input_price' => $pricing ? !!$pricing->input_price_per_million : false,
+                'has_output_price' => $pricing ? !!$pricing->output_price_per_million : false
+            ]);
+            return null;
+        }
+
+        // Extract token counts
+        $inputTokens = $usage['input_tokens'] ?? 0;
+        $cacheCreationTokens = $usage['cache_creation_input_tokens'] ?? 0;
+        $cacheReadTokens = $usage['cache_read_input_tokens'] ?? 0;
+        $outputTokens = $usage['output_tokens'] ?? 0;
+
+        // Get multipliers (with defaults)
+        $cacheWriteMultiplier = $pricing->cache_write_multiplier ?? 1.25;
+        $cacheReadMultiplier = $pricing->cache_read_multiplier ?? 0.1;
+
+        // Calculate costs with multipliers
+        $inputCost = ($inputTokens / 1000000) * $pricing->input_price_per_million;
+        $cacheWriteCost = ($cacheCreationTokens / 1000000) * $pricing->input_price_per_million * $cacheWriteMultiplier;
+        $cacheReadCost = ($cacheReadTokens / 1000000) * $pricing->input_price_per_million * $cacheReadMultiplier;
+        $outputCost = ($outputTokens / 1000000) * $pricing->output_price_per_million;
+
+        $totalCost = $inputCost + $cacheWriteCost + $cacheReadCost + $outputCost;
+
+        \Log::debug('[COST-CALC] Calculated cost', [
+            'model' => $modelName,
+            'inputTokens' => $inputTokens,
+            'cacheCreationTokens' => $cacheCreationTokens,
+            'cacheReadTokens' => $cacheReadTokens,
+            'outputTokens' => $outputTokens,
+            'totalCost' => $totalCost
+        ]);
+
+        return $totalCost;
     }
 
     /**
