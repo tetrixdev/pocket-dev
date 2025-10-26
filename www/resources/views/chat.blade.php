@@ -67,7 +67,7 @@
         </div>
     </div>
     <script>
-        const baseUrl = 'http://192.168.1.175';
+        const baseUrl = window.location.origin;  // Dynamic - works from any URL
         let sessionId = null;  // Database session ID
         let claudeSessionId = null;  // Claude UUID for CLI
 
