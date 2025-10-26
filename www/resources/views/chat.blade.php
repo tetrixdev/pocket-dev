@@ -71,6 +71,11 @@
         let sessionId = null;  // Database session ID
         let claudeSessionId = null;  // Claude UUID for CLI
 
+        // Extract sessionId from URL if present
+        const urlPath = window.location.pathname;
+        const sessionMatch = urlPath.match(/\/session\/([a-f0-9-]+)/);
+        const urlSessionId = sessionMatch ? sessionMatch[1] : null;
+
         // Thinking mode management
         // Using MAX_THINKING_TOKENS environment variable (official method for headless/print mode)
         const thinkingModes = [
@@ -159,6 +164,10 @@
         checkAuth().then(authenticated => {
             if (authenticated) {
                 loadSessionsList();
+                // Auto-load session if URL contains session ID
+                if (urlSessionId) {
+                    loadSession(urlSessionId);
+                }
             }
         });
 
@@ -170,6 +179,16 @@
             if (e.shiftKey && e.key.toLowerCase() === 't') {
                 e.preventDefault();
                 cycleThinkingMode();
+            }
+        });
+
+        // Handle browser back/forward buttons
+        window.addEventListener('popstate', function(event) {
+            if (event.state && event.state.sessionId) {
+                loadSession(event.state.sessionId);
+            } else {
+                // Back to home - reload page to show welcome screen
+                window.location.reload();
             }
         });
 
@@ -187,12 +206,19 @@
 
                 sessionsList.innerHTML = data.sessions.map(session => {
                     const preview = session.prompt.substring(0, 50);
-                    const date = new Date(session.modified * 1000).toLocaleDateString();
+                    const datetime = new Date(session.modified * 1000);
+                    const dateStr = datetime.toLocaleDateString('en-GB'); // DD/MM/YYYY format
+                    const timeStr = datetime.toLocaleTimeString('en-GB', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    }); // 23:15 format
+                    const display = `${dateStr} ${timeStr}`;
 
                     return `
                         <div onclick="loadSession('${escapeHtml(session.id)}')" class="p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors">
                             <div class="text-xs text-gray-300 truncate">${escapeHtml(preview)}</div>
-                            <div class="text-xs text-gray-500 mt-1">${date}</div>
+                            <div class="text-xs text-gray-500 mt-1">${display}</div>
                         </div>
                     `;
                 }).join('');
@@ -268,6 +294,13 @@
                     parseAndDisplayMessage(msg.role, msg.content);
                 }
                 console.log('[FRONTEND-LOAD] Finished loading session');
+
+                // Update URL without page reload
+                window.history.pushState(
+                    {sessionId: loadClaudeSessionId},
+                    '',
+                    `/session/${loadClaudeSessionId}`
+                );
             } catch (err) {
                 console.error('Failed to load session:', err);
                 alert('Failed to load session');
@@ -332,6 +365,14 @@
             const data = await response.json();
             sessionId = data.session.id;
             claudeSessionId = data.session.claude_session_id;
+
+            // Update URL to reflect new session
+            window.history.pushState(
+                {sessionId: claudeSessionId},
+                '',
+                `/session/${claudeSessionId}`
+            );
+
             document.getElementById('messages').innerHTML = '<div class="text-center text-gray-400 mt-20"><h3 class="text-xl mb-2">Session Started</h3></div>';
             // Reload the sessions list to show the new session
             setTimeout(() => loadSessionsList(), 500);

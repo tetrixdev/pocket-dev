@@ -13,6 +13,7 @@ Route::post("/claude/auth/upload-json", [ClaudeAuthController::class, "uploadJso
 Route::delete("/claude/auth/logout", [ClaudeAuthController::class, "logout"])->name("claude.auth.logout");
 
 // Claude chat routes - Blade view with streaming
+Route::view("/session/{sessionId}", "chat")->name("claude.session");
 Route::view("/", "chat")->name("claude.index");
 
 Route::get("/terminal", [TerminalController::class, "index"])->name("terminal.index");
