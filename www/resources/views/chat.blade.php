@@ -1311,7 +1311,7 @@
                     </svg>
                     <div class="text-xs text-amber-200">
                         <strong class="text-amber-300">Note:</strong> Claude 4 models with extended thinking may show lower costs after page refresh. You're billed for full thinking tokens, but only a summary is stored. Costs during streaming are accurate.
-                        <a href="https://docs.claude.com/en/docs/build-with-claude/extended-thinking" target="_blank" class="text-amber-400 hover:text-amber-300 underline ml-1">Learn more</a>
+                        <a href="https://docs.claude.com/en/docs/build-with-claude/extended-thinking#pricing" target="_blank" class="text-amber-400 hover:text-amber-300 underline ml-1">Learn more</a>
                     </div>
                 </div>
             </div>
@@ -1323,7 +1323,7 @@
                     </svg>
                     <div class="text-xs text-amber-200">
                         <strong class="text-amber-300">Note:</strong> When using API keys, you're billed for background processes including warmup messages, conversation summarization, and command processing (typically under $0.04 per session).
-                        <a href="https://docs.claude.com/en/docs/claude-code/costs" target="_blank" class="text-amber-400 hover:text-amber-300 underline ml-1">Learn more</a>
+                        <a href="https://docs.claude.com/en/docs/claude-code/costs#background-token-usage" target="_blank" class="text-amber-400 hover:text-amber-300 underline ml-1">Learn more</a>
                     </div>
                 </div>
             </div>
