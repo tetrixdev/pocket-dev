@@ -22,6 +22,14 @@ Route::prefix('claude')->group(function () {
     // Claude's native session files (.jsonl)
     Route::get('claude-sessions', [ClaudeController::class, 'listClaudeSessions']);
     Route::get('claude-sessions/{sessionId}', [ClaudeController::class, 'loadClaudeSession']);
+
+    // Voice transcription
+    Route::post('transcribe', [ClaudeController::class, 'transcribe']);
+
+    // OpenAI API key management
+    Route::get('openai-key/check', [ClaudeController::class, 'checkOpenAiKey']);
+    Route::post('openai-key', [ClaudeController::class, 'setOpenAiKey']);
+    Route::delete('openai-key', [ClaudeController::class, 'deleteOpenAiKey']);
 });
 
 // Model pricing

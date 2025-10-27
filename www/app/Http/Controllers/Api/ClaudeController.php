@@ -5,15 +5,20 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ClaudeSession;
 use App\Services\ClaudeCodeService;
+use App\Services\OpenAIService;
+use App\Services\AppSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ClaudeController extends Controller
 {
     public function __construct(
-        protected ClaudeCodeService $claude
+        protected ClaudeCodeService $claude,
+        protected AppSettingsService $appSettings
     ) {}
 
     /**
@@ -660,6 +665,133 @@ class ClaudeController extends Controller
             'message' => 'Request cancelled',
             'process_killed' => $killed,
             'process_status' => 'cancelled'
+        ]);
+    }
+
+    /**
+     * Transcribe audio using OpenAI Whisper.
+     */
+    public function transcribe(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'audio' => 'required|file|mimes:webm,wav,mp3,m4a,ogg|max:10240', // 10MB max
+            ]);
+
+            // Check if API key is configured
+            if (!$this->appSettings->hasOpenAiApiKey()) {
+                return response()->json([
+                    'error' => 'OpenAI API key not configured',
+                    'requires_setup' => true
+                ], 428); // 428 Precondition Required
+            }
+
+            $audioFile = $request->file('audio');
+
+            // Log audio file for debugging if needed
+            if (config('app.debug')) {
+                $this->logAudioFile($audioFile);
+            }
+
+            // Transcribe using OpenAI service
+            $openAI = app(OpenAIService::class);
+            $transcription = $openAI->transcribeAudio($audioFile);
+
+            Log::info('Voice transcription completed', [
+                'original_name' => $audioFile->getClientOriginalName(),
+                'transcription' => $transcription,
+                'transcription_length' => strlen($transcription),
+            ]);
+
+            return response()->json([
+                'transcription' => trim($transcription),
+                'success' => true,
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Invalid audio file: ' . implode(', ', $e->errors()['audio'] ?? ['Unknown validation error'])
+            ], 422);
+
+        } catch (\Exception $e) {
+            Log::error('Audio transcription failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Audio processing failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Check if OpenAI API key is configured.
+     */
+    public function checkOpenAiKey(): JsonResponse
+    {
+        return response()->json([
+            'configured' => $this->appSettings->hasOpenAiApiKey(),
+        ]);
+    }
+
+    /**
+     * Set OpenAI API key.
+     */
+    public function setOpenAiKey(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'api_key' => 'required|string|min:20',
+            ]);
+
+            $this->appSettings->setOpenAiApiKey($request->input('api_key'));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'OpenAI API key saved successfully',
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Invalid API key format'
+            ], 422);
+        }
+    }
+
+    /**
+     * Delete OpenAI API key.
+     */
+    public function deleteOpenAiKey(): JsonResponse
+    {
+        $deleted = $this->appSettings->deleteOpenAiApiKey();
+
+        return response()->json([
+            'success' => $deleted,
+            'message' => $deleted ? 'API key deleted' : 'No API key found',
+        ]);
+    }
+
+    /**
+     * Log audio file for debugging.
+     */
+    private function logAudioFile($audioFile): void
+    {
+        $timestamp = now()->format('Y-m-d_H-i-s');
+        $filename = "voice_recording_{$timestamp}.{$audioFile->getClientOriginalExtension()}";
+        $storagePath = storage_path('app/audio_recordings');
+
+        if (!file_exists($storagePath)) {
+            mkdir($storagePath, 0755, true);
+        }
+
+        $fullPath = $storagePath . '/' . $filename;
+        copy($audioFile->getRealPath(), $fullPath);
+
+        Log::debug('Audio file saved for debugging', [
+            'filename' => $filename,
+            'path' => $fullPath,
+            'size' => filesize($fullPath) . ' bytes',
         ]);
     }
 }

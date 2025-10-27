@@ -11,9 +11,10 @@ class OpenAIService
     private string $apiKey;
     private string $baseUrl;
 
-    public function __construct()
+    public function __construct(AppSettingsService $appSettings)
     {
-        $this->apiKey = config('services.openai.api_key');
+        // Try environment variable first, then fall back to database
+        $this->apiKey = config('services.openai.api_key') ?: $appSettings->getOpenAiApiKey();
         $this->baseUrl = config('services.openai.base_url', 'https://api.openai.com/v1');
 
         if (empty($this->apiKey)) {

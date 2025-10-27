@@ -2,14 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Code Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>PocketDev Chat</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
     <!-- Code syntax highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         /* Markdown styling */
         .markdown-content {
@@ -29,10 +32,31 @@
         .markdown-content table { border-collapse: collapse; margin: 1em 0; width: 100%; }
         .markdown-content th, .markdown-content td { border: 1px solid #4b5563; padding: 0.5em; text-align: left; }
         .markdown-content th { background: #374151; font-weight: bold; }
+
+        /* Mobile safe area */
+        .safe-area-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        /* Hide desktop layout on mobile */
+        @media (max-width: 767px) {
+            .desktop-layout { display: none !important; }
+        }
+
+        /* Hide mobile layout on desktop */
+        @media (min-width: 768px) {
+            .mobile-layout { display: none !important; }
+        }
+
+        /* Mobile drawer transition */
+        .drawer-transition {
+            transition: transform 0.3s ease-in-out;
+        }
     </style>
 </head>
-<body class="antialiased bg-gray-900 text-gray-100">
-    <div class="flex h-screen">
+<body class="antialiased bg-gray-900 text-gray-100" x-data="appState()" x-init="initVoice()">
+    <!-- Desktop Layout -->
+    <div class="desktop-layout flex h-screen">
         <div class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
             <div class="p-4 border-b border-gray-700">
                 <h2 class="text-lg font-semibold">PocketDev</h2>
@@ -61,7 +85,8 @@
                 </div>
                 <div>Working Dir: /workspace</div>
                 <div class="text-gray-500">Access: /workspace, /pocketdev-source</div>
-                <a href="/claude/auth" class="text-blue-400 hover:text-blue-300">Auth Settings</a>
+                <a href="/config" class="text-blue-400 hover:text-blue-300">⚙️ Configuration</a>
+                <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300 ml-2">Shortcuts</button>
             </div>
         </div>
         <div class="flex-1 flex flex-col">
@@ -73,16 +98,235 @@
             </div>
             <div class="border-t border-gray-700 p-4">
                 <form onsubmit="sendMessage(event)" class="flex gap-2 items-stretch">
-                    <input type="text" id="prompt" placeholder="Ask Claude to help with your code..." class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white">
-                    <button type="button" id="thinkingBadge" onclick="cycleThinkingMode()" class="px-4 py-3 rounded-lg font-medium text-sm cursor-pointer transition-all duration-200 hover:opacity-80 flex items-center justify-center" title="Click to toggle extended thinking (or press Shift+T)&#10;Off → Think (4K) → Think Hard (10K) → Think Harder (20K) → Ultrathink (32K)">
+                    <!-- Voice Button -->
+                    <button type="button"
+                            @click="toggleVoiceRecording()"
+                            :class="voiceButtonClass"
+                            :disabled="isProcessing"
+                            class="px-4 py-3 rounded-lg font-medium text-sm flex items-center justify-center"
+                            title="Voice input (Ctrl+Space)"
+                            x-text="voiceButtonText">
+                    </button>
+
+                    <!-- Input Field -->
+                    <input type="text"
+                           id="prompt"
+                           placeholder="Ask Claude to help with your code..."
+                           class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white"
+                           @keydown.ctrl.t.prevent="cycleThinkingMode()"
+                           @keydown.ctrl.space.prevent="toggleVoiceRecording()"
+                           @keydown.ctrl="if($event.key === '?') { showShortcutsModal = true; $event.preventDefault(); }">
+
+                    <!-- Thinking Toggle -->
+                    <button type="button"
+                            id="thinkingBadge"
+                            onclick="cycleThinkingMode()"
+                            class="px-4 py-3 rounded-lg font-medium text-sm cursor-pointer transition-all duration-200 hover:opacity-80 flex items-center justify-center"
+                            title="Click to toggle extended thinking (or press Ctrl+T)&#10;Off → Think (4K) → Think Hard (10K) → Think Harder (20K) → Ultrathink (32K)">
                         <span id="thinkingIcon">🧠</span>
                         <span id="thinkingText" class="ml-1">Off</span>
                     </button>
-                    <button type="submit" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center justify-center">Send</button>
+
+                    <!-- Send Button -->
+                    <button type="submit" @click="handleSendClick($event)" class="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg flex items-center justify-center">➤ Send</button>
                 </form>
             </div>
         </div>
     </div>
+
+    <!-- Mobile Layout -->
+    <div class="mobile-layout h-screen flex flex-col">
+        <!-- Mobile Header -->
+        <div class="bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
+            <button @click="showMobileDrawer = true" class="text-gray-300 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </button>
+            <h2 class="text-lg font-semibold">PocketDev</h2>
+            <a href="/config" class="text-gray-300 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </a>
+        </div>
+
+        <!-- Messages Area -->
+        <div id="messages-mobile" class="flex-1 overflow-y-auto p-4 space-y-4 pb-56">
+            <!-- Messages will be dynamically added here by existing addMsg() function -->
+        </div>
+
+        <!-- Fixed Bottom Input (Mobile) -->
+        <div class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 safe-area-bottom">
+            <!-- Input Row -->
+            <div class="p-3">
+                <input type="text"
+                       id="prompt-mobile"
+                       placeholder="Ask Claude..."
+                       class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white"
+                       onkeydown="if(event.key === 'Enter') { document.getElementById('prompt').value = this.value; sendMessage(event); this.value = ''; }">
+            </div>
+
+            <!-- Controls Row 1: Thinking + Clear -->
+            <div class="px-3 pb-2 grid grid-cols-2 gap-2">
+                <button type="button"
+                        onclick="cycleThinkingMode()"
+                        class="px-4 py-3 rounded-lg font-medium text-sm flex items-center justify-center transition-all"
+                        id="thinkingBadge-mobile">
+                    <span id="thinkingIcon-mobile">🧠</span>
+                    <span class="ml-1" id="thinkingText-mobile">Off</span>
+                </button>
+                <button type="button"
+                        onclick="document.getElementById('prompt-mobile').value = ''"
+                        class="px-4 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-medium text-sm">
+                    🗑️ Clear
+                </button>
+            </div>
+
+            <!-- Controls Row 2: Voice + Send -->
+            <div class="px-3 pb-3 grid grid-cols-2 gap-2">
+                <button type="button"
+                        @click="toggleVoiceRecording()"
+                        :class="voiceButtonClass"
+                        :disabled="isProcessing"
+                        class="px-4 py-3 rounded-lg font-semibold text-sm flex items-center justify-center"
+                        x-text="voiceButtonText">
+                </button>
+                <button type="button"
+                        @click="if(handleSendClick($event)) { const mobilePrompt = document.getElementById('prompt-mobile'); if(mobilePrompt.value.trim()) { document.getElementById('prompt').value = mobilePrompt.value; sendMessage(event); mobilePrompt.value = ''; } }"
+                        class="px-4 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold text-sm">
+                    ➤ Send
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Drawer Overlay -->
+        <div x-show="showMobileDrawer"
+             @click="showMobileDrawer = false"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-300"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black bg-opacity-50 z-40"
+             style="display: none;">
+        </div>
+
+        <!-- Mobile Drawer -->
+        <div x-show="showMobileDrawer"
+             x-transition:enter="transition ease-out duration-300 transform"
+             x-transition:enter-start="-translate-x-full"
+             x-transition:enter-end="translate-x-0"
+             x-transition:leave="transition ease-in duration-300 transform"
+             x-transition:leave-start="translate-x-0"
+             x-transition:leave-end="-translate-x-full"
+             class="fixed inset-y-0 left-0 w-5/6 max-w-sm bg-gray-800 z-50 flex flex-col"
+             style="display: none;">
+            <div class="p-4 border-b border-gray-700">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-semibold">Sessions</h2>
+                    <button @click="showMobileDrawer = false" class="text-gray-400 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+                <button onclick="newSession()" @click="showMobileDrawer = false" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">
+                    New Session
+                </button>
+            </div>
+            <div id="sessions-list-mobile" class="flex-1 overflow-y-auto p-2">
+                <!-- Sessions will be populated by loadSessionsList() -->
+            </div>
+            <div class="p-4 border-t border-gray-700 text-xs text-gray-400">
+                <div class="mb-2">Cost: <span id="session-cost-mobile" class="text-green-400 font-mono">$0.00</span></div>
+                <div class="mb-2"><span id="total-tokens-mobile">0 tokens</span></div>
+                <button @click="showShortcutsModal = true; showMobileDrawer = false" class="text-blue-400 hover:text-blue-300">
+                    View Shortcuts
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OpenAI API Key Modal -->
+    <div x-show="showOpenAiModal"
+         @click.away="showOpenAiModal = false"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         style="display: none;">
+        <div @click.stop class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 class="text-xl font-semibold text-gray-100 mb-4">🎙️ Voice Transcription Setup</h2>
+            <p class="text-gray-300 mb-4">OpenAI API key is required for voice transcription. Your key will be encrypted and stored securely.</p>
+
+            <input type="password"
+                   x-model="openAiKeyInput"
+                   @keydown.enter="saveOpenAiKey()"
+                   placeholder="sk-..."
+                   class="w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 mb-4 focus:outline-none focus:border-blue-500">
+
+            <div class="flex gap-2">
+                <button @click="saveOpenAiKey()"
+                        :disabled="!openAiKeyInput || openAiKeyInput.length < 20"
+                        class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-white font-medium">
+                    Save Key
+                </button>
+                <button @click="showOpenAiModal = false; openAiKeyInput = ''"
+                        class="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-gray-200 font-medium">
+                    Cancel
+                </button>
+            </div>
+
+            <p class="text-xs text-gray-500 mt-3">Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-400 hover:text-blue-300 underline">OpenAI Platform</a></p>
+        </div>
+    </div>
+
+    <!-- Shortcuts Help Modal -->
+    <div x-show="showShortcutsModal"
+         @click.away="showShortcutsModal = false"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         style="display: none;">
+        <div @click.stop class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 class="text-xl font-semibold text-gray-100 mb-4">⌨️ Keyboard Shortcuts</h2>
+
+            <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-300">Send Message</span>
+                    <kbd class="px-2 py-1 bg-gray-700 rounded text-sm font-mono">Enter</kbd>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-300">Toggle Thinking Mode</span>
+                    <kbd class="px-2 py-1 bg-gray-700 rounded text-sm font-mono">Ctrl+T</kbd>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-300">Voice Recording</span>
+                    <kbd class="px-2 py-1 bg-gray-700 rounded text-sm font-mono">Ctrl+Space</kbd>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-gray-300">Show This Help</span>
+                    <kbd class="px-2 py-1 bg-gray-700 rounded text-sm font-mono">Ctrl+?</kbd>
+                </div>
+            </div>
+
+            <button @click="showShortcutsModal = false"
+                    class="w-full mt-6 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">
+                Close
+            </button>
+        </div>
+    </div>
+
     <script>
         const baseUrl = window.location.origin;  // Dynamic - works from any URL
         let sessionId = null;  // Database session ID
@@ -134,19 +378,30 @@
         // Update thinking badge visual
         function updateThinkingBadge() {
             const mode = thinkingModes[currentThinkingLevel];
+
+            // Update desktop badge
             const badge = document.getElementById('thinkingBadge');
             const icon = document.getElementById('thinkingIcon');
             const text = document.getElementById('thinkingText');
 
-            // Remove all color classes
-            badge.className = badge.className.replace(/bg-\w+-\d+/g, '').replace(/text-\w+-\d+/g, '');
+            if (badge) {
+                badge.className = badge.className.replace(/bg-\w+-\d+/g, '').replace(/text-\w+-\d+/g, '');
+                badge.className += ' ' + mode.color;
+            }
+            if (icon) icon.textContent = mode.icon;
+            if (text) text.textContent = mode.name;
 
-            // Add new color classes
-            badge.className += ' ' + mode.color;
+            // Update mobile badge
+            const mobileBadge = document.getElementById('thinkingBadge-mobile');
+            const mobileIcon = document.getElementById('thinkingIcon-mobile');
+            const mobileText = document.getElementById('thinkingText-mobile');
 
-            // Update content
-            icon.textContent = mode.icon;
-            text.textContent = mode.name;
+            if (mobileBadge) {
+                mobileBadge.className = mobileBadge.className.replace(/bg-\w+-\d+/g, '').replace(/text-\w+-\d+/g, '');
+                mobileBadge.className += ' ' + mode.color;
+            }
+            if (mobileIcon) mobileIcon.textContent = mode.icon;
+            if (mobileText) mobileText.textContent = mode.name;
         }
 
         // Configure marked.js for markdown rendering
@@ -215,16 +470,46 @@
             sessionTotalCost += additionalCost;
             sessionTotalTokens += additionalTokens;
 
-            document.getElementById('session-cost').textContent = '$' + sessionTotalCost.toFixed(4);
-            document.getElementById('total-tokens').textContent = sessionTotalTokens.toLocaleString() + ' tokens';
+            // Update desktop
+            const desktopCost = document.getElementById('session-cost');
+            const desktopTokens = document.getElementById('total-tokens');
+            if (desktopCost) desktopCost.textContent = '$' + sessionTotalCost.toFixed(4);
+            if (desktopTokens) desktopTokens.textContent = sessionTotalTokens.toLocaleString() + ' tokens';
+
+            // Update mobile
+            const mobileCost = document.getElementById('session-cost-mobile');
+            const mobileTokens = document.getElementById('total-tokens-mobile');
+            if (mobileCost) mobileCost.textContent = '$' + sessionTotalCost.toFixed(4);
+            if (mobileTokens) mobileTokens.textContent = sessionTotalTokens.toLocaleString() + ' tokens';
         }
 
         // Helper to reset session cost
         function resetSessionCost() {
             sessionTotalCost = 0;
             sessionTotalTokens = 0;
-            document.getElementById('session-cost').textContent = '$0.00';
-            document.getElementById('total-tokens').textContent = '0 tokens';
+
+            // Reset desktop
+            const desktopCost = document.getElementById('session-cost');
+            const desktopTokens = document.getElementById('total-tokens');
+            if (desktopCost) desktopCost.textContent = '$0.00';
+            if (desktopTokens) desktopTokens.textContent = '0 tokens';
+
+            // Reset mobile
+            const mobileCost = document.getElementById('session-cost-mobile');
+            const mobileTokens = document.getElementById('total-tokens-mobile');
+            if (mobileCost) mobileCost.textContent = '$0.00';
+            if (mobileTokens) mobileTokens.textContent = '0 tokens';
+        }
+
+        // Helper to clear messages from both desktop and mobile containers
+        function clearMessages(welcomeMessage = null) {
+            const desktop = document.getElementById('messages');
+            const mobile = document.getElementById('messages-mobile');
+
+            const html = welcomeMessage || '';
+
+            if (desktop) desktop.innerHTML = html;
+            if (mobile) mobile.innerHTML = html;
         }
 
         // Check authentication on page load
@@ -285,13 +570,16 @@
                 const data = await response.json();
 
                 const sessionsList = document.getElementById('sessions-list');
+                const sessionsListMobile = document.getElementById('sessions-list-mobile');
 
                 if (!data.sessions || data.sessions.length === 0) {
-                    sessionsList.innerHTML = '<div class="text-center text-gray-500 text-xs mt-4">No sessions yet</div>';
+                    const emptyMessage = '<div class="text-center text-gray-500 text-xs mt-4">No sessions yet</div>';
+                    if (sessionsList) sessionsList.innerHTML = emptyMessage;
+                    if (sessionsListMobile) sessionsListMobile.innerHTML = emptyMessage;
                     return;
                 }
 
-                sessionsList.innerHTML = data.sessions.map(session => {
+                const sessionsHtml = data.sessions.map(session => {
                     const preview = session.prompt.substring(0, 50);
                     const datetime = new Date(session.modified * 1000);
                     const dateStr = datetime.toLocaleDateString('en-GB').replace(/\//g, '-'); // DD-MM-YYYY format
@@ -309,9 +597,17 @@
                         </div>
                     `;
                 }).join('');
+
+                // Update both desktop and mobile sessions lists
+                if (sessionsList) sessionsList.innerHTML = sessionsHtml;
+                if (sessionsListMobile) sessionsListMobile.innerHTML = sessionsHtml;
             } catch (err) {
                 console.error('Failed to load sessions:', err);
-                document.getElementById('sessions-list').innerHTML = '<div class="text-center text-red-400 text-xs mt-4">Failed to load</div>';
+                const errorMessage = '<div class="text-center text-red-400 text-xs mt-4">Failed to load</div>';
+                const sessionsList = document.getElementById('sessions-list');
+                const sessionsListMobile = document.getElementById('sessions-list-mobile');
+                if (sessionsList) sessionsList.innerHTML = errorMessage;
+                if (sessionsListMobile) sessionsListMobile.innerHTML = errorMessage;
             }
         }
 
@@ -372,7 +668,7 @@
                 }
 
                 // Clear current messages and tool block mapping
-                document.getElementById('messages').innerHTML = '';
+                clearMessages();
                 Object.keys(loadedToolBlocks).forEach(key => delete loadedToolBlocks[key]);
 
                 // Reset session cost before loading (will be recalculated from message usage data)
@@ -498,7 +794,9 @@
             // Reset session cost for new session
             resetSessionCost();
 
-            document.getElementById('messages').innerHTML = '<div class="text-center text-gray-400 mt-20"><h3 class="text-xl mb-2">Session Started</h3></div>';
+            // Clear messages and show welcome message
+            clearMessages('<div class="text-center text-gray-400 mt-20"><h3 class="text-xl mb-2">Session Started</h3></div>');
+
             // Reload the sessions list to show the new session
             setTimeout(() => loadSessionsList(), 500);
         }
@@ -1027,9 +1325,19 @@
                 `;
             }
 
+            // Add to desktop messages
             const container = document.getElementById('messages');
-            container.innerHTML += html;
-            container.scrollTop = container.scrollHeight;
+            if (container) {
+                container.innerHTML += html;
+                container.scrollTop = container.scrollHeight;
+            }
+
+            // Also add to mobile messages
+            const mobileContainer = document.getElementById('messages-mobile');
+            if (mobileContainer) {
+                mobileContainer.innerHTML += html;
+                mobileContainer.scrollTop = mobileContainer.scrollHeight;
+            }
 
             return id;
         }
@@ -1056,10 +1364,18 @@
         }
 
         function updateMsg(id, content) {
-            const msgElement = document.getElementById(id);
-            if (msgElement) {
+            // Update message in both desktop and mobile containers
+            const containers = ['messages', 'messages-mobile'];
+
+            containers.forEach(containerId => {
+                const container = document.getElementById(containerId);
+                if (!container) return;
+
+                const msgElement = container.querySelector('#' + id);
+                if (!msgElement) return;
+
                 // Check if this is a collapsible block (thinking or tool) by looking for the -content div
-                const blockContent = document.getElementById(id + '-content');
+                const blockContent = msgElement.querySelector('#' + id + '-content');
                 if (blockContent) {
                     // Check if it's a tool block or thinking block
                     if (typeof content === 'object' && content.name !== undefined) {
@@ -1067,13 +1383,13 @@
                         const toolData = formatToolCall(content);
 
                         // Update title
-                        const titleSpan = document.getElementById(id + '-title');
+                        const titleSpan = msgElement.querySelector('#' + id + '-title');
                         if (titleSpan) {
                             titleSpan.innerHTML = toolData.title;
                         }
 
                         // Update body
-                        const bodyDiv = document.getElementById(id + '-body');
+                        const bodyDiv = msgElement.querySelector('#' + id + '-body');
                         if (bodyDiv) {
                             bodyDiv.innerHTML = toolData.body;
                         }
@@ -1099,9 +1415,8 @@
                 }
 
                 // Auto-scroll to bottom
-                const container = document.getElementById('messages');
                 container.scrollTop = container.scrollHeight;
-            }
+            });
         }
 
         function escapeHtml(text) {
@@ -1250,6 +1565,207 @@
                 console.error('Error saving pricing:', err);
                 alert('Error saving pricing');
             }
+        }
+
+        // Alpine.js State Management for Voice Recording and Modals
+        function appState() {
+            return {
+                // Voice recording state
+                isRecording: false,
+                isProcessing: false,
+                mediaRecorder: null,
+                audioChunks: [],
+                openAiKeyConfigured: false,
+                autoSendAfterTranscription: false,
+
+                // Modal state
+                showOpenAiModal: false,
+                showShortcutsModal: false,
+                showMobileDrawer: false,
+                openAiKeyInput: '',
+
+                // Initialize voice recording
+                async initVoice() {
+                    // Check if OpenAI key is configured
+                    try {
+                        const response = await fetch(baseUrl + '/api/claude/openai-key/check');
+                        const data = await response.json();
+                        this.openAiKeyConfigured = data.configured;
+                    } catch (err) {
+                        console.error('OpenAI key check failed:', err);
+                    }
+                },
+
+                // Voice recording methods
+                async toggleVoiceRecording() {
+                    if (this.isRecording) {
+                        this.stopVoiceRecording();
+                    } else {
+                        if (!this.openAiKeyConfigured) {
+                            this.showOpenAiModal = true;
+                            return;
+                        }
+                        await this.startVoiceRecording();
+                    }
+                },
+
+                async startVoiceRecording() {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            audio: {
+                                sampleRate: 16000,
+                                channelCount: 1,
+                                echoCancellation: true,
+                                noiseSuppression: true
+                            }
+                        });
+
+                        this.mediaRecorder = new MediaRecorder(stream, {
+                            mimeType: 'audio/webm;codecs=opus'
+                        });
+
+                        this.audioChunks = [];
+
+                        this.mediaRecorder.ondataavailable = (event) => {
+                            if (event.data.size > 0) {
+                                this.audioChunks.push(event.data);
+                            }
+                        };
+
+                        this.mediaRecorder.onstop = async () => {
+                            await this.processRecording();
+                        };
+
+                        this.mediaRecorder.start();
+                        this.isRecording = true;
+                    } catch (err) {
+                        console.error('Error accessing microphone:', err);
+                        alert('Could not access microphone. Please check permissions.');
+                    }
+                },
+
+                stopVoiceRecording() {
+                    if (this.mediaRecorder && this.isRecording) {
+                        this.mediaRecorder.stop();
+                        this.isRecording = false;
+                        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                    }
+                },
+
+                async processRecording() {
+                    this.isProcessing = true;
+
+                    try {
+                        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                        const formData = new FormData();
+                        formData.append('audio', audioBlob, 'recording.webm');
+
+                        const response = await fetch(baseUrl + '/api/claude/transcribe', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
+                            body: formData
+                        });
+
+                        if (response.status === 428) {
+                            this.openAiKeyConfigured = false;
+                            this.showOpenAiModal = true;
+                            return;
+                        }
+
+                        const data = await response.json();
+
+                        if (data.success && data.transcription) {
+                            // Insert transcription into both desktop and mobile prompt fields
+                            const desktopPrompt = document.getElementById('prompt');
+                            const mobilePrompt = document.getElementById('prompt-mobile');
+                            if (desktopPrompt) desktopPrompt.value = data.transcription;
+                            if (mobilePrompt) mobilePrompt.value = data.transcription;
+
+                            // Auto-send if flag is set
+                            if (this.autoSendAfterTranscription) {
+                                this.autoSendAfterTranscription = false; // Reset flag
+                                // Trigger send
+                                setTimeout(() => {
+                                    const form = document.querySelector('form[onsubmit*="sendMessage"]');
+                                    if (form) {
+                                        sendMessage(new Event('submit'));
+                                    }
+                                    // Clear mobile prompt after send
+                                    const mobilePrompt = document.getElementById('prompt-mobile');
+                                    if (mobilePrompt) mobilePrompt.value = '';
+                                }, 100); // Small delay to ensure input is populated
+                            }
+                        } else {
+                            alert('Transcription failed: ' + (data.error || 'Unknown error'));
+                        }
+                    } catch (err) {
+                        console.error('Error processing recording:', err);
+                        alert('Error processing audio');
+                    } finally {
+                        this.isProcessing = false;
+                    }
+                },
+
+                // OpenAI key management
+                async saveOpenAiKey() {
+                    if (!this.openAiKeyInput || this.openAiKeyInput.length < 20) {
+                        alert('Please enter a valid OpenAI API key');
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(baseUrl + '/api/claude/openai-key', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
+                            body: JSON.stringify({ api_key: this.openAiKeyInput })
+                        });
+
+                        if (response.ok) {
+                            this.openAiKeyConfigured = true;
+                            this.showOpenAiModal = false;
+                            this.openAiKeyInput = '';
+                            alert('OpenAI API key saved successfully!');
+                            await this.startVoiceRecording();
+                        } else {
+                            alert('Failed to save API key');
+                        }
+                    } catch (err) {
+                        console.error('Error saving API key:', err);
+                        alert('Error saving API key');
+                    }
+                },
+
+                // Handle send button click - stop recording if active and auto-send
+                handleSendClick(event) {
+                    if (this.isRecording) {
+                        // Stop recording and set auto-send flag
+                        event.preventDefault();
+                        this.autoSendAfterTranscription = true;
+                        this.stopVoiceRecording();
+                        return false;
+                    }
+                    // Otherwise, let the normal send happen
+                    return true;
+                },
+
+                // Computed properties for button styling
+                get voiceButtonText() {
+                    if (this.isProcessing) return '⏳ Processing...';
+                    if (this.isRecording) return '⏹️ Stop Recording';
+                    return '🎙️ Record';
+                },
+
+                get voiceButtonClass() {
+                    if (this.isProcessing) return 'bg-gray-600 text-gray-200 cursor-not-allowed';
+                    if (this.isRecording) return 'bg-red-600 text-white hover:bg-red-700';
+                    return 'bg-purple-600 text-white hover:bg-purple-700';
+                }
+            };
         }
     </script>
 
