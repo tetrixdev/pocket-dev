@@ -41,6 +41,12 @@
         /* Hide desktop layout on mobile */
         @media (max-width: 767px) {
             .desktop-layout { display: none !important; }
+
+            /* Mobile full-page scroll optimizations */
+            html, body {
+                scroll-behavior: smooth;
+                -webkit-overflow-scrolling: touch;
+            }
         }
 
         /* Hide mobile layout on desktop */
@@ -135,9 +141,9 @@
     </div>
 
     <!-- Mobile Layout -->
-    <div class="mobile-layout h-screen flex flex-col">
-        <!-- Mobile Header -->
-        <div class="bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
+    <div class="mobile-layout">
+        <!-- Mobile Header (Sticky) -->
+        <div class="sticky top-0 z-10 bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
             <button @click="showMobileDrawer = true" class="text-gray-300 hover:text-white">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -153,12 +159,12 @@
         </div>
 
         <!-- Messages Area -->
-        <div id="messages-mobile" class="flex-1 overflow-y-auto p-4 space-y-4 pb-56">
+        <div id="messages-mobile" class="p-4 space-y-4 pb-56 min-h-screen">
             <!-- Messages will be dynamically added here by existing addMsg() function -->
         </div>
 
         <!-- Fixed Bottom Input (Mobile) -->
-        <div class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-700 safe-area-bottom">
+        <div class="fixed bottom-0 left-0 right-0 z-20 bg-gray-800 border-t border-gray-700 safe-area-bottom">
             <!-- Input Row -->
             <div class="p-3">
                 <input type="text"
@@ -1336,7 +1342,8 @@
             const mobileContainer = document.getElementById('messages-mobile');
             if (mobileContainer) {
                 mobileContainer.innerHTML += html;
-                mobileContainer.scrollTop = mobileContainer.scrollHeight;
+                // For mobile, scroll the window instead of the container (full-page scroll)
+                setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 0);
             }
 
             return id;
@@ -1415,7 +1422,13 @@
                 }
 
                 // Auto-scroll to bottom
-                container.scrollTop = container.scrollHeight;
+                if (containerId === 'messages-mobile') {
+                    // For mobile with full-page scroll, scroll the window
+                    window.scrollTo(0, document.body.scrollHeight);
+                } else {
+                    // For desktop, scroll the container
+                    container.scrollTop = container.scrollHeight;
+                }
             });
         }
 
