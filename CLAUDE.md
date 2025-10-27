@@ -51,7 +51,8 @@ docker exec pocket-dev-php chown -R www-data:www-data /var/www/.claude
   - Uses `incrementTurn()` to track conversation progress
 
 - `app/Http/Controllers/Api/ClaudeController.php` - RESTful API
-  - 6 endpoints: status, list/create sessions, stream, list/load .jsonl sessions
+  - Main endpoints: status, list/create sessions, stream, list/load .jsonl sessions
+  - Voice transcription endpoints: transcribe, openai-key management
   - Streaming passes through Claude CLI output without storing content
   - Returns Claude's JSON response structure with `result` field
 
@@ -60,13 +61,31 @@ docker exec pocket-dev-php chown -R www-data:www-data /var/www/.claude
   - Shows auth status (subscription type, expiry, scopes)
   - Validates credential structure: `claudeAiOauth` with `accessToken`, `refreshToken`, `expiresAt`
 
-- `app/Livewire/ClaudeChat.php` - Livewire component (alternative to vanilla JS)
-- `public/chat.html` - Vanilla JavaScript chat interface (currently used)
+- `app/Services/OpenAIService.php` - OpenAI Whisper integration for voice transcription
+  - Transcribes audio files using gpt-4o-transcribe model
+  - Falls back to database-stored API key if not in config
+
+- `app/Services/AppSettingsService.php` - Encrypted settings management
+  - Stores sensitive settings (like OpenAI API key) with Laravel encryption
+  - Used by OpenAI service for API key retrieval
+
+- `app/Models/AppSetting.php` - Database model for encrypted key-value settings
+  - Automatically encrypts/decrypts values using Laravel's encrypted cast
+
+- `resources/views/chat.blade.php` - Main chat interface (Blade template with Alpine.js)
+  - Fully responsive: desktop sidebar layout, mobile full-page scroll with drawer
+  - Voice recording with MediaRecorder API
+  - Keyboard shortcuts: Ctrl+T (thinking toggle), Ctrl+Space (voice), Ctrl+? (help)
+  - Real-time streaming with Server-Sent Events
+  - Cost tracking with breakdown modals
+  - Session management with URL-based persistence
 
 **Configuration:**
 
 - `config/claude.php` - Claude Code settings (model, tools, permissions, timeout)
-- Migration: `2025_10_16_201350_create_claude_sessions_table.php`
+- Migrations:
+  - `2025_10_16_201350_create_claude_sessions_table.php` - Session metadata
+  - `2025_10_26_214333_create_app_settings_table.php` - Encrypted settings storage
 
 **Routes:**
 
@@ -91,7 +110,58 @@ API routes (no auth required from internal):
 /api/claude/sessions/{session}/stream - Streaming query (SSE)
 /api/claude/claude-sessions - List Claude's native .jsonl sessions
 /api/claude/claude-sessions/{sessionId} - Load messages from .jsonl file
+/api/claude/transcribe - POST audio file for OpenAI Whisper transcription
+/api/claude/openai-key/check - GET OpenAI API key configuration status
+/api/claude/openai-key - POST to save OpenAI API key (encrypted)
+/api/claude/openai-key - DELETE to remove OpenAI API key
+/api/pricing/{model} - GET/POST model pricing configuration
 ```
+
+## Chat Interface Architecture
+
+The main chat interface (`resources/views/chat.blade.php`) uses a dual-container pattern for responsive design:
+
+### Responsive Layout Strategy
+
+- **Desktop** (≥768px): Sidebar layout with fixed header and scrollable message container
+- **Mobile** (<768px): Full-page scroll with sticky header and fixed bottom panel
+
+**Key insight**: Both layouts exist in the DOM simultaneously, controlled by CSS media queries. This means:
+- JavaScript must update BOTH containers when adding/updating messages
+- Auto-scroll behavior differs: mobile uses `window.scrollTo()`, desktop uses `container.scrollTop`
+- Functions like `addMsg()`, `updateMsg()`, and cost updates must iterate through both containers
+
+### Frontend State Management
+
+Uses **Alpine.js 3.x** for reactive state in `appState()` function:
+
+- **Voice recording state**: `isRecording`, `isProcessing`, `mediaRecorder`, `audioChunks`
+- **Modal state**: `showOpenAiModal`, `showShortcutsModal`, `showMobileDrawer`
+- **Configuration**: `openAiKeyConfigured`, `autoSendAfterTranscription`
+
+### Streaming Architecture
+
+Real-time streaming uses Server-Sent Events (SSE):
+
+1. User sends message via `/api/claude/sessions/{id}/stream`
+2. Backend streams Claude CLI output as SSE events
+3. Frontend processes events in real-time:
+   - `text_delta` → Updates assistant message incrementally
+   - `thinking` → Creates/updates thinking blocks
+   - `tool_use` → Creates tool blocks
+   - `tool_result` → Updates tool blocks with results
+   - `usage` → Calculates and displays cost
+
+**Critical**: Streaming updates call `updateMsg()` hundreds of times per response, so it must be efficient and update both containers.
+
+### Cost Tracking
+
+Cost calculation happens **server-side** in `.jsonl` files to ensure consistency:
+
+- Backend calculates cost using model pricing from database
+- Frontend displays cost from `.jsonl` metadata
+- Per-message breakdown modal shows token/cost details
+- Session total displayed in sidebar (desktop) and drawer (mobile)
 
 ## Development Commands
 
@@ -227,6 +297,13 @@ These paths are NOT the same. Authentication in one container does not automatic
 5. **Volume persistence**: User containers created inside TTYD will block volume removal. Must stop them first before `docker compose down -v`
 
 6. **Response structure**: Claude returns `{"type":"result","subtype":"success","is_error":false,"result":"[actual message]",...}` - extract the `result` field
+
+7. **Mobile vs Desktop**: When modifying chat interface, always update BOTH desktop and mobile containers:
+   - Use `containers.forEach()` pattern like `updateMsg()` and `addMsg()` functions
+   - Desktop container: `#messages`, Mobile container: `#messages-mobile`
+   - Mobile uses full-page scroll (window.scrollTo), desktop uses container scroll (scrollTop)
+
+8. **Microphone access**: Browser microphone API requires secure context (HTTPS or localhost). IP addresses won't work for voice recording.
 
 ## Testing Authentication Flow
 
