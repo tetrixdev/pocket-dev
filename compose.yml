@@ -55,6 +55,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - proxy-config-data:/etc/nginx-proxy-config
       - user-data:/home/appuser
+      - workspace-data:/workspace
       - .:/pocketdev-source
     networks:
       - pocket-dev

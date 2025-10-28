@@ -95,12 +95,13 @@ return [
     | Default working directory for Claude Code operations.
     | This is where Claude Code will start and where relative paths resolve from.
     |
-    | Set to '/' to allow access to both /workspace and /pocketdev-source.
+    | Default: /workspace (where user projects are created)
+    | Override: Set CLAUDE_WORKING_DIR=/ in .env to access both /workspace and /var/www
     | Claude Code restricts file access to the working directory and subdirectories.
     |
     */
 
-    'working_directory' => env('CLAUDE_WORKING_DIR', '/'),
+    'working_directory' => env('CLAUDE_WORKING_DIR', '/workspace'),
 
     /*
     |--------------------------------------------------------------------------

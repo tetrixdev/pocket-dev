@@ -337,6 +337,7 @@
         const baseUrl = window.location.origin;  // Dynamic - works from any URL
         let sessionId = null;  // Database session ID
         let claudeSessionId = null;  // Claude UUID for CLI
+        const WORKING_DIRECTORY = '/workspace';  // Default working directory for Claude sessions
 
         // Extract sessionId from URL if present
         const urlPath = window.location.pathname;
@@ -572,7 +573,7 @@
 
         async function loadSessionsList() {
             try {
-                const response = await fetch(baseUrl + '/api/claude/claude-sessions?project_path=/');
+                const response = await fetch(baseUrl + `/api/claude/claude-sessions?project_path=${WORKING_DIRECTORY}`);
                 const data = await response.json();
 
                 const sessionsList = document.getElementById('sessions-list');
@@ -620,7 +621,7 @@
         async function loadSession(loadClaudeSessionId) {
             try {
                 console.log('[FRONTEND-LOAD] Loading session:', loadClaudeSessionId);
-                const response = await fetch(baseUrl + `/api/claude/claude-sessions/${loadClaudeSessionId}?project_path=/`);
+                const response = await fetch(baseUrl + `/api/claude/claude-sessions/${loadClaudeSessionId}?project_path=${WORKING_DIRECTORY}`);
                 const data = await response.json();
 
                 if (!data || !data.messages) {
@@ -647,7 +648,7 @@
 
                 // Try to find existing database session with this claude_session_id
                 try {
-                    const dbResponse = await fetch(baseUrl + '/api/claude/sessions?project_path=/');
+                    const dbResponse = await fetch(baseUrl + `/api/claude/sessions?project_path=${WORKING_DIRECTORY}`);
                     const dbData = await dbResponse.json();
                     const existingSession = dbData.data?.find(s => s.claude_session_id === claudeSessionId);
                     if (existingSession) {
@@ -660,7 +661,7 @@
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({
                                 title: data.messages[0]?.content?.substring(0, 50) || 'Loaded Session',
-                                project_path: '/',
+                                project_path: WORKING_DIRECTORY,
                                 claude_session_id: claudeSessionId
                             })
                         });
@@ -784,7 +785,7 @@
             const response = await fetch(baseUrl + '/api/claude/sessions', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({title: 'New Session', project_path: '/'})
+                body: JSON.stringify({title: 'New Session', project_path: WORKING_DIRECTORY})
             });
             const data = await response.json();
             sessionId = data.session.id;
