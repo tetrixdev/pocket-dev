@@ -121,8 +121,69 @@
 - `www/config/claude.php`
 
 **Testing:**
-- PHP container can access `/workspace`
-- Claude sessions start in `/workspace` directory
+- ✅ PHP container can access `/workspace`
+- ✅ Claude sessions start in `/workspace` directory
+- ✅ Frontend uses single WORKING_DIRECTORY constant
+- ✅ New sessions create with project_path=/workspace
+
+**Status:** ✅ COMPLETED
+
+---
+
+### Phase 1.5: Add Git/GitHub Command Permissions
+
+**Objective:** Enable git and gh commands without requiring manual approval
+
+**Problem:**
+Current `settings.json` only allows specific bash commands (ls, mkdir, docker, etc.) but not `git` or `gh`. Users must manually approve every git/gh command, which is disruptive for development workflow.
+
+**Tasks:**
+- [ ] Add `Bash(git:*)` to allowed permissions in settings.json
+- [ ] Add `Bash(gh:*)` to allowed permissions in settings.json
+- [ ] Test git commands work without approval
+- [ ] Test gh commands work without approval
+
+**Files Modified:**
+- `/home/appuser/.claude/settings.json` (in user-data volume)
+
+**Implementation:**
+
+Add to the `allow` array in settings.json:
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(find:*)",
+      "Bash(docker:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(pandoc:*)",
+      "Bash(xlsx2csv:*)",
+      "Bash(extract_msg:*)",
+      "Bash(git:*)",      // ← ADD THIS
+      "Bash(gh:*)",       // ← ADD THIS
+      // ... rest of permissions
+    ]
+  }
+}
+```
+
+**Testing:**
+- [ ] Ask Claude: "List my GitHub repositories with gh repo list"
+- [ ] Expected: Command runs without approval prompt
+- [ ] Ask Claude: "What is the git status?"
+- [ ] Expected: Command runs without approval prompt
+- [ ] Ask Claude: "Clone a repository"
+- [ ] Expected: git clone works without approval
+
+**Notes:**
+- This change only affects the PHP container's Claude instance
+- Users can still deny dangerous operations if they appear suspicious
+- Git operations are essential for development workflow
+
+**Status:** 🔄 PENDING
 
 ---
 
