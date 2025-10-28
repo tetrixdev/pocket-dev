@@ -130,25 +130,87 @@
 
 ---
 
-### Phase 1.5: Add Git/GitHub Command Permissions
+### Phase 1.5: Configuration System & Permission Management
 
-**Objective:** Enable git and gh commands without requiring manual approval
+**Objective:** Enable comprehensive configuration management with quick settings popup, settings.json editor, and permission approval UI
 
 **Problem:**
-Current `settings.json` only allows specific bash commands (ls, mkdir, docker, etc.) but not `git` or `gh`. Users must manually approve every git/gh command, which is disruptive for development workflow.
+1. settings.json not editable via config page
+2. No quick way to toggle common settings (model, permission mode, max turns)
+3. No UI for handling permission requests (blocks workflow)
+4. Production Docker images don't copy Claude Code defaults
+5. Git/gh commands require manual approval
+
+**Scope:**
+- Part A: Fix production build to include Claude Code defaults
+- Part B: Add settings.json to configuration page
+- Part C: Create quick settings popup
+- Part D: Implement permission approval UI
+
+---
+
+#### Part A: Fix Production Build (15 min)
+
+**Objective:** Ensure production Docker images include Claude Code defaults and proper volume mounts
 
 **Tasks:**
-- [ ] Add `Bash(git:*)` to allowed permissions in settings.json
-- [ ] Add `Bash(gh:*)` to allowed permissions in settings.json
-- [ ] Test git commands work without approval
-- [ ] Test gh commands work without approval
+- [ ] Update `docker-laravel/production/php/Dockerfile` to copy Claude defaults
+- [ ] Update `deploy/compose.yml` to mount user-data and workspace volumes
+- [ ] Test production build includes defaults
+- [ ] Verify volumes persist settings.json changes
 
 **Files Modified:**
-- `/home/appuser/.claude/settings.json` (in user-data volume)
+- `docker-laravel/production/php/Dockerfile`
+- `deploy/compose.yml`
 
-**Implementation:**
+**Dockerfile Changes:**
 
-Add to the `allow` array in settings.json:
+Add after line 31 (before `WORKDIR /var/www`):
+```dockerfile
+# Set up Claude Code defaults
+RUN mkdir -p /home/www-data/.claude/agents
+COPY docker-ttyd/shared/defaults/CLAUDE.md /home/www-data/.claude/
+COPY docker-ttyd/shared/defaults/settings.json /home/www-data/.claude/
+COPY docker-ttyd/shared/defaults/agents/ /home/www-data/.claude/agents/
+RUN chown -R www-data:www-data /home/www-data/.claude
+```
+
+**Deploy compose.yml Changes:**
+
+Update `pocket-dev-php` service volumes:
+```yaml
+pocket-dev-php:
+  volumes:
+    - .env:/var/www/.env
+    - user-data:/home/www-data       # ← ADD THIS
+    - workspace-data:/workspace      # ← ADD THIS
+```
+
+**Testing:**
+- [ ] Build production image: `docker buildx build -f docker-laravel/production/php/Dockerfile .`
+- [ ] Verify defaults copied: `docker run --rm <image> ls -la /home/www-data/.claude/`
+- [ ] Start with deploy compose, verify volumes mount
+- [ ] Edit settings.json via config page, restart, verify persists
+
+---
+
+#### Part B: Add settings.json to Configuration Page (10 min)
+
+**Objective:** Make settings.json editable via web UI
+
+**Tasks:**
+- [ ] Verify `settings` config already exists in ConfigController
+- [ ] Ensure settings tab shows in config page UI
+- [ ] Add default settings.json with git/gh permissions
+- [ ] Test edit and save functionality
+
+**Files Modified:**
+- `www/app/Http/Controllers/ConfigController.php` (verify existing config)
+- `www/resources/views/config/index.blade.php` (verify tab visible)
+- `docker-ttyd/shared/defaults/settings.json` (add git/gh permissions)
+
+**Default settings.json additions:**
+
 ```json
 {
   "permissions": {
@@ -164,26 +226,381 @@ Add to the `allow` array in settings.json:
       "Bash(extract_msg:*)",
       "Bash(git:*)",      // ← ADD THIS
       "Bash(gh:*)",       // ← ADD THIS
-      // ... rest of permissions
+      "mcp__browsermcp__browser_navigate",
+      "mcp__browsermcp__browser_snapshot",
+      "mcp__browsermcp__browser_click",
+      "mcp__browsermcp__browser_hover",
+      "mcp__browsermcp__browser_type",
+      "mcp__browsermcp__browser_select_option",
+      "mcp__browsermcp__browser_press_key",
+      "mcp__browsermcp__browser_wait",
+      "mcp__browsermcp__browser_get_console_logs",
+      "mcp__browsermcp__browser_screenshot",
+      "Read(//etc/nginx-proxy-config/**)",
+      "Edit(//etc/nginx-proxy-config/**)",
+      "Read(/workspace/**)",
+      "Edit(/workspace/**)",
+      "Write(/workspace/**)",
+      "Read(/var/www/**)",
+      "Edit(/var/www/**)",
+      "Write(/var/www/**)",
+      "Read(//tmp/**)",
+      "Edit(//tmp/**)",
+      "Write(//tmp/**)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Edit(**/.env)",
+      "Write(**/.env)"
     ]
-  }
+  },
+  "model": "sonnet"
 }
 ```
 
 **Testing:**
-- [ ] Ask Claude: "List my GitHub repositories with gh repo list"
-- [ ] Expected: Command runs without approval prompt
-- [ ] Ask Claude: "What is the git status?"
-- [ ] Expected: Command runs without approval prompt
-- [ ] Ask Claude: "Clone a repository"
-- [ ] Expected: git clone works without approval
+- [ ] Visit `/config`, verify settings.json tab visible
+- [ ] Load settings.json, verify content displays
+- [ ] Edit and save, verify changes persist
+- [ ] Restart PHP container, verify changes still present
+
+---
+
+#### Part C: Quick Settings Popup (25 min)
+
+**Objective:** Add quick settings popup for frequently changed options
+
+**Tasks:**
+- [ ] Create Alpine.js modal component in chat.blade.php
+- [ ] Add gear icon trigger (desktop: sidebar, mobile: drawer)
+- [ ] Create database table/use app_settings for storage
+- [ ] Implement save functionality
+- [ ] Apply settings to current and future sessions
+
+**Files Modified:**
+- `www/resources/views/chat.blade.php`
+- `www/app/Http/Controllers/Api/ClaudeController.php` (add quick settings endpoints)
+- Database migration (if new table needed)
+
+**UI Design:**
+
+Desktop location: Gear icon ⚙️ next to "Configuration" link in sidebar
+Mobile location: In drawer, near "View Shortcuts" button
+
+```
+⚙️ Quick Settings
+━━━━━━━━━━━━━━━━━━━━━
+
+Model
+  ○ Haiku
+  ● Sonnet 4.5 (default)
+  ○ Opus 4
+
+Permission Mode
+  ○ Default (prompt me)
+  ● Accept Edits (default)
+  ○ Plan Mode (read-only)
+  ○ Bypass ALL (dangerous!)
+
+Max Turns: [50]
+(Default: 10, Max: 9999)
+
+[Save] [Cancel]
+```
+
+**Database Schema:**
+
+Option 1: Use existing `app_settings` table:
+```php
+AppSettingsService::set('user_claude_model', 'claude-sonnet-4-5-20250929');
+AppSettingsService::set('user_permission_mode', 'acceptEdits');
+AppSettingsService::set('user_max_turns', 50);
+```
+
+Option 2: Create `user_preferences` table (if more complex needs):
+```sql
+CREATE TABLE user_preferences (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER,  -- Future: multi-user support
+    key VARCHAR(255) NOT NULL,
+    value TEXT NOT NULL,
+    created_at TIMESTAMP,
+    updated_at TIMESTAMP
+);
+```
+
+**API Endpoints:**
+
+```php
+// GET /api/claude/quick-settings
+Route::get('/quick-settings', [ClaudeController::class, 'getQuickSettings']);
+
+// POST /api/claude/quick-settings
+Route::post('/quick-settings', [ClaudeController::class, 'saveQuickSettings']);
+```
+
+**Frontend Implementation:**
+
+```javascript
+// In chat.blade.php Alpine.js state
+const quickSettings = {
+    show: false,
+    model: 'claude-sonnet-4-5-20250929',
+    permissionMode: 'acceptEdits',
+    maxTurns: 50,
+
+    async load() {
+        const response = await fetch('/api/claude/quick-settings');
+        const data = await response.json();
+        this.model = data.model;
+        this.permissionMode = data.permissionMode;
+        this.maxTurns = data.maxTurns;
+    },
+
+    async save() {
+        await fetch('/api/claude/quick-settings', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                model: this.model,
+                permissionMode: this.permissionMode,
+                maxTurns: this.maxTurns
+            })
+        });
+        this.show = false;
+    }
+};
+```
+
+**Model Options:**
+- `claude-3-5-haiku-20241022` → "Haiku"
+- `claude-sonnet-4-5-20250929` → "Sonnet 4.5" (default)
+- `claude-opus-4-20250514` → "Opus 4"
+
+**Permission Modes (from CLI --help):**
+- `default` → "Default (prompt me)"
+- `acceptEdits` → "Accept Edits" (default)
+- `plan` → "Plan Mode (read-only)"
+- `bypassPermissions` → "Bypass ALL (dangerous!)"
+
+**Max Turns:**
+- Input type: number
+- Min: 1
+- Max: 9999
+- Default: 50 (our config) or 10 (Claude default)
+- Hint text: "Default: 10, Max: 9999"
+
+**Testing:**
+- [ ] Desktop: Click gear icon, modal opens
+- [ ] Mobile: Open drawer, click settings, modal opens
+- [ ] Change model, save, verify applied to new sessions
+- [ ] Change permission mode, save, verify applied
+- [ ] Change max turns, save, verify applied
+- [ ] Reload page, verify settings persist
+- [ ] Test validation (max turns can't exceed 9999)
+
+---
+
+#### Part D: Permission Approval UI (30 min)
+
+**Objective:** Implement UI for handling Claude's permission requests
+
+**Problem:**
+Currently using `--permission-mode acceptEdits` because we have no way to handle permission prompts. Need bidirectional communication with Claude process.
+
+**Approach:** File-based signaling (simpler than WebSocket)
+
+**Tasks:**
+- [ ] Detect permission requests in Claude output stream
+- [ ] Render permission request as tool block
+- [ ] Add approve/deny buttons
+- [ ] Implement file-based signaling for approval
+- [ ] Resume Claude process after approval
+- [ ] Test with `--permission-mode default`
+
+**Files Modified:**
+- `www/resources/views/chat.blade.php` (permission block UI)
+- `www/app/Services/ClaudeCodeService.php` (permission handling)
+- `www/app/Http/Controllers/Api/ClaudeController.php` (approval endpoint)
+
+**Permission Request Detection:**
+
+Claude outputs permission requests in JSON format. Example:
+```json
+{
+  "type": "permission_request",
+  "tool": "Edit",
+  "path": "/workspace/src/app.js",
+  "action": "edit_file",
+  "reason": "Add error handling to login function"
+}
+```
+
+**UI Implementation:**
+
+Render as tool block in conversation:
+```html
+<div class="tool-block permission-request">
+    <div class="tool-header bg-yellow-700">
+        🔒 Permission Required
+    </div>
+    <div class="tool-content">
+        <strong>Edit</strong> /workspace/src/app.js
+
+        <div class="text-gray-300 mt-2">
+            Claude wants to: Add error handling to login function
+        </div>
+
+        <div class="flex gap-2 mt-3">
+            <button @click="approvePermission(toolId)"
+                    class="px-3 py-2 bg-green-600 hover:bg-green-700 rounded">
+                ✓ Approve
+            </button>
+            <button @click="denyPermission(toolId)"
+                    class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded">
+                ✗ Deny
+            </button>
+            <button @click="viewDetails(toolId)"
+                    class="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded">
+                📝 View
+            </button>
+        </div>
+    </div>
+</div>
+```
+
+**File-Based Signaling:**
+
+**Request file:** `/tmp/claude-${sessionId}-permission-request.json`
+```json
+{
+  "timestamp": 1698765432,
+  "tool": "Edit",
+  "path": "/workspace/src/app.js",
+  "action": "edit_file",
+  "status": "pending"
+}
+```
+
+**Response file:** `/tmp/claude-${sessionId}-permission-response.json`
+```json
+{
+  "timestamp": 1698765435,
+  "decision": "approve",  // or "deny"
+  "tool": "Edit"
+}
+```
+
+**Backend Implementation:**
+
+```php
+// In ClaudeCodeService.php
+protected function waitForPermissionApproval(string $sessionId, array $request): bool
+{
+    $requestFile = "/tmp/claude-{$sessionId}-permission-request.json";
+    $responseFile = "/tmp/claude-{$sessionId}-permission-response.json";
+
+    // Write permission request
+    file_put_contents($requestFile, json_encode($request));
+
+    // Poll for response (with timeout)
+    $timeout = 60; // seconds
+    $start = time();
+    while (time() - $start < $timeout) {
+        if (file_exists($responseFile)) {
+            $response = json_decode(file_get_contents($responseFile), true);
+            unlink($requestFile);
+            unlink($responseFile);
+            return $response['decision'] === 'approve';
+        }
+        usleep(100000); // 100ms
+    }
+
+    // Timeout - deny by default
+    return false;
+}
+```
+
+**Frontend Implementation:**
+
+```javascript
+// Poll for permission requests
+async function checkPermissionRequests() {
+    const response = await fetch(`/api/claude/sessions/${sessionId}/permissions`);
+    const data = await response.json();
+
+    if (data.pending) {
+        renderPermissionBlock(data.request);
+    }
+}
+
+async function approvePermission(toolId) {
+    await fetch(`/api/claude/sessions/${sessionId}/permissions/${toolId}/approve`, {
+        method: 'POST'
+    });
+}
+
+async function denyPermission(toolId) {
+    await fetch(`/api/claude/sessions/${sessionId}/permissions/${toolId}/deny`, {
+        method: 'POST'
+    });
+}
+
+// Poll every 500ms during active session
+setInterval(checkPermissionRequests, 500);
+```
+
+**Testing:**
+- [ ] Set permission mode to `default`
+- [ ] Ask Claude to edit a file
+- [ ] Permission request appears as tool block
+- [ ] Click Approve, Claude continues
+- [ ] Ask Claude to edit another file
+- [ ] Click Deny, Claude stops with error
+- [ ] Verify timeout works (deny after 60s)
+- [ ] Test with multiple permissions in sequence
 
 **Notes:**
-- This change only affects the PHP container's Claude instance
-- Users can still deny dangerous operations if they appear suspicious
-- Git operations are essential for development workflow
+- File-based signaling is simple but not real-time
+- For better UX, consider WebSocket in future phase
+- Default permission mode stays `acceptEdits` for now
+- Users can switch to `default` mode via quick settings once UI is ready
 
-**Status:** 🔄 PENDING
+---
+
+### Phase 1.5 Summary
+
+**Total Implementation Time:** ~80 minutes
+
+**Parts:**
+1. ✅ Production build fixes (15 min)
+2. ✅ settings.json in config page (10 min)
+3. ✅ Quick settings popup (25 min)
+4. ✅ Permission approval UI (30 min)
+
+**Files Created/Modified:**
+- docker-laravel/production/php/Dockerfile
+- deploy/compose.yml
+- docker-ttyd/shared/defaults/settings.json
+- www/resources/views/chat.blade.php
+- www/app/Http/Controllers/Api/ClaudeController.php
+- www/app/Services/ClaudeCodeService.php
+
+**Database Changes:**
+- Use existing `app_settings` table for quick settings
+- Keys: `user_claude_model`, `user_permission_mode`, `user_max_turns`
+
+**Testing Checklist:**
+- [ ] Production build includes Claude defaults
+- [ ] settings.json editable via /config
+- [ ] Quick settings popup works (desktop + mobile)
+- [ ] Settings persist across sessions
+- [ ] Permission approval UI functional
+- [ ] All 4 permission modes work correctly
+- [ ] Max turns validation works (1-9999)
+- [ ] Git/gh commands work without approval
+
+**Status:** 🔄 IN PROGRESS
 
 ---
 
