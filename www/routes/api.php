@@ -30,6 +30,10 @@ Route::prefix('claude')->group(function () {
     Route::get('openai-key/check', [ClaudeController::class, 'checkOpenAiKey']);
     Route::post('openai-key', [ClaudeController::class, 'setOpenAiKey']);
     Route::delete('openai-key', [ClaudeController::class, 'deleteOpenAiKey']);
+
+    // Quick settings (model, permission mode, max turns)
+    Route::get('quick-settings', [ClaudeController::class, 'getQuickSettings']);
+    Route::post('quick-settings', [ClaudeController::class, 'saveQuickSettings']);
 });
 
 // Model pricing

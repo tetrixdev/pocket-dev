@@ -10,6 +10,8 @@
       "Bash(pandoc:*)",
       "Bash(xlsx2csv:*)",
       "Bash(extract_msg:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
 
       "mcp__browsermcp__browser_navigate",
       "mcp__browsermcp__browser_snapshot",
@@ -27,6 +29,9 @@
       "Read(/workspace/**)",
       "Edit(/workspace/**)",
       "Write(/workspace/**)",
+      "Read(/var/www/**)",
+      "Edit(/var/www/**)",
+      "Write(/var/www/**)",
       "Read(//tmp/**)",
       "Edit(//tmp/**)",
       "Write(//tmp/**)"

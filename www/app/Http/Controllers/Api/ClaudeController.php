@@ -99,12 +99,24 @@ class ClaudeController extends Controller
                 ob_end_flush();
             }
 
+            // Read user preferences from database, fall back to config defaults
+            $userModel = $this->appSettings->get('user_claude_model') ?? config('claude.default_model');
+            $userPermissionMode = $this->appSettings->get('user_permission_mode') ?? config('claude.permission_mode');
+            $userMaxTurns = $this->appSettings->get('user_max_turns') ?? config('claude.max_turns');
+
+            \Log::info('[ClaudeController] Using user preferences', [
+                'model' => $userModel,
+                'permission_mode' => $userPermissionMode,
+                'max_turns' => $userMaxTurns,
+            ]);
+
             $options = array_merge(
                 $request->input('options', []),
                 [
                     'cwd' => $session->project_path,
-                    'model' => config('claude.model'),
-                    'permission_mode' => config('claude.permission_mode'),
+                    'model' => $userModel,
+                    'permission_mode' => $userPermissionMode,
+                    'max_turns' => $userMaxTurns,
                 ]
             );
 
@@ -770,6 +782,54 @@ class ClaudeController extends Controller
             'success' => $deleted,
             'message' => $deleted ? 'API key deleted' : 'No API key found',
         ]);
+    }
+
+    /**
+     * Get quick settings (model, permission mode, max turns).
+     */
+    public function getQuickSettings(): JsonResponse
+    {
+        return response()->json([
+            'model' => $this->appSettings->get('user_claude_model') ?? 'claude-sonnet-4-5-20250929',
+            'permissionMode' => $this->appSettings->get('user_permission_mode') ?? 'acceptEdits',
+            'maxTurns' => (int) ($this->appSettings->get('user_max_turns') ?? 50),
+        ]);
+    }
+
+    /**
+     * Save quick settings (model, permission mode, max turns).
+     */
+    public function saveQuickSettings(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'model' => 'required|string|in:claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929,claude-opus-4-1-20250805',
+            'permissionMode' => 'required|string|in:default,acceptEdits,plan,bypassPermissions',
+            'maxTurns' => 'required|integer|min:1|max:9999',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $this->appSettings->set('user_claude_model', $request->input('model'));
+            $this->appSettings->set('user_permission_mode', $request->input('permissionMode'));
+            $this->appSettings->set('user_max_turns', $request->input('maxTurns'));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Quick settings saved successfully',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to save quick settings', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to save settings: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

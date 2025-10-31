@@ -29,6 +29,8 @@ services:
     working_dir: /var/www
     volumes:
       - .env:/var/www/.env
+      - user-data:/home/www-data
+      - workspace-data:/workspace
     networks:
       - pocket-dev
     depends_on:

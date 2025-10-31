@@ -30,6 +30,13 @@ RUN mkdir -p /var/www/storage/framework/{sessions,views,cache} \
     && mkdir -p /var/www/storage/logs \
     && mkdir -p /var/www/bootstrap/cache
 
+# Set up Claude Code defaults
+RUN mkdir -p /home/www-data/.claude/agents
+COPY docker-ttyd/shared/defaults/CLAUDE.md /home/www-data/.claude/
+COPY docker-ttyd/shared/defaults/settings.json /home/www-data/.claude/
+COPY docker-ttyd/shared/defaults/agents/ /home/www-data/.claude/agents/
+RUN chown -R www-data:www-data /home/www-data/.claude
+
 # Set working directory
 WORKDIR /var/www
 

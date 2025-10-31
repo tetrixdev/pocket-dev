@@ -91,8 +91,11 @@
                 </div>
                 <div>Working Dir: /workspace</div>
                 <div class="text-gray-500">Access: /workspace, /pocketdev-source</div>
-                <a href="/config" class="text-blue-400 hover:text-blue-300">⚙️ Configuration</a>
-                <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300 ml-2">Shortcuts</button>
+                <div class="flex gap-2">
+                    <a href="/config" class="text-blue-400 hover:text-blue-300">⚙️ Configuration</a>
+                    <button @click="showQuickSettings = true; loadQuickSettings()" class="text-blue-400 hover:text-blue-300">⚙️ Quick Settings</button>
+                    <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300">Shortcuts</button>
+                </div>
             </div>
         </div>
         <div class="flex-1 flex flex-col">
@@ -249,6 +252,9 @@
             <div class="p-4 border-t border-gray-700 text-xs text-gray-400">
                 <div class="mb-2">Cost: <span id="session-cost-mobile" class="text-green-400 font-mono">$0.00</span></div>
                 <div class="mb-2"><span id="total-tokens-mobile">0 tokens</span></div>
+                <button @click="showQuickSettings = true; loadQuickSettings(); showMobileDrawer = false" class="text-blue-400 hover:text-blue-300 mr-3">
+                    ⚙️ Quick Settings
+                </button>
                 <button @click="showShortcutsModal = true; showMobileDrawer = false" class="text-blue-400 hover:text-blue-300">
                     View Shortcuts
                 </button>
@@ -290,6 +296,89 @@
             </div>
 
             <p class="text-xs text-gray-500 mt-3">Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-400 hover:text-blue-300 underline">OpenAI Platform</a></p>
+        </div>
+    </div>
+
+    <!-- Quick Settings Modal -->
+    <div x-show="showQuickSettings"
+         @click.away="showQuickSettings = false"
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         style="display: none;">
+        <div @click.stop class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 class="text-xl font-semibold text-gray-100 mb-4">⚙️ Quick Settings</h2>
+
+            <div class="space-y-4">
+                <!-- Model Selection -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Model</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model="quickSettings.model" value="claude-haiku-4-5-20251001" class="mr-2">
+                            Haiku 4.5
+                        </label>
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model="quickSettings.model" value="claude-sonnet-4-5-20250929" class="mr-2">
+                            Sonnet 4.5 (default)
+                        </label>
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model="quickSettings.model" value="claude-opus-4-1-20250805" class="mr-2">
+                            Opus 4.1
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Permission Mode Selection -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Permission Mode</label>
+                    <div class="space-y-2">
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model="quickSettings.permissionMode" value="default" class="mr-2">
+                            Default (prompt me)
+                        </label>
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model="quickSettings.permissionMode" value="acceptEdits" class="mr-2">
+                            Accept Edits (default)
+                        </label>
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model="quickSettings.permissionMode" value="plan" class="mr-2">
+                            Plan Mode (read-only)
+                        </label>
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model="quickSettings.permissionMode" value="bypassPermissions" class="mr-2">
+                            Bypass ALL (dangerous!)
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Max Turns Input -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-2">Max Turns</label>
+                    <input type="number"
+                           x-model.number="quickSettings.maxTurns"
+                           min="1"
+                           max="9999"
+                           class="w-full px-3 py-2 bg-gray-700 text-gray-100 rounded-lg border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <p class="text-xs text-gray-400 mt-1">Default: 50, Max: 9999</p>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex gap-2 mt-6">
+                    <button @click="saveQuickSettings()"
+                            class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-all">
+                        💾 Save
+                    </button>
+                    <button @click="showQuickSettings = false"
+                            class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold transition-all">
+                        Cancel
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1607,6 +1696,14 @@
                 showMobileDrawer: false,
                 openAiKeyInput: '',
 
+                // Quick settings state
+                showQuickSettings: false,
+                quickSettings: {
+                    model: 'claude-sonnet-4-5-20250929',
+                    permissionMode: 'acceptEdits',
+                    maxTurns: 50
+                },
+
                 // Initialize voice recording
                 async initVoice() {
                     // Check if OpenAI key is configured
@@ -1760,6 +1857,44 @@
                     } catch (err) {
                         console.error('Error saving API key:', err);
                         alert('Error saving API key');
+                    }
+                },
+
+                // Quick settings methods
+                async loadQuickSettings() {
+                    try {
+                        const response = await fetch(baseUrl + '/api/claude/quick-settings');
+                        const data = await response.json();
+                        this.quickSettings = {
+                            model: data.model,
+                            permissionMode: data.permissionMode,
+                            maxTurns: data.maxTurns
+                        };
+                    } catch (err) {
+                        console.error('Error loading quick settings:', err);
+                    }
+                },
+
+                async saveQuickSettings() {
+                    try {
+                        const response = await fetch(baseUrl + '/api/claude/quick-settings', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
+                            body: JSON.stringify(this.quickSettings)
+                        });
+
+                        if (response.ok) {
+                            this.showQuickSettings = false;
+                            alert('Quick settings saved successfully!');
+                        } else {
+                            alert('Failed to save settings');
+                        }
+                    } catch (err) {
+                        console.error('Error saving quick settings:', err);
+                        alert('Error saving settings');
                     }
                 },
 
