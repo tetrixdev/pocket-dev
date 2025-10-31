@@ -39,6 +39,9 @@
             line-height: 1.5;
             resize: none;
             overflow: auto;
+            white-space: pre;
+            word-wrap: normal;
+            overflow-wrap: normal;
         }
 
         .config-editor:focus {

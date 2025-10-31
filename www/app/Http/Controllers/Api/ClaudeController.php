@@ -700,20 +700,9 @@ class ClaudeController extends Controller
 
             $audioFile = $request->file('audio');
 
-            // Log audio file for debugging if needed
-            if (config('app.debug')) {
-                $this->logAudioFile($audioFile);
-            }
-
             // Transcribe using OpenAI service
             $openAI = app(OpenAIService::class);
             $transcription = $openAI->transcribeAudio($audioFile);
-
-            Log::info('Voice transcription completed', [
-                'original_name' => $audioFile->getClientOriginalName(),
-                'transcription' => $transcription,
-                'transcription_length' => strlen($transcription),
-            ]);
 
             return response()->json([
                 'transcription' => trim($transcription),

@@ -37,14 +37,24 @@ class OpenAIService
             ]);
 
             if (!$response->successful()) {
+                $responseBody = $response->body();
+                $errorDetails = json_decode($responseBody, true);
+
                 Log::error('OpenAI transcription API error', [
                     'status' => $response->status(),
-                    'response' => $response->body(),
+                    'response' => $responseBody,
                     'file_size' => $audioFile->getSize(),
                     'file_mime' => $audioFile->getMimeType(),
                 ]);
 
-                throw new \Exception('OpenAI API returned error: ' . $response->status());
+                // Extract user-friendly error message
+                if ($errorDetails && isset($errorDetails['error']['message'])) {
+                    $errorMessage = $errorDetails['error']['message'];
+                } else {
+                    $errorMessage = $responseBody;
+                }
+
+                throw new \Exception('OpenAI API error: ' . $errorMessage);
             }
 
             $transcription = $response->body();

@@ -1731,7 +1731,18 @@
 
                 async startVoiceRecording() {
                     try {
-                        const stream = await navigator.mediaDevices.getUserMedia({
+                        // Detect if mobile device
+                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+                        // Desktop: Use strict settings for better quality
+                        // Mobile: Use permissive settings for better compatibility
+                        const audioConstraints = isMobile ? {
+                            audio: {
+                                echoCancellation: true,
+                                noiseSuppression: true,
+                                autoGainControl: true
+                            }
+                        } : {
                             audio: {
                                 autoGainControl: false,
                                 echoCancellation: false,
@@ -1739,11 +1750,34 @@
                                 sampleRate: 16000,
                                 channelCount: 1
                             }
-                        });
+                        };
 
-                        this.mediaRecorder = new MediaRecorder(stream, {
-                            mimeType: 'audio/webm;codecs=opus'
-                        });
+                        const stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+
+                        // Try different MIME types in order of preference
+                        const mimeTypes = [
+                            'audio/webm;codecs=opus',
+                            'audio/webm',
+                            'audio/mp4',
+                            'audio/ogg;codecs=opus',
+                            'audio/wav'
+                        ];
+
+                        let selectedMimeType = '';
+                        for (const mimeType of mimeTypes) {
+                            if (MediaRecorder.isTypeSupported(mimeType)) {
+                                selectedMimeType = mimeType;
+                                break;
+                            }
+                        }
+
+                        if (!selectedMimeType) {
+                            this.mediaRecorder = new MediaRecorder(stream);
+                        } else {
+                            this.mediaRecorder = new MediaRecorder(stream, {
+                                mimeType: selectedMimeType
+                            });
+                        }
 
                         this.audioChunks = [];
 
@@ -1757,7 +1791,8 @@
                             await this.processRecording();
                         };
 
-                        this.mediaRecorder.start();
+                        // Start recording with timeslice for mobile compatibility
+                        this.mediaRecorder.start(isMobile ? 1000 : undefined);
                         this.isRecording = true;
                     } catch (err) {
                         console.error('Error accessing microphone:', err);
@@ -1777,9 +1812,46 @@
                     this.isProcessing = true;
 
                     try {
-                        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                        // Validate that we have audio data
+                        if (!this.audioChunks || this.audioChunks.length === 0) {
+                            alert('No audio recorded. Please try again and speak for at least 1 second.');
+                            return;
+                        }
+
+                        // Get the actual MIME type used by MediaRecorder
+                        const actualMimeType = this.mediaRecorder.mimeType || 'audio/webm';
+
+                        // Create blob with the actual MIME type
+                        const audioBlob = new Blob(this.audioChunks, { type: actualMimeType });
+
+                        // Validate minimum file size (at least 1KB)
+                        if (audioBlob.size < 1000) {
+                            alert('Recording too short. Please record for at least 1 second.');
+                            return;
+                        }
+
+                        // Validate maximum file size (10MB as per backend validation)
+                        if (audioBlob.size > 10 * 1024 * 1024) {
+                            alert('Recording too large. Please keep it under 10MB.');
+                            return;
+                        }
+
+                        // Generate appropriate file extension based on MIME type
+                        let extension = 'webm';
+                        if (actualMimeType.includes('mp4')) {
+                            extension = 'm4a';
+                        } else if (actualMimeType.includes('mpeg') || actualMimeType.includes('mp3')) {
+                            extension = 'mp3';
+                        } else if (actualMimeType.includes('wav')) {
+                            extension = 'wav';
+                        } else if (actualMimeType.includes('ogg')) {
+                            extension = 'ogg';
+                        }
+
+                        const filename = `recording.${extension}`;
+
                         const formData = new FormData();
-                        formData.append('audio', audioBlob, 'recording.webm');
+                        formData.append('audio', audioBlob, filename);
 
                         const response = await fetch(baseUrl + '/api/claude/transcribe', {
                             method: 'POST',
@@ -1796,6 +1868,11 @@
                         }
 
                         const data = await response.json();
+
+                        if (!response.ok) {
+                            alert('Transcription failed: ' + (data.error || 'Unknown error'));
+                            return;
+                        }
 
                         if (data.success && data.transcription) {
                             // Insert transcription into both desktop and mobile prompt fields
