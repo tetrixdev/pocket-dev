@@ -1733,10 +1733,11 @@
                     try {
                         const stream = await navigator.mediaDevices.getUserMedia({
                             audio: {
+                                autoGainControl: false,
+                                echoCancellation: false,
+                                noiseSuppression: false,
                                 sampleRate: 16000,
-                                channelCount: 1,
-                                echoCancellation: true,
-                                noiseSuppression: true
+                                channelCount: 1
                             }
                         });
 
