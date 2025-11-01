@@ -20,23 +20,25 @@ Route::get("/terminal", [TerminalController::class, "index"])->name("terminal.in
 Route::post("/transcribe", [TerminalController::class, "transcribe"])->name("terminal.transcribe");
 
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");
-Route::get("/config/{id}", [ConfigController::class, "read"])->name("config.read");
-Route::post("/config/{id}", [ConfigController::class, "save"])->name("config.save");
 
-// Agents management routes
+// Agents management routes - MUST be before /config/{id} wildcard
 Route::get("/config/agents/list", [ConfigController::class, "listAgents"])->name("config.agents.list");
 Route::post("/config/agents/create", [ConfigController::class, "createAgent"])->name("config.agents.create");
 Route::get("/config/agents/read/{filename}", [ConfigController::class, "readAgent"])->name("config.agents.read");
 Route::post("/config/agents/save/{filename}", [ConfigController::class, "saveAgent"])->name("config.agents.save");
 Route::delete("/config/agents/delete/{filename}", [ConfigController::class, "deleteAgent"])->name("config.agents.delete");
 
-// Commands management routes
+// Commands management routes - MUST be before /config/{id} wildcard
 Route::get("/config/commands/list", [ConfigController::class, "listCommands"])->name("config.commands.list");
 Route::post("/config/commands/create", [ConfigController::class, "createCommand"])->name("config.commands.create");
 Route::get("/config/commands/read/{filename}", [ConfigController::class, "readCommand"])->name("config.commands.read");
 Route::post("/config/commands/save/{filename}", [ConfigController::class, "saveCommand"])->name("config.commands.save");
 Route::delete("/config/commands/delete/{filename}", [ConfigController::class, "deleteCommand"])->name("config.commands.delete");
 
-// Hooks management routes
+// Hooks management routes - MUST be before /config/{id} wildcard
 Route::get("/config/hooks", [ConfigController::class, "getHooks"])->name("config.hooks.get");
 Route::post("/config/hooks", [ConfigController::class, "updateHooks"])->name("config.hooks.update");
+
+// Generic config routes - MUST be last to avoid catching specific routes
+Route::get("/config/{id}", [ConfigController::class, "read"])->name("config.read");
+Route::post("/config/{id}", [ConfigController::class, "save"])->name("config.save");
