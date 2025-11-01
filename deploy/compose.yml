@@ -27,6 +27,11 @@ services:
     container_name: pocket-dev-php
     restart: unless-stopped
     working_dir: /var/www
+    environment:
+      - GIT_TOKEN=${GIT_TOKEN:-}
+      - GIT_USER_NAME=${GIT_USER_NAME:-}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
+      - GH_TOKEN=${GIT_TOKEN:-}
     volumes:
       - .env:/var/www/.env
       - user-data:/home/www-data

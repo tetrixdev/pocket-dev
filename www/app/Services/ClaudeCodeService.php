@@ -393,7 +393,7 @@ class ClaudeCodeService
         $env = [];
 
         // Copy essential environment variables
-        $essentialVars = ['PATH', 'HOME', 'USER', 'SHELL', 'TERM', 'LANG', 'LC_ALL'];
+        $essentialVars = ['PATH', 'HOME', 'USER', 'SHELL', 'TERM', 'LANG', 'LC_ALL', 'GH_TOKEN', 'GIT_TOKEN', 'GIT_USER_NAME', 'GIT_USER_EMAIL'];
         foreach ($essentialVars as $var) {
             $value = getenv($var);
             if ($value !== false) {

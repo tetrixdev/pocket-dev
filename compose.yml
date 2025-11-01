@@ -44,6 +44,10 @@ services:
       - HOME=/home/appuser
       - COMPOSER_HOME=/tmp/.composer
       - NPM_CONFIG_CACHE=/tmp/.npm
+      - GIT_TOKEN=${GIT_TOKEN:-}
+      - GIT_USER_NAME=${GIT_USER_NAME:-}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
+      - GH_TOKEN=${GIT_TOKEN:-}
     entrypoint: ["/entrypoint.sh"]
     ports:
       - "${VITE_PORT:-5173}:5173"
