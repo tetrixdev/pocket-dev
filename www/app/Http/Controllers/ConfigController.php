@@ -492,4 +492,286 @@ class ConfigController extends Controller
 
         return $yaml . $systemPrompt;
     }
+
+    // =========================================================================
+    // COMMANDS MANAGEMENT
+    // =========================================================================
+
+    protected function getCommandsPath(): string
+    {
+        return '/home/appuser/.claude/commands';
+    }
+
+    /**
+     * List all commands
+     */
+    public function listCommands(): JsonResponse
+    {
+        $commandsPath = $this->getCommandsPath();
+
+        try {
+            if (!is_dir($commandsPath)) {
+                return response()->json([
+                    'success' => true,
+                    'commands' => []
+                ]);
+            }
+
+            $files = scandir($commandsPath);
+            $commands = [];
+
+            foreach ($files as $file) {
+                if (pathinfo($file, PATHINFO_EXTENSION) === 'md') {
+                    $filePath = $commandsPath . '/' . $file;
+                    $parsed = $this->parseCommandFile($filePath);
+
+                    $commands[] = [
+                        'filename' => $file,
+                        'name' => pathinfo($file, PATHINFO_FILENAME),
+                        'allowedTools' => $parsed['frontmatter']['allowedTools'] ?? '',
+                        'argumentHints' => $parsed['frontmatter']['argumentHints'] ?? '',
+                        'modified' => filemtime($filePath),
+                    ];
+                }
+            }
+
+            // Sort by modified time, newest first
+            usort($commands, fn($a, $b) => $b['modified'] - $a['modified']);
+
+            return response()->json([
+                'success' => true,
+                'commands' => $commands
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to list commands', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to list commands: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a new command
+     */
+    public function createCommand(Request $request): JsonResponse
+    {
+        $commandsPath = $this->getCommandsPath();
+
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|regex:/^[a-z0-9-]+$/',
+                'allowedTools' => 'nullable|string',
+                'argumentHints' => 'nullable|string|max:512',
+                'prompt' => 'nullable|string',
+            ]);
+
+            // Ensure commands directory exists
+            if (!is_dir($commandsPath)) {
+                mkdir($commandsPath, 0775, true);
+            }
+
+            $filename = $validated['name'] . '.md';
+            $filePath = $commandsPath . '/' . $filename;
+
+            // Check if file already exists
+            if (file_exists($filePath)) {
+                return response()->json([
+                    'error' => 'A command with this name already exists'
+                ], 409);
+            }
+
+            // Build frontmatter (only if fields are provided)
+            $frontmatter = [];
+            if (!empty($validated['allowedTools'])) {
+                $frontmatter['allowedTools'] = $validated['allowedTools'];
+            }
+            if (!empty($validated['argumentHints'])) {
+                $frontmatter['argumentHints'] = $validated['argumentHints'];
+            }
+
+            $prompt = $validated['prompt'] ?? "Instructions for /{$validated['name']} command.\n\nAdd your prompt here.";
+
+            $content = $this->buildCommandFile($frontmatter, $prompt);
+            file_put_contents($filePath, $content);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Command created successfully',
+                'filename' => $filename
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Failed to create command', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to create command: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Read a specific command
+     */
+    public function readCommand(string $filename): JsonResponse
+    {
+        $commandsPath = $this->getCommandsPath();
+        $filePath = $commandsPath . '/' . $filename;
+
+        try {
+            if (!file_exists($filePath)) {
+                return response()->json(['error' => 'Command not found'], 404);
+            }
+
+            $parsed = $this->parseCommandFile($filePath);
+
+            return response()->json([
+                'success' => true,
+                'filename' => $filename,
+                'frontmatter' => $parsed['frontmatter'],
+                'prompt' => $parsed['content']
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to read command {$filename}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to read command: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save a command
+     */
+    public function saveCommand(Request $request, string $filename): JsonResponse
+    {
+        $commandsPath = $this->getCommandsPath();
+        $filePath = $commandsPath . '/' . $filename;
+
+        try {
+            if (!file_exists($filePath)) {
+                return response()->json(['error' => 'Command not found'], 404);
+            }
+
+            $validated = $request->validate([
+                'allowedTools' => 'nullable|string',
+                'argumentHints' => 'nullable|string|max:512',
+                'prompt' => 'required|string',
+            ]);
+
+            // Build frontmatter (only if fields are provided)
+            $frontmatter = [];
+            if (!empty($validated['allowedTools'])) {
+                $frontmatter['allowedTools'] = $validated['allowedTools'];
+            }
+            if (!empty($validated['argumentHints'])) {
+                $frontmatter['argumentHints'] = $validated['argumentHints'];
+            }
+
+            $content = $this->buildCommandFile($frontmatter, $validated['prompt']);
+            file_put_contents($filePath, $content);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Command saved successfully'
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error("Failed to save command {$filename}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to save command: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a command
+     */
+    public function deleteCommand(string $filename): JsonResponse
+    {
+        $commandsPath = $this->getCommandsPath();
+        $filePath = $commandsPath . '/' . $filename;
+
+        try {
+            if (!file_exists($filePath)) {
+                return response()->json(['error' => 'Command not found'], 404);
+            }
+
+            unlink($filePath);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Command deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to delete command {$filename}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to delete command: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Parse command file (optional YAML frontmatter + markdown content)
+     */
+    protected function parseCommandFile(string $filePath): array
+    {
+        $content = file_get_contents($filePath);
+
+        // Check for frontmatter
+        if (!preg_match('/^---\s*\n(.*?)\n---\s*\n(.*)$/s', $content, $matches)) {
+            // No frontmatter, entire content is prompt
+            return [
+                'frontmatter' => [],
+                'content' => $content
+            ];
+        }
+
+        $frontmatterYaml = $matches[1];
+        $prompt = $matches[2];
+
+        // Parse YAML frontmatter
+        $frontmatter = [];
+        $lines = explode("\n", $frontmatterYaml);
+        foreach ($lines as $line) {
+            if (strpos($line, ':') !== false) {
+                [$key, $value] = explode(':', $line, 2);
+                $frontmatter[trim($key)] = trim($value);
+            }
+        }
+
+        return [
+            'frontmatter' => $frontmatter,
+            'content' => trim($prompt)
+        ];
+    }
+
+    /**
+     * Build command file content (optional YAML frontmatter + markdown)
+     */
+    protected function buildCommandFile(array $frontmatter, string $prompt): string
+    {
+        // Only add frontmatter if there are fields
+        if (empty($frontmatter)) {
+            return $prompt;
+        }
+
+        $yaml = "---\n";
+        foreach ($frontmatter as $key => $value) {
+            $yaml .= "{$key}: {$value}\n";
+        }
+        $yaml .= "---\n\n";
+
+        return $yaml . $prompt;
+    }
 }

@@ -29,3 +29,10 @@ Route::post("/config/agents/create", [ConfigController::class, "createAgent"])->
 Route::get("/config/agents/read/{filename}", [ConfigController::class, "readAgent"])->name("config.agents.read");
 Route::post("/config/agents/save/{filename}", [ConfigController::class, "saveAgent"])->name("config.agents.save");
 Route::delete("/config/agents/delete/{filename}", [ConfigController::class, "deleteAgent"])->name("config.agents.delete");
+
+// Commands management routes
+Route::get("/config/commands/list", [ConfigController::class, "listCommands"])->name("config.commands.list");
+Route::post("/config/commands/create", [ConfigController::class, "createCommand"])->name("config.commands.create");
+Route::get("/config/commands/read/{filename}", [ConfigController::class, "readCommand"])->name("config.commands.read");
+Route::post("/config/commands/save/{filename}", [ConfigController::class, "saveCommand"])->name("config.commands.save");
+Route::delete("/config/commands/delete/{filename}", [ConfigController::class, "deleteCommand"])->name("config.commands.delete");

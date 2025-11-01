@@ -155,6 +155,32 @@
                     </div>
                 </div>
 
+                <!-- Commands Category -->
+                <div class="border-b border-gray-700">
+                    <button
+                        @click="activeCategory = 'commands'; loadCommands()"
+                        class="category-button w-full"
+                        :class="{ 'active': activeCategory === 'commands' }">
+                        ⚡ Commands
+                    </button>
+                    <div x-show="activeCategory === 'commands'" class="bg-gray-900">
+                        <button
+                            @click="showCreateCommandModal = true"
+                            class="file-item w-full text-sm text-blue-400 hover:text-blue-300">
+                            + New Command
+                        </button>
+                        <template x-for="command in commands" :key="command.filename">
+                            <button
+                                @click="loadCommand(command.filename)"
+                                class="file-item w-full text-sm text-left"
+                                :class="{ 'active': activeCommand === command.filename }">
+                                <div class="font-mono">/<span x-text="command.name"></span></div>
+                                <div class="text-xs text-gray-500 truncate" x-text="command.argumentHints"></div>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
                 <!-- System Category -->
                 <div>
                     <button
@@ -323,6 +349,100 @@
                     </div>
                 </div>
 
+                <!-- Command Editor (Frontmatter + Prompt) -->
+                <div x-show="activeCategory === 'commands' && activeCommand" class="p-6 space-y-4">
+                    <!-- Command Header -->
+                    <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 flex justify-between items-center">
+                        <div>
+                            <h2 class="text-xl font-semibold font-mono">/<span x-text="commandData.frontmatter.name || commandData.filename?.replace('.md', '')"></span></h2>
+                            <p class="text-sm text-gray-400 font-mono" x-text="activeCommand"></p>
+                        </div>
+                        <button
+                            @click="showDeleteCommandConfirm = true"
+                            class="px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold">
+                            🗑️ Delete
+                        </button>
+                    </div>
+
+                    <!-- Dual Pane Editor -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Left: Frontmatter Form -->
+                        <div class="space-y-4">
+                            <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                                <h3 class="text-lg font-semibold mb-4">Frontmatter (Optional)</h3>
+
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-sm font-medium mb-1">Allowed Tools (Optional)</label>
+                                        <input
+                                            type="text"
+                                            x-model="commandData.frontmatter.allowedTools"
+                                            placeholder="Read, Write, Edit, Bash"
+                                            class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white">
+                                        <div class="text-xs text-gray-500 mt-2 space-y-1">
+                                            <p>Restrict which tools Claude can use during this command. Leave empty for all tools.</p>
+                                            <p class="font-mono bg-gray-950 px-2 py-1 rounded">Common: Read, Write, Edit, Bash, Glob, Grep, WebSearch</p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-sm font-medium mb-1">Argument Hints</label>
+                                        <input
+                                            type="text"
+                                            x-model="commandData.frontmatter.argumentHints"
+                                            placeholder="[pr-number] [assignee]"
+                                            maxlength="512"
+                                            class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white">
+                                        <div class="text-xs text-gray-500 mt-2 space-y-1">
+                                            <p>Shown during auto-completion to guide users on what parameters the command expects.</p>
+                                            <p class="font-mono bg-gray-950 px-2 py-1 rounded">Example: add [tagId] | remove [tagId] | list</p>
+                                            <p>Access arguments in prompt with <span class="font-mono bg-gray-950 px-1">$1</span>, <span class="font-mono bg-gray-950 px-1">$2</span>, or <span class="font-mono bg-gray-950 px-1">$ARGUMENTS</span></p>
+                                            <a href="https://docs.claude.com/en/docs/claude-code/slash-commands" target="_blank" class="text-blue-400 hover:text-blue-300">
+                                                📖 Documentation
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right: Command Prompt -->
+                        <div class="space-y-2">
+                            <label class="block text-sm font-medium">Command Prompt</label>
+                            <textarea
+                                x-model="commandData.prompt"
+                                class="prompt-editor w-full"
+                                rows="20"
+                                style="min-height: 400px;"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Save Button -->
+                    <div class="flex gap-3">
+                        <button
+                            @click="saveCommand()"
+                            :disabled="savingCommand"
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold">
+                            <span x-show="!savingCommand">💾 Save Command</span>
+                            <span x-show="savingCommand">⏳ Saving...</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Empty State for Commands -->
+                <div x-show="activeCategory === 'commands' && !activeCommand" class="p-6">
+                    <div class="max-w-md mx-auto text-center py-12">
+                        <div class="text-6xl mb-4">⚡</div>
+                        <h3 class="text-xl font-semibold mb-2">No Command Selected</h3>
+                        <p class="text-gray-400 mb-6">Select a command from the sidebar or create a new one</p>
+                        <button
+                            @click="showCreateCommandModal = true"
+                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold">
+                            + Create New Command
+                        </button>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -371,7 +491,7 @@
             </div>
         </div>
 
-        <!-- Delete Confirmation Modal -->
+        <!-- Delete Agent Confirmation Modal -->
         <div x-show="showDeleteConfirm"
              @click.away="showDeleteConfirm = false"
              class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
@@ -386,6 +506,65 @@
                         Delete
                     </button>
                     <button @click="showDeleteConfirm = false"
+                            class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Command Modal -->
+        <div x-show="showCreateCommandModal"
+             @click.away="showCreateCommandModal = false"
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+             style="display: none;">
+            <div @click.stop class="bg-gray-800 rounded-lg p-6 max-w-lg w-full mx-4 border border-gray-700">
+                <h2 class="text-xl font-semibold mb-2">Create New Command</h2>
+                <p class="text-sm text-gray-400 mb-4">Slash commands expand to custom prompts when invoked in chat.</p>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">Name (lowercase, hyphens only)</label>
+                        <input
+                            type="text"
+                            x-model="newCommand.name"
+                            pattern="[a-z0-9-]+"
+                            placeholder="review-pr"
+                            class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white">
+                        <p class="text-xs text-gray-500 mt-1">Use with: <span class="font-mono bg-gray-950 px-1">/<span x-text="newCommand.name || 'review-pr'"></span></span></p>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button @click="createCommand()"
+                            :disabled="creatingCommand || !newCommand.name"
+                            class="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold">
+                        <span x-show="!creatingCommand">Create</span>
+                        <span x-show="creatingCommand">Creating...</span>
+                    </button>
+                    <button @click="showCreateCommandModal = false"
+                            class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete Command Confirmation Modal -->
+        <div x-show="showDeleteCommandConfirm"
+             @click.away="showDeleteCommandConfirm = false"
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+             style="display: none;">
+            <div @click.stop class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-700">
+                <h2 class="text-xl font-semibold text-gray-100 mb-4">⚠️ Delete Command?</h2>
+                <p class="text-gray-300 mb-6">Are you sure you want to delete this command? This action cannot be undone.</p>
+
+                <div class="flex gap-3">
+                    <button @click="deleteCommand(); showDeleteCommandConfirm = false"
+                            class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">
+                        Delete
+                    </button>
+                    <button @click="showDeleteCommandConfirm = false"
                             class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold">
                         Cancel
                     </button>
@@ -430,8 +609,24 @@
                 newAgent: { name: '', description: '', model: 'inherit' },
                 creatingAgent: false,
 
+                // Commands
+                commands: [],
+                activeCommand: null,
+                commandData: {
+                    frontmatter: { allowedTools: '', argumentHints: '' },
+                    prompt: '',
+                    filename: ''
+                },
+                savingCommand: false,
+
+                // Create command
+                showCreateCommandModal: false,
+                newCommand: { name: '' },
+                creatingCommand: false,
+
                 // UI state
                 showDeleteConfirm: false,
+                showDeleteCommandConfirm: false,
                 notification: null,
 
                 init() {
@@ -605,6 +800,120 @@
                         }
                     } catch (error) {
                         this.showNotification('error', 'Failed to delete agent');
+                    }
+                },
+
+                // =========================================
+                // COMMANDS METHODS
+                // =========================================
+
+                async loadCommands() {
+                    try {
+                        const response = await fetch(`${baseUrl}/config/commands/list`);
+                        const result = await response.json();
+                        if (result.success) {
+                            this.commands = result.commands;
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to load commands');
+                    }
+                },
+
+                async loadCommand(filename) {
+                    try {
+                        const response = await fetch(`${baseUrl}/config/commands/read/${filename}`);
+                        const result = await response.json();
+                        if (result.success) {
+                            this.activeCommand = filename;
+                            this.commandData = {
+                                frontmatter: {
+                                    allowedTools: result.frontmatter.allowedTools || '',
+                                    argumentHints: result.frontmatter.argumentHints || ''
+                                },
+                                prompt: result.prompt || '',
+                                filename: filename
+                            };
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to load command');
+                    }
+                },
+
+                async createCommand() {
+                    this.creatingCommand = true;
+                    try {
+                        const response = await fetch(`${baseUrl}/config/commands/create`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify(this.newCommand)
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.showNotification('success', 'Command created successfully');
+                            this.showCreateCommandModal = false;
+                            this.newCommand = { name: '' };
+                            await this.loadCommands();
+                            await this.loadCommand(result.filename);
+                        } else {
+                            this.showNotification('error', result.error);
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to create command');
+                    } finally {
+                        this.creatingCommand = false;
+                    }
+                },
+
+                async saveCommand() {
+                    this.savingCommand = true;
+                    try {
+                        const response = await fetch(`${baseUrl}/config/commands/save/${this.activeCommand}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({
+                                allowedTools: this.commandData.frontmatter.allowedTools,
+                                argumentHints: this.commandData.frontmatter.argumentHints,
+                                prompt: this.commandData.prompt
+                            })
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.showNotification('success', 'Command saved successfully');
+                            await this.loadCommands();
+                        } else {
+                            this.showNotification('error', result.error);
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to save command');
+                    } finally {
+                        this.savingCommand = false;
+                    }
+                },
+
+                async deleteCommand() {
+                    try {
+                        const response = await fetch(`${baseUrl}/config/commands/delete/${this.activeCommand}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            }
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.showNotification('success', 'Command deleted successfully');
+                            this.activeCommand = null;
+                            await this.loadCommands();
+                        } else {
+                            this.showNotification('error', result.error);
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to delete command');
                     }
                 },
 
