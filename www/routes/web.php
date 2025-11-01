@@ -36,3 +36,7 @@ Route::post("/config/commands/create", [ConfigController::class, "createCommand"
 Route::get("/config/commands/read/{filename}", [ConfigController::class, "readCommand"])->name("config.commands.read");
 Route::post("/config/commands/save/{filename}", [ConfigController::class, "saveCommand"])->name("config.commands.save");
 Route::delete("/config/commands/delete/{filename}", [ConfigController::class, "deleteCommand"])->name("config.commands.delete");
+
+// Hooks management routes
+Route::get("/config/hooks", [ConfigController::class, "getHooks"])->name("config.hooks.get");
+Route::post("/config/hooks", [ConfigController::class, "updateHooks"])->name("config.hooks.update");

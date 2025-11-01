@@ -181,6 +181,16 @@
                     </div>
                 </div>
 
+                <!-- Hooks Category -->
+                <div class="border-b border-gray-700">
+                    <button
+                        @click="activeCategory = 'hooks'; loadHooks()"
+                        class="category-button w-full"
+                        :class="{ 'active': activeCategory === 'hooks' }">
+                        🪝 Hooks
+                    </button>
+                </div>
+
                 <!-- System Category -->
                 <div>
                     <button
@@ -443,6 +453,117 @@
                     </div>
                 </div>
 
+                <!-- Hooks Editor -->
+                <div x-show="activeCategory === 'hooks'" class="p-6 space-y-4">
+                    <!-- Hooks Header -->
+                    <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                        <h2 class="text-xl font-semibold mb-2">🪝 Hooks Configuration</h2>
+                        <p class="text-sm text-gray-400">Event-driven automation that executes shell commands during Claude Code operations</p>
+                    </div>
+
+                    <!-- Documentation Panel -->
+                    <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 space-y-3">
+                        <h3 class="text-lg font-semibold">Available Events</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                            <div class="bg-gray-900 p-2 rounded">
+                                <span class="font-mono text-blue-400">PreToolUse</span> - Before tool execution
+                            </div>
+                            <div class="bg-gray-900 p-2 rounded">
+                                <span class="font-mono text-blue-400">PostToolUse</span> - After tool completes
+                            </div>
+                            <div class="bg-gray-900 p-2 rounded">
+                                <span class="font-mono text-blue-400">UserPromptSubmit</span> - User submits prompt
+                            </div>
+                            <div class="bg-gray-900 p-2 rounded">
+                                <span class="font-mono text-blue-400">SessionStart</span> - Session begins
+                            </div>
+                            <div class="bg-gray-900 p-2 rounded">
+                                <span class="font-mono text-blue-400">SessionEnd</span> - Session terminates
+                            </div>
+                            <div class="bg-gray-900 p-2 rounded">
+                                <span class="font-mono text-blue-400">Stop</span> - Agent finishes
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-semibold mt-4">Environment Variables</h3>
+                        <div class="space-y-1 text-sm text-gray-400">
+                            <p><span class="font-mono bg-gray-950 px-1">$CLAUDE_PROJECT_DIR</span> - Project root path</p>
+                            <p><span class="font-mono bg-gray-950 px-1">$CLAUDE_ENV_FILE</span> - Environment file (SessionStart only)</p>
+                            <p><span class="font-mono bg-gray-950 px-1">$CLAUDE_CODE_REMOTE</span> - Remote execution indicator</p>
+                        </div>
+
+                        <a href="https://docs.claude.com/en/docs/claude-code/hooks" target="_blank" class="inline-block text-blue-400 hover:text-blue-300 text-sm mt-2">
+                            📖 Full Documentation
+                        </a>
+                    </div>
+
+                    <!-- JSON Editor -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <label class="block text-sm font-medium">Hooks Configuration (JSON)</label>
+                            <button
+                                @click="formatHooksJson()"
+                                class="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm">
+                                🔧 Format JSON
+                            </button>
+                        </div>
+                        <textarea
+                            x-model="hooksJson"
+                            class="config-editor w-full font-mono text-sm"
+                            rows="20"
+                            style="min-height: 400px;"
+                            placeholder='{\n  "PreToolUse": [\n    {\n      "matcher": "Write",\n      "hooks": [\n        {\n          "type": "command",\n          "command": "echo \'Writing file...\'",\n          "timeout": 60\n        }\n      ]\n    }\n  ]\n}'></textarea>
+                        <p class="text-xs text-gray-500" x-show="hooksJsonError" x-text="hooksJsonError" class="text-red-400"></p>
+                    </div>
+
+                    <!-- Example Template -->
+                    <details class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                        <summary class="cursor-pointer font-semibold text-sm">📋 Example Template</summary>
+                        <pre class="mt-3 text-xs bg-gray-950 p-3 rounded overflow-x-auto"><code>{
+  "PreToolUse": [
+    {
+      "matcher": "Write|Edit",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "echo 'File operation detected'",
+          "timeout": 60
+        }
+      ]
+    }
+  ],
+  "SessionStart": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "[ -n \"$CLAUDE_ENV_FILE\" ] && echo 'export MY_VAR=value' >> \"$CLAUDE_ENV_FILE\"",
+          "timeout": 30
+        }
+      ]
+    }
+  ]
+}</code></pre>
+                    </details>
+
+                    <!-- Save Button -->
+                    <div class="flex gap-3">
+                        <button
+                            @click="saveHooks()"
+                            :disabled="savingHooks"
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold">
+                            <span x-show="!savingHooks">💾 Save Hooks</span>
+                            <span x-show="savingHooks">⏳ Saving...</span>
+                        </button>
+                        <button
+                            @click="loadHooks()"
+                            class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold">
+                            🔄 Reload
+                        </button>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -623,6 +744,11 @@
                 showCreateCommandModal: false,
                 newCommand: { name: '' },
                 creatingCommand: false,
+
+                // Hooks
+                hooksJson: '',
+                hooksJsonError: '',
+                savingHooks: false,
 
                 // UI state
                 showDeleteConfirm: false,
@@ -914,6 +1040,72 @@
                         }
                     } catch (error) {
                         this.showNotification('error', 'Failed to delete command');
+                    }
+                },
+
+                // =========================================
+                // HOOKS METHODS
+                // =========================================
+
+                async loadHooks() {
+                    try {
+                        const response = await fetch(`${baseUrl}/config/hooks`);
+                        const result = await response.json();
+                        if (result.success) {
+                            this.hooksJson = JSON.stringify(result.hooks, null, 2);
+                            this.hooksJsonError = '';
+                        } else {
+                            this.showNotification('error', result.error);
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to load hooks');
+                    }
+                },
+
+                async saveHooks() {
+                    this.savingHooks = true;
+                    this.hooksJsonError = '';
+
+                    try {
+                        // Validate JSON
+                        let hooks;
+                        try {
+                            hooks = JSON.parse(this.hooksJson || '{}');
+                        } catch (e) {
+                            this.hooksJsonError = 'Invalid JSON: ' + e.message;
+                            this.savingHooks = false;
+                            return;
+                        }
+
+                        const response = await fetch(`${baseUrl}/config/hooks`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({ hooks })
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            this.showNotification('success', 'Hooks saved successfully');
+                        } else {
+                            this.showNotification('error', result.error);
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to save hooks');
+                    } finally {
+                        this.savingHooks = false;
+                    }
+                },
+
+                formatHooksJson() {
+                    try {
+                        const hooks = JSON.parse(this.hooksJson || '{}');
+                        this.hooksJson = JSON.stringify(hooks, null, 2);
+                        this.hooksJsonError = '';
+                        this.showNotification('success', 'JSON formatted');
+                    } catch (e) {
+                        this.hooksJsonError = 'Invalid JSON: ' + e.message;
                     }
                 },
 

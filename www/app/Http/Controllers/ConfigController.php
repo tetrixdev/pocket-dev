@@ -774,4 +774,118 @@ class ConfigController extends Controller
 
         return $yaml . $prompt;
     }
+
+    // =========================================================================
+    // HOOKS MANAGEMENT
+    // =========================================================================
+
+    protected function getSettingsPath(): string
+    {
+        return '/home/appuser/.claude/settings.json';
+    }
+
+    /**
+     * Get hooks from settings.json
+     */
+    public function getHooks(): JsonResponse
+    {
+        $settingsPath = $this->getSettingsPath();
+
+        try {
+            $settings = $this->readSettings();
+            $hooks = $settings['hooks'] ?? [];
+
+            return response()->json([
+                'success' => true,
+                'hooks' => $hooks
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get hooks', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to get hooks: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update hooks in settings.json
+     */
+    public function updateHooks(Request $request): JsonResponse
+    {
+        $settingsPath = $this->getSettingsPath();
+
+        try {
+            $validated = $request->validate([
+                'hooks' => 'required|array',
+            ]);
+
+            // Read current settings
+            $settings = $this->readSettings();
+
+            // Update hooks section
+            $settings['hooks'] = $validated['hooks'];
+
+            // Write back to settings.json
+            $this->writeSettings($settings);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Hooks updated successfully'
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Failed to update hooks', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to update hooks: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Read settings.json
+     */
+    protected function readSettings(): array
+    {
+        $settingsPath = $this->getSettingsPath();
+
+        if (!file_exists($settingsPath)) {
+            return [];
+        }
+
+        $content = file_get_contents($settingsPath);
+        if ($content === false) {
+            throw new \RuntimeException("Failed to read settings file");
+        }
+
+        $settings = json_decode($content, true);
+        if ($settings === null) {
+            throw new \RuntimeException("Failed to parse settings JSON");
+        }
+
+        return $settings;
+    }
+
+    /**
+     * Write settings.json
+     */
+    protected function writeSettings(array $settings): void
+    {
+        $settingsPath = $this->getSettingsPath();
+
+        $json = json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            throw new \RuntimeException("Failed to encode settings to JSON");
+        }
+
+        $result = file_put_contents($settingsPath, $json);
+        if ($result === false) {
+            throw new \RuntimeException("Failed to write settings file");
+        }
+    }
 }
