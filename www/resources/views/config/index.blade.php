@@ -214,10 +214,11 @@
             <!-- Main Content Area -->
             <div class="flex-1 overflow-auto">
 
-                <!-- Simple File Editor (CLAUDE.md, settings.json, nginx) -->
+                <!-- Simple File Editor (CLAUDE.md, nginx) -->
                 <div x-show="activeCategory === 'files' || activeCategory === 'system'" class="p-6">
                     <template x-for="(config, id) in configs" :key="id">
-                        <div x-show="activeTab === id" class="space-y-4">
+                        <!-- CLAUDE.md and nginx use simple editor -->
+                        <div x-show="activeTab === id && id !== 'settings'" class="space-y-4">
                             <!-- Config Info -->
                             <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
                                 <h2 class="text-xl font-semibold mb-2" x-text="config.title"></h2>
@@ -250,6 +251,173 @@
                                     class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold">
                                     🔄 Reload
                                 </button>
+                            </div>
+                        </div>
+
+                        <!-- settings.json gets advanced editor -->
+                        <div x-show="activeTab === 'settings'" class="p-6 space-y-4">
+                            <!-- Settings Header -->
+                            <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 flex justify-between items-center">
+                                <div>
+                                    <h2 class="text-xl font-semibold">Claude Settings</h2>
+                                    <p class="text-sm text-gray-400 font-mono">/home/appuser/.claude/settings.json</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button
+                                        @click="settingsMode = 'structured'"
+                                        :class="settingsMode === 'structured' ? 'bg-blue-600' : 'bg-gray-600'"
+                                        class="px-3 py-2 hover:bg-opacity-80 rounded text-sm font-semibold">
+                                        📋 Structured
+                                    </button>
+                                    <button
+                                        @click="settingsMode = 'raw'"
+                                        :class="settingsMode === 'raw' ? 'bg-blue-600' : 'bg-gray-600'"
+                                        class="px-3 py-2 hover:bg-opacity-80 rounded text-sm font-semibold">
+                                        {} Raw JSON
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Structured Mode -->
+                            <div x-show="settingsMode === 'structured'" class="space-y-4">
+                                <!-- Category Tabs -->
+                                <div class="flex gap-2 border-b border-gray-700">
+                                    <button
+                                        @click="settingsTab = 'model'"
+                                        :class="settingsTab === 'model' ? 'border-b-2 border-blue-500 text-blue-400' : 'text-gray-400'"
+                                        class="px-4 py-2 font-medium">
+                                        Model & Behavior
+                                    </button>
+                                    <button
+                                        @click="settingsTab = 'permissions'"
+                                        :class="settingsTab === 'permissions' ? 'border-b-2 border-blue-500 text-blue-400' : 'text-gray-400'"
+                                        class="px-4 py-2 font-medium">
+                                        Permissions
+                                    </button>
+                                </div>
+
+                                <!-- Model & Behavior Tab -->
+                                <div x-show="settingsTab === 'model'" class="space-y-4">
+                                    <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                                        <h3 class="text-lg font-semibold mb-4">Model Configuration</h3>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-sm font-medium mb-1">Default Model</label>
+                                                <select
+                                                    x-model="structuredSettings.model"
+                                                    class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white">
+                                                    <option value="">Auto (Default)</option>
+                                                    <option value="claude-sonnet-4-5-20250929">Sonnet 4.5</option>
+                                                    <option value="claude-3-7-sonnet-20250219">Sonnet 3.7</option>
+                                                    <option value="claude-3-5-haiku-20241022">Haiku 3.5</option>
+                                                    <option value="claude-opus-4-20250514">Opus 4</option>
+                                                </select>
+                                                <p class="text-xs text-gray-500 mt-1">Override the default model for all sessions</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                                        <h3 class="text-lg font-semibold mb-4">Behavior</h3>
+                                        <div class="space-y-3">
+                                            <div>
+                                                <label class="block text-sm font-medium mb-1">Cleanup Period (days)</label>
+                                                <input
+                                                    type="number"
+                                                    x-model="structuredSettings.cleanupPeriodDays"
+                                                    min="1"
+                                                    placeholder="30"
+                                                    class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white">
+                                                <p class="text-xs text-gray-500 mt-1">How long to retain chat transcripts (default: 30 days)</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Permissions Tab -->
+                                <div x-show="settingsTab === 'permissions'" class="space-y-4">
+                                    <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                                        <h3 class="text-lg font-semibold mb-4">Permission Rules</h3>
+                                        <p class="text-sm text-gray-400 mb-4">Configure which tools and operations Claude can use automatically. Use wildcards (*) for pattern matching.</p>
+
+                                        <div class="space-y-4">
+                                            <!-- Allow Rules -->
+                                            <div>
+                                                <label class="block text-sm font-medium mb-2">Allow (Auto-approve)</label>
+                                                <textarea
+                                                    x-model="permissionsAllowText"
+                                                    rows="6"
+                                                    placeholder="Bash(ls:*)&#10;Read(/workspace/**)&#10;Write(/workspace/**)"
+                                                    class="config-editor w-full text-sm"></textarea>
+                                                <p class="text-xs text-gray-500 mt-1">One rule per line. Example: Bash(git:*) or Read(/path/**)</p>
+                                            </div>
+
+                                            <!-- Deny Rules -->
+                                            <div>
+                                                <label class="block text-sm font-medium mb-2">Deny (Block)</label>
+                                                <textarea
+                                                    x-model="permissionsDenyText"
+                                                    rows="4"
+                                                    placeholder="Read(**/.env)&#10;Write(**/.git/**)"
+                                                    class="config-editor w-full text-sm"></textarea>
+                                                <p class="text-xs text-gray-500 mt-1">Explicitly block these operations</p>
+                                            </div>
+
+                                            <!-- Default Mode -->
+                                            <div>
+                                                <label class="block text-sm font-medium mb-1">Default Permission Mode</label>
+                                                <select
+                                                    x-model="structuredSettings.permissions.defaultMode"
+                                                    class="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white">
+                                                    <option value="">Ask (Default)</option>
+                                                    <option value="acceptEdits">Accept Edits</option>
+                                                    <option value="acceptAll">Accept All</option>
+                                                </select>
+                                                <p class="text-xs text-gray-500 mt-1">How to handle operations not in allow/deny lists</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Save Button -->
+                                <div class="flex gap-3">
+                                    <button
+                                        @click="saveStructuredSettings()"
+                                        :disabled="saving.settings"
+                                        class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold">
+                                        <span x-show="!saving.settings">💾 Save Settings</span>
+                                        <span x-show="saving.settings">⏳ Saving...</span>
+                                    </button>
+                                    <button
+                                        @click="loadStructuredSettings()"
+                                        class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold">
+                                        🔄 Reload
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Raw JSON Mode -->
+                            <div x-show="settingsMode === 'raw'" class="space-y-4">
+                                <textarea
+                                    x-model="contents.settings"
+                                    class="config-editor w-full"
+                                    rows="25"
+                                    style="min-height: 500px;"></textarea>
+
+                                <div class="flex gap-3">
+                                    <button
+                                        @click="saveConfig('settings')"
+                                        :disabled="saving.settings"
+                                        class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-semibold">
+                                        <span x-show="!saving.settings">💾 Save</span>
+                                        <span x-show="saving.settings">⏳ Saving...</span>
+                                    </button>
+                                    <button
+                                        @click="loadConfig('settings')"
+                                        class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold">
+                                        🔄 Reload
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </template>
@@ -750,6 +918,21 @@
                 hooksJsonError: '',
                 savingHooks: false,
 
+                // Settings (structured mode)
+                settingsMode: 'structured',
+                settingsTab: 'model',
+                structuredSettings: {
+                    model: '',
+                    cleanupPeriodDays: '',
+                    permissions: {
+                        allow: [],
+                        deny: [],
+                        defaultMode: ''
+                    }
+                },
+                permissionsAllowText: '',
+                permissionsDenyText: '',
+
                 // UI state
                 showDeleteConfirm: false,
                 showDeleteCommandConfirm: false,
@@ -766,9 +949,15 @@
                 // SIMPLE CONFIG METHODS (CLAUDE.md, settings.json, nginx)
                 // =========================================
 
-                switchTab(id) {
+                async switchTab(id) {
                     this.activeTab = id;
                     this.activeAgent = null;
+                    this.activeCommand = null;
+
+                    // Load structured settings when switching to settings tab
+                    if (id === 'settings' && this.settingsMode === 'structured') {
+                        await this.loadStructuredSettings();
+                    }
                 },
 
                 async loadConfig(id) {
@@ -1106,6 +1295,107 @@
                         this.showNotification('success', 'JSON formatted');
                     } catch (e) {
                         this.hooksJsonError = 'Invalid JSON: ' + e.message;
+                    }
+                },
+
+                // =========================================
+                // STRUCTURED SETTINGS METHODS
+                // =========================================
+
+                async loadStructuredSettings() {
+                    try {
+                        // Load raw JSON first
+                        await this.loadConfig('settings');
+
+                        // Parse into structured format
+                        const settings = JSON.parse(this.contents.settings || '{}');
+
+                        this.structuredSettings = {
+                            model: settings.model || '',
+                            cleanupPeriodDays: settings.cleanupPeriodDays || '',
+                            permissions: {
+                                allow: settings.permissions?.allow || [],
+                                deny: settings.permissions?.deny || [],
+                                defaultMode: settings.permissions?.defaultMode || ''
+                            }
+                        };
+
+                        // Convert arrays to text (one per line)
+                        this.permissionsAllowText = this.structuredSettings.permissions.allow.join('\n');
+                        this.permissionsDenyText = this.structuredSettings.permissions.deny.join('\n');
+
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to load structured settings');
+                    }
+                },
+
+                async saveStructuredSettings() {
+                    this.saving.settings = true;
+
+                    try {
+                        // Parse current settings to preserve other fields
+                        const settings = JSON.parse(this.contents.settings || '{}');
+
+                        // Update with structured values
+                        if (this.structuredSettings.model) {
+                            settings.model = this.structuredSettings.model;
+                        } else {
+                            delete settings.model;
+                        }
+
+                        if (this.structuredSettings.cleanupPeriodDays) {
+                            settings.cleanupPeriodDays = parseInt(this.structuredSettings.cleanupPeriodDays);
+                        } else {
+                            delete settings.cleanupPeriodDays;
+                        }
+
+                        // Convert text to arrays (filter empty lines)
+                        const allowRules = this.permissionsAllowText.split('\n')
+                            .map(line => line.trim())
+                            .filter(line => line.length > 0);
+                        const denyRules = this.permissionsDenyText.split('\n')
+                            .map(line => line.trim())
+                            .filter(line => line.length > 0);
+
+                        // Update permissions
+                        if (!settings.permissions) {
+                            settings.permissions = {};
+                        }
+
+                        if (allowRules.length > 0) {
+                            settings.permissions.allow = allowRules;
+                        }
+                        if (denyRules.length > 0) {
+                            settings.permissions.deny = denyRules;
+                        }
+                        if (this.structuredSettings.permissions.defaultMode) {
+                            settings.permissions.defaultMode = this.structuredSettings.permissions.defaultMode;
+                        } else {
+                            delete settings.permissions?.defaultMode;
+                        }
+
+                        // Save to backend
+                        const response = await fetch(`${baseUrl}/config/settings`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({ content: JSON.stringify(settings, null, 2) })
+                        });
+                        const result = await response.json();
+
+                        if (result.success) {
+                            this.showNotification('success', 'Settings saved successfully');
+                            // Reload to sync
+                            await this.loadStructuredSettings();
+                        } else {
+                            this.showNotification('error', result.error);
+                        }
+                    } catch (error) {
+                        this.showNotification('error', 'Failed to save settings');
+                    } finally {
+                        this.saving.settings = false;
                     }
                 },
 
