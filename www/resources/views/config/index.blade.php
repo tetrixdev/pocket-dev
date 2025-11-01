@@ -215,10 +215,9 @@
             <div class="flex-1 overflow-auto">
 
                 <!-- Simple File Editor (CLAUDE.md, nginx) -->
-                <div x-show="activeCategory === 'files' || activeCategory === 'system'" class="p-6">
+                <div x-show="(activeCategory === 'files' || activeCategory === 'system') && activeTab !== 'settings'" class="p-6">
                     <template x-for="(config, id) in configs" :key="id">
-                        <!-- CLAUDE.md and nginx use simple editor -->
-                        <div x-show="activeTab === id && id !== 'settings'" class="space-y-4">
+                        <div x-show="activeTab === id" class="space-y-4">
                             <!-- Config Info -->
                             <div class="bg-gray-800 p-4 rounded-lg border border-gray-700">
                                 <h2 class="text-xl font-semibold mb-2" x-text="config.title"></h2>
@@ -253,9 +252,11 @@
                                 </button>
                             </div>
                         </div>
+                    </template>
+                </div>
 
-                        <!-- settings.json gets advanced editor -->
-                        <div x-show="activeTab === 'settings'" class="p-6 space-y-4">
+                <!-- Advanced Settings Editor (settings.json only) -->
+                <div x-show="activeTab === 'settings'" class="p-6 space-y-4">
                             <!-- Settings Header -->
                             <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 flex justify-between items-center">
                                 <div>
@@ -420,7 +421,6 @@
                                 </div>
                             </div>
                         </div>
-                    </template>
                 </div>
 
                 <!-- Agent Editor (Dual Pane: Frontmatter + System Prompt) -->
