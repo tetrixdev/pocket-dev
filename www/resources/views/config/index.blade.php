@@ -256,7 +256,7 @@
                 </div>
 
                 <!-- Advanced Settings Editor (settings.json only) -->
-                <div x-show="activeTab === 'settings'" class="p-6 space-y-4">
+                <div x-show="activeTab === 'settings' && activeCategory === 'files'" class="p-6 space-y-4">
                             <!-- Settings Header -->
                             <div class="bg-gray-800 p-4 rounded-lg border border-gray-700 flex justify-between items-center">
                                 <div>
