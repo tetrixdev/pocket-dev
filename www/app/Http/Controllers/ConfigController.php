@@ -203,4 +203,293 @@ class ConfigController extends Controller
             throw new \RuntimeException('Invalid nginx config: missing required blocks');
         }
     }
+
+    // =========================================================================
+    // AGENTS MANAGEMENT
+    // =========================================================================
+
+    protected function getAgentsPath(): string
+    {
+        return '/home/appuser/.claude/agents';
+    }
+
+    /**
+     * List all agents
+     */
+    public function listAgents(): JsonResponse
+    {
+        $agentsPath = $this->getAgentsPath();
+
+        try {
+            if (!is_dir($agentsPath)) {
+                return response()->json([
+                    'success' => true,
+                    'agents' => []
+                ]);
+            }
+
+            $files = scandir($agentsPath);
+            $agents = [];
+
+            foreach ($files as $file) {
+                if (pathinfo($file, PATHINFO_EXTENSION) === 'md') {
+                    $filePath = $agentsPath . '/' . $file;
+                    $parsed = $this->parseAgentFile($filePath);
+
+                    $agents[] = [
+                        'filename' => $file,
+                        'name' => $parsed['frontmatter']['name'] ?? pathinfo($file, PATHINFO_FILENAME),
+                        'description' => $parsed['frontmatter']['description'] ?? '',
+                        'tools' => $parsed['frontmatter']['tools'] ?? '',
+                        'model' => $parsed['frontmatter']['model'] ?? 'inherit',
+                        'modified' => filemtime($filePath),
+                    ];
+                }
+            }
+
+            // Sort by modified time, newest first
+            usort($agents, fn($a, $b) => $b['modified'] - $a['modified']);
+
+            return response()->json([
+                'success' => true,
+                'agents' => $agents
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to list agents', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to list agents: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a new agent
+     */
+    public function createAgent(Request $request): JsonResponse
+    {
+        $agentsPath = $this->getAgentsPath();
+
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|regex:/^[a-z0-9-]+$/',
+                'description' => 'required|string|max:1024',
+                'tools' => 'nullable|string',
+                'model' => 'nullable|string',
+                'systemPrompt' => 'nullable|string',
+            ]);
+
+            // Ensure agents directory exists
+            if (!is_dir($agentsPath)) {
+                mkdir($agentsPath, 0775, true);
+            }
+
+            $filename = $validated['name'] . '.md';
+            $filePath = $agentsPath . '/' . $filename;
+
+            // Check if file already exists
+            if (file_exists($filePath)) {
+                return response()->json([
+                    'error' => 'An agent with this name already exists'
+                ], 409);
+            }
+
+            // Build frontmatter
+            $frontmatter = [
+                'name' => $validated['name'],
+                'description' => $validated['description'],
+            ];
+
+            if (!empty($validated['tools'])) {
+                $frontmatter['tools'] = $validated['tools'];
+            }
+
+            // Always include model field (either specific model or 'inherit')
+            $frontmatter['model'] = $validated['model'] ?? 'inherit';
+
+            $systemPrompt = $validated['systemPrompt'] ?? "System prompt for {$validated['name']} agent.\n\nAdd your instructions here.";
+
+            $content = $this->buildAgentFile($frontmatter, $systemPrompt);
+            file_put_contents($filePath, $content);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Agent created successfully',
+                'filename' => $filename
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Failed to create agent', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to create agent: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Read a specific agent
+     */
+    public function readAgent(string $filename): JsonResponse
+    {
+        $agentsPath = $this->getAgentsPath();
+        $filePath = $agentsPath . '/' . $filename;
+
+        try {
+            if (!file_exists($filePath)) {
+                return response()->json(['error' => 'Agent not found'], 404);
+            }
+
+            $parsed = $this->parseAgentFile($filePath);
+
+            return response()->json([
+                'success' => true,
+                'filename' => $filename,
+                'frontmatter' => $parsed['frontmatter'],
+                'systemPrompt' => $parsed['content']
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to read agent {$filename}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to read agent: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save an agent
+     */
+    public function saveAgent(Request $request, string $filename): JsonResponse
+    {
+        $agentsPath = $this->getAgentsPath();
+        $filePath = $agentsPath . '/' . $filename;
+
+        try {
+            if (!file_exists($filePath)) {
+                return response()->json(['error' => 'Agent not found'], 404);
+            }
+
+            $validated = $request->validate([
+                'name' => 'required|string|regex:/^[a-z0-9-]+$/',
+                'description' => 'required|string|max:1024',
+                'tools' => 'nullable|string',
+                'model' => 'nullable|string',
+                'systemPrompt' => 'required|string',
+            ]);
+
+            // Build frontmatter
+            $frontmatter = [
+                'name' => $validated['name'],
+                'description' => $validated['description'],
+            ];
+
+            if (!empty($validated['tools'])) {
+                $frontmatter['tools'] = $validated['tools'];
+            }
+
+            // Always include model field (either specific model or 'inherit')
+            $frontmatter['model'] = $validated['model'] ?? 'inherit';
+
+            $content = $this->buildAgentFile($frontmatter, $validated['systemPrompt']);
+            file_put_contents($filePath, $content);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Agent saved successfully'
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error("Failed to save agent {$filename}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to save agent: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete an agent
+     */
+    public function deleteAgent(string $filename): JsonResponse
+    {
+        $agentsPath = $this->getAgentsPath();
+        $filePath = $agentsPath . '/' . $filename;
+
+        try {
+            if (!file_exists($filePath)) {
+                return response()->json(['error' => 'Agent not found'], 404);
+            }
+
+            unlink($filePath);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Agent deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to delete agent {$filename}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to delete agent: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Parse agent file (YAML frontmatter + markdown content)
+     */
+    protected function parseAgentFile(string $filePath): array
+    {
+        $content = file_get_contents($filePath);
+
+        // Check for frontmatter
+        if (!preg_match('/^---\s*\n(.*?)\n---\s*\n(.*)$/s', $content, $matches)) {
+            // No frontmatter, entire content is system prompt
+            return [
+                'frontmatter' => [],
+                'content' => $content
+            ];
+        }
+
+        $frontmatterYaml = $matches[1];
+        $systemPrompt = $matches[2];
+
+        // Parse YAML frontmatter
+        $frontmatter = [];
+        $lines = explode("\n", $frontmatterYaml);
+        foreach ($lines as $line) {
+            if (strpos($line, ':') !== false) {
+                [$key, $value] = explode(':', $line, 2);
+                $frontmatter[trim($key)] = trim($value);
+            }
+        }
+
+        return [
+            'frontmatter' => $frontmatter,
+            'content' => trim($systemPrompt)
+        ];
+    }
+
+    /**
+     * Build agent file content (YAML frontmatter + markdown)
+     */
+    protected function buildAgentFile(array $frontmatter, string $systemPrompt): string
+    {
+        $yaml = "---\n";
+        foreach ($frontmatter as $key => $value) {
+            $yaml .= "{$key}: {$value}\n";
+        }
+        $yaml .= "---\n\n";
+
+        return $yaml . $systemPrompt;
+    }
 }

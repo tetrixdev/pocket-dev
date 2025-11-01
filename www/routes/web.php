@@ -22,3 +22,10 @@ Route::post("/transcribe", [TerminalController::class, "transcribe"])->name("ter
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");
 Route::get("/config/{id}", [ConfigController::class, "read"])->name("config.read");
 Route::post("/config/{id}", [ConfigController::class, "save"])->name("config.save");
+
+// Agents management routes
+Route::get("/config/agents/list", [ConfigController::class, "listAgents"])->name("config.agents.list");
+Route::post("/config/agents/create", [ConfigController::class, "createAgent"])->name("config.agents.create");
+Route::get("/config/agents/read/{filename}", [ConfigController::class, "readAgent"])->name("config.agents.read");
+Route::post("/config/agents/save/{filename}", [ConfigController::class, "saveAgent"])->name("config.agents.save");
+Route::delete("/config/agents/delete/{filename}", [ConfigController::class, "deleteAgent"])->name("config.agents.delete");

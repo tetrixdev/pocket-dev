@@ -173,8 +173,8 @@ class ClaudeCodeService
 
         $cwd = $options['cwd'] ?? config('claude.working_directory');
 
-        // Build environment variables
-        $env = $this->buildEnvironment($thinkingLevel);
+        // Build environment variables (pass model for subagent inheritance)
+        $env = $this->buildEnvironment($thinkingLevel, $options['model'] ?? null);
 
         $this->log('debug', 'Executing Claude Code', [
             'command' => $command,
@@ -272,8 +272,8 @@ class ClaudeCodeService
 
         $cwd = $options['cwd'] ?? config('claude.working_directory');
 
-        // Build environment variables
-        $env = $this->buildEnvironment($thinkingLevel);
+        // Build environment variables (pass model for subagent inheritance)
+        $env = $this->buildEnvironment($thinkingLevel, $options['model'] ?? null);
 
         \Log::info('[ClaudeCodeService] Executing Claude Code (streaming)', [
             'command' => $command,
@@ -376,20 +376,13 @@ class ClaudeCodeService
      * @param int $thinkingLevel Thinking mode level (0-4)
      * @return array|null Environment variables (null to inherit parent environment)
      */
-    protected function buildEnvironment(int $thinkingLevel): ?array
+    protected function buildEnvironment(int $thinkingLevel, ?string $model = null): ?array
     {
         // Get thinking mode configuration
         $thinkingModes = config('claude.thinking_modes', []);
         $thinkingConfig = $thinkingModes[$thinkingLevel] ?? $thinkingModes[0];
 
-        // If thinking is disabled, don't pass custom environment
-        // This allows inheriting the parent environment completely
-        if ($thinkingConfig['tokens'] === 0) {
-            return null;
-        }
-
         // Build environment array for proc_open
-        // We need to explicitly build this because we're adding MAX_THINKING_TOKENS
         $env = [];
 
         // Copy essential environment variables
@@ -407,10 +400,24 @@ class ClaudeCodeService
         }
 
         // Set MAX_THINKING_TOKENS based on thinking level
-        $env['MAX_THINKING_TOKENS'] = (string) $thinkingConfig['tokens'];
+        if ($thinkingConfig['tokens'] > 0) {
+            $env['MAX_THINKING_TOKENS'] = (string) $thinkingConfig['tokens'];
+        }
+
+        // Set CLAUDE_CODE_SUBAGENT_MODEL so agents with 'model: inherit' use the correct model
+        // Must use FULL model name, not alias (e.g., claude-sonnet-4-5-20250929, not sonnet)
+        if ($model) {
+            $env['CLAUDE_CODE_SUBAGENT_MODEL'] = $model;
+        }
+
+        // If thinking is disabled and no model specified, return null to inherit parent environment
+        if ($thinkingConfig['tokens'] === 0 && !$model) {
+            return null;
+        }
 
         return $env;
     }
+
 
     /**
      * Parse JSON output from Claude Code.
@@ -710,8 +717,8 @@ class ClaudeCodeService
 
         $cwd = $options['cwd'] ?? config('claude.working_directory');
 
-        // Build environment variables
-        $env = $this->buildEnvironment($thinkingLevel);
+        // Build environment variables (pass model for subagent inheritance)
+        $env = $this->buildEnvironment($thinkingLevel, $options['model'] ?? null);
 
         $this->log('debug', 'Starting background Claude process', [
             'command' => $command,
