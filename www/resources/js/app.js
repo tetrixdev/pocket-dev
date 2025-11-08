@@ -13,14 +13,18 @@ import markdown from 'highlight.js/lib/languages/markdown';
 import json from 'highlight.js/lib/languages/json';
 import 'highlight.js/styles/atom-one-dark.css';
 
+// Import config page component
+import { configApp } from './config-app.js';
+
 // Register languages for syntax highlighting
 hljs.registerLanguage('nginx', nginx);
 hljs.registerLanguage('markdown', markdown);
 hljs.registerLanguage('json', json);
 
-// Make Alpine and hljs available globally
+// Make Alpine, hljs, and configApp available globally BEFORE Alpine starts
 window.Alpine = Alpine;
 window.hljs = hljs;
+window.configApp = configApp;
 
 // Start Alpine after all imports and setup
 Alpine.start();

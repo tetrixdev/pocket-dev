@@ -39,6 +39,15 @@ Route::delete("/config/commands/delete/{filename}", [ConfigController::class, "d
 Route::get("/config/hooks", [ConfigController::class, "getHooks"])->name("config.hooks.get");
 Route::post("/config/hooks", [ConfigController::class, "updateHooks"])->name("config.hooks.update");
 
+// Skills management routes - MUST be before /config/{id} wildcard
+Route::get("/config/skills/list", [ConfigController::class, "listSkills"])->name("config.skills.list");
+Route::post("/config/skills/create", [ConfigController::class, "createSkill"])->name("config.skills.create");
+Route::get("/config/skills/read/{skillName}", [ConfigController::class, "readSkill"])->name("config.skills.read");
+Route::get("/config/skills/file/{skillName}/{path}", [ConfigController::class, "readSkillFile"])->name("config.skills.readFile")->where('path', '.*');
+Route::post("/config/skills/file/{skillName}/{path}", [ConfigController::class, "saveSkillFile"])->name("config.skills.saveFile")->where('path', '.*');
+Route::delete("/config/skills/file/{skillName}/{path}", [ConfigController::class, "deleteSkillFile"])->name("config.skills.deleteFile")->where('path', '.*');
+Route::delete("/config/skills/delete/{skillName}", [ConfigController::class, "deleteSkill"])->name("config.skills.delete");
+
 // Generic config routes - MUST be last to avoid catching specific routes
 Route::get("/config/{id}", [ConfigController::class, "read"])->name("config.read");
 Route::post("/config/{id}", [ConfigController::class, "save"])->name("config.save");

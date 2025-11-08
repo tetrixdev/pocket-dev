@@ -194,13 +194,40 @@ docker compose up -d --build
 **When NOT needed:**
 - Laravel code changes (www/ is a mounted volume, changes are instant)
 - Git operations or README updates
-- Frontend/backend code (no rebuild needed)
+- Frontend/backend code (no rebuild needed, but see Vite section below)
 
 **Single service rebuild:**
 ```bash
 docker compose up -d --build pocket-dev-php    # Rebuild just PHP container
 docker compose restart pocket-dev-proxy         # Restart without rebuild
 ```
+
+### Frontend Development (Vite)
+
+**IMPORTANT**: After making changes to JavaScript, CSS, or Blade templates with inline Alpine.js code, you must rebuild the frontend assets.
+
+```bash
+# Run from: /home/linux/projects/pocket-dev/
+
+# Restart all containers to trigger automatic asset build
+docker compose up -d --force-recreate
+```
+
+**Why this workflow:**
+- The PHP container's entrypoint automatically runs `npm run build` on startup (see `docker-laravel/local/php/entrypoint.sh:73-74`)
+- We **cannot use** `npm run dev` (Vite dev server) because of multi-domain access requirements:
+  - Desktop browser uses `http://localhost` (required for microphone access - browsers restrict mic to HTTPS or localhost)
+  - Mobile devices use `http://192.168.1.175` (local network IP)
+  - Vite's dev server only listens on one domain, causing CORS/asset loading failures on the other
+- Using `--force-recreate` ensures the container restarts and runs the entrypoint build step
+
+**When rebuild is required:**
+- Changes to `resources/js/app.js` or any imported JS modules
+- Changes to `resources/css/app.css`
+- Changes to Blade templates with inline Alpine.js directives (`x-show`, `x-model`, etc.)
+- Browser shows old cached version despite clearing Laravel view cache (`php artisan view:clear`)
+
+**Why**: Vite compiles and bundles assets into versioned files (e.g., `app-CtZzMJE5.js`). Browsers cache these by hash. Without rebuilding, changes won't appear even after hard refresh because the browser serves the old cached bundle.
 
 ### Laravel Development
 

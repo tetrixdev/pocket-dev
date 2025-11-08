@@ -1,7 +1,30 @@
 # PocketDev Migration Plan: TTYD → PHP Container
 
 **Date:** 2025-10-28
+**Last Updated:** 2025-11-01
 **Goal:** Migrate from TTYD-based development to PHP container as the primary Claude Code environment, eventually removing TTYD entirely.
+
+---
+
+## 📊 Current Status Summary
+
+**Completed Phases:**
+- ✅ Phase 1: Infrastructure Setup (workspace mount, working directory)
+- ✅ Phase 1.5: Configuration System & Permission Management
+- ✅ Phase 2: Configuration Management System (Agents, Commands, Hooks, Skills, Advanced Settings)
+
+**Current Phase:**
+- 🔄 Phase 3: Fix Remaining Configuration Issues
+  - 🚨 **BLOCKING:** Modal buttons for creating Agents/Commands/Skills not working
+
+**Remaining Phases:**
+- Phase 4: Git Credentials Implementation
+- Phase 5: Configuration Page UI Polish
+- Phase 6: MCP Servers & Plugins Management
+- Phase 7: Chat Interface Updates
+- Phase 8: Production Image Preparation
+- Phase 9: Testing & Validation
+- Phase 10: TTYD Removal (Final Phase)
 
 ---
 
@@ -600,11 +623,71 @@ setInterval(checkPermissionRequests, 500);
 - [ ] Max turns validation works (1-9999)
 - [ ] Git/gh commands work without approval
 
-**Status:** 🔄 IN PROGRESS
+**Status:** ✅ COMPLETED
 
 ---
 
-### Phase 2: Fix Configuration Page (Immediate)
+### Phase 2: Configuration Management System (Extended)
+
+**Objective:** Build comprehensive configuration management for Agents, Slash Commands, Hooks, Skills, and Advanced Settings
+
+**Completed Tasks:**
+- ✅ Added Agents management (list, create, edit, delete with file browser)
+- ✅ Added Slash Commands management (list, create, edit, delete)
+- ✅ Added Hooks management (JSON editor with validation)
+- ✅ Added Skills management (directory browser, multi-file editor)
+- ✅ Added Advanced Settings UI (structured form + raw JSON toggle for settings.json)
+- ✅ Fixed settings.json editor structure and visibility
+- ✅ Added responsive design elements (`w-full h-full overflow-y-auto` for proper scrolling)
+- ✅ Implemented category-based sidebar navigation
+- ✅ Fixed route ordering (specific routes before wildcards)
+
+**Routes Added:**
+- Agents: `/config/agents/{list,create,read,save,delete}`
+- Commands: `/config/commands/{list,create,read,save,delete}`
+- Hooks: `/config/hooks` (GET/POST)
+- Skills: `/config/skills/{list,create,read,save,delete}` + file operations
+- Advanced Settings: settings.json with structured UI
+
+**Files Created/Modified:**
+- ✅ `www/app/Http/Controllers/ConfigController.php` - Added all management methods
+- ✅ `www/routes/web.php` - Added routes (correct ordering)
+- ✅ `www/resources/views/config/index.blade.php` - Complete UI implementation
+
+**Status:** ✅ COMPLETED (with blocking issue - see below)
+
+---
+
+## ✅ RESOLVED: Modal Buttons Not Working (Agent/Command/Skill Creation)
+
+**Problem:**
+When clicking "+ New Agent", "+ New Command", or "+ New Skill" buttons, the modals did not appear. Browser console showed: `Alpine Expression Error: showCreateAgentModal is not defined`
+
+**Root Cause:**
+**Alpine.js timing issue** - The `configApp()` function was defined in an inline `<script>` tag at the bottom of the Blade template (lines 1056-1789), but Alpine.start() was called in `app.js` loaded in the `<head>`. When Alpine initialized and processed `x-data="configApp(@js($configs))"` at line 97, the function didn't exist yet.
+
+**Solution Implemented:**
+1. Created `/www/resources/js/config-app.js` - Extracted the configApp function into a proper ES6 module
+2. Updated `/www/resources/js/app.js` - Imported and exposed configApp to window before Alpine.start()
+3. Updated `/www/resources/views/config/index.blade.php` - Removed the inline script (lines 1056-1789)
+4. Rebuilt assets with `docker compose up -d --force-recreate pocket-dev-php`
+
+**Files Modified:**
+- ✅ Created: `www/resources/js/config-app.js`
+- ✅ Modified: `www/resources/js/app.js` (added import and window.configApp)
+- ✅ Modified: `www/resources/views/config/index.blade.php` (removed inline script)
+
+**Status:** ✅ RESOLVED (2025-11-01)
+
+---
+
+### Phase 3: Fix Remaining Configuration Issues (NOW)
+
+**Objective:** Fix blocking modal button issue, then complete configuration system
+
+**Priority Tasks:**
+- [ ] **CRITICAL:** Debug and fix modal buttons (Agent/Command/Skill creation)
+- [ ] Test all CRUD operations once modals work
 
 **Objective:** Fix 500 errors on `/config` page
 

@@ -888,4 +888,432 @@ class ConfigController extends Controller
             throw new \RuntimeException("Failed to write settings file");
         }
     }
+
+    // =========================================================================
+    // SKILLS MANAGEMENT
+    // =========================================================================
+
+    protected function getSkillsPath(): string
+    {
+        return '/home/appuser/.claude/skills';
+    }
+
+    /**
+     * List all skills
+     */
+    public function listSkills(): JsonResponse
+    {
+        $skillsPath = $this->getSkillsPath();
+
+        try {
+            if (!is_dir($skillsPath)) {
+                return response()->json([
+                    'success' => true,
+                    'skills' => []
+                ]);
+            }
+
+            $dirs = scandir($skillsPath);
+            $skills = [];
+
+            foreach ($dirs as $dir) {
+                if ($dir === '.' || $dir === '..') continue;
+
+                $skillDir = $skillsPath . '/' . $dir;
+                if (!is_dir($skillDir)) continue;
+
+                $skillMdPath = $skillDir . '/SKILL.md';
+                if (!file_exists($skillMdPath)) continue;
+
+                $parsed = $this->parseSkillFile($skillMdPath);
+
+                $skills[] = [
+                    'name' => $dir,
+                    'displayName' => $parsed['frontmatter']['name'] ?? $dir,
+                    'description' => $parsed['frontmatter']['description'] ?? '',
+                    'allowedTools' => $parsed['frontmatter']['allowed-tools'] ?? '',
+                    'modified' => filemtime($skillMdPath),
+                ];
+            }
+
+            // Sort by modified time, newest first
+            usort($skills, fn($a, $b) => $b['modified'] - $a['modified']);
+
+            return response()->json([
+                'success' => true,
+                'skills' => $skills
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to list skills', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to list skills: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a new skill
+     */
+    public function createSkill(Request $request): JsonResponse
+    {
+        $skillsPath = $this->getSkillsPath();
+
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|regex:/^[a-z0-9-]+$/|max:64',
+                'description' => 'required|string|max:1024',
+                'allowedTools' => 'nullable|string',
+            ]);
+
+            // Ensure skills directory exists
+            if (!is_dir($skillsPath)) {
+                mkdir($skillsPath, 0775, true);
+            }
+
+            $skillDir = $skillsPath . '/' . $validated['name'];
+
+            // Check if skill already exists
+            if (is_dir($skillDir)) {
+                return response()->json([
+                    'error' => 'A skill with this name already exists'
+                ], 409);
+            }
+
+            // Create skill directory
+            mkdir($skillDir, 0775, true);
+
+            // Build SKILL.md frontmatter
+            $frontmatter = [
+                'name' => $validated['name'],
+                'description' => $validated['description'],
+            ];
+            if (!empty($validated['allowedTools'])) {
+                $frontmatter['allowed-tools'] = $validated['allowedTools'];
+            }
+
+            $content = "Instructions for using this skill.\n\nAdd your skill implementation here.";
+            $skillMdContent = $this->buildSkillFile($frontmatter, $content);
+
+            file_put_contents($skillDir . '/SKILL.md', $skillMdContent);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Skill created successfully',
+                'skillName' => $validated['name']
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Failed to create skill', ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to create skill: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Read skill directory structure
+     */
+    public function readSkill(string $skillName): JsonResponse
+    {
+        $skillsPath = $this->getSkillsPath();
+        $skillDir = $skillsPath . '/' . $skillName;
+
+        try {
+            if (!is_dir($skillDir)) {
+                return response()->json(['error' => 'Skill not found'], 404);
+            }
+
+            $files = $this->recursiveListDirectory($skillDir, $skillDir);
+
+            return response()->json([
+                'success' => true,
+                'skillName' => $skillName,
+                'files' => $files
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to read skill {$skillName}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to read skill: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Read a specific file within a skill
+     */
+    public function readSkillFile(string $skillName, string $path): JsonResponse
+    {
+        $skillsPath = $this->getSkillsPath();
+        $filePath = $skillsPath . '/' . $skillName . '/' . $path;
+
+        try {
+            if (!file_exists($filePath) || is_dir($filePath)) {
+                return response()->json(['error' => 'File not found'], 404);
+            }
+
+            // Security: Ensure file is within skill directory
+            $realPath = realpath($filePath);
+            $skillDir = realpath($skillsPath . '/' . $skillName);
+            if (!str_starts_with($realPath, $skillDir)) {
+                return response()->json(['error' => 'Access denied'], 403);
+            }
+
+            $content = file_get_contents($filePath);
+
+            // Parse SKILL.md frontmatter if applicable
+            $parsed = null;
+            if (basename($path) === 'SKILL.md') {
+                $parsed = $this->parseSkillFile($filePath);
+            }
+
+            return response()->json([
+                'success' => true,
+                'path' => $path,
+                'content' => $content,
+                'parsed' => $parsed
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to read skill file {$skillName}/{$path}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to read file: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save a specific file within a skill
+     */
+    public function saveSkillFile(Request $request, string $skillName, string $path): JsonResponse
+    {
+        $skillsPath = $this->getSkillsPath();
+        $skillDir = $skillsPath . '/' . $skillName;
+        $filePath = $skillDir . '/' . $path;
+
+        try {
+            if (!is_dir($skillDir)) {
+                return response()->json(['error' => 'Skill not found'], 404);
+            }
+
+            // Security: Ensure file is within skill directory
+            $skillDirReal = realpath($skillDir);
+            $fileDir = dirname($filePath);
+
+            // Create directory if it doesn't exist
+            if (!is_dir($fileDir)) {
+                mkdir($fileDir, 0775, true);
+            }
+
+            $validated = $request->validate([
+                'content' => 'required|string',
+            ]);
+
+            file_put_contents($filePath, $validated['content']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'File saved successfully'
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error("Failed to save skill file {$skillName}/{$path}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to save file: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a specific file within a skill
+     */
+    public function deleteSkillFile(string $skillName, string $path): JsonResponse
+    {
+        $skillsPath = $this->getSkillsPath();
+        $filePath = $skillsPath . '/' . $skillName . '/' . $path;
+
+        try {
+            // Prevent deleting SKILL.md
+            if (basename($path) === 'SKILL.md') {
+                return response()->json([
+                    'error' => 'Cannot delete SKILL.md - delete the entire skill instead'
+                ], 403);
+            }
+
+            if (!file_exists($filePath)) {
+                return response()->json(['error' => 'File not found'], 404);
+            }
+
+            // Security: Ensure file is within skill directory
+            $realPath = realpath($filePath);
+            $skillDir = realpath($skillsPath . '/' . $skillName);
+            if (!str_starts_with($realPath, $skillDir)) {
+                return response()->json(['error' => 'Access denied'], 403);
+            }
+
+            if (is_dir($filePath)) {
+                // Remove directory recursively
+                $this->recursiveRemoveDirectory($filePath);
+            } else {
+                unlink($filePath);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'File deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to delete skill file {$skillName}/{$path}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to delete file: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete an entire skill
+     */
+    public function deleteSkill(string $skillName): JsonResponse
+    {
+        $skillsPath = $this->getSkillsPath();
+        $skillDir = $skillsPath . '/' . $skillName;
+
+        try {
+            if (!is_dir($skillDir)) {
+                return response()->json(['error' => 'Skill not found'], 404);
+            }
+
+            $this->recursiveRemoveDirectory($skillDir);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Skill deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Failed to delete skill {$skillName}", ['error' => $e->getMessage()]);
+            return response()->json([
+                'error' => 'Failed to delete skill: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Parse SKILL.md file (YAML frontmatter + markdown content)
+     */
+    protected function parseSkillFile(string $filePath): array
+    {
+        $content = file_get_contents($filePath);
+
+        // Check for frontmatter
+        if (!preg_match('/^---\s*\n(.*?)\n---\s*\n(.*)$/s', $content, $matches)) {
+            return [
+                'frontmatter' => [],
+                'content' => $content
+            ];
+        }
+
+        $frontmatterYaml = $matches[1];
+        $skillContent = $matches[2];
+
+        // Parse YAML frontmatter
+        $frontmatter = [];
+        $lines = explode("\n", $frontmatterYaml);
+        foreach ($lines as $line) {
+            if (strpos($line, ':') !== false) {
+                [$key, $value] = explode(':', $line, 2);
+                $frontmatter[trim($key)] = trim($value);
+            }
+        }
+
+        return [
+            'frontmatter' => $frontmatter,
+            'content' => trim($skillContent)
+        ];
+    }
+
+    /**
+     * Build SKILL.md file content (YAML frontmatter + markdown)
+     */
+    protected function buildSkillFile(array $frontmatter, string $content): string
+    {
+        $yaml = "---\n";
+        foreach ($frontmatter as $key => $value) {
+            $yaml .= "{$key}: {$value}\n";
+        }
+        $yaml .= "---\n\n";
+
+        return $yaml . $content;
+    }
+
+    /**
+     * Recursively list directory contents
+     */
+    protected function recursiveListDirectory(string $dir, string $baseDir): array
+    {
+        $files = [];
+        $items = scandir($dir);
+
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+
+            $path = $dir . '/' . $item;
+            $relativePath = substr($path, strlen($baseDir) + 1);
+
+            if (is_dir($path)) {
+                $files[] = [
+                    'name' => $item,
+                    'path' => $relativePath,
+                    'type' => 'directory',
+                    'children' => $this->recursiveListDirectory($path, $baseDir)
+                ];
+            } else {
+                $files[] = [
+                    'name' => $item,
+                    'path' => $relativePath,
+                    'type' => 'file',
+                    'size' => filesize($path),
+                    'modified' => filemtime($path)
+                ];
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * Recursively remove a directory
+     */
+    protected function recursiveRemoveDirectory(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $items = scandir($dir);
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') continue;
+
+            $path = $dir . '/' . $item;
+            if (is_dir($path)) {
+                $this->recursiveRemoveDirectory($path);
+            } else {
+                unlink($path);
+            }
+        }
+
+        rmdir($dir);
+    }
 }

@@ -844,9 +844,12 @@
         </div>
 
         <!-- Create Agent Modal -->
-        <div x-cloak x-show="showCreateAgentModal"
+        <div x-show="showCreateAgentModal"
+             x-init="console.log('[DEBUG] Agent modal x-show value:', showCreateAgentModal)"
              @click.away="showCreateAgentModal = false"
-             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+             style="display: none;"
+             x-transition>
             <div @click.stop class="bg-gray-800 rounded-lg p-6 max-w-lg w-full mx-4 border border-gray-700">
                 <h2 class="text-xl font-semibold mb-4">Create New Agent</h2>
 
