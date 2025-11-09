@@ -19,6 +19,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Share sidebar data with all config views
+        view()->composer('layouts.config', \App\Http\View\Composers\ConfigSidebarComposer::class);
     }
 }
