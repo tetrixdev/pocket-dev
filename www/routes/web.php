@@ -19,35 +19,48 @@ Route::view("/", "chat")->name("claude.index");
 Route::get("/terminal", [TerminalController::class, "index"])->name("terminal.index");
 Route::post("/transcribe", [TerminalController::class, "transcribe"])->name("terminal.transcribe");
 
+// Config - Redirect to last visited section
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");
 
-// Agents management routes - MUST be before /config/{id} wildcard
-Route::get("/config/agents/list", [ConfigController::class, "listAgents"])->name("config.agents.list");
-Route::post("/config/agents/create", [ConfigController::class, "createAgent"])->name("config.agents.create");
-Route::get("/config/agents/read/{filename}", [ConfigController::class, "readAgent"])->name("config.agents.read");
-Route::post("/config/agents/save/{filename}", [ConfigController::class, "saveAgent"])->name("config.agents.save");
-Route::delete("/config/agents/delete/{filename}", [ConfigController::class, "deleteAgent"])->name("config.agents.delete");
+// Simple config file pages (CLAUDE.md, settings.json, nginx)
+Route::get("/config/claude", [ConfigController::class, "showClaude"])->name("config.claude");
+Route::post("/config/claude", [ConfigController::class, "saveClaude"])->name("config.claude.save");
 
-// Commands management routes - MUST be before /config/{id} wildcard
-Route::get("/config/commands/list", [ConfigController::class, "listCommands"])->name("config.commands.list");
-Route::post("/config/commands/create", [ConfigController::class, "createCommand"])->name("config.commands.create");
-Route::get("/config/commands/read/{filename}", [ConfigController::class, "readCommand"])->name("config.commands.read");
-Route::post("/config/commands/save/{filename}", [ConfigController::class, "saveCommand"])->name("config.commands.save");
-Route::delete("/config/commands/delete/{filename}", [ConfigController::class, "deleteCommand"])->name("config.commands.delete");
+Route::get("/config/settings", [ConfigController::class, "showSettings"])->name("config.settings");
+Route::post("/config/settings", [ConfigController::class, "saveSettings"])->name("config.settings.save");
 
-// Hooks management routes - MUST be before /config/{id} wildcard
-Route::get("/config/hooks", [ConfigController::class, "getHooks"])->name("config.hooks.get");
-Route::post("/config/hooks", [ConfigController::class, "updateHooks"])->name("config.hooks.update");
+Route::get("/config/nginx", [ConfigController::class, "showNginx"])->name("config.nginx");
+Route::post("/config/nginx", [ConfigController::class, "saveNginx"])->name("config.nginx.save");
 
-// Skills management routes - MUST be before /config/{id} wildcard
-Route::get("/config/skills/list", [ConfigController::class, "listSkills"])->name("config.skills.list");
-Route::post("/config/skills/create", [ConfigController::class, "createSkill"])->name("config.skills.create");
-Route::get("/config/skills/read/{skillName}", [ConfigController::class, "readSkill"])->name("config.skills.read");
-Route::get("/config/skills/file/{skillName}/{path}", [ConfigController::class, "readSkillFile"])->name("config.skills.readFile")->where('path', '.*');
-Route::post("/config/skills/file/{skillName}/{path}", [ConfigController::class, "saveSkillFile"])->name("config.skills.saveFile")->where('path', '.*');
-Route::delete("/config/skills/file/{skillName}/{path}", [ConfigController::class, "deleteSkillFile"])->name("config.skills.deleteFile")->where('path', '.*');
-Route::delete("/config/skills/delete/{skillName}", [ConfigController::class, "deleteSkill"])->name("config.skills.delete");
+// Agents management
+Route::get("/config/agents", [ConfigController::class, "listAgents"])->name("config.agents");
+Route::get("/config/agents/create", [ConfigController::class, "createAgentForm"])->name("config.agents.create");
+Route::post("/config/agents", [ConfigController::class, "storeAgent"])->name("config.agents.store");
+Route::get("/config/agents/{filename}/edit", [ConfigController::class, "editAgentForm"])->name("config.agents.edit");
+Route::put("/config/agents/{filename}", [ConfigController::class, "updateAgent"])->name("config.agents.update");
+Route::delete("/config/agents/{filename}", [ConfigController::class, "deleteAgent"])->name("config.agents.delete");
 
-// Generic config routes - MUST be last to avoid catching specific routes
-Route::get("/config/{id}", [ConfigController::class, "read"])->name("config.read");
-Route::post("/config/{id}", [ConfigController::class, "save"])->name("config.save");
+// Commands management
+Route::get("/config/commands", [ConfigController::class, "listCommands"])->name("config.commands");
+Route::get("/config/commands/create", [ConfigController::class, "createCommandForm"])->name("config.commands.create");
+Route::post("/config/commands", [ConfigController::class, "storeCommand"])->name("config.commands.store");
+Route::get("/config/commands/{filename}/edit", [ConfigController::class, "editCommandForm"])->name("config.commands.edit");
+Route::put("/config/commands/{filename}", [ConfigController::class, "updateCommand"])->name("config.commands.update");
+Route::delete("/config/commands/{filename}", [ConfigController::class, "deleteCommand"])->name("config.commands.delete");
+
+// Hooks editor
+Route::get("/config/hooks", [ConfigController::class, "showHooks"])->name("config.hooks");
+Route::post("/config/hooks", [ConfigController::class, "saveHooks"])->name("config.hooks.save");
+
+// Skills management
+Route::get("/config/skills", [ConfigController::class, "listSkills"])->name("config.skills");
+Route::get("/config/skills/create", [ConfigController::class, "createSkillForm"])->name("config.skills.create");
+Route::post("/config/skills", [ConfigController::class, "storeSkill"])->name("config.skills.store");
+Route::get("/config/skills/{skillName}/edit", [ConfigController::class, "editSkillForm"])->name("config.skills.edit");
+Route::put("/config/skills/{skillName}", [ConfigController::class, "updateSkill"])->name("config.skills.update");
+Route::delete("/config/skills/{skillName}", [ConfigController::class, "deleteSkill"])->name("config.skills.delete");
+
+// Skill file management (for file browser within skill edit page)
+Route::get("/config/skills/{skillName}/files/{path}", [ConfigController::class, "getSkillFile"])->name("config.skills.file")->where('path', '.*');
+Route::put("/config/skills/{skillName}/files/{path}", [ConfigController::class, "saveSkillFile"])->name("config.skills.file.save")->where('path', '.*');
+Route::delete("/config/skills/{skillName}/files/{path}", [ConfigController::class, "deleteSkillFile"])->name("config.skills.file.delete")->where('path', '.*');

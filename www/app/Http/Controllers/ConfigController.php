@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 
 class ConfigController extends Controller
 {
+    // =========================================================================
+    // CORE CONFIGURATION
+    // =========================================================================
+
     /**
      * Configuration registry - defines all editable configs
      */
@@ -42,102 +45,6 @@ class ConfigController extends Controller
                 'reload_cmd' => 'sh -c "envsubst \'\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME\' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"',
             ],
         ];
-    }
-
-    /**
-     * Display the config editor page
-     */
-    public function index()
-    {
-        $configs = $this->getConfigs();
-
-        return view('config.index', [
-            'configs' => $configs,
-            'csrfToken' => csrf_token(),
-        ]);
-    }
-
-    /**
-     * Read a specific config file
-     */
-    public function read(string $id): JsonResponse
-    {
-        $configs = $this->getConfigs();
-
-        if (!isset($configs[$id])) {
-            return response()->json(['error' => 'Config not found'], 404);
-        }
-
-        $config = $configs[$id];
-
-        try {
-            $content = $this->readFromLocalPath($config['local_path']);
-
-            return response()->json([
-                'success' => true,
-                'content' => $content,
-                'config' => $config,
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to read config {$id}", [
-                'error' => $e->getMessage(),
-                'local_path' => $config['local_path'],
-            ]);
-
-            return response()->json([
-                'error' => 'Failed to read config: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Save a specific config file
-     */
-    public function save(Request $request, string $id): JsonResponse
-    {
-        $configs = $this->getConfigs();
-
-        if (!isset($configs[$id])) {
-            return response()->json(['error' => 'Config not found'], 404);
-        }
-
-        $config = $configs[$id];
-        $content = $request->input('content');
-
-        if ($content === null) {
-            return response()->json(['error' => 'Content is required'], 400);
-        }
-
-        try {
-            // Validate if needed (nginx only for now)
-            if ($config['validate']) {
-                $this->validateNginxConfig($content);
-            }
-
-            // Save the config to local mounted path
-            $this->writeToLocalPath($config['local_path'], $content);
-
-            // Reload if needed (this still requires docker exec)
-            if ($config['reload_cmd']) {
-                $this->execInContainer($config['container'], $config['reload_cmd']);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => "{$config['title']} saved successfully" .
-                            ($config['reload_cmd'] ? ' and service reloaded' : ''),
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error("Failed to save config {$id}", [
-                'error' => $e->getMessage(),
-                'local_path' => $config['local_path'],
-            ]);
-
-            return response()->json([
-                'error' => 'Failed to save config: ' . $e->getMessage()
-            ], 500);
-        }
     }
 
     /**
@@ -191,9 +98,6 @@ class ConfigController extends Controller
      */
     protected function validateNginxConfig(string $content): void
     {
-        // For now, just do basic syntax checking
-        // In the future, could write to temp file and run nginx -t
-
         if (empty(trim($content))) {
             throw new \RuntimeException('Nginx config cannot be empty');
         }
@@ -205,7 +109,160 @@ class ConfigController extends Controller
     }
 
     // =========================================================================
-    // AGENTS MANAGEMENT
+    // MAIN INDEX & NAVIGATION
+    // =========================================================================
+
+    /**
+     * Main index - redirect to last visited section or default to claude
+     */
+    public function index(Request $request)
+    {
+        $lastSection = $request->session()->get('config_last_section', 'claude');
+        return redirect()->route('config.' . $lastSection);
+    }
+
+    // =========================================================================
+    // SIMPLE FILE EDITORS
+    // =========================================================================
+
+    /**
+     * Show CLAUDE.md editor
+     */
+    public function showClaude(Request $request)
+    {
+        $request->session()->put('config_last_section', 'claude');
+
+        try {
+            $config = $this->getConfigs()['claude'];
+            $content = $this->readFromLocalPath($config['local_path']);
+
+            return view('config.claude', [
+                'content' => $content,
+                'config' => $config,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to load CLAUDE.md', ['error' => $e->getMessage()]);
+            return redirect()->route('config.index')
+                ->with('error', 'Failed to load CLAUDE.md: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save CLAUDE.md
+     */
+    public function saveClaude(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'content' => 'required|string',
+            ]);
+
+            $config = $this->getConfigs()['claude'];
+            $this->writeToLocalPath($config['local_path'], $validated['content']);
+
+            return redirect()->back()->with('success', 'CLAUDE.md saved successfully');
+        } catch (\Exception $e) {
+            Log::error('Failed to save CLAUDE.md', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to save CLAUDE.md: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show settings.json editor
+     */
+    public function showSettings(Request $request)
+    {
+        $request->session()->put('config_last_section', 'settings');
+
+        try {
+            $config = $this->getConfigs()['settings'];
+            $content = $this->readFromLocalPath($config['local_path']);
+
+            return view('config.settings', [
+                'content' => $content,
+                'config' => $config,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to load settings.json', ['error' => $e->getMessage()]);
+            return redirect()->route('config.index')
+                ->with('error', 'Failed to load settings.json: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save settings.json
+     */
+    public function saveSettings(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'content' => 'required|string',
+            ]);
+
+            $config = $this->getConfigs()['settings'];
+            $this->writeToLocalPath($config['local_path'], $validated['content']);
+
+            return redirect()->back()->with('success', 'Settings saved successfully');
+        } catch (\Exception $e) {
+            Log::error('Failed to save settings.json', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to save settings.json: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show nginx config editor
+     */
+    public function showNginx(Request $request)
+    {
+        $request->session()->put('config_last_section', 'nginx');
+
+        try {
+            $config = $this->getConfigs()['nginx'];
+            $content = $this->readFromLocalPath($config['local_path']);
+
+            return view('config.nginx', [
+                'content' => $content,
+                'config' => $config,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to load nginx config', ['error' => $e->getMessage()]);
+            return redirect()->route('config.index')
+                ->with('error', 'Failed to load nginx config: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save nginx config and reload
+     */
+    public function saveNginx(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'content' => 'required|string',
+            ]);
+
+            $config = $this->getConfigs()['nginx'];
+
+            // Validate nginx config
+            $this->validateNginxConfig($validated['content']);
+
+            // Save config
+            $this->writeToLocalPath($config['local_path'], $validated['content']);
+
+            // Reload nginx
+            if ($config['reload_cmd']) {
+                $this->execInContainer($config['container'], $config['reload_cmd']);
+            }
+
+            return redirect()->back()->with('success', 'Nginx config saved and reloaded successfully');
+        } catch (\Exception $e) {
+            Log::error('Failed to save nginx config', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to save nginx config: ' . $e->getMessage());
+        }
+    }
+
+    // =========================================================================
+    // AGENTS CRUD
     // =========================================================================
 
     protected function getAgentsPath(): string
@@ -216,60 +273,61 @@ class ConfigController extends Controller
     /**
      * List all agents
      */
-    public function listAgents(): JsonResponse
+    public function listAgents(Request $request)
     {
-        $agentsPath = $this->getAgentsPath();
+        $request->session()->put('config_last_section', 'agents');
 
         try {
-            if (!is_dir($agentsPath)) {
-                return response()->json([
-                    'success' => true,
-                    'agents' => []
-                ]);
-            }
-
-            $files = scandir($agentsPath);
+            $agentsPath = $this->getAgentsPath();
             $agents = [];
 
-            foreach ($files as $file) {
-                if (pathinfo($file, PATHINFO_EXTENSION) === 'md') {
-                    $filePath = $agentsPath . '/' . $file;
-                    $parsed = $this->parseAgentFile($filePath);
+            if (is_dir($agentsPath)) {
+                $files = scandir($agentsPath);
 
-                    $agents[] = [
-                        'filename' => $file,
-                        'name' => $parsed['frontmatter']['name'] ?? pathinfo($file, PATHINFO_FILENAME),
-                        'description' => $parsed['frontmatter']['description'] ?? '',
-                        'tools' => $parsed['frontmatter']['tools'] ?? '',
-                        'model' => $parsed['frontmatter']['model'] ?? 'inherit',
-                        'modified' => filemtime($filePath),
-                    ];
+                foreach ($files as $file) {
+                    if (pathinfo($file, PATHINFO_EXTENSION) === 'md') {
+                        $filePath = $agentsPath . '/' . $file;
+                        $parsed = $this->parseAgentFile($filePath);
+
+                        $agents[] = [
+                            'filename' => $file,
+                            'name' => $parsed['frontmatter']['name'] ?? pathinfo($file, PATHINFO_FILENAME),
+                            'description' => $parsed['frontmatter']['description'] ?? '',
+                            'tools' => $parsed['frontmatter']['tools'] ?? '',
+                            'model' => $parsed['frontmatter']['model'] ?? 'inherit',
+                            'modified' => filemtime($filePath),
+                        ];
+                    }
                 }
+
+                // Sort by modified time, newest first
+                usort($agents, fn($a, $b) => $b['modified'] - $a['modified']);
             }
 
-            // Sort by modified time, newest first
-            usort($agents, fn($a, $b) => $b['modified'] - $a['modified']);
-
-            return response()->json([
-                'success' => true,
-                'agents' => $agents
+            return view('config.agents.index', [
+                'agents' => $agents,
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to list agents', ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to list agents: ' . $e->getMessage()
-            ], 500);
+            return redirect()->route('config.index')
+                ->with('error', 'Failed to list agents: ' . $e->getMessage());
         }
     }
 
     /**
-     * Create a new agent
+     * Show create agent form
      */
-    public function createAgent(Request $request): JsonResponse
+    public function createAgentForm(Request $request)
     {
-        $agentsPath = $this->getAgentsPath();
+        $request->session()->put('config_last_section', 'agents');
+        return view('config.agents.create');
+    }
 
+    /**
+     * Store new agent
+     */
+    public function storeAgent(Request $request)
+    {
         try {
             $validated = $request->validate([
                 'name' => 'required|string|regex:/^[a-z0-9-]+$/',
@@ -278,6 +336,8 @@ class ConfigController extends Controller
                 'model' => 'nullable|string',
                 'systemPrompt' => 'nullable|string',
             ]);
+
+            $agentsPath = $this->getAgentsPath();
 
             // Ensure agents directory exists
             if (!is_dir($agentsPath)) {
@@ -289,9 +349,9 @@ class ConfigController extends Controller
 
             // Check if file already exists
             if (file_exists($filePath)) {
-                return response()->json([
-                    'error' => 'An agent with this name already exists'
-                ], 409);
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'An agent with this name already exists');
             }
 
             // Build frontmatter
@@ -304,7 +364,6 @@ class ConfigController extends Controller
                 $frontmatter['tools'] = $validated['tools'];
             }
 
-            // Always include model field (either specific model or 'inherit')
             $frontmatter['model'] = $validated['model'] ?? 'inherit';
 
             $systemPrompt = $validated['systemPrompt'] ?? "System prompt for {$validated['name']} agent.\n\nAdd your instructions here.";
@@ -312,68 +371,52 @@ class ConfigController extends Controller
             $content = $this->buildAgentFile($frontmatter, $systemPrompt);
             file_put_contents($filePath, $content);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Agent created successfully',
-                'filename' => $filename
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'error' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
+            return redirect()->route('config.agents.index')
+                ->with('success', 'Agent created successfully');
         } catch (\Exception $e) {
             Log::error('Failed to create agent', ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to create agent: ' . $e->getMessage()
-            ], 500);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to create agent: ' . $e->getMessage());
         }
     }
 
     /**
-     * Read a specific agent
+     * Show edit agent form
      */
-    public function readAgent(string $filename): JsonResponse
+    public function editAgentForm(Request $request, string $filename)
     {
-        $agentsPath = $this->getAgentsPath();
-        $filePath = $agentsPath . '/' . $filename;
+        $request->session()->put('config_last_section', 'agents');
 
         try {
+            $agentsPath = $this->getAgentsPath();
+            $filePath = $agentsPath . '/' . $filename;
+
             if (!file_exists($filePath)) {
-                return response()->json(['error' => 'Agent not found'], 404);
+                return redirect()->route('config.agents.index')
+                    ->with('error', 'Agent not found');
             }
 
             $parsed = $this->parseAgentFile($filePath);
 
-            return response()->json([
-                'success' => true,
+            return view('config.agents.edit', [
                 'filename' => $filename,
                 'frontmatter' => $parsed['frontmatter'],
-                'systemPrompt' => $parsed['content']
+                'systemPrompt' => $parsed['content'],
             ]);
-
         } catch (\Exception $e) {
-            Log::error("Failed to read agent {$filename}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to read agent: ' . $e->getMessage()
-            ], 500);
+            Log::error("Failed to load agent {$filename}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.agents.index')
+                ->with('error', 'Failed to load agent: ' . $e->getMessage());
         }
     }
 
     /**
-     * Save an agent
+     * Update agent
      */
-    public function saveAgent(Request $request, string $filename): JsonResponse
+    public function updateAgent(Request $request, string $filename)
     {
-        $agentsPath = $this->getAgentsPath();
-        $filePath = $agentsPath . '/' . $filename;
-
         try {
-            if (!file_exists($filePath)) {
-                return response()->json(['error' => 'Agent not found'], 404);
-            }
-
             $validated = $request->validate([
                 'name' => 'required|string|regex:/^[a-z0-9-]+$/',
                 'description' => 'required|string|max:1024',
@@ -382,6 +425,14 @@ class ConfigController extends Controller
                 'systemPrompt' => 'required|string',
             ]);
 
+            $agentsPath = $this->getAgentsPath();
+            $filePath = $agentsPath . '/' . $filename;
+
+            if (!file_exists($filePath)) {
+                return redirect()->route('config.agents.index')
+                    ->with('error', 'Agent not found');
+            }
+
             // Build frontmatter
             $frontmatter = [
                 'name' => $validated['name'],
@@ -392,55 +443,43 @@ class ConfigController extends Controller
                 $frontmatter['tools'] = $validated['tools'];
             }
 
-            // Always include model field (either specific model or 'inherit')
             $frontmatter['model'] = $validated['model'] ?? 'inherit';
 
             $content = $this->buildAgentFile($frontmatter, $validated['systemPrompt']);
             file_put_contents($filePath, $content);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Agent saved successfully'
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'error' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
+            return redirect()->route('config.agents.index')
+                ->with('success', 'Agent saved successfully');
         } catch (\Exception $e) {
             Log::error("Failed to save agent {$filename}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to save agent: ' . $e->getMessage()
-            ], 500);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to save agent: ' . $e->getMessage());
         }
     }
 
     /**
-     * Delete an agent
+     * Delete agent
      */
-    public function deleteAgent(string $filename): JsonResponse
+    public function deleteAgent(string $filename)
     {
-        $agentsPath = $this->getAgentsPath();
-        $filePath = $agentsPath . '/' . $filename;
-
         try {
+            $agentsPath = $this->getAgentsPath();
+            $filePath = $agentsPath . '/' . $filename;
+
             if (!file_exists($filePath)) {
-                return response()->json(['error' => 'Agent not found'], 404);
+                return redirect()->route('config.agents.index')
+                    ->with('error', 'Agent not found');
             }
 
             unlink($filePath);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Agent deleted successfully'
-            ]);
-
+            return redirect()->route('config.agents.index')
+                ->with('success', 'Agent deleted successfully');
         } catch (\Exception $e) {
             Log::error("Failed to delete agent {$filename}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to delete agent: ' . $e->getMessage()
-            ], 500);
+            return redirect()->route('config.agents.index')
+                ->with('error', 'Failed to delete agent: ' . $e->getMessage());
         }
     }
 
@@ -494,7 +533,7 @@ class ConfigController extends Controller
     }
 
     // =========================================================================
-    // COMMANDS MANAGEMENT
+    // COMMANDS CRUD
     // =========================================================================
 
     protected function getCommandsPath(): string
@@ -505,59 +544,60 @@ class ConfigController extends Controller
     /**
      * List all commands
      */
-    public function listCommands(): JsonResponse
+    public function listCommands(Request $request)
     {
-        $commandsPath = $this->getCommandsPath();
+        $request->session()->put('config_last_section', 'commands');
 
         try {
-            if (!is_dir($commandsPath)) {
-                return response()->json([
-                    'success' => true,
-                    'commands' => []
-                ]);
-            }
-
-            $files = scandir($commandsPath);
+            $commandsPath = $this->getCommandsPath();
             $commands = [];
 
-            foreach ($files as $file) {
-                if (pathinfo($file, PATHINFO_EXTENSION) === 'md') {
-                    $filePath = $commandsPath . '/' . $file;
-                    $parsed = $this->parseCommandFile($filePath);
+            if (is_dir($commandsPath)) {
+                $files = scandir($commandsPath);
 
-                    $commands[] = [
-                        'filename' => $file,
-                        'name' => pathinfo($file, PATHINFO_FILENAME),
-                        'allowedTools' => $parsed['frontmatter']['allowedTools'] ?? '',
-                        'argumentHints' => $parsed['frontmatter']['argumentHints'] ?? '',
-                        'modified' => filemtime($filePath),
-                    ];
+                foreach ($files as $file) {
+                    if (pathinfo($file, PATHINFO_EXTENSION) === 'md') {
+                        $filePath = $commandsPath . '/' . $file;
+                        $parsed = $this->parseCommandFile($filePath);
+
+                        $commands[] = [
+                            'filename' => $file,
+                            'name' => pathinfo($file, PATHINFO_FILENAME),
+                            'allowedTools' => $parsed['frontmatter']['allowedTools'] ?? '',
+                            'argumentHints' => $parsed['frontmatter']['argumentHints'] ?? '',
+                            'modified' => filemtime($filePath),
+                        ];
+                    }
                 }
+
+                // Sort by modified time, newest first
+                usort($commands, fn($a, $b) => $b['modified'] - $a['modified']);
             }
 
-            // Sort by modified time, newest first
-            usort($commands, fn($a, $b) => $b['modified'] - $a['modified']);
-
-            return response()->json([
-                'success' => true,
-                'commands' => $commands
+            return view('config.commands.index', [
+                'commands' => $commands,
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to list commands', ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to list commands: ' . $e->getMessage()
-            ], 500);
+            return redirect()->route('config.index')
+                ->with('error', 'Failed to list commands: ' . $e->getMessage());
         }
     }
 
     /**
-     * Create a new command
+     * Show create command form
      */
-    public function createCommand(Request $request): JsonResponse
+    public function createCommandForm(Request $request)
     {
-        $commandsPath = $this->getCommandsPath();
+        $request->session()->put('config_last_section', 'commands');
+        return view('config.commands.create');
+    }
 
+    /**
+     * Store new command
+     */
+    public function storeCommand(Request $request)
+    {
         try {
             $validated = $request->validate([
                 'name' => 'required|string|regex:/^[a-z0-9-]+$/',
@@ -565,6 +605,8 @@ class ConfigController extends Controller
                 'argumentHints' => 'nullable|string|max:512',
                 'prompt' => 'nullable|string',
             ]);
+
+            $commandsPath = $this->getCommandsPath();
 
             // Ensure commands directory exists
             if (!is_dir($commandsPath)) {
@@ -576,9 +618,9 @@ class ConfigController extends Controller
 
             // Check if file already exists
             if (file_exists($filePath)) {
-                return response()->json([
-                    'error' => 'A command with this name already exists'
-                ], 409);
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'A command with this name already exists');
             }
 
             // Build frontmatter (only if fields are provided)
@@ -595,73 +637,65 @@ class ConfigController extends Controller
             $content = $this->buildCommandFile($frontmatter, $prompt);
             file_put_contents($filePath, $content);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Command created successfully',
-                'filename' => $filename
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'error' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
+            return redirect()->route('config.commands.index')
+                ->with('success', 'Command created successfully');
         } catch (\Exception $e) {
             Log::error('Failed to create command', ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to create command: ' . $e->getMessage()
-            ], 500);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to create command: ' . $e->getMessage());
         }
     }
 
     /**
-     * Read a specific command
+     * Show edit command form
      */
-    public function readCommand(string $filename): JsonResponse
+    public function editCommandForm(Request $request, string $filename)
     {
-        $commandsPath = $this->getCommandsPath();
-        $filePath = $commandsPath . '/' . $filename;
+        $request->session()->put('config_last_section', 'commands');
 
         try {
+            $commandsPath = $this->getCommandsPath();
+            $filePath = $commandsPath . '/' . $filename;
+
             if (!file_exists($filePath)) {
-                return response()->json(['error' => 'Command not found'], 404);
+                return redirect()->route('config.commands.index')
+                    ->with('error', 'Command not found');
             }
 
             $parsed = $this->parseCommandFile($filePath);
 
-            return response()->json([
-                'success' => true,
+            return view('config.commands.edit', [
                 'filename' => $filename,
                 'frontmatter' => $parsed['frontmatter'],
-                'prompt' => $parsed['content']
+                'prompt' => $parsed['content'],
             ]);
-
         } catch (\Exception $e) {
-            Log::error("Failed to read command {$filename}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to read command: ' . $e->getMessage()
-            ], 500);
+            Log::error("Failed to load command {$filename}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.commands.index')
+                ->with('error', 'Failed to load command: ' . $e->getMessage());
         }
     }
 
     /**
-     * Save a command
+     * Update command
      */
-    public function saveCommand(Request $request, string $filename): JsonResponse
+    public function updateCommand(Request $request, string $filename)
     {
-        $commandsPath = $this->getCommandsPath();
-        $filePath = $commandsPath . '/' . $filename;
-
         try {
-            if (!file_exists($filePath)) {
-                return response()->json(['error' => 'Command not found'], 404);
-            }
-
             $validated = $request->validate([
                 'allowedTools' => 'nullable|string',
                 'argumentHints' => 'nullable|string|max:512',
                 'prompt' => 'required|string',
             ]);
+
+            $commandsPath = $this->getCommandsPath();
+            $filePath = $commandsPath . '/' . $filename;
+
+            if (!file_exists($filePath)) {
+                return redirect()->route('config.commands.index')
+                    ->with('error', 'Command not found');
+            }
 
             // Build frontmatter (only if fields are provided)
             $frontmatter = [];
@@ -675,49 +709,38 @@ class ConfigController extends Controller
             $content = $this->buildCommandFile($frontmatter, $validated['prompt']);
             file_put_contents($filePath, $content);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Command saved successfully'
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'error' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
+            return redirect()->route('config.commands.index')
+                ->with('success', 'Command saved successfully');
         } catch (\Exception $e) {
             Log::error("Failed to save command {$filename}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to save command: ' . $e->getMessage()
-            ], 500);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to save command: ' . $e->getMessage());
         }
     }
 
     /**
-     * Delete a command
+     * Delete command
      */
-    public function deleteCommand(string $filename): JsonResponse
+    public function deleteCommand(string $filename)
     {
-        $commandsPath = $this->getCommandsPath();
-        $filePath = $commandsPath . '/' . $filename;
-
         try {
+            $commandsPath = $this->getCommandsPath();
+            $filePath = $commandsPath . '/' . $filename;
+
             if (!file_exists($filePath)) {
-                return response()->json(['error' => 'Command not found'], 404);
+                return redirect()->route('config.commands.index')
+                    ->with('error', 'Command not found');
             }
 
             unlink($filePath);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Command deleted successfully'
-            ]);
-
+            return redirect()->route('config.commands.index')
+                ->with('success', 'Command deleted successfully');
         } catch (\Exception $e) {
             Log::error("Failed to delete command {$filename}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to delete command: ' . $e->getMessage()
-            ], 500);
+            return redirect()->route('config.commands.index')
+                ->with('error', 'Failed to delete command: ' . $e->getMessage());
         }
     }
 
@@ -785,65 +808,52 @@ class ConfigController extends Controller
     }
 
     /**
-     * Get hooks from settings.json
+     * Show hooks editor
      */
-    public function getHooks(): JsonResponse
+    public function showHooks(Request $request)
     {
-        $settingsPath = $this->getSettingsPath();
+        $request->session()->put('config_last_section', 'hooks');
 
         try {
             $settings = $this->readSettings();
             $hooks = $settings['hooks'] ?? [];
 
-            return response()->json([
-                'success' => true,
-                'hooks' => $hooks
-            ]);
+            // Convert hooks to pretty JSON for editing
+            $content = json_encode($hooks, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
+            return view('config.hooks', [
+                'content' => $content,
+            ]);
         } catch (\Exception $e) {
-            Log::error('Failed to get hooks', ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to get hooks: ' . $e->getMessage()
-            ], 500);
+            Log::error('Failed to load hooks', ['error' => $e->getMessage()]);
+            return redirect()->route('config.index')
+                ->with('error', 'Failed to load hooks: ' . $e->getMessage());
         }
     }
 
     /**
-     * Update hooks in settings.json
+     * Save hooks
      */
-    public function updateHooks(Request $request): JsonResponse
+    public function saveHooks(Request $request)
     {
-        $settingsPath = $this->getSettingsPath();
-
         try {
             $validated = $request->validate([
-                'hooks' => 'required|array',
+                'content' => 'required|json',
             ]);
 
             // Read current settings
             $settings = $this->readSettings();
 
             // Update hooks section
-            $settings['hooks'] = $validated['hooks'];
+            $settings['hooks'] = json_decode($validated['content'], true);
 
             // Write back to settings.json
             $this->writeSettings($settings);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Hooks updated successfully'
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'error' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
+            return redirect()->back()->with('success', 'Hooks saved successfully');
         } catch (\Exception $e) {
-            Log::error('Failed to update hooks', ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to update hooks: ' . $e->getMessage()
-            ], 500);
+            Log::error('Failed to save hooks', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to save hooks: ' . $e->getMessage());
         }
     }
 
@@ -890,7 +900,7 @@ class ConfigController extends Controller
     }
 
     // =========================================================================
-    // SKILLS MANAGEMENT
+    // SKILLS CRUD
     // =========================================================================
 
     protected function getSkillsPath(): string
@@ -901,70 +911,73 @@ class ConfigController extends Controller
     /**
      * List all skills
      */
-    public function listSkills(): JsonResponse
+    public function listSkills(Request $request)
     {
-        $skillsPath = $this->getSkillsPath();
+        $request->session()->put('config_last_section', 'skills');
 
         try {
-            if (!is_dir($skillsPath)) {
-                return response()->json([
-                    'success' => true,
-                    'skills' => []
-                ]);
-            }
-
-            $dirs = scandir($skillsPath);
+            $skillsPath = $this->getSkillsPath();
             $skills = [];
 
-            foreach ($dirs as $dir) {
-                if ($dir === '.' || $dir === '..') continue;
+            if (is_dir($skillsPath)) {
+                $dirs = scandir($skillsPath);
 
-                $skillDir = $skillsPath . '/' . $dir;
-                if (!is_dir($skillDir)) continue;
+                foreach ($dirs as $dir) {
+                    if ($dir === '.' || $dir === '..') continue;
 
-                $skillMdPath = $skillDir . '/SKILL.md';
-                if (!file_exists($skillMdPath)) continue;
+                    $skillDir = $skillsPath . '/' . $dir;
+                    if (!is_dir($skillDir)) continue;
 
-                $parsed = $this->parseSkillFile($skillMdPath);
+                    $skillMdPath = $skillDir . '/SKILL.md';
+                    if (!file_exists($skillMdPath)) continue;
 
-                $skills[] = [
-                    'name' => $dir,
-                    'displayName' => $parsed['frontmatter']['name'] ?? $dir,
-                    'description' => $parsed['frontmatter']['description'] ?? '',
-                    'allowedTools' => $parsed['frontmatter']['allowed-tools'] ?? '',
-                    'modified' => filemtime($skillMdPath),
-                ];
+                    $parsed = $this->parseSkillFile($skillMdPath);
+
+                    $skills[] = [
+                        'name' => $dir,
+                        'displayName' => $parsed['frontmatter']['name'] ?? $dir,
+                        'description' => $parsed['frontmatter']['description'] ?? '',
+                        'allowedTools' => $parsed['frontmatter']['allowed-tools'] ?? '',
+                        'modified' => filemtime($skillMdPath),
+                    ];
+                }
+
+                // Sort by modified time, newest first
+                usort($skills, fn($a, $b) => $b['modified'] - $a['modified']);
             }
 
-            // Sort by modified time, newest first
-            usort($skills, fn($a, $b) => $b['modified'] - $a['modified']);
-
-            return response()->json([
-                'success' => true,
-                'skills' => $skills
+            return view('config.skills.index', [
+                'skills' => $skills,
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to list skills', ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to list skills: ' . $e->getMessage()
-            ], 500);
+            return redirect()->route('config.index')
+                ->with('error', 'Failed to list skills: ' . $e->getMessage());
         }
     }
 
     /**
-     * Create a new skill
+     * Show create skill form
      */
-    public function createSkill(Request $request): JsonResponse
+    public function createSkillForm(Request $request)
     {
-        $skillsPath = $this->getSkillsPath();
+        $request->session()->put('config_last_section', 'skills');
+        return view('config.skills.create');
+    }
 
+    /**
+     * Store new skill
+     */
+    public function storeSkill(Request $request)
+    {
         try {
             $validated = $request->validate([
                 'name' => 'required|string|regex:/^[a-z0-9-]+$/|max:64',
                 'description' => 'required|string|max:1024',
                 'allowedTools' => 'nullable|string',
             ]);
+
+            $skillsPath = $this->getSkillsPath();
 
             // Ensure skills directory exists
             if (!is_dir($skillsPath)) {
@@ -975,9 +988,9 @@ class ConfigController extends Controller
 
             // Check if skill already exists
             if (is_dir($skillDir)) {
-                return response()->json([
-                    'error' => 'A skill with this name already exists'
-                ], 409);
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'A skill with this name already exists');
             }
 
             // Create skill directory
@@ -997,216 +1010,67 @@ class ConfigController extends Controller
 
             file_put_contents($skillDir . '/SKILL.md', $skillMdContent);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Skill created successfully',
-                'skillName' => $validated['name']
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'error' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
+            return redirect()->route('config.skills.index')
+                ->with('success', 'Skill created successfully');
         } catch (\Exception $e) {
             Log::error('Failed to create skill', ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to create skill: ' . $e->getMessage()
-            ], 500);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to create skill: ' . $e->getMessage());
         }
     }
 
     /**
-     * Read skill directory structure
+     * Show skill file browser
      */
-    public function readSkill(string $skillName): JsonResponse
+    public function editSkillForm(Request $request, string $skillName)
     {
-        $skillsPath = $this->getSkillsPath();
-        $skillDir = $skillsPath . '/' . $skillName;
+        $request->session()->put('config_last_section', 'skills');
 
         try {
+            $skillsPath = $this->getSkillsPath();
+            $skillDir = $skillsPath . '/' . $skillName;
+
             if (!is_dir($skillDir)) {
-                return response()->json(['error' => 'Skill not found'], 404);
+                return redirect()->route('config.skills.index')
+                    ->with('error', 'Skill not found');
             }
 
             $files = $this->recursiveListDirectory($skillDir, $skillDir);
 
-            return response()->json([
-                'success' => true,
+            return view('config.skills.edit', [
                 'skillName' => $skillName,
-                'files' => $files
+                'files' => $files,
             ]);
-
         } catch (\Exception $e) {
-            Log::error("Failed to read skill {$skillName}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to read skill: ' . $e->getMessage()
-            ], 500);
+            Log::error("Failed to load skill {$skillName}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.skills.index')
+                ->with('error', 'Failed to load skill: ' . $e->getMessage());
         }
     }
 
     /**
-     * Read a specific file within a skill
+     * Delete skill
      */
-    public function readSkillFile(string $skillName, string $path): JsonResponse
+    public function deleteSkill(string $skillName)
     {
-        $skillsPath = $this->getSkillsPath();
-        $filePath = $skillsPath . '/' . $skillName . '/' . $path;
-
         try {
-            if (!file_exists($filePath) || is_dir($filePath)) {
-                return response()->json(['error' => 'File not found'], 404);
-            }
+            $skillsPath = $this->getSkillsPath();
+            $skillDir = $skillsPath . '/' . $skillName;
 
-            // Security: Ensure file is within skill directory
-            $realPath = realpath($filePath);
-            $skillDir = realpath($skillsPath . '/' . $skillName);
-            if (!str_starts_with($realPath, $skillDir)) {
-                return response()->json(['error' => 'Access denied'], 403);
-            }
-
-            $content = file_get_contents($filePath);
-
-            // Parse SKILL.md frontmatter if applicable
-            $parsed = null;
-            if (basename($path) === 'SKILL.md') {
-                $parsed = $this->parseSkillFile($filePath);
-            }
-
-            return response()->json([
-                'success' => true,
-                'path' => $path,
-                'content' => $content,
-                'parsed' => $parsed
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error("Failed to read skill file {$skillName}/{$path}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to read file: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Save a specific file within a skill
-     */
-    public function saveSkillFile(Request $request, string $skillName, string $path): JsonResponse
-    {
-        $skillsPath = $this->getSkillsPath();
-        $skillDir = $skillsPath . '/' . $skillName;
-        $filePath = $skillDir . '/' . $path;
-
-        try {
             if (!is_dir($skillDir)) {
-                return response()->json(['error' => 'Skill not found'], 404);
-            }
-
-            // Security: Ensure file is within skill directory
-            $skillDirReal = realpath($skillDir);
-            $fileDir = dirname($filePath);
-
-            // Create directory if it doesn't exist
-            if (!is_dir($fileDir)) {
-                mkdir($fileDir, 0775, true);
-            }
-
-            $validated = $request->validate([
-                'content' => 'required|string',
-            ]);
-
-            file_put_contents($filePath, $validated['content']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'File saved successfully'
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'error' => 'Validation failed',
-                'errors' => $e->errors()
-            ], 422);
-        } catch (\Exception $e) {
-            Log::error("Failed to save skill file {$skillName}/{$path}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to save file: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Delete a specific file within a skill
-     */
-    public function deleteSkillFile(string $skillName, string $path): JsonResponse
-    {
-        $skillsPath = $this->getSkillsPath();
-        $filePath = $skillsPath . '/' . $skillName . '/' . $path;
-
-        try {
-            // Prevent deleting SKILL.md
-            if (basename($path) === 'SKILL.md') {
-                return response()->json([
-                    'error' => 'Cannot delete SKILL.md - delete the entire skill instead'
-                ], 403);
-            }
-
-            if (!file_exists($filePath)) {
-                return response()->json(['error' => 'File not found'], 404);
-            }
-
-            // Security: Ensure file is within skill directory
-            $realPath = realpath($filePath);
-            $skillDir = realpath($skillsPath . '/' . $skillName);
-            if (!str_starts_with($realPath, $skillDir)) {
-                return response()->json(['error' => 'Access denied'], 403);
-            }
-
-            if (is_dir($filePath)) {
-                // Remove directory recursively
-                $this->recursiveRemoveDirectory($filePath);
-            } else {
-                unlink($filePath);
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'File deleted successfully'
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error("Failed to delete skill file {$skillName}/{$path}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to delete file: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Delete an entire skill
-     */
-    public function deleteSkill(string $skillName): JsonResponse
-    {
-        $skillsPath = $this->getSkillsPath();
-        $skillDir = $skillsPath . '/' . $skillName;
-
-        try {
-            if (!is_dir($skillDir)) {
-                return response()->json(['error' => 'Skill not found'], 404);
+                return redirect()->route('config.skills.index')
+                    ->with('error', 'Skill not found');
             }
 
             $this->recursiveRemoveDirectory($skillDir);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Skill deleted successfully'
-            ]);
-
+            return redirect()->route('config.skills.index')
+                ->with('success', 'Skill deleted successfully');
         } catch (\Exception $e) {
             Log::error("Failed to delete skill {$skillName}", ['error' => $e->getMessage()]);
-            return response()->json([
-                'error' => 'Failed to delete skill: ' . $e->getMessage()
-            ], 500);
+            return redirect()->route('config.skills.index')
+                ->with('error', 'Failed to delete skill: ' . $e->getMessage());
         }
     }
 
