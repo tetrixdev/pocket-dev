@@ -10,7 +10,7 @@
     @endif
 
     <div class="mb-4">
-        <label for="name" class="block text-sm font-medium mb-2">Name (lowercase, hyphens only)</label>
+        <label for="name" class="block text-sm font-medium mb-2">Name <span class="text-red-500">*</span> <span class="text-gray-400 font-normal">(lowercase, hyphens only)</span></label>
         <input
             type="text"
             id="name"
@@ -23,12 +23,13 @@
     </div>
 
     <div class="mb-4">
-        <label for="description" class="block text-sm font-medium mb-2">Description</label>
+        <label for="description" class="block text-sm font-medium mb-2">Description <span class="text-red-500">*</span></label>
         <textarea
             id="description"
             name="description"
             rows="3"
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
+            required
         >{{ old('description', $skill['description'] ?? '') }}</textarea>
     </div>
 

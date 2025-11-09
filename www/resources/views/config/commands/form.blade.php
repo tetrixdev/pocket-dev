@@ -11,7 +11,7 @@
 
     @if(!isset($command))
         <div class="mb-4">
-            <label for="name" class="block text-sm font-medium mb-2">Name (lowercase, hyphens only)</label>
+            <label for="name" class="block text-sm font-medium mb-2">Name <span class="text-red-500">*</span> <span class="text-gray-400 font-normal">(lowercase, hyphens only)</span></label>
             <input
                 type="text"
                 id="name"
@@ -25,7 +25,7 @@
     @endif
 
     <div class="mb-4">
-        <label for="description" class="block text-sm font-medium mb-2">Description</label>
+        <label for="description" class="block text-sm font-medium mb-2">Description <span class="text-red-500">*</span></label>
         <textarea
             id="description"
             name="description"
@@ -67,11 +67,12 @@
     </div>
 
     <div class="mb-6">
-        <label for="prompt" class="block text-sm font-medium mb-2">Prompt</label>
+        <label for="prompt" class="block text-sm font-medium mb-2">Prompt @if(isset($command))<span class="text-red-500">*</span>@endif</label>
         <textarea
             id="prompt"
             name="prompt"
             class="config-editor w-full"
+            @if(isset($command)) required @endif
         >{{ old('prompt', $command['prompt'] ?? '') }}</textarea>
     </div>
 
