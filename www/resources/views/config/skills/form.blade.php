@@ -10,7 +10,7 @@
     @endif
 
     <div class="mb-4">
-        <label for="name" class="block text-sm font-medium mb-2">Name <span class="text-red-500">*</span> <span class="text-gray-400 font-normal">(lowercase, hyphens only)</span></label>
+        <label for="name" class="block text-sm font-medium mb-2">Name <span class="text-red-400 font-bold">*</span> <span class="text-gray-400 font-normal">(lowercase, hyphens only)</span></label>
         <input
             type="text"
             id="name"
@@ -23,7 +23,7 @@
     </div>
 
     <div class="mb-4">
-        <label for="description" class="block text-sm font-medium mb-2">Description <span class="text-red-500">*</span></label>
+        <label for="description" class="block text-sm font-medium mb-2">Description <span class="text-red-400 font-bold">*</span></label>
         <textarea
             id="description"
             name="description"
