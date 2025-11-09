@@ -76,13 +76,15 @@
         >
             Cancel
         </a>
-        <form method="POST" action="{{ route('config.agents.delete', $agent['filename']) }}" class="inline ml-auto">
-            @csrf
-            @method('DELETE')
-            <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this agent?')">
-                Delete Agent
-            </button>
-        </form>
     </div>
+</form>
+
+<!-- Separate delete form -->
+<form method="POST" action="{{ route('config.agents.delete', $agent['filename']) }}" class="mt-4">
+    @csrf
+    @method('DELETE')
+    <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this agent?')">
+        Delete Agent
+    </button>
 </form>
 @endsection
