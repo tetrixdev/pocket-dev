@@ -371,7 +371,7 @@ class ConfigController extends Controller
             $content = $this->buildAgentFile($frontmatter, $systemPrompt);
             file_put_contents($filePath, $content);
 
-            return redirect()->route('config.agents.index')
+            return redirect()->route('config.agents')
                 ->with('success', 'Agent created successfully');
         } catch (\Exception $e) {
             Log::error('Failed to create agent', ['error' => $e->getMessage()]);
@@ -393,7 +393,7 @@ class ConfigController extends Controller
             $filePath = $agentsPath . '/' . $filename;
 
             if (!file_exists($filePath)) {
-                return redirect()->route('config.agents.index')
+                return redirect()->route('config.agents')
                     ->with('error', 'Agent not found');
             }
 
@@ -415,7 +415,7 @@ class ConfigController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to load agent {$filename}", ['error' => $e->getMessage()]);
-            return redirect()->route('config.agents.index')
+            return redirect()->route('config.agents')
                 ->with('error', 'Failed to load agent: ' . $e->getMessage());
         }
     }
@@ -438,7 +438,7 @@ class ConfigController extends Controller
             $filePath = $agentsPath . '/' . $filename;
 
             if (!file_exists($filePath)) {
-                return redirect()->route('config.agents.index')
+                return redirect()->route('config.agents')
                     ->with('error', 'Agent not found');
             }
 
@@ -457,7 +457,7 @@ class ConfigController extends Controller
             $content = $this->buildAgentFile($frontmatter, $validated['systemPrompt']);
             file_put_contents($filePath, $content);
 
-            return redirect()->route('config.agents.index')
+            return redirect()->route('config.agents')
                 ->with('success', 'Agent saved successfully');
         } catch (\Exception $e) {
             Log::error("Failed to save agent {$filename}", ['error' => $e->getMessage()]);
@@ -477,17 +477,17 @@ class ConfigController extends Controller
             $filePath = $agentsPath . '/' . $filename;
 
             if (!file_exists($filePath)) {
-                return redirect()->route('config.agents.index')
+                return redirect()->route('config.agents')
                     ->with('error', 'Agent not found');
             }
 
             unlink($filePath);
 
-            return redirect()->route('config.agents.index')
+            return redirect()->route('config.agents')
                 ->with('success', 'Agent deleted successfully');
         } catch (\Exception $e) {
             Log::error("Failed to delete agent {$filename}", ['error' => $e->getMessage()]);
-            return redirect()->route('config.agents.index')
+            return redirect()->route('config.agents')
                 ->with('error', 'Failed to delete agent: ' . $e->getMessage());
         }
     }
@@ -646,7 +646,7 @@ class ConfigController extends Controller
             $content = $this->buildCommandFile($frontmatter, $prompt);
             file_put_contents($filePath, $content);
 
-            return redirect()->route('config.commands.index')
+            return redirect()->route('config.commands')
                 ->with('success', 'Command created successfully');
         } catch (\Exception $e) {
             Log::error('Failed to create command', ['error' => $e->getMessage()]);
@@ -668,7 +668,7 @@ class ConfigController extends Controller
             $filePath = $commandsPath . '/' . $filename;
 
             if (!file_exists($filePath)) {
-                return redirect()->route('config.commands.index')
+                return redirect()->route('config.commands')
                     ->with('error', 'Command not found');
             }
 
@@ -689,7 +689,7 @@ class ConfigController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to load command {$filename}", ['error' => $e->getMessage()]);
-            return redirect()->route('config.commands.index')
+            return redirect()->route('config.commands')
                 ->with('error', 'Failed to load command: ' . $e->getMessage());
         }
     }
@@ -710,7 +710,7 @@ class ConfigController extends Controller
             $filePath = $commandsPath . '/' . $filename;
 
             if (!file_exists($filePath)) {
-                return redirect()->route('config.commands.index')
+                return redirect()->route('config.commands')
                     ->with('error', 'Command not found');
             }
 
@@ -726,7 +726,7 @@ class ConfigController extends Controller
             $content = $this->buildCommandFile($frontmatter, $validated['prompt']);
             file_put_contents($filePath, $content);
 
-            return redirect()->route('config.commands.index')
+            return redirect()->route('config.commands')
                 ->with('success', 'Command saved successfully');
         } catch (\Exception $e) {
             Log::error("Failed to save command {$filename}", ['error' => $e->getMessage()]);
@@ -746,17 +746,17 @@ class ConfigController extends Controller
             $filePath = $commandsPath . '/' . $filename;
 
             if (!file_exists($filePath)) {
-                return redirect()->route('config.commands.index')
+                return redirect()->route('config.commands')
                     ->with('error', 'Command not found');
             }
 
             unlink($filePath);
 
-            return redirect()->route('config.commands.index')
+            return redirect()->route('config.commands')
                 ->with('success', 'Command deleted successfully');
         } catch (\Exception $e) {
             Log::error("Failed to delete command {$filename}", ['error' => $e->getMessage()]);
-            return redirect()->route('config.commands.index')
+            return redirect()->route('config.commands')
                 ->with('error', 'Failed to delete command: ' . $e->getMessage());
         }
     }
@@ -1027,7 +1027,7 @@ class ConfigController extends Controller
 
             file_put_contents($skillDir . '/SKILL.md', $skillMdContent);
 
-            return redirect()->route('config.skills.index')
+            return redirect()->route('config.skills')
                 ->with('success', 'Skill created successfully');
         } catch (\Exception $e) {
             Log::error('Failed to create skill', ['error' => $e->getMessage()]);
@@ -1049,7 +1049,7 @@ class ConfigController extends Controller
             $skillDir = $skillsPath . '/' . $skillName;
 
             if (!is_dir($skillDir)) {
-                return redirect()->route('config.skills.index')
+                return redirect()->route('config.skills')
                     ->with('error', 'Skill not found');
             }
 
@@ -1077,7 +1077,7 @@ class ConfigController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to load skill {$skillName}", ['error' => $e->getMessage()]);
-            return redirect()->route('config.skills.index')
+            return redirect()->route('config.skills')
                 ->with('error', 'Failed to load skill: ' . $e->getMessage());
         }
     }
@@ -1092,17 +1092,17 @@ class ConfigController extends Controller
             $skillDir = $skillsPath . '/' . $skillName;
 
             if (!is_dir($skillDir)) {
-                return redirect()->route('config.skills.index')
+                return redirect()->route('config.skills')
                     ->with('error', 'Skill not found');
             }
 
             $this->recursiveRemoveDirectory($skillDir);
 
-            return redirect()->route('config.skills.index')
+            return redirect()->route('config.skills')
                 ->with('success', 'Skill deleted successfully');
         } catch (\Exception $e) {
             Log::error("Failed to delete skill {$skillName}", ['error' => $e->getMessage()]);
-            return redirect()->route('config.skills.index')
+            return redirect()->route('config.skills')
                 ->with('error', 'Failed to delete skill: ' . $e->getMessage());
         }
     }
