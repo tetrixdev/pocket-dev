@@ -399,10 +399,19 @@ class ConfigController extends Controller
 
             $parsed = $this->parseAgentFile($filePath);
 
-            return view('config.agents.edit', [
+            // Combine into single agent array for view
+            $agent = [
                 'filename' => $filename,
-                'frontmatter' => $parsed['frontmatter'],
+                'name' => $parsed['frontmatter']['name'] ?? '',
+                'description' => $parsed['frontmatter']['description'] ?? '',
+                'tools' => $parsed['frontmatter']['tools'] ?? '',
+                'model' => $parsed['frontmatter']['model'] ?? 'inherit',
                 'systemPrompt' => $parsed['content'],
+            ];
+
+            return view('config.agents.edit', [
+                'agent' => $agent,
+                'activeAgent' => $filename,
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to load agent {$filename}", ['error' => $e->getMessage()]);
@@ -665,10 +674,18 @@ class ConfigController extends Controller
 
             $parsed = $this->parseCommandFile($filePath);
 
-            return view('config.commands.edit', [
+            // Combine into single command array for view
+            $command = [
                 'filename' => $filename,
-                'frontmatter' => $parsed['frontmatter'],
+                'name' => pathinfo($filename, PATHINFO_FILENAME),
+                'allowedTools' => $parsed['frontmatter']['allowedTools'] ?? '',
+                'argumentHints' => $parsed['frontmatter']['argumentHints'] ?? '',
                 'prompt' => $parsed['content'],
+            ];
+
+            return view('config.commands.edit', [
+                'command' => $command,
+                'activeCommand' => $filename,
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to load command {$filename}", ['error' => $e->getMessage()]);
@@ -1038,9 +1055,25 @@ class ConfigController extends Controller
 
             $files = $this->recursiveListDirectory($skillDir, $skillDir);
 
+            // Try to read SKILL.md for metadata
+            $skillMdPath = $skillDir . '/SKILL.md';
+            $parsed = ['frontmatter' => [], 'content' => ''];
+            if (file_exists($skillMdPath)) {
+                $parsed = $this->parseSkillFile($skillMdPath);
+            }
+
+            // Combine into single skill array for view
+            $skill = [
+                'name' => $skillName,
+                'filename' => $skillName,
+                'description' => $parsed['frontmatter']['description'] ?? '',
+                'allowedTools' => $parsed['frontmatter']['allowed-tools'] ?? '',
+            ];
+
             return view('config.skills.edit', [
-                'skillName' => $skillName,
+                'skill' => $skill,
                 'files' => $files,
+                'activeSkill' => $skillName,
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to load skill {$skillName}", ['error' => $e->getMessage()]);
