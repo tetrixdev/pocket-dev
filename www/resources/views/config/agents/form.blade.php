@@ -1,11 +1,13 @@
 @extends('layouts.config')
 
-@section('title', 'Edit Agent: ' . $agent['name'])
+@section('title', isset($agent) ? 'Edit Agent: ' . $agent['name'] : 'Create Agent')
 
 @section('content')
-<form method="POST" action="{{ route('config.agents.update', $agent['filename']) }}">
+<form method="POST" action="{{ isset($agent) ? route('config.agents.update', $agent['filename']) : route('config.agents.store') }}">
     @csrf
-    @method('PUT')
+    @if(isset($agent))
+        @method('PUT')
+    @endif
 
     <div class="mb-4">
         <label for="name" class="block text-sm font-medium mb-2">Name</label>
@@ -13,7 +15,7 @@
             type="text"
             id="name"
             name="name"
-            value="{{ old('name', $agent['name']) }}"
+            value="{{ old('name', $agent['name'] ?? '') }}"
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
             required
         >
@@ -54,21 +56,23 @@
         </select>
     </div>
 
-    <div class="mb-6">
-        <label for="systemPrompt" class="block text-sm font-medium mb-2">System Prompt</label>
-        <textarea
-            id="systemPrompt"
-            name="systemPrompt"
-            class="config-editor w-full"
-        >{{ old('systemPrompt', $agent['systemPrompt'] ?? '') }}</textarea>
-    </div>
+    @if(isset($agent))
+        <div class="mb-6">
+            <label for="systemPrompt" class="block text-sm font-medium mb-2">System Prompt</label>
+            <textarea
+                id="systemPrompt"
+                name="systemPrompt"
+                class="config-editor w-full"
+            >{{ old('systemPrompt', $agent['systemPrompt'] ?? '') }}</textarea>
+        </div>
+    @endif
 
     <div class="flex gap-3">
         <button
             type="submit"
             class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
         >
-            Update Agent
+            {{ isset($agent) ? 'Update Agent' : 'Create Agent' }}
         </button>
         <a
             href="{{ route('config.agents') }}"
@@ -79,12 +83,14 @@
     </div>
 </form>
 
-<!-- Separate delete form -->
-<form method="POST" action="{{ route('config.agents.delete', $agent['filename']) }}" class="mt-4">
-    @csrf
-    @method('DELETE')
-    <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this agent?')">
-        Delete Agent
-    </button>
-</form>
+@if(isset($agent))
+    <!-- Separate delete form -->
+    <form method="POST" action="{{ route('config.agents.delete', $agent['filename']) }}" class="mt-4">
+        @csrf
+        @method('DELETE')
+        <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this agent?')">
+            Delete Agent
+        </button>
+    </form>
+@endif
 @endsection

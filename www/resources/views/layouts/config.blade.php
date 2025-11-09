@@ -138,9 +138,10 @@
 
                 <!-- Agents Category -->
                 <div class="border-b border-gray-700">
-                    <div class="category-button w-full {{ Str::startsWith(Route::currentRouteName(), 'config.agents') ? 'active' : '' }}">
+                    <a href="{{ route('config.agents') }}"
+                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.agents') ? 'active' : '' }}">
                         🤖 Agents
-                    </div>
+                    </a>
                     <div class="bg-gray-900">
                         <a href="{{ route('config.agents.create') }}"
                            class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
@@ -154,18 +155,15 @@
                                 </a>
                             @endforeach
                         @endif
-                        <a href="{{ route('config.agents') }}"
-                           class="file-item w-full text-sm text-gray-400 hover:text-gray-300 block {{ Route::currentRouteName() == 'config.agents' ? 'active' : '' }}">
-                            → View All
-                        </a>
                     </div>
                 </div>
 
                 <!-- Commands Category -->
                 <div class="border-b border-gray-700">
-                    <div class="category-button w-full {{ Str::startsWith(Route::currentRouteName(), 'config.commands') ? 'active' : '' }}">
+                    <a href="{{ route('config.commands') }}"
+                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.commands') ? 'active' : '' }}">
                         ⚡ Commands
-                    </div>
+                    </a>
                     <div class="bg-gray-900">
                         <a href="{{ route('config.commands.create') }}"
                            class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
@@ -179,10 +177,6 @@
                                 </a>
                             @endforeach
                         @endif
-                        <a href="{{ route('config.commands') }}"
-                           class="file-item w-full text-sm text-gray-400 hover:text-gray-300 block {{ Route::currentRouteName() == 'config.commands' ? 'active' : '' }}">
-                            → View All
-                        </a>
                     </div>
                 </div>
 
@@ -196,9 +190,10 @@
 
                 <!-- Skills Category -->
                 <div class="border-b border-gray-700">
-                    <div class="category-button w-full {{ Str::startsWith(Route::currentRouteName(), 'config.skills') ? 'active' : '' }}">
+                    <a href="{{ route('config.skills') }}"
+                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.skills') ? 'active' : '' }}">
                         🔧 Skills
-                    </div>
+                    </a>
                     <div class="bg-gray-900">
                         <a href="{{ route('config.skills.create') }}"
                            class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
@@ -212,10 +207,6 @@
                                 </a>
                             @endforeach
                         @endif
-                        <a href="{{ route('config.skills') }}"
-                           class="file-item w-full text-sm text-gray-400 hover:text-gray-300 block {{ Route::currentRouteName() == 'config.skills' ? 'active' : '' }}">
-                            → View All
-                        </a>
                     </div>
                 </div>
 

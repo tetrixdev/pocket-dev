@@ -1,20 +1,23 @@
 @extends('layouts.config')
 
-@section('title', 'Create Skill')
+@section('title', isset($skill) ? 'Edit Skill: ' . $skill['name'] : 'Create Skill')
 
 @section('content')
-<form method="POST" action="{{ route('config.skills.store') }}">
+<form method="POST" action="{{ isset($skill) ? route('config.skills.update', $skill['filename']) : route('config.skills.store') }}">
     @csrf
+    @if(isset($skill))
+        @method('PUT')
+    @endif
 
     <div class="mb-4">
-        <label for="name" class="block text-sm font-medium mb-2">Skill Name</label>
+        <label for="name" class="block text-sm font-medium mb-2">Name (lowercase, hyphens only)</label>
         <input
             type="text"
             id="name"
             name="name"
-            value="{{ old('name') }}"
+            value="{{ old('name', $skill['name'] ?? '') }}"
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
-            placeholder="my-skill"
+            pattern="[a-z0-9-]+"
             required
         >
     </div>
@@ -26,7 +29,7 @@
             name="description"
             rows="3"
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
-        >{{ old('description') }}</textarea>
+        >{{ old('description', $skill['description'] ?? '') }}</textarea>
     </div>
 
     <div class="mb-6">
@@ -35,7 +38,7 @@
             type="text"
             id="allowedTools"
             name="allowedTools"
-            value="{{ old('allowedTools') }}"
+            value="{{ old('allowedTools', $skill['allowedTools'] ?? '') }}"
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
             placeholder="bash, read, write"
         >
@@ -46,7 +49,7 @@
             type="submit"
             class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
         >
-            Create Skill
+            {{ isset($skill) ? 'Update Skill' : 'Create Skill' }}
         </button>
         <a
             href="{{ route('config.skills') }}"
@@ -56,4 +59,15 @@
         </a>
     </div>
 </form>
+
+@if(isset($skill))
+    <!-- Separate delete form -->
+    <form method="POST" action="{{ route('config.skills.delete', $skill['filename']) }}" class="mt-4">
+        @csrf
+        @method('DELETE')
+        <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this skill?')">
+            Delete Skill
+        </button>
+    </form>
+@endif
 @endsection

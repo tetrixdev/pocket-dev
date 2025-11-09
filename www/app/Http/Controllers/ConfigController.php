@@ -320,7 +320,7 @@ class ConfigController extends Controller
     public function createAgentForm(Request $request)
     {
         $request->session()->put('config_last_section', 'agents');
-        return view('config.agents.create');
+        return view('config.agents.form');
     }
 
     /**
@@ -409,7 +409,7 @@ class ConfigController extends Controller
                 'systemPrompt' => $parsed['content'],
             ];
 
-            return view('config.agents.edit', [
+            return view('config.agents.form', [
                 'agent' => $agent,
                 'activeAgent' => $filename,
             ]);
@@ -599,7 +599,7 @@ class ConfigController extends Controller
     public function createCommandForm(Request $request)
     {
         $request->session()->put('config_last_section', 'commands');
-        return view('config.commands.create');
+        return view('config.commands.form');
     }
 
     /**
@@ -683,7 +683,7 @@ class ConfigController extends Controller
                 'prompt' => $parsed['content'],
             ];
 
-            return view('config.commands.edit', [
+            return view('config.commands.form', [
                 'command' => $command,
                 'activeCommand' => $filename,
             ]);
@@ -979,7 +979,7 @@ class ConfigController extends Controller
     public function createSkillForm(Request $request)
     {
         $request->session()->put('config_last_section', 'skills');
-        return view('config.skills.create');
+        return view('config.skills.form');
     }
 
     /**
