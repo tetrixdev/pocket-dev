@@ -572,8 +572,8 @@ class ConfigController extends Controller
                         $commands[] = [
                             'filename' => $file,
                             'name' => pathinfo($file, PATHINFO_FILENAME),
-                            'allowedTools' => $parsed['frontmatter']['allowedTools'] ?? '',
-                            'argumentHints' => $parsed['frontmatter']['argumentHints'] ?? '',
+                            'description' => $parsed['frontmatter']['description'] ?? '',
+                            'argumentHint' => $parsed['frontmatter']['argument-hint'] ?? '',
                             'modified' => filemtime($filePath),
                         ];
                     }
@@ -610,9 +610,12 @@ class ConfigController extends Controller
         try {
             $validated = $request->validate([
                 'name' => 'required|string|regex:/^[a-z0-9-]+$/',
-                'allowedTools' => 'nullable|string',
-                'argumentHints' => 'nullable|string|max:512',
+                'description' => 'required|string|max:1024',
+                'argumentHint' => 'nullable|string|max:512',
+                'model' => 'nullable|string',
                 'prompt' => 'nullable|string',
+                'disableModelInvocation' => 'nullable|boolean',
+                'allowedTools' => 'nullable|string',
             ]);
 
             $commandsPath = $this->getCommandsPath();
@@ -632,13 +635,24 @@ class ConfigController extends Controller
                     ->with('error', 'A command with this name already exists');
             }
 
-            // Build frontmatter (only if fields are provided)
+            // Build frontmatter (using kebab-case for field names)
             $frontmatter = [];
-            if (!empty($validated['allowedTools'])) {
-                $frontmatter['allowedTools'] = $validated['allowedTools'];
+
+            // Description is required
+            $frontmatter['description'] = $validated['description'];
+
+            // Optional fields
+            if (!empty($validated['argumentHint'])) {
+                $frontmatter['argument-hint'] = $validated['argumentHint'];
             }
-            if (!empty($validated['argumentHints'])) {
-                $frontmatter['argumentHints'] = $validated['argumentHints'];
+            if (!empty($validated['model'])) {
+                $frontmatter['model'] = $validated['model'];
+            }
+            if (!empty($validated['allowedTools'])) {
+                $frontmatter['allowed-tools'] = $validated['allowedTools'];
+            }
+            if (isset($validated['disableModelInvocation']) && $validated['disableModelInvocation']) {
+                $frontmatter['disable-model-invocation'] = 'true';
             }
 
             $prompt = $validated['prompt'] ?? "Instructions for /{$validated['name']} command.\n\nAdd your prompt here.";
@@ -674,13 +688,16 @@ class ConfigController extends Controller
 
             $parsed = $this->parseCommandFile($filePath);
 
-            // Combine into single command array for view
+            // Combine into single command array for view (map kebab-case to form fields)
             $command = [
                 'filename' => $filename,
                 'name' => pathinfo($filename, PATHINFO_FILENAME),
-                'allowedTools' => $parsed['frontmatter']['allowedTools'] ?? '',
-                'argumentHints' => $parsed['frontmatter']['argumentHints'] ?? '',
+                'description' => $parsed['frontmatter']['description'] ?? '',
+                'argumentHint' => $parsed['frontmatter']['argument-hint'] ?? '',
+                'model' => $parsed['frontmatter']['model'] ?? '',
                 'prompt' => $parsed['content'],
+                'disableModelInvocation' => ($parsed['frontmatter']['disable-model-invocation'] ?? 'false') === 'true',
+                'allowedTools' => $parsed['frontmatter']['allowed-tools'] ?? '',
             ];
 
             return view('config.commands.form', [
@@ -701,9 +718,12 @@ class ConfigController extends Controller
     {
         try {
             $validated = $request->validate([
-                'allowedTools' => 'nullable|string',
-                'argumentHints' => 'nullable|string|max:512',
+                'description' => 'required|string|max:1024',
+                'argumentHint' => 'nullable|string|max:512',
+                'model' => 'nullable|string',
                 'prompt' => 'required|string',
+                'disableModelInvocation' => 'nullable|boolean',
+                'allowedTools' => 'nullable|string',
             ]);
 
             $commandsPath = $this->getCommandsPath();
@@ -714,13 +734,24 @@ class ConfigController extends Controller
                     ->with('error', 'Command not found');
             }
 
-            // Build frontmatter (only if fields are provided)
+            // Build frontmatter (using kebab-case for field names)
             $frontmatter = [];
-            if (!empty($validated['allowedTools'])) {
-                $frontmatter['allowedTools'] = $validated['allowedTools'];
+
+            // Description is required
+            $frontmatter['description'] = $validated['description'];
+
+            // Optional fields
+            if (!empty($validated['argumentHint'])) {
+                $frontmatter['argument-hint'] = $validated['argumentHint'];
             }
-            if (!empty($validated['argumentHints'])) {
-                $frontmatter['argumentHints'] = $validated['argumentHints'];
+            if (!empty($validated['model'])) {
+                $frontmatter['model'] = $validated['model'];
+            }
+            if (!empty($validated['allowedTools'])) {
+                $frontmatter['allowed-tools'] = $validated['allowedTools'];
+            }
+            if (isset($validated['disableModelInvocation']) && $validated['disableModelInvocation']) {
+                $frontmatter['disable-model-invocation'] = 'true';
             }
 
             $content = $this->buildCommandFile($frontmatter, $validated['prompt']);

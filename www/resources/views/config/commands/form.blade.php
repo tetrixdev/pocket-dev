@@ -25,27 +25,45 @@
     @endif
 
     <div class="mb-4">
-        <label for="allowedTools" class="block text-sm font-medium mb-2">Allowed Tools (comma-separated)</label>
-        <input
-            type="text"
-            id="allowedTools"
-            name="allowedTools"
-            value="{{ old('allowedTools', $command['allowedTools'] ?? '') }}"
+        <label for="description" class="block text-sm font-medium mb-2">Description</label>
+        <textarea
+            id="description"
+            name="description"
+            rows="2"
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
-            placeholder="bash, read, write"
-        >
+            required
+        >{{ old('description', $command['description'] ?? '') }}</textarea>
     </div>
 
     <div class="mb-4">
-        <label for="argumentHints" class="block text-sm font-medium mb-2">Argument Hints (comma-separated)</label>
+        <label for="argumentHint" class="block text-sm font-medium mb-2">Argument Hint</label>
         <input
             type="text"
-            id="argumentHints"
-            name="argumentHints"
-            value="{{ old('argumentHints', $command['argumentHints'] ?? '') }}"
+            id="argumentHint"
+            name="argumentHint"
+            value="{{ old('argumentHint', $command['argumentHint'] ?? '') }}"
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
-            placeholder="file, query"
+            placeholder="[message]"
         >
+        <p class="mt-1 text-xs text-gray-400">
+            Pattern shown during auto-completion (e.g., <code>[message]</code>, <code>[file] [options]</code>).
+            Reference arguments in your prompt using <code>$1</code>, <code>$2</code>, etc.
+            <a href="https://code.claude.com/docs/en/slash-commands.md" target="_blank" class="text-blue-400 hover:text-blue-300">Learn more</a>
+        </p>
+    </div>
+
+    <div class="mb-4">
+        <label for="model" class="block text-sm font-medium mb-2">Model</label>
+        <select
+            id="model"
+            name="model"
+            class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
+        >
+            <option value="" {{ old('model', $command['model'] ?? '') == '' ? 'selected' : '' }}>Inherit from conversation</option>
+            <option value="claude-sonnet-4-5-20250929" {{ old('model', $command['model'] ?? '') == 'claude-sonnet-4-5-20250929' ? 'selected' : '' }}>Claude Sonnet 4.5</option>
+            <option value="claude-opus-4-20250514" {{ old('model', $command['model'] ?? '') == 'claude-opus-4-20250514' ? 'selected' : '' }}>Claude Opus 4</option>
+            <option value="claude-3-5-sonnet-20241022" {{ old('model', $command['model'] ?? '') == 'claude-3-5-sonnet-20241022' ? 'selected' : '' }}>Claude 3.5 Sonnet</option>
+        </select>
     </div>
 
     <div class="mb-6">
@@ -55,6 +73,37 @@
             name="prompt"
             class="config-editor w-full"
         >{{ old('prompt', $command['prompt'] ?? '') }}</textarea>
+    </div>
+
+    <div class="mb-4">
+        <label class="flex items-center">
+            <input
+                type="checkbox"
+                id="disableModelInvocation"
+                name="disableModelInvocation"
+                value="1"
+                class="mr-2"
+                {{ old('disableModelInvocation', $command['disableModelInvocation'] ?? false) ? 'checked' : '' }}
+            >
+            <span class="text-sm font-medium">Disable Model Invocation</span>
+        </label>
+        <p class="mt-1 text-xs text-gray-400 ml-6">
+            Prevent Claude from automatically executing this command via the SlashCommand tool
+        </p>
+    </div>
+
+    <div class="mb-6">
+        <label for="allowedTools" class="block text-sm font-medium mb-2">Allowed Tools</label>
+        <textarea
+            id="allowedTools"
+            name="allowedTools"
+            rows="3"
+            class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded font-mono text-sm"
+            placeholder="Bash(git add:*), Bash(git status:*), Read, Write"
+        >{{ old('allowedTools', $command['allowedTools'] ?? '') }}</textarea>
+        <p class="mt-1 text-xs text-gray-400">
+            Specific tools/commands this slash command can use. Leave empty to inherit from conversation.
+        </p>
     </div>
 
     <div class="flex gap-3">
