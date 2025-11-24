@@ -1023,7 +1023,8 @@ class ConfigController extends Controller
             $validated = $request->validate([
                 'name' => 'required|string|regex:/^[a-z0-9-]+$/|max:64',
                 'description' => 'required|string|max:1024',
-                'allowedTools' => 'nullable|string',
+                'allowedTools' => 'nullable|string|max:255',
+                'content' => 'nullable|string',
             ]);
 
             $skillsPath = $this->getSkillsPath();
@@ -1054,7 +1055,7 @@ class ConfigController extends Controller
                 $frontmatter['allowed-tools'] = $validated['allowedTools'];
             }
 
-            $content = "Instructions for using this skill.\n\nAdd your skill implementation here.";
+            $content = $validated['content'] ?? '';
             $skillMdContent = $this->buildSkillFile($frontmatter, $content);
 
             file_put_contents($skillDir . '/SKILL.md', $skillMdContent);
@@ -1103,10 +1104,8 @@ class ConfigController extends Controller
                 'content' => $parsed['content'] ?? '',
             ];
 
-            return view('config.skills.edit', [
+            return view('config.skills.form', [
                 'skill' => $skill,
-                'files' => $files,
-                'activeSkill' => $skillName,
             ]);
         } catch (\Exception $e) {
             Log::error("Failed to load skill {$skillName}", ['error' => $e->getMessage()]);
