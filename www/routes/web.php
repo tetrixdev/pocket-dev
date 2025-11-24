@@ -60,7 +60,5 @@ Route::get("/config/skills/{skillName}/edit", [ConfigController::class, "editSki
 Route::put("/config/skills/{skillName}", [ConfigController::class, "updateSkill"])->name("config.skills.update");
 Route::delete("/config/skills/{skillName}", [ConfigController::class, "deleteSkill"])->name("config.skills.delete");
 
-// Skill file management (for file browser within skill edit page)
-Route::get("/config/skills/{skillName}/files/{path}", [ConfigController::class, "getSkillFile"])->name("config.skills.file")->where('path', '.*');
-Route::put("/config/skills/{skillName}/files/{path}", [ConfigController::class, "saveSkillFile"])->name("config.skills.file.save")->where('path', '.*');
-Route::delete("/config/skills/{skillName}/files/{path}", [ConfigController::class, "deleteSkillFile"])->name("config.skills.file.delete")->where('path', '.*');
+// Note: Skill file browser routes removed - skills now use single SKILL.md editing
+// File browser support may be added in future for skills with complex directory structures

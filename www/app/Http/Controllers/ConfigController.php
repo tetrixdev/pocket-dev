@@ -983,6 +983,7 @@ class ConfigController extends Controller
 
                     $skills[] = [
                         'name' => $dir,
+                        'filename' => $dir,  // Directory name used for routes
                         'displayName' => $parsed['frontmatter']['name'] ?? $dir,
                         'description' => $parsed['frontmatter']['description'] ?? '',
                         'allowedTools' => $parsed['frontmatter']['allowed-tools'] ?? '',
@@ -1099,6 +1100,7 @@ class ConfigController extends Controller
                 'filename' => $skillName,
                 'description' => $parsed['frontmatter']['description'] ?? '',
                 'allowedTools' => $parsed['frontmatter']['allowed-tools'] ?? '',
+                'content' => $parsed['content'] ?? '',
             ];
 
             return view('config.skills.edit', [
@@ -1135,6 +1137,57 @@ class ConfigController extends Controller
             Log::error("Failed to delete skill {$skillName}", ['error' => $e->getMessage()]);
             return redirect()->route('config.skills')
                 ->with('error', 'Failed to delete skill: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update skill (metadata and content)
+     */
+    public function updateSkill(Request $request, string $skillName)
+    {
+        try {
+            $validated = $request->validate([
+                'description' => 'nullable|string|max:1024',
+                'allowedTools' => 'nullable|string|max:255',
+                'content' => 'nullable|string',
+            ]);
+
+            $skillsPath = $this->getSkillsPath();
+            $skillDir = $skillsPath . '/' . $skillName;
+
+            if (!is_dir($skillDir)) {
+                return redirect()->route('config.skills')
+                    ->with('error', 'Skill not found');
+            }
+
+            $skillMdPath = $skillDir . '/SKILL.md';
+
+            // Build frontmatter
+            $frontmatter = [
+                'name' => $skillName,
+            ];
+            if (!empty($validated['description'])) {
+                $frontmatter['description'] = $validated['description'];
+            }
+            if (!empty($validated['allowedTools'])) {
+                $frontmatter['allowed-tools'] = $validated['allowedTools'];
+            }
+
+            // Build and write the file
+            $content = $validated['content'] ?? '';
+            $fileContent = $this->buildSkillFile($frontmatter, $content);
+            file_put_contents($skillMdPath, $fileContent);
+
+            return redirect()->route('config.skills.edit', $skillName)
+                ->with('success', 'Skill updated successfully');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()->back()
+                ->withErrors($e->errors())
+                ->withInput();
+        } catch (\Exception $e) {
+            Log::error("Failed to update skill {$skillName}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.skills.edit', $skillName)
+                ->with('error', 'Failed to update skill: ' . $e->getMessage());
         }
     }
 
