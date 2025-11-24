@@ -96,10 +96,21 @@
         @keyframes fadeOut {
             to { opacity: 0; transform: translateX(400px); }
         }
+
+        /* Hide desktop layout on mobile */
+        @media (max-width: 767px) {
+            .desktop-layout { display: none !important; }
+        }
+
+        /* Hide mobile layout on desktop */
+        @media (min-width: 768px) {
+            .mobile-layout { display: none !important; }
+        }
     </style>
 </head>
-<body class="bg-gray-900 text-white">
-    <div class="h-screen flex flex-col">
+<body class="bg-gray-900 text-white" x-data="{ showMobileDrawer: false }">
+    <!-- Desktop Layout -->
+    <div class="desktop-layout h-screen flex flex-col">
 
         <!-- Header -->
         <div class="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center">
@@ -240,6 +251,202 @@
 
                 <!-- Page Content -->
                 @yield('content')
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Layout -->
+    <div class="mobile-layout min-h-screen flex flex-col">
+        <!-- Mobile Header (Sticky) -->
+        <div class="sticky top-0 z-10 bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
+            <button @click="showMobileDrawer = true" class="text-gray-300 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </button>
+            <h2 class="text-lg font-semibold">⚙️ Configuration</h2>
+            <a href="/" class="text-gray-300 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                </svg>
+            </a>
+        </div>
+
+        <!-- Mobile Content Area -->
+        <div class="flex-1 overflow-y-auto p-6">
+            <!-- Notifications -->
+            @if(session('success'))
+                <div class="mb-4 p-4 bg-green-900 border-l-4 border-green-500 text-green-200 rounded">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if(session('error'))
+                <div class="mb-4 p-4 bg-red-900 border-l-4 border-red-500 text-red-200 rounded">
+                    {{ session('error') }}
+                </div>
+            @endif
+
+            @if($errors->any())
+                <div class="mb-4 p-4 bg-red-900 border-l-4 border-red-500 text-red-200 rounded">
+                    <ul class="list-disc list-inside">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            <!-- Page Content -->
+            @yield('content')
+        </div>
+
+        <!-- Mobile Drawer Overlay -->
+        <div x-show="showMobileDrawer"
+             @click="showMobileDrawer = false"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-300"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black bg-opacity-50 z-40"
+             style="display: none;">
+        </div>
+
+        <!-- Mobile Drawer -->
+        <div x-show="showMobileDrawer"
+             x-transition:enter="transition ease-out duration-300 transform"
+             x-transition:enter-start="-translate-x-full"
+             x-transition:enter-end="translate-x-0"
+             x-transition:leave="transition ease-in duration-300 transform"
+             x-transition:leave-start="translate-x-0"
+             x-transition:leave-end="-translate-x-full"
+             class="fixed inset-y-0 left-0 w-5/6 max-w-sm bg-gray-800 z-50 flex flex-col overflow-y-auto"
+             style="display: none;">
+
+            <div class="p-4 border-b border-gray-700 flex items-center justify-between">
+                <h2 class="text-lg font-semibold">Menu</h2>
+                <button @click="showMobileDrawer = false" class="text-gray-400 hover:text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Files Category -->
+            <div class="border-b border-gray-700">
+                <div class="category-button w-full {{ in_array(Route::currentRouteName(), ['config.claude', 'config.settings', 'config.nginx']) ? 'active' : '' }}">
+                    📄 Files
+                </div>
+                <div class="bg-gray-900">
+                    <a href="{{ route('config.claude') }}"
+                       @click="showMobileDrawer = false"
+                       class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.claude' ? 'active' : '' }}">
+                        CLAUDE.md
+                    </a>
+                    <a href="{{ route('config.settings') }}"
+                       @click="showMobileDrawer = false"
+                       class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.settings' ? 'active' : '' }}">
+                        settings.json
+                    </a>
+                    <a href="{{ route('config.nginx') }}"
+                       @click="showMobileDrawer = false"
+                       class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.nginx' ? 'active' : '' }}">
+                        nginx.conf
+                    </a>
+                </div>
+            </div>
+
+            <!-- Agents Category -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.agents') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.agents') ? 'active' : '' }}">
+                    🤖 Agents
+                </a>
+                <div class="bg-gray-900">
+                    <a href="{{ route('config.agents.create') }}"
+                       @click="showMobileDrawer = false"
+                       class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
+                        + New Agent
+                    </a>
+                    @if(isset($agents))
+                        @foreach($agents as $agent)
+                            <a href="{{ route('config.agents.edit', $agent['filename']) }}"
+                               @click="showMobileDrawer = false"
+                               class="file-item w-full text-sm block {{ isset($activeAgent) && $activeAgent == $agent['filename'] ? 'active' : '' }}">
+                                {{ $agent['name'] }}
+                            </a>
+                        @endforeach
+                    @endif
+                </div>
+            </div>
+
+            <!-- Commands Category -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.commands') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.commands') ? 'active' : '' }}">
+                    ⚡ Commands
+                </a>
+                <div class="bg-gray-900">
+                    <a href="{{ route('config.commands.create') }}"
+                       @click="showMobileDrawer = false"
+                       class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
+                        + New Command
+                    </a>
+                    @if(isset($commands))
+                        @foreach($commands as $command)
+                            <a href="{{ route('config.commands.edit', $command['filename']) }}"
+                               @click="showMobileDrawer = false"
+                               class="file-item w-full text-sm block {{ isset($activeCommand) && $activeCommand == $command['filename'] ? 'active' : '' }}">
+                                {{ $command['name'] }}
+                            </a>
+                        @endforeach
+                    @endif
+                </div>
+            </div>
+
+            <!-- Hooks Category -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.hooks') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.hooks' ? 'active' : '' }}">
+                    🪝 Hooks
+                </a>
+            </div>
+
+            <!-- Skills Category -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.skills') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.skills') ? 'active' : '' }}">
+                    🔧 Skills
+                </a>
+                <div class="bg-gray-900">
+                    <a href="{{ route('config.skills.create') }}"
+                       @click="showMobileDrawer = false"
+                       class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
+                        + New Skill
+                    </a>
+                    @if(isset($skills))
+                        @foreach($skills as $skill)
+                            <a href="{{ route('config.skills.edit', $skill['name']) }}"
+                               @click="showMobileDrawer = false"
+                               class="file-item w-full text-sm block {{ isset($activeSkill) && $activeSkill == $skill['name'] ? 'active' : '' }}">
+                                {{ $skill['name'] }}
+                            </a>
+                        @endforeach
+                    @endif
+                </div>
+            </div>
+
+            <!-- Footer with Back to Chat -->
+            <div class="p-4 border-t border-gray-700 mt-auto">
+                <a href="/" class="text-blue-400 hover:text-blue-300 text-sm">
+                    ← Back to Chat
+                </a>
             </div>
         </div>
     </div>
