@@ -256,4 +256,5 @@ This document captures the key architectural and design decisions for PocketDev,
 ## Related Documents
 
 - [Configuration UI Analysis](configuration-ui.md) - File browser vs list+modal analysis
+- [Config UI Conventions](config-ui-conventions.md) - Form styling and layout conventions
 - [SLASH_COMMAND_ISSUE.md](../../SLASH_COMMAND_ISSUE.md) - Known thinking mode issue
