@@ -1,0 +1,83 @@
+<?php
+
+namespace App\Tools;
+
+/**
+ * Write or create files.
+ */
+class WriteTool extends Tool
+{
+    public string $name = 'Write';
+
+    public string $description = 'Write content to a file. Creates the file if it does not exist, overwrites if it does.';
+
+    public array $inputSchema = [
+        'type' => 'object',
+        'properties' => [
+            'file_path' => [
+                'type' => 'string',
+                'description' => 'Path to the file to write',
+            ],
+            'content' => [
+                'type' => 'string',
+                'description' => 'The content to write to the file',
+            ],
+        ],
+        'required' => ['file_path', 'content'],
+    ];
+
+    public ?string $instructions = <<<'INSTRUCTIONS'
+- Use for creating new files or completely replacing file contents
+- Prefer Edit tool for small changes to existing files
+- Will create parent directories if they don't exist
+- Overwrites existing files without warning
+INSTRUCTIONS;
+
+    public function execute(array $input, ExecutionContext $context): ToolResult
+    {
+        $filePath = $input['file_path'] ?? '';
+        $content = $input['content'] ?? '';
+
+        if (empty($filePath)) {
+            return ToolResult::error('file_path is required');
+        }
+
+        // Resolve path
+        $resolvedPath = $context->resolvePath($filePath);
+
+        // Check if path is within allowed directory
+        $parentDir = dirname($resolvedPath);
+
+        // Create parent directories if needed
+        if (!is_dir($parentDir)) {
+            $created = @mkdir($parentDir, 0755, true);
+            if (!$created) {
+                return ToolResult::error("Failed to create directory: {$parentDir}");
+            }
+        }
+
+        // Check if file exists and is writable, or if directory is writable
+        if (file_exists($resolvedPath) && !is_writable($resolvedPath)) {
+            return ToolResult::error("File exists but is not writable: {$filePath}");
+        }
+
+        if (!file_exists($resolvedPath) && !is_writable($parentDir)) {
+            return ToolResult::error("Directory is not writable: {$parentDir}");
+        }
+
+        // Write file
+        $result = file_put_contents($resolvedPath, $content);
+
+        if ($result === false) {
+            return ToolResult::error("Failed to write file: {$filePath}");
+        }
+
+        $bytes = strlen($content);
+        $lines = substr_count($content, "\n") + 1;
+        $isNew = !file_exists($resolvedPath);
+
+        $action = $isNew ? 'Created' : 'Wrote';
+
+        return ToolResult::success("{$action} {$bytes} bytes ({$lines} lines) to {$filePath}");
+    }
+}
