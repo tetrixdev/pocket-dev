@@ -33,18 +33,17 @@ interface AIProviderInterface
      * Stream a message and yield StreamEvent objects.
      *
      * The provider is responsible for:
+     * - Building messages from the conversation (all messages should already be saved)
      * - Making the API call with streaming enabled
      * - Converting provider-specific events to StreamEvent
      * - Yielding events as they arrive
      *
-     * @param Conversation $conversation The conversation context
-     * @param string $prompt The user's message
+     * @param Conversation $conversation The conversation context (messages should be saved first)
      * @param array $options Additional options (tools, thinking level, etc.)
      * @return Generator<StreamEvent>
      */
     public function streamMessage(
         Conversation $conversation,
-        string $prompt,
         array $options = []
     ): Generator;
 
