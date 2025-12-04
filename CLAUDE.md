@@ -43,6 +43,11 @@ docker compose up -d --force-recreate
 
 5. **Claude CLI flags**: Use `--print --output-format json`, NOT `--json`.
 
+## PHP Style Preferences
+
+- Use public properties for simple values (booleans, strings, arrays) instead of getter methods
+- Reserve methods for computed values, logic, or actions (like `execute()`)
+
 ## Git Workflow
 
 - Create feature branches for changes
