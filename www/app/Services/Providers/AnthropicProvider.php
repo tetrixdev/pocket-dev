@@ -183,7 +183,7 @@ class AnthropicProvider implements AIProviderInterface
 
             // Read stream in chunks
             while (!$stream->eof()) {
-                $chunk = $stream->read(8192);
+                $chunk = $stream->read(64);
 
                 if ($chunk === '') {
                     usleep(1000);

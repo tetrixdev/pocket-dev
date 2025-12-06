@@ -22,6 +22,18 @@
 - **Use Original Chat (`/`)** for full Claude Code CLI experience with all its built-in tools, hooks, and skills
 - **Use Chat V2 (`/chat-v2`)** for direct API access, database-backed conversations, and multi-provider support (when more providers are added)
 
+### Known Issues
+
+| Issue | Status | Description |
+|-------|--------|-------------|
+| **Stream stops mid-response** | 🔴 Investigating | Long responses (e.g., 10 paragraph story) stop streaming partway through. Cause unknown - not timeout related. |
+
+### Implementation Notes
+
+- **Stream buffer size**: Set to 64 bytes in `AnthropicProvider::streamRequest()` for smooth character-by-character streaming (was 8192)
+- **nginx config**: `fastcgi_buffering off` enabled for SSE support
+- **Guzzle HTTP**: Used for API calls (replaced curl due to API key escaping issues)
+
 ### V2 API Endpoints
 
 All v2 endpoints are under `/api/v2/`:
