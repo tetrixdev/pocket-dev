@@ -39,7 +39,7 @@ class ConversationController extends Controller
         $conversation = Conversation::create([
             'provider_type' => $providerType,
             'model' => $validated['model'] ?? config("ai.providers.{$providerType}.default_model"),
-            'title' => $validated['title'],
+            'title' => $validated['title'] ?? null,
             'working_directory' => $validated['working_directory'],
         ]);
 
