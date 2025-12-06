@@ -8,6 +8,41 @@
 
 ---
 
+## Current State (Post-Implementation)
+
+### Two Chat Interfaces
+
+| Interface | URL | Backend | Description |
+|-----------|-----|---------|-------------|
+| **Original Chat** | `/` or `/session/{id}` | Claude Code CLI | Uses `ClaudeCodeService`, stores in `.jsonl` files, full Claude Code features |
+| **Chat V2** | `/chat-v2` | Direct Anthropic API | Uses new `ConversationController`, stores in database, custom tool system |
+
+### Which to Use?
+
+- **Use Original Chat (`/`)** for full Claude Code CLI experience with all its built-in tools, hooks, and skills
+- **Use Chat V2 (`/chat-v2`)** for direct API access, database-backed conversations, and multi-provider support (when more providers are added)
+
+### V2 API Endpoints
+
+All v2 endpoints are under `/api/v2/`:
+
+```
+GET  /api/v2/providers                      - List available providers
+POST /api/v2/conversations                  - Create conversation
+GET  /api/v2/conversations/{uuid}           - Get with messages
+POST /api/v2/conversations/{uuid}/stream    - Stream message (SSE)
+GET  /api/v2/conversations/{uuid}/status    - Token usage & context
+POST /api/v2/conversations/{uuid}/archive   - Archive
+POST /api/v2/conversations/{uuid}/unarchive - Unarchive
+DELETE /api/v2/conversations/{uuid}         - Delete
+```
+
+### Configuration
+
+Set `ANTHROPIC_API_KEY` in `.env` to use Chat V2.
+
+---
+
 ## Overview
 
 This document outlines the architectural changes needed to:

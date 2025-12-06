@@ -158,112 +158,65 @@ class AnthropicProvider implements AIProviderInterface
     /**
      * Make a streaming request to the Anthropic API and yield StreamEvent objects.
      *
-     * Uses proc_open with curl for true real-time SSE streaming.
+     * Uses Guzzle with streaming response for real-time SSE.
      */
     private function streamRequest(array $body): Generator
     {
         $url = rtrim($this->baseUrl, '/') . '/v1/messages';
 
-        // Build curl command for streaming
-        $jsonBody = json_encode($body);
-        $command = sprintf(
-            'curl -sS -N -X POST %s ' .
-            '-H "Content-Type: application/json" ' .
-            '-H "x-api-key: %s" ' .
-            '-H "anthropic-version: %s" ' .
-            '-d %s 2>&1',
-            escapeshellarg($url),
-            escapeshellarg($this->apiKey),
-            escapeshellarg($this->apiVersion),
-            escapeshellarg($jsonBody)
-        );
+        $client = new \GuzzleHttp\Client();
 
-        $descriptors = [
-            0 => ['pipe', 'r'], // stdin
-            1 => ['pipe', 'w'], // stdout
-            2 => ['pipe', 'w'], // stderr
-        ];
+        try {
+            $response = $client->post($url, [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'x-api-key' => $this->apiKey,
+                    'anthropic-version' => $this->apiVersion,
+                ],
+                'json' => $body,
+                'stream' => true,
+            ]);
 
-        $process = proc_open($command, $descriptors, $pipes);
+            $stream = $response->getBody();
+            $buffer = '';
+            $currentBlocks = [];
 
-        if (!is_resource($process)) {
-            yield StreamEvent::error('Failed to start curl process');
+            // Read stream in chunks
+            while (!$stream->eof()) {
+                $chunk = $stream->read(8192);
 
-            return;
-        }
-
-        // Close stdin - we don't need it
-        fclose($pipes[0]);
-
-        // Set stdout to non-blocking for responsive reading
-        stream_set_blocking($pipes[1], false);
-
-        // Track state for SSE parsing
-        $buffer = '';
-        $currentBlocks = [];
-        $httpError = null;
-
-        // Read stdout incrementally
-        while (!feof($pipes[1])) {
-            $chunk = fread($pipes[1], 8192);
-
-            if ($chunk === false || $chunk === '') {
-                // No data available yet, small sleep to prevent CPU spinning
-                usleep(1000);
-
-                continue;
-            }
-
-            $buffer .= $chunk;
-
-            // Check for HTTP error response (non-SSE JSON error)
-            if ($httpError === null && str_starts_with(trim($buffer), '{')) {
-                // Might be an error response, check if it's complete
-                $errorData = json_decode(trim($buffer), true);
-                if ($errorData !== null && isset($errorData['error'])) {
-                    $httpError = $errorData['error']['message'] ?? 'Unknown API error';
-                    break;
-                }
-            }
-
-            // Parse SSE events from buffer
-            while (($pos = strpos($buffer, "\n\n")) !== false) {
-                $event = substr($buffer, 0, $pos);
-                $buffer = substr($buffer, $pos + 2);
-
-                if (empty(trim($event))) {
+                if ($chunk === '') {
+                    usleep(1000);
                     continue;
                 }
 
-                yield from $this->parseSSEEvent($event, $currentBlocks);
-            }
-        }
+                $buffer .= $chunk;
 
-        // Process any remaining buffer
-        if (!empty(trim($buffer)) && $httpError === null) {
-            // Check if remaining buffer is an error
-            $errorData = json_decode(trim($buffer), true);
-            if ($errorData !== null && isset($errorData['error'])) {
-                $httpError = $errorData['error']['message'] ?? 'Unknown API error';
-            } else {
+                // Parse SSE events from buffer
+                while (($pos = strpos($buffer, "\n\n")) !== false) {
+                    $event = substr($buffer, 0, $pos);
+                    $buffer = substr($buffer, $pos + 2);
+
+                    if (empty(trim($event))) {
+                        continue;
+                    }
+
+                    yield from $this->parseSSEEvent($event, $currentBlocks);
+                }
+            }
+
+            // Process any remaining buffer
+            if (!empty(trim($buffer))) {
                 yield from $this->parseSSEEvent($buffer, $currentBlocks);
             }
-        }
 
-        // Read any stderr
-        $stderr = stream_get_contents($pipes[2]);
-
-        // Clean up
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        $exitCode = proc_close($process);
-
-        // Handle errors
-        if ($httpError !== null) {
-            yield StreamEvent::error($httpError);
-        } elseif ($exitCode !== 0) {
-            $errorMsg = $stderr ?: "curl exited with code {$exitCode}";
-            yield StreamEvent::error($errorMsg);
+        } catch (\GuzzleHttp\Exception\ClientException $e) {
+            $responseBody = $e->getResponse()->getBody()->getContents();
+            $errorData = json_decode($responseBody, true);
+            $errorMessage = $errorData['error']['message'] ?? $e->getMessage();
+            yield StreamEvent::error($errorMessage);
+        } catch (\Exception $e) {
+            yield StreamEvent::error($e->getMessage());
         }
     }
 
