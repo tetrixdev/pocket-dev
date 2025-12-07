@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessConversationStream;
 use App\Models\Conversation;
-use App\Services\ConversationStreamHandler;
 use App\Services\ProviderFactory;
+use App\Services\StreamManager;
 use App\Streaming\SseWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,13 +14,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Controller for the new multi-provider conversation system.
- * Uses database-backed conversations with direct API streaming.
+ * Uses database-backed conversations with background streaming via Redis.
  */
 class ConversationController extends Controller
 {
     public function __construct(
-        private ConversationStreamHandler $streamHandler,
         private ProviderFactory $providerFactory,
+        private StreamManager $streamManager,
     ) {}
 
     /**
@@ -85,11 +86,12 @@ class ConversationController extends Controller
     }
 
     /**
-     * Stream a message to the conversation.
+     * Start streaming a message to the conversation.
      *
-     * Uses SseWriter to separate frontend SSE output from provider streaming logic.
+     * Dispatches a background job to handle the actual streaming.
+     * Frontend should then connect to streamEvents() to receive updates.
      */
-    public function stream(Request $request, Conversation $conversation): StreamedResponse
+    public function stream(Request $request, Conversation $conversation): JsonResponse
     {
         $validated = $request->validate([
             'prompt' => 'required|string',
@@ -100,10 +102,18 @@ class ConversationController extends Controller
         $provider = $this->providerFactory->make($conversation->provider_type);
 
         if (!$provider->isAvailable()) {
-            return response()->stream(function () use ($conversation) {
-                $sse = new SseWriter();
-                $sse->writeError("Provider '{$conversation->provider_type}' is not available. Check API key configuration.");
-            }, 200, SseWriter::headers());
+            return response()->json([
+                'success' => false,
+                'error' => "Provider '{$conversation->provider_type}' is not available. Check API key configuration.",
+            ], 400);
+        }
+
+        // Check if already streaming
+        if ($this->streamManager->isStreaming($conversation->uuid)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Conversation is already streaming',
+            ], 409);
         }
 
         $options = [
@@ -111,33 +121,132 @@ class ConversationController extends Controller
             'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
         ];
 
-        return response()->stream(function () use ($conversation, $validated, $provider, $options) {
+        // Dispatch background job
+        ProcessConversationStream::dispatch(
+            $conversation->uuid,
+            $validated['prompt'],
+            $options
+        );
+
+        return response()->json([
+            'success' => true,
+            'conversation_uuid' => $conversation->uuid,
+            'message' => 'Streaming started. Connect to /stream-events to receive updates.',
+        ]);
+    }
+
+    /**
+     * Get stream status for a conversation.
+     */
+    public function streamStatus(Conversation $conversation): JsonResponse
+    {
+        $status = $this->streamManager->getStatus($conversation->uuid);
+        $metadata = $this->streamManager->getMetadata($conversation->uuid);
+        $eventCount = $this->streamManager->getEventCount($conversation->uuid);
+
+        return response()->json([
+            'conversation_uuid' => $conversation->uuid,
+            'stream_status' => $status,  // 'streaming', 'completed', 'failed', or null
+            'is_streaming' => $status === 'streaming',
+            'event_count' => $eventCount,
+            'metadata' => $metadata,
+            'conversation_status' => $conversation->status,
+        ]);
+    }
+
+    /**
+     * SSE endpoint for receiving stream events.
+     *
+     * Sends all buffered events first, then streams live updates.
+     * Query params:
+     *   - from_index: Start from this event index (for reconnection)
+     */
+    public function streamEvents(Request $request, Conversation $conversation): StreamedResponse
+    {
+        $fromIndex = (int) $request->query('from_index', 0);
+
+        return response()->stream(function () use ($conversation, $fromIndex) {
             $sse = new SseWriter();
 
-            try {
-                // Stream handler yields provider-agnostic StreamEvent objects
-                // SseWriter handles the SSE output to the browser
-                foreach ($this->streamHandler->stream($conversation, $validated['prompt'], $provider, $options) as $event) {
-                    $sse->write($event);
+            // Send all buffered events first
+            $events = $this->streamManager->getEvents($conversation->uuid, $fromIndex);
+            $currentIndex = $fromIndex;
+
+            foreach ($events as $event) {
+                $sse->writeRaw(json_encode(array_merge($event, ['index' => $currentIndex])));
+                $currentIndex++;
+            }
+
+            // Check if stream is still active
+            $status = $this->streamManager->getStatus($conversation->uuid);
+
+            if ($status !== 'streaming') {
+                // Stream is done, send final status
+                $sse->writeRaw(json_encode([
+                    'type' => 'stream_status',
+                    'status' => $status ?? 'not_found',
+                    'final_index' => $currentIndex - 1,
+                ]));
+                return;
+            }
+
+            // Subscribe to live updates
+            // Use polling instead of blocking pub/sub for better compatibility
+            $lastCheck = microtime(true);
+            $timeout = 60; // 60 second timeout for SSE connection
+
+            while (true) {
+                // Check for new events
+                $newEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
+
+                foreach ($newEvents as $event) {
+                    $sse->writeRaw(json_encode(array_merge($event, ['index' => $currentIndex])));
+                    $currentIndex++;
                 }
-            } catch (\Throwable $e) {
-                $sse->writeError($e->getMessage());
+
+                // Check stream status
+                $status = $this->streamManager->getStatus($conversation->uuid);
+                if ($status !== 'streaming') {
+                    $sse->writeRaw(json_encode([
+                        'type' => 'stream_status',
+                        'status' => $status,
+                        'final_index' => $currentIndex - 1,
+                    ]));
+                    break;
+                }
+
+                // Check timeout
+                if ((microtime(true) - $lastCheck) > $timeout) {
+                    $sse->writeRaw(json_encode([
+                        'type' => 'timeout',
+                        'message' => 'Connection timeout, please reconnect',
+                        'last_index' => $currentIndex - 1,
+                    ]));
+                    break;
+                }
+
+                // Small delay to prevent CPU spinning
+                usleep(100000); // 100ms
+                flush();
             }
         }, 200, SseWriter::headers());
     }
 
     /**
-     * Get conversation status.
+     * Get conversation status (includes both DB status and stream status).
      */
     public function status(Conversation $conversation): JsonResponse
     {
         $provider = $this->providerFactory->make($conversation->provider_type);
+        $streamStatus = $this->streamManager->getStatus($conversation->uuid);
 
         return response()->json([
             'id' => $conversation->id,
             'uuid' => $conversation->uuid,
             'status' => $conversation->status,
+            'stream_status' => $streamStatus,
             'is_processing' => $conversation->isProcessing(),
+            'is_streaming' => $streamStatus === 'streaming',
             'total_input_tokens' => $conversation->total_input_tokens,
             'total_output_tokens' => $conversation->total_output_tokens,
             'context_window' => $provider->getContextWindow($conversation->model),
@@ -203,5 +312,4 @@ class ConversationController extends Controller
             'providers' => $providers,
         ]);
     }
-
 }

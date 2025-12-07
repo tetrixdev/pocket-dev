@@ -66,6 +66,8 @@ services:
     depends_on:
       pocket-dev-postgres:
         condition: service_healthy
+      pocket-dev-redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "php-fpm -t || exit 1"]
       interval: 15s
@@ -113,6 +115,44 @@ services:
       retries: 3
       start_period: 10s
 
+  pocket-dev-redis:
+    image: redis:7-alpine
+    container_name: pocket-dev-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - pocket-dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  pocket-dev-queue:
+    build:
+      context: .
+      dockerfile: docker-laravel/local/php/Dockerfile
+    container_name: pocket-dev-queue
+    restart: unless-stopped
+    working_dir: /var/www
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    command: php artisan queue:work redis --sleep=1 --tries=1 --timeout=600
+    environment:
+      - HOME=/home/appuser
+    volumes:
+      - ./www:/var/www
+      - .env:/var/www/.env
+    networks:
+      - pocket-dev
+    depends_on:
+      pocket-dev-redis:
+        condition: service_healthy
+      pocket-dev-postgres:
+        condition: service_healthy
+
   pocket-dev-ttyd:
     build:
       context: .
@@ -152,6 +192,9 @@ networks:
 volumes:
   postgres-data:
     name: pocket-dev-postgres
+    driver: local
+  redis-data:
+    name: pocket-dev-redis
     driver: local
   workspace-data:
     name: pocket-dev-workspace

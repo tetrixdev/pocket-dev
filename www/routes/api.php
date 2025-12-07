@@ -56,6 +56,8 @@ Route::prefix('v2')->group(function () {
     // Conversation actions
     Route::get('conversations/{conversation}/status', [ConversationController::class, 'status']);
     Route::post('conversations/{conversation}/stream', [ConversationController::class, 'stream']);
+    Route::get('conversations/{conversation}/stream-status', [ConversationController::class, 'streamStatus']);
+    Route::get('conversations/{conversation}/stream-events', [ConversationController::class, 'streamEvents']);
     Route::post('conversations/{conversation}/archive', [ConversationController::class, 'archive']);
     Route::post('conversations/{conversation}/unarchive', [ConversationController::class, 'unarchive']);
 });

@@ -41,6 +41,17 @@ class SseWriter
     }
 
     /**
+     * Write raw JSON data to the SSE output.
+     */
+    public function writeRaw(string $json): void
+    {
+        $this->initialize();
+
+        echo "data: " . $json . "\n\n";
+        flush();
+    }
+
+    /**
      * Write a raw error message (for cases where StreamEvent can't be created).
      */
     public function writeError(string $message): void

@@ -199,6 +199,18 @@
                 openAiKeyConfigured: false,
                 autoSendAfterTranscription: false,
 
+                // Stream reconnection state
+                lastEventIndex: 0,
+                streamAbortController: null,
+                _streamState: {
+                    thinkingMsgIndex: -1,
+                    textMsgIndex: -1,
+                    toolMsgIndex: -1,
+                    thinkingContent: '',
+                    textContent: '',
+                    toolInput: '',
+                },
+
                 async init() {
                     // Load saved thinking level
                     const savedThinking = localStorage.getItem('thinkingLevel');
@@ -273,6 +285,9 @@
                 },
 
                 async newConversation() {
+                    // Disconnect from any active stream
+                    this.disconnectFromStream();
+
                     this.currentConversationUuid = null;
                     this.messages = [];
                     this.sessionCost = 0;
@@ -281,9 +296,14 @@
                     this.outputTokens = 0;
                     this.cacheCreationTokens = 0;
                     this.cacheReadTokens = 0;
+                    this.isStreaming = false;
+                    this.lastEventIndex = 0;
                 },
 
                 async loadConversation(uuid) {
+                    // Disconnect from any current stream before switching
+                    this.disconnectFromStream();
+
                     try {
                         const response = await fetch(`/api/v2/conversations/${uuid}`);
                         const data = await response.json();
@@ -297,6 +317,17 @@
                         this.cacheCreationTokens = 0;
                         this.cacheReadTokens = 0;
                         this.sessionCost = 0;
+                        this.lastEventIndex = 0;
+
+                        // Reset stream state for potential reconnection
+                        this._streamState = {
+                            thinkingMsgIndex: -1,
+                            textMsgIndex: -1,
+                            toolMsgIndex: -1,
+                            thinkingContent: '',
+                            textContent: '',
+                            toolInput: '',
+                        };
 
                         // Calculate totals and costs per-message using each message's model
                         if (data.conversation?.messages) {
@@ -337,9 +368,29 @@
                         }
 
                         this.scrollToBottom();
+
+                        // Check if there's an active stream for this conversation
+                        await this.checkAndReconnectStream(uuid);
+
                     } catch (err) {
                         console.error('Failed to load conversation:', err);
                         this.showError('Failed to load conversation');
+                    }
+                },
+
+                // Check for active stream and reconnect if found
+                async checkAndReconnectStream(uuid) {
+                    try {
+                        const response = await fetch(`/api/v2/conversations/${uuid}/stream-status`);
+                        const data = await response.json();
+
+                        if (data.is_streaming) {
+                            console.log('Found active stream, reconnecting...');
+                            // Connect to stream events from the beginning to get buffered events
+                            await this.connectToStreamEvents(0);
+                        }
+                    } catch (err) {
+                        console.log('No active stream found:', err.message);
                     }
                 },
 
@@ -490,18 +541,19 @@
                     });
                     this.scrollToBottom();
 
-                    // Start streaming
-                    this.isStreaming = true;
-
-                    // Track message indices for reactive updates (more reliable than object refs)
-                    let thinkingMsgIndex = -1;
-                    let textMsgIndex = -1;
-                    let toolMsgIndex = -1;
-                    let thinkingContent = '';
-                    let textContent = '';
-                    let toolInput = '';
+                    // Reset stream state
+                    this.lastEventIndex = 0;
+                    this._streamState = {
+                        thinkingMsgIndex: -1,
+                        textMsgIndex: -1,
+                        toolMsgIndex: -1,
+                        thinkingContent: '',
+                        textContent: '',
+                        toolInput: '',
+                    };
 
                     try {
+                        // Start the background streaming job
                         const response = await fetch(`/api/v2/conversations/${this.currentConversationUuid}/stream`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -511,6 +563,38 @@
                                 response_level: this.responseLevel
                             })
                         });
+
+                        const data = await response.json();
+
+                        if (!data.success) {
+                            this.showError(data.error || 'Failed to start streaming');
+                            return;
+                        }
+
+                        // Connect to stream events SSE endpoint
+                        await this.connectToStreamEvents();
+
+                    } catch (err) {
+                        this.showError('Failed to start streaming: ' + err.message);
+                        this.isStreaming = false;
+                    }
+                },
+
+                // Connect to stream events and handle reconnection
+                async connectToStreamEvents(fromIndex = 0) {
+                    if (!this.currentConversationUuid) return;
+
+                    // Abort any existing connection
+                    this.disconnectFromStream();
+
+                    this.isStreaming = true;
+                    this.streamAbortController = new AbortController();
+
+                    try {
+                        const response = await fetch(
+                            `/api/v2/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`,
+                            { signal: this.streamAbortController.signal }
+                        );
 
                         const reader = response.body.getReader();
                         const decoder = new TextDecoder();
@@ -530,181 +614,222 @@
                                 try {
                                     const event = JSON.parse(line.substring(6));
 
-                                    // Debug: log all events except usage
-                                    if (event.type !== 'usage') {
-                                        console.log('SSE Event:', event.type, event.content ? event.content.substring(0, 50) : '(no content)');
+                                    // Track event index for reconnection
+                                    if (event.index !== undefined) {
+                                        this.lastEventIndex = event.index + 1;
                                     }
 
-                                    // Handle stream events inline for better reactivity
-                                    switch (event.type) {
-                                        case 'thinking_start':
-                                            thinkingMsgIndex = this.messages.length;
-                                            thinkingContent = '';
-                                            this.messages.push({
-                                                id: 'msg-' + Date.now() + '-thinking',
-                                                role: 'thinking',
-                                                content: '',
-                                                timestamp: new Date().toISOString(),
-                                                collapsed: false
-                                            });
-                                            break;
-
-                                        case 'thinking_delta':
-                                            if (thinkingMsgIndex >= 0 && event.content) {
-                                                thinkingContent += event.content;
-                                                // Force reactivity by updating array element
-                                                this.messages[thinkingMsgIndex] = {
-                                                    ...this.messages[thinkingMsgIndex],
-                                                    content: thinkingContent
-                                                };
-                                            }
-                                            break;
-
-                                        case 'thinking_signature':
-                                            // Signature is captured but not displayed
-                                            break;
-
-                                        case 'thinking_stop':
-                                            if (thinkingMsgIndex >= 0) {
-                                                this.messages[thinkingMsgIndex] = {
-                                                    ...this.messages[thinkingMsgIndex],
-                                                    collapsed: true
-                                                };
-                                            }
-                                            break;
-
-                                        case 'text_start':
-                                            // Collapse thinking
-                                            if (thinkingMsgIndex >= 0) {
-                                                this.messages[thinkingMsgIndex] = {
-                                                    ...this.messages[thinkingMsgIndex],
-                                                    collapsed: true
-                                                };
-                                            }
-                                            textMsgIndex = this.messages.length;
-                                            textContent = '';
-                                            this.messages.push({
-                                                id: 'msg-' + Date.now() + '-text',
-                                                role: 'assistant',
-                                                content: '',
-                                                timestamp: new Date().toISOString(),
-                                                collapsed: false
-                                            });
-                                            this.scrollToBottom();
-                                            break;
-
-                                        case 'text_delta':
-                                            if (textMsgIndex >= 0 && event.content) {
-                                                textContent += event.content;
-                                                // Force reactivity by updating array element
-                                                this.messages[textMsgIndex] = {
-                                                    ...this.messages[textMsgIndex],
-                                                    content: textContent
-                                                };
-                                                this.scrollToBottom();
-                                            }
-                                            break;
-
-                                        case 'text_stop':
-                                            // Text block complete
-                                            break;
-
-                                        case 'tool_use_start':
-                                            // Collapse thinking
-                                            if (thinkingMsgIndex >= 0) {
-                                                this.messages[thinkingMsgIndex] = {
-                                                    ...this.messages[thinkingMsgIndex],
-                                                    collapsed: true
-                                                };
-                                            }
-                                            toolMsgIndex = this.messages.length;
-                                            toolInput = '';
-                                            this.messages.push({
-                                                id: 'msg-' + Date.now() + '-tool',
-                                                role: 'tool',
-                                                toolName: event.metadata?.tool_name || 'Tool',
-                                                toolId: event.metadata?.tool_id,
-                                                toolInput: '',
-                                                content: '',
-                                                timestamp: new Date().toISOString(),
-                                                collapsed: false
-                                            });
-                                            break;
-
-                                        case 'tool_use_delta':
-                                            if (toolMsgIndex >= 0 && event.content) {
-                                                toolInput += event.content;
-                                                this.messages[toolMsgIndex] = {
-                                                    ...this.messages[toolMsgIndex],
-                                                    toolInput: toolInput,
-                                                    content: toolInput
-                                                };
-                                            }
-                                            break;
-
-                                        case 'tool_use_stop':
-                                            if (toolMsgIndex >= 0) {
-                                                this.messages[toolMsgIndex] = {
-                                                    ...this.messages[toolMsgIndex],
-                                                    collapsed: true
-                                                };
-                                                // Reset for next tool
-                                                toolMsgIndex = -1;
-                                                toolInput = '';
-                                            }
-                                            break;
-
-                                        case 'tool_result':
-                                            // Tool result is handled server-side, displayed on next response
-                                            console.log('Tool result:', event.metadata?.tool_id, event.content?.substring(0, 100));
-                                            break;
-
-                                        case 'usage':
-                                            if (event.metadata) {
-                                                const input = event.metadata.input_tokens || 0;
-                                                const output = event.metadata.output_tokens || 0;
-                                                const cacheCreation = event.metadata.cache_creation_tokens || 0;
-                                                const cacheRead = event.metadata.cache_read_tokens || 0;
-
-                                                this.inputTokens += input;
-                                                this.outputTokens += output;
-                                                this.cacheCreationTokens += cacheCreation;
-                                                this.cacheReadTokens += cacheRead;
-                                                this.totalTokens += input + output;
-                                                this.sessionCost += (input * 3 + output * 15) / 1000000;
-                                            }
-                                            break;
-
-                                        case 'done':
-                                            if (textMsgIndex >= 0) {
-                                                this.messages[textMsgIndex] = {
-                                                    ...this.messages[textMsgIndex],
-                                                    cost: this.sessionCost
-                                                };
-                                            }
-                                            break;
-
-                                        case 'error':
-                                            this.showError(event.content || 'Unknown error');
-                                            break;
-
-                                        case 'debug':
-                                            console.log('Debug from server:', event.content, event.metadata);
-                                            break;
-
-                                        default:
-                                            console.log('Unknown event type:', event.type, event);
+                                    // Handle stream status events
+                                    if (event.type === 'stream_status') {
+                                        console.log('Stream status:', event.status);
+                                        if (event.status === 'completed' || event.status === 'failed') {
+                                            this.isStreaming = false;
+                                            await this.fetchConversations();
+                                        }
+                                        continue;
                                     }
+
+                                    if (event.type === 'timeout') {
+                                        console.log('Stream timeout, reconnecting...');
+                                        // Reconnect from last known position
+                                        setTimeout(() => this.connectToStreamEvents(this.lastEventIndex), 100);
+                                        return;
+                                    }
+
+                                    // Handle regular stream events
+                                    this.handleStreamEvent(event);
+
                                 } catch (parseErr) {
                                     console.error('Parse error:', parseErr, line);
                                 }
                             }
                         }
                     } catch (err) {
-                        this.showError('Streaming error: ' + err.message);
+                        if (err.name === 'AbortError') {
+                            console.log('Stream connection aborted');
+                        } else {
+                            console.error('Stream connection error:', err);
+                        }
                     } finally {
-                        this.isStreaming = false;
-                        await this.fetchConversations();
+                        // Only set isStreaming false if we weren't aborted for reconnection
+                        if (!this.streamAbortController?.signal.aborted) {
+                            this.isStreaming = false;
+                        }
+                    }
+                },
+
+                // Disconnect from stream (for navigation or cleanup)
+                disconnectFromStream() {
+                    if (this.streamAbortController) {
+                        this.streamAbortController.abort();
+                        this.streamAbortController = null;
+                    }
+                },
+
+                // Handle a single stream event
+                handleStreamEvent(event) {
+                    const state = this._streamState;
+
+                    // Debug: log all events except usage
+                    if (event.type !== 'usage') {
+                        console.log('SSE Event:', event.type, event.content ? String(event.content).substring(0, 50) : '(no content)');
+                    }
+
+                    switch (event.type) {
+                        case 'thinking_start':
+                            state.thinkingMsgIndex = this.messages.length;
+                            state.thinkingContent = '';
+                            this.messages.push({
+                                id: 'msg-' + Date.now() + '-thinking',
+                                role: 'thinking',
+                                content: '',
+                                timestamp: new Date().toISOString(),
+                                collapsed: false
+                            });
+                            break;
+
+                        case 'thinking_delta':
+                            if (state.thinkingMsgIndex >= 0 && event.content) {
+                                state.thinkingContent += event.content;
+                                this.messages[state.thinkingMsgIndex] = {
+                                    ...this.messages[state.thinkingMsgIndex],
+                                    content: state.thinkingContent
+                                };
+                            }
+                            break;
+
+                        case 'thinking_signature':
+                            // Signature is captured but not displayed
+                            break;
+
+                        case 'thinking_stop':
+                            if (state.thinkingMsgIndex >= 0) {
+                                this.messages[state.thinkingMsgIndex] = {
+                                    ...this.messages[state.thinkingMsgIndex],
+                                    collapsed: true
+                                };
+                            }
+                            break;
+
+                        case 'text_start':
+                            // Collapse thinking
+                            if (state.thinkingMsgIndex >= 0) {
+                                this.messages[state.thinkingMsgIndex] = {
+                                    ...this.messages[state.thinkingMsgIndex],
+                                    collapsed: true
+                                };
+                            }
+                            state.textMsgIndex = this.messages.length;
+                            state.textContent = '';
+                            this.messages.push({
+                                id: 'msg-' + Date.now() + '-text',
+                                role: 'assistant',
+                                content: '',
+                                timestamp: new Date().toISOString(),
+                                collapsed: false
+                            });
+                            this.scrollToBottom();
+                            break;
+
+                        case 'text_delta':
+                            if (state.textMsgIndex >= 0 && event.content) {
+                                state.textContent += event.content;
+                                this.messages[state.textMsgIndex] = {
+                                    ...this.messages[state.textMsgIndex],
+                                    content: state.textContent
+                                };
+                                this.scrollToBottom();
+                            }
+                            break;
+
+                        case 'text_stop':
+                            // Text block complete
+                            break;
+
+                        case 'tool_use_start':
+                            // Collapse thinking
+                            if (state.thinkingMsgIndex >= 0) {
+                                this.messages[state.thinkingMsgIndex] = {
+                                    ...this.messages[state.thinkingMsgIndex],
+                                    collapsed: true
+                                };
+                            }
+                            state.toolMsgIndex = this.messages.length;
+                            state.toolInput = '';
+                            this.messages.push({
+                                id: 'msg-' + Date.now() + '-tool',
+                                role: 'tool',
+                                toolName: event.metadata?.tool_name || 'Tool',
+                                toolId: event.metadata?.tool_id,
+                                toolInput: '',
+                                content: '',
+                                timestamp: new Date().toISOString(),
+                                collapsed: false
+                            });
+                            break;
+
+                        case 'tool_use_delta':
+                            if (state.toolMsgIndex >= 0 && event.content) {
+                                state.toolInput += event.content;
+                                this.messages[state.toolMsgIndex] = {
+                                    ...this.messages[state.toolMsgIndex],
+                                    toolInput: state.toolInput,
+                                    content: state.toolInput
+                                };
+                            }
+                            break;
+
+                        case 'tool_use_stop':
+                            if (state.toolMsgIndex >= 0) {
+                                this.messages[state.toolMsgIndex] = {
+                                    ...this.messages[state.toolMsgIndex],
+                                    collapsed: true
+                                };
+                                // Reset for next tool
+                                state.toolMsgIndex = -1;
+                                state.toolInput = '';
+                            }
+                            break;
+
+                        case 'tool_result':
+                            console.log('Tool result:', event.metadata?.tool_id, event.content?.substring(0, 100));
+                            break;
+
+                        case 'usage':
+                            if (event.metadata) {
+                                const input = event.metadata.input_tokens || 0;
+                                const output = event.metadata.output_tokens || 0;
+                                const cacheCreation = event.metadata.cache_creation_tokens || 0;
+                                const cacheRead = event.metadata.cache_read_tokens || 0;
+
+                                this.inputTokens += input;
+                                this.outputTokens += output;
+                                this.cacheCreationTokens += cacheCreation;
+                                this.cacheReadTokens += cacheRead;
+                                this.totalTokens += input + output;
+                                this.sessionCost += this.calculateCost(this.model, input, output, cacheCreation, cacheRead);
+                            }
+                            break;
+
+                        case 'done':
+                            if (state.textMsgIndex >= 0) {
+                                this.messages[state.textMsgIndex] = {
+                                    ...this.messages[state.textMsgIndex],
+                                    cost: this.sessionCost
+                                };
+                            }
+                            break;
+
+                        case 'error':
+                            this.showError(event.content || 'Unknown error');
+                            break;
+
+                        case 'debug':
+                            console.log('Debug from server:', event.content, event.metadata);
+                            break;
+
+                        default:
+                            console.log('Unknown event type:', event.type, event);
                     }
                 },
 
