@@ -46,15 +46,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Thinking Levels
+    | Thinking Configuration
     |--------------------------------------------------------------------------
     |
     | Extended thinking configuration for supported providers.
-    | Budget tokens control how much "thinking" the model can do.
+    |
+    | - budget_tokens: How many tokens Claude can use for internal thinking
+    | - response_tokens: How many tokens reserved for the actual response (separate setting)
+    | - max_tokens is calculated as: budget_tokens + response_tokens
+    |
+    | Anthropic recommends budget_tokens be 40-60% of max_tokens.
     |
     */
 
     'thinking' => [
+        // Thinking budget levels (how much Claude can "think")
         'levels' => [
             0 => ['name' => 'Off', 'budget_tokens' => 0],
             1 => ['name' => 'Think', 'budget_tokens' => 4000],
@@ -62,6 +68,27 @@ return [
             3 => ['name' => 'Think Harder', 'budget_tokens' => 20000],
             4 => ['name' => 'Ultrathink', 'budget_tokens' => 32000],
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Response Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Response budget levels (how long Claude's actual response can be).
+    | This is independent of thinking level.
+    | max_tokens = thinking_budget + response_budget
+    |
+    */
+
+    'response' => [
+        'levels' => [
+            0 => ['name' => 'Short', 'tokens' => 4000],
+            1 => ['name' => 'Normal', 'tokens' => 8192],
+            2 => ['name' => 'Long', 'tokens' => 16000],
+            3 => ['name' => 'Very Long', 'tokens' => 32000],
+        ],
+        'default_level' => 1,
     ],
 
     /*

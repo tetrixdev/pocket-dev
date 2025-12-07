@@ -11,6 +11,7 @@ class StreamEvent
     // Event type constants
     public const THINKING_START = 'thinking_start';
     public const THINKING_DELTA = 'thinking_delta';
+    public const THINKING_SIGNATURE = 'thinking_signature';
     public const THINKING_STOP = 'thinking_stop';
     public const TEXT_START = 'text_start';
     public const TEXT_DELTA = 'text_delta';
@@ -22,6 +23,7 @@ class StreamEvent
     public const USAGE = 'usage';
     public const DONE = 'done';
     public const ERROR = 'error';
+    public const DEBUG = 'debug';
 
     public function __construct(
         public string $type,
@@ -38,6 +40,11 @@ class StreamEvent
     public static function thinkingDelta(int $blockIndex, string $content): self
     {
         return new self(self::THINKING_DELTA, $blockIndex, $content);
+    }
+
+    public static function thinkingSignature(int $blockIndex, string $signature): self
+    {
+        return new self(self::THINKING_SIGNATURE, $blockIndex, $signature);
     }
 
     public static function thinkingStop(int $blockIndex): self
@@ -104,6 +111,11 @@ class StreamEvent
     public static function error(string $message): self
     {
         return new self(self::ERROR, null, $message);
+    }
+
+    public static function debug(string $message, array $context = []): self
+    {
+        return new self(self::DEBUG, null, $message, $context);
     }
 
     public function toArray(): array

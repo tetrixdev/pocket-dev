@@ -95,6 +95,10 @@ class AnthropicProvider implements AIProviderInterface
     /**
      * Build the messages array for the API request.
      * Reads from the conversation's stored messages.
+     *
+     * Handles both string content (simple user messages) and
+     * array content (assistant messages with thinking/tool blocks).
+     * Preserves thinking signatures for multi-turn conversations.
      */
     public function buildMessagesFromConversation(Conversation $conversation): array
     {
@@ -106,9 +110,17 @@ class AnthropicProvider implements AIProviderInterface
                 continue;
             }
 
+            $content = $message->content;
+
+            // Ensure user messages with simple strings are properly formatted
+            // Anthropic accepts both string content and array of content blocks
+            if ($message->role === 'user' && is_string($content)) {
+                $content = [['type' => 'text', 'text' => $content]];
+            }
+
             $messages[] = [
                 'role' => $message->role,
-                'content' => $message->content,
+                'content' => $content,
             ];
         }
 
@@ -123,9 +135,25 @@ class AnthropicProvider implements AIProviderInterface
         // Get all messages from conversation (should already include new user message)
         $messages = $this->buildMessagesFromConversation($conversation);
 
+        // Determine max_tokens based on thinking level + response level
+        $thinkingLevel = $options['thinking_level'] ?? 0;
+        $responseLevel = $options['response_level'] ?? config('ai.response.default_level', 1);
+
+        $thinkingConfig = config("ai.thinking.levels.{$thinkingLevel}");
+        $responseConfig = config("ai.response.levels.{$responseLevel}");
+
+        // Thinking budget from selected thinking level
+        $budgetTokens = $thinkingConfig['budget_tokens'] ?? 0;
+
+        // Response budget from selected response level
+        $responseTokens = $responseConfig['tokens'] ?? 8192;
+
+        // max_tokens = thinking budget + response budget
+        $maxTokens = $budgetTokens + $responseTokens;
+
         $body = [
             'model' => $conversation->model ?? config('ai.providers.anthropic.default_model'),
-            'max_tokens' => $options['max_tokens'] ?? config('ai.providers.anthropic.max_tokens', 8192),
+            'max_tokens' => $maxTokens,
             'stream' => true,
             'messages' => $messages,
         ];
@@ -141,15 +169,11 @@ class AnthropicProvider implements AIProviderInterface
         }
 
         // Add thinking configuration if enabled
-        $thinkingLevel = $options['thinking_level'] ?? 0;
-        if ($thinkingLevel > 0) {
-            $thinkingConfig = config("ai.thinking.levels.{$thinkingLevel}");
-            if ($thinkingConfig && $thinkingConfig['budget_tokens'] > 0) {
-                $body['thinking'] = [
-                    'type' => 'enabled',
-                    'budget_tokens' => $thinkingConfig['budget_tokens'],
-                ];
-            }
+        if ($budgetTokens > 0) {
+            $body['thinking'] = [
+                'type' => 'enabled',
+                'budget_tokens' => $budgetTokens,
+            ];
         }
 
         return $body;
@@ -166,6 +190,14 @@ class AnthropicProvider implements AIProviderInterface
 
         $client = new \GuzzleHttp\Client();
 
+        Log::debug('AnthropicProvider: Starting stream request', [
+            'model' => $body['model'] ?? 'unknown',
+            'max_tokens' => $body['max_tokens'] ?? 0,
+            'has_thinking' => isset($body['thinking']),
+            'thinking_budget' => $body['thinking']['budget_tokens'] ?? 0,
+            'message_count' => count($body['messages'] ?? []),
+        ]);
+
         try {
             $response = $client->post($url, [
                 'headers' => [
@@ -180,6 +212,7 @@ class AnthropicProvider implements AIProviderInterface
             $stream = $response->getBody();
             $buffer = '';
             $currentBlocks = [];
+            $eventCount = 0;
 
             // Read stream in chunks
             while (!$stream->eof()) {
@@ -201,27 +234,41 @@ class AnthropicProvider implements AIProviderInterface
                         continue;
                     }
 
+                    $eventCount++;
                     yield from $this->parseSSEEvent($event, $currentBlocks);
                 }
             }
 
             // Process any remaining buffer
             if (!empty(trim($buffer))) {
+                $eventCount++;
                 yield from $this->parseSSEEvent($buffer, $currentBlocks);
             }
+
+            Log::debug('AnthropicProvider: Stream completed', [
+                'event_count' => $eventCount,
+                'block_count' => count($currentBlocks),
+            ]);
 
         } catch (\GuzzleHttp\Exception\ClientException $e) {
             $responseBody = $e->getResponse()->getBody()->getContents();
             $errorData = json_decode($responseBody, true);
             $errorMessage = $errorData['error']['message'] ?? $e->getMessage();
+            Log::error('AnthropicProvider: Client exception', [
+                'error' => $errorMessage,
+                'status' => $e->getResponse()->getStatusCode(),
+            ]);
             yield StreamEvent::error($errorMessage);
         } catch (\Exception $e) {
+            Log::error('AnthropicProvider: Exception', ['error' => $e->getMessage()]);
             yield StreamEvent::error($e->getMessage());
         }
     }
 
     /**
      * Parse a single SSE event and yield StreamEvent(s).
+     *
+     * Note: SSE data can span multiple lines. We concatenate all data: lines.
      */
     private function parseSSEEvent(
         string $event,
@@ -229,23 +276,30 @@ class AnthropicProvider implements AIProviderInterface
     ): Generator {
         $lines = explode("\n", $event);
         $eventType = null;
-        $data = null;
+        $dataLines = [];
 
         foreach ($lines as $line) {
             if (str_starts_with($line, 'event:')) {
                 $eventType = trim(substr($line, 6));
             } elseif (str_starts_with($line, 'data:')) {
-                $data = trim(substr($line, 5));
+                // Concatenate all data lines (SSE spec allows multi-line data)
+                $dataLines[] = trim(substr($line, 5));
             }
         }
 
-        if ($data === null) {
+        if (empty($dataLines)) {
             return;
         }
 
+        // Join data lines (Anthropic typically sends single-line JSON, but be safe)
+        $data = implode('', $dataLines);
         $payload = json_decode($data, true);
 
         if ($payload === null) {
+            Log::warning('AnthropicProvider: Failed to parse JSON', [
+                'event_type' => $eventType,
+                'data' => substr($data, 0, 500),
+            ]);
             return;
         }
 
@@ -291,6 +345,9 @@ class AnthropicProvider implements AIProviderInterface
                 switch ($delta['type']) {
                     case 'thinking_delta':
                         yield StreamEvent::thinkingDelta($index, $delta['thinking']);
+                        break;
+                    case 'signature_delta':
+                        yield StreamEvent::thinkingSignature($index, $delta['signature']);
                         break;
                     case 'text_delta':
                         yield StreamEvent::textDelta($index, $delta['text']);

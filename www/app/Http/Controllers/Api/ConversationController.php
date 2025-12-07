@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Conversation;
 use App\Services\ConversationStreamHandler;
 use App\Services\ProviderFactory;
+use App\Streaming\SseWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -85,51 +86,44 @@ class ConversationController extends Controller
 
     /**
      * Stream a message to the conversation.
+     *
+     * Uses SseWriter to separate frontend SSE output from provider streaming logic.
      */
     public function stream(Request $request, Conversation $conversation): StreamedResponse
     {
         $validated = $request->validate([
             'prompt' => 'required|string',
             'thinking_level' => 'nullable|integer|min:0|max:4',
-            'max_tokens' => 'nullable|integer|min:1|max:32000',
+            'response_level' => 'nullable|integer|min:0|max:3',
         ]);
 
         $provider = $this->providerFactory->make($conversation->provider_type);
 
         if (!$provider->isAvailable()) {
             return response()->stream(function () use ($conversation) {
-                echo "data: " . json_encode([
-                    'type' => 'error',
-                    'content' => "Provider '{$conversation->provider_type}' is not available. Check API key configuration.",
-                ]) . "\n\n";
-                flush();
-            }, 200, $this->streamHeaders());
+                $sse = new SseWriter();
+                $sse->writeError("Provider '{$conversation->provider_type}' is not available. Check API key configuration.");
+            }, 200, SseWriter::headers());
         }
 
         $options = [
             'thinking_level' => $validated['thinking_level'] ?? 0,
-            'max_tokens' => $validated['max_tokens'] ?? config('ai.providers.anthropic.max_tokens', 8192),
+            'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
         ];
 
         return response()->stream(function () use ($conversation, $validated, $provider, $options) {
-            // Disable output buffering for true streaming
-            while (ob_get_level() > 0) {
-                ob_end_flush();
-            }
+            $sse = new SseWriter();
 
             try {
+                // Stream handler yields provider-agnostic StreamEvent objects
+                // SseWriter handles the SSE output to the browser
                 foreach ($this->streamHandler->stream($conversation, $validated['prompt'], $provider, $options) as $event) {
-                    echo "data: " . $event->toJson() . "\n\n";
-                    flush();
+                    $sse->write($event);
                 }
             } catch (\Throwable $e) {
-                echo "data: " . json_encode([
-                    'type' => 'error',
-                    'content' => $e->getMessage(),
-                ]) . "\n\n";
-                flush();
+                $sse->writeError($e->getMessage());
             }
-        }, 200, $this->streamHeaders());
+        }, 200, SseWriter::headers());
     }
 
     /**
@@ -210,16 +204,4 @@ class ConversationController extends Controller
         ]);
     }
 
-    /**
-     * Standard SSE headers.
-     */
-    private function streamHeaders(): array
-    {
-        return [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache',
-            'Connection' => 'keep-alive',
-            'X-Accel-Buffering' => 'no',
-        ];
-    }
 }

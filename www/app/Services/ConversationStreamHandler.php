@@ -134,6 +134,12 @@ class ConversationStreamHandler
                     }
                     break;
 
+                case StreamEvent::THINKING_SIGNATURE:
+                    if (isset($contentBlocks[$event->blockIndex])) {
+                        $contentBlocks[$event->blockIndex]['signature'] = $event->content;
+                    }
+                    break;
+
                 case StreamEvent::TEXT_START:
                     $contentBlocks[$event->blockIndex] = [
                         'type' => 'text',
