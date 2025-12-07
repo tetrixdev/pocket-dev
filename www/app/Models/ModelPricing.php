@@ -9,17 +9,19 @@ class ModelPricing extends Model
     protected $table = 'model_pricing';
 
     protected $fillable = [
-        'model_name',
-        'input_price_per_million',
-        'cache_write_multiplier',
-        'cache_read_multiplier',
-        'output_price_per_million',
+        'provider',
+        'model_id',
+        'name',
+        'input_price',
+        'output_price',
+        'cache_write_price',
+        'cache_read_price',
     ];
 
     protected $casts = [
-        'input_price_per_million' => 'decimal:6',
-        'cache_write_multiplier' => 'decimal:3',
-        'cache_read_multiplier' => 'decimal:3',
-        'output_price_per_million' => 'decimal:6',
+        'input_price' => 'decimal:4',
+        'output_price' => 'decimal:4',
+        'cache_write_price' => 'decimal:4',
+        'cache_read_price' => 'decimal:4',
     ];
 }

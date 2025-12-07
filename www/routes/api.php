@@ -38,8 +38,9 @@ Route::prefix('claude')->group(function () {
 });
 
 // Model pricing
-Route::get('pricing/{modelName}', [PricingController::class, 'show']);
-Route::post('pricing/{modelName}', [PricingController::class, 'store']);
+Route::get('pricing', [PricingController::class, 'index']);
+Route::get('pricing/{modelId}', [PricingController::class, 'show']);
+Route::post('pricing/{modelId}', [PricingController::class, 'store']);
 
 // Multi-provider conversations (v2)
 Route::prefix('v2')->group(function () {

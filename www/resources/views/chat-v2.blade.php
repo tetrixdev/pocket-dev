@@ -208,17 +208,8 @@
                     const savedResponse = localStorage.getItem('responseLevel');
                     if (savedResponse !== null) this.responseLevel = parseInt(savedResponse);
 
-                    // Load saved pricing
-                    const savedPricing = localStorage.getItem('modelPricing');
-                    if (savedPricing) {
-                        try {
-                            const parsed = JSON.parse(savedPricing);
-                            // Merge with defaults (in case new models were added)
-                            this.modelPricing = { ...this.modelPricing, ...parsed };
-                        } catch (e) {
-                            console.error('Failed to parse saved pricing:', e);
-                        }
-                    }
+                    // Fetch pricing from database
+                    await this.fetchPricing();
 
                     // Fetch providers
                     await this.fetchProviders();
@@ -240,6 +231,24 @@
                     } catch (err) {
                         console.error('Failed to fetch providers:', err);
                         this.showError('Failed to load providers');
+                    }
+                },
+
+                async fetchPricing() {
+                    try {
+                        const response = await fetch('/api/pricing');
+                        const data = await response.json();
+                        // Flatten the provider-grouped structure into our flat modelPricing
+                        if (data.pricing) {
+                            for (const [provider, models] of Object.entries(data.pricing)) {
+                                for (const [modelId, pricing] of Object.entries(models)) {
+                                    this.modelPricing[modelId] = pricing;
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch pricing:', err);
+                        // Fall back to defaults already in modelPricing
                     }
                 },
 
@@ -803,8 +812,31 @@
                     ) / 1000000;
                 },
 
-                savePricing() {
-                    localStorage.setItem('modelPricing', JSON.stringify(this.modelPricing));
+                async savePricing(modelId) {
+                    const pricing = this.modelPricing[modelId];
+                    if (!pricing) return;
+
+                    try {
+                        const response = await fetch(`/api/pricing/${encodeURIComponent(modelId)}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
+                            },
+                            body: JSON.stringify({
+                                input: pricing.input,
+                                output: pricing.output,
+                                cacheWrite: pricing.cacheWrite,
+                                cacheRead: pricing.cacheRead,
+                            }),
+                        });
+
+                        if (!response.ok) {
+                            console.error('Failed to save pricing:', await response.text());
+                        }
+                    } catch (err) {
+                        console.error('Failed to save pricing:', err);
+                    }
                 },
 
                 updateModelPricing(modelId, field, value) {
@@ -812,7 +844,9 @@
                         this.modelPricing[modelId] = { ...this.defaultPricing };
                     }
                     this.modelPricing[modelId][field] = parseFloat(value) || 0;
-                    this.savePricing();
+                    // Debounce the save to avoid too many API calls while typing
+                    clearTimeout(this._pricingSaveTimeout);
+                    this._pricingSaveTimeout = setTimeout(() => this.savePricing(modelId), 500);
                 },
 
                 openPricingForModel(modelId) {
