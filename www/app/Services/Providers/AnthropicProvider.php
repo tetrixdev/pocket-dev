@@ -4,6 +4,7 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Services\ModelRepository;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -17,12 +18,14 @@ class AnthropicProvider implements AIProviderInterface
     private string $apiKey;
     private string $baseUrl;
     private string $apiVersion;
+    private ModelRepository $models;
 
-    public function __construct()
+    public function __construct(ModelRepository $models)
     {
         $this->apiKey = config('ai.providers.anthropic.api_key', '');
         $this->baseUrl = config('ai.providers.anthropic.base_url', 'https://api.anthropic.com');
         $this->apiVersion = config('ai.providers.anthropic.api_version', '2023-06-01');
+        $this->models = $models;
     }
 
     public function getProviderType(): string
@@ -37,35 +40,12 @@ class AnthropicProvider implements AIProviderInterface
 
     public function getModels(): array
     {
-        return [
-            'claude-sonnet-4-5-20250929' => [
-                'name' => 'Claude Sonnet 4.5',
-                'context_window' => 200000,
-            ],
-            'claude-opus-4-5-20251101' => [
-                'name' => 'Claude Opus 4.5',
-                'context_window' => 200000,
-            ],
-            'claude-3-5-sonnet-20241022' => [
-                'name' => 'Claude 3.5 Sonnet',
-                'context_window' => 200000,
-            ],
-            'claude-3-opus-20240229' => [
-                'name' => 'Claude 3 Opus',
-                'context_window' => 200000,
-            ],
-            'claude-3-haiku-20240307' => [
-                'name' => 'Claude 3 Haiku',
-                'context_window' => 200000,
-            ],
-        ];
+        return $this->models->getModelsArray('anthropic');
     }
 
     public function getContextWindow(string $model): int
     {
-        $windows = config('ai.context_windows', []);
-
-        return $windows[$model] ?? $windows['default'] ?? 200000;
+        return $this->models->getContextWindow($model);
     }
 
     /**
@@ -190,6 +170,12 @@ class AnthropicProvider implements AIProviderInterface
 
         $client = new \GuzzleHttp\Client();
 
+        // Log full raw request for debugging
+        Log::channel('api')->info('AnthropicProvider: RAW REQUEST', [
+            'url' => $url,
+            'body' => json_encode($body, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+        ]);
+
         Log::debug('AnthropicProvider: Starting stream request', [
             'model' => $body['model'] ?? 'unknown',
             'max_tokens' => $body['max_tokens'] ?? 0,
@@ -293,6 +279,15 @@ class AnthropicProvider implements AIProviderInterface
 
         // Join data lines (Anthropic typically sends single-line JSON, but be safe)
         $data = implode('', $dataLines);
+
+        // Log raw SSE event for debugging (skip delta events to reduce noise)
+        if (!in_array($eventType, ['content_block_delta'])) {
+            Log::channel('api')->debug('AnthropicProvider: RAW SSE EVENT', [
+                'event_type' => $eventType,
+                'data' => $data,
+            ]);
+        }
+
         $payload = json_decode($data, true);
 
         if ($payload === null) {

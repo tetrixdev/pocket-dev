@@ -97,7 +97,13 @@ class ConversationController extends Controller
             'prompt' => 'required|string',
             'thinking_level' => 'nullable|integer|min:0|max:4',
             'response_level' => 'nullable|integer|min:0|max:3',
+            'model' => 'nullable|string|max:100',
         ]);
+
+        // Update model if provided (allows switching mid-conversation)
+        if (!empty($validated['model']) && $validated['model'] !== $conversation->model) {
+            $conversation->update(['model' => $validated['model']]);
+        }
 
         $provider = $this->providerFactory->make($conversation->provider_type);
 
@@ -120,6 +126,10 @@ class ConversationController extends Controller
             'thinking_level' => $validated['thinking_level'] ?? 0,
             'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
         ];
+
+        // Clear any old stream data BEFORE dispatching job
+        // This prevents the race condition where frontend connects and sees old events
+        $this->streamManager->cleanup($conversation->uuid);
 
         // Dispatch background job
         ProcessConversationStream::dispatch(

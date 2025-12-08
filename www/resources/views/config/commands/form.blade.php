@@ -60,9 +60,9 @@
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
         >
             <option value="" {{ old('model', $command['model'] ?? '') == '' ? 'selected' : '' }}>Inherit from conversation</option>
+            <option value="claude-haiku-4-5-20251001" {{ old('model', $command['model'] ?? '') == 'claude-haiku-4-5-20251001' ? 'selected' : '' }}>Claude Haiku 4.5</option>
             <option value="claude-sonnet-4-5-20250929" {{ old('model', $command['model'] ?? '') == 'claude-sonnet-4-5-20250929' ? 'selected' : '' }}>Claude Sonnet 4.5</option>
-            <option value="claude-opus-4-20250514" {{ old('model', $command['model'] ?? '') == 'claude-opus-4-20250514' ? 'selected' : '' }}>Claude Opus 4</option>
-            <option value="claude-3-5-sonnet-20241022" {{ old('model', $command['model'] ?? '') == 'claude-3-5-sonnet-20241022' ? 'selected' : '' }}>Claude 3.5 Sonnet</option>
+            <option value="claude-opus-4-5-20251101" {{ old('model', $command['model'] ?? '') == 'claude-opus-4-5-20251101' ? 'selected' : '' }}>Claude Opus 4.5</option>
         </select>
     </div>
 

@@ -551,15 +551,15 @@ class ClaudeController extends Controller
             return null;
         }
 
-        // Get pricing for this model
-        $pricing = \App\Models\ModelPricing::where('model_name', $modelName)->first();
+        // Get pricing for this model from unified ai_models table
+        $model = \App\Models\AiModel::where('model_id', $modelName)->first();
 
-        if (!$pricing || !$pricing->input_price_per_million || !$pricing->output_price_per_million) {
+        if (!$model || !$model->input_price_per_million || !$model->output_price_per_million) {
             \Log::debug('[COST-CALC] No pricing configured for model', [
                 'model' => $modelName,
-                'pricing_exists' => !!$pricing,
-                'has_input_price' => $pricing ? !!$pricing->input_price_per_million : false,
-                'has_output_price' => $pricing ? !!$pricing->output_price_per_million : false
+                'pricing_exists' => !!$model,
+                'has_input_price' => $model ? !!$model->input_price_per_million : false,
+                'has_output_price' => $model ? !!$model->output_price_per_million : false
             ]);
             return null;
         }
@@ -570,15 +570,22 @@ class ClaudeController extends Controller
         $cacheReadTokens = $usage['cache_read_input_tokens'] ?? 0;
         $outputTokens = $usage['output_tokens'] ?? 0;
 
-        // Get multipliers (with defaults)
-        $cacheWriteMultiplier = $pricing->cache_write_multiplier ?? 1.25;
-        $cacheReadMultiplier = $pricing->cache_read_multiplier ?? 0.1;
+        // Calculate costs using direct cache pricing (or calculate from base input price)
+        $inputCost = ($inputTokens / 1_000_000) * $model->input_price_per_million;
+        $outputCost = ($outputTokens / 1_000_000) * $model->output_price_per_million;
 
-        // Calculate costs with multipliers
-        $inputCost = ($inputTokens / 1000000) * $pricing->input_price_per_million;
-        $cacheWriteCost = ($cacheCreationTokens / 1000000) * $pricing->input_price_per_million * $cacheWriteMultiplier;
-        $cacheReadCost = ($cacheReadTokens / 1000000) * $pricing->input_price_per_million * $cacheReadMultiplier;
-        $outputCost = ($outputTokens / 1000000) * $pricing->output_price_per_million;
+        // Use explicit cache pricing if available, otherwise calculate with multipliers
+        if ($model->cache_write_price_per_million) {
+            $cacheWriteCost = ($cacheCreationTokens / 1_000_000) * $model->cache_write_price_per_million;
+        } else {
+            $cacheWriteCost = ($cacheCreationTokens / 1_000_000) * $model->input_price_per_million * 1.25;
+        }
+
+        if ($model->cache_read_price_per_million) {
+            $cacheReadCost = ($cacheReadTokens / 1_000_000) * $model->cache_read_price_per_million;
+        } else {
+            $cacheReadCost = ($cacheReadTokens / 1_000_000) * $model->input_price_per_million * 0.1;
+        }
 
         $totalCost = $inputCost + $cacheWriteCost + $cacheReadCost + $outputCost;
 

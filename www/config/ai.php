@@ -39,8 +39,8 @@ return [
         'openai' => [
             'api_key' => env('OPENAI_API_KEY'),
             'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
-            'default_model' => env('OPENAI_MODEL', 'gpt-4o'),
-            'max_tokens' => (int) env('OPENAI_MAX_TOKENS', 8192),
+            'default_model' => env('OPENAI_MODEL', 'gpt-5'),
+            'max_tokens' => (int) env('OPENAI_MAX_TOKENS', 16384),
         ],
     ],
 
@@ -115,23 +115,11 @@ return [
     |
     */
 
+    // Context windows are now managed in the ai_models database table.
+    // Use ModelRepository::getContextWindow() to look up values.
+    // This fallback is only used if a model is not found in the database.
     'context_windows' => [
-        // Anthropic
-        'claude-sonnet-4-5-20250929' => 200000,
-        'claude-opus-4-5-20251101' => 200000,
-        'claude-3-5-sonnet-20241022' => 200000,
-        'claude-3-opus-20240229' => 200000,
-        'claude-3-haiku-20240307' => 200000,
-
-        // OpenAI
-        'gpt-4o' => 128000,
-        'gpt-4o-mini' => 128000,
-        'gpt-4-turbo' => 128000,
-        'gpt-4' => 8192,
-        'gpt-3.5-turbo' => 16385,
-
-        // Default fallback
-        'default' => 100000,
+        'default' => 128000,
     ],
 
     /*

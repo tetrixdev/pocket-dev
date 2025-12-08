@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Contracts\AIProviderInterface;
 use App\Services\Providers\AnthropicProvider;
+use App\Services\Providers\OpenAIProvider;
 use InvalidArgumentException;
 
 /**
@@ -14,8 +15,7 @@ class ProviderFactory
     /** @var array<string, class-string<AIProviderInterface>> */
     private array $providers = [
         'anthropic' => AnthropicProvider::class,
-        // Add more providers as they're implemented:
-        // 'openai' => OpenAIProvider::class,
+        'openai' => OpenAIProvider::class,
         // 'claude_code' => ClaudeCodeProvider::class,
     ];
 

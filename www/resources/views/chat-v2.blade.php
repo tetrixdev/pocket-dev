@@ -126,6 +126,7 @@
                 conversations: [],
                 currentConversationUuid: null,
                 isStreaming: false,
+                _justCompletedStream: false,
                 sessionCost: 0,
                 totalTokens: 0,
 
@@ -165,18 +166,8 @@
                 errorMessage: '',
                 openAiKeyInput: '',
 
-                // Pricing settings (per-model)
-                // Default pricing from Anthropic (per million tokens)
-                modelPricing: {
-                    // Anthropic models (prices per million tokens)
-                    // Cache write = 1.25x base input, Cache read = 0.1x base input
-                    'claude-sonnet-4-5-20250929': { input: 3.00, output: 15.00, cacheWrite: 3.75, cacheRead: 0.30, name: 'Claude Sonnet 4.5' },
-                    'claude-opus-4-5-20251101': { input: 5.00, output: 25.00, cacheWrite: 6.25, cacheRead: 0.50, name: 'Claude Opus 4.5' },
-                    'claude-haiku-4-5-20251101': { input: 1.00, output: 5.00, cacheWrite: 1.25, cacheRead: 0.10, name: 'Claude Haiku 4.5' },
-                    'claude-3-5-sonnet-20241022': { input: 3.00, output: 15.00, cacheWrite: 3.75, cacheRead: 0.30, name: 'Claude 3.5 Sonnet' },
-                    'claude-3-opus-20240229': { input: 15.00, output: 75.00, cacheWrite: 18.75, cacheRead: 1.50, name: 'Claude 3 Opus' },
-                    'claude-3-haiku-20240307': { input: 0.25, output: 1.25, cacheWrite: 0.30, cacheRead: 0.03, name: 'Claude 3 Haiku' },
-                },
+                // Pricing settings (per-model) - loaded from API via fetchPricing()
+                modelPricing: {},
                 pricingProvider: 'anthropic',
                 pricingModel: 'claude-sonnet-4-5-20250929',
                 // Legacy flat values (used as fallback)
@@ -212,19 +203,14 @@
                 },
 
                 async init() {
-                    // Load saved thinking level
-                    const savedThinking = localStorage.getItem('thinkingLevel');
-                    if (savedThinking !== null) this.thinkingLevel = parseInt(savedThinking);
-
-                    // Load saved response level
-                    const savedResponse = localStorage.getItem('responseLevel');
-                    if (savedResponse !== null) this.responseLevel = parseInt(savedResponse);
-
                     // Fetch pricing from database
                     await this.fetchPricing();
 
                     // Fetch providers
                     await this.fetchProviders();
+
+                    // Load saved default settings from database
+                    await this.fetchSettings();
 
                     // Load conversations list
                     await this.fetchConversations();
@@ -243,6 +229,50 @@
                     } catch (err) {
                         console.error('Failed to fetch providers:', err);
                         this.showError('Failed to load providers');
+                    }
+                },
+
+                async fetchSettings() {
+                    try {
+                        const response = await fetch('/api/v2/settings/chat-defaults');
+                        const data = await response.json();
+
+                        // Apply saved defaults
+                        if (data.provider && this.providers[data.provider]) {
+                            this.provider = data.provider;
+                            this.updateModels();
+                        }
+                        if (data.model && this.availableModels[data.model]) {
+                            this.model = data.model;
+                        }
+                        if (data.thinking_level !== undefined) {
+                            this.thinkingLevel = data.thinking_level;
+                        }
+                        if (data.response_level !== undefined) {
+                            this.responseLevel = data.response_level;
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch settings:', err);
+                    }
+                },
+
+                async saveDefaultSettings() {
+                    // Only save if we're not in a conversation (these are defaults for new conversations)
+                    if (this.currentConversationUuid) return;
+
+                    try {
+                        await fetch('/api/v2/settings/chat-defaults', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                provider: this.provider,
+                                model: this.model,
+                                thinking_level: this.thinkingLevel,
+                                response_level: this.responseLevel,
+                            })
+                        });
+                    } catch (err) {
+                        console.error('Failed to save settings:', err);
                     }
                 },
 
@@ -274,6 +304,19 @@
                     }
                 },
 
+                // Get short display name for a model ID
+                getModelDisplayName(modelId) {
+                    if (!modelId) return '';
+                    // Check all providers for the model name
+                    for (const [providerKey, provider] of Object.entries(this.providers)) {
+                        if (provider.models?.[modelId]?.name) {
+                            return provider.models[modelId].name;
+                        }
+                    }
+                    // Fallback: extract readable name from model ID
+                    return modelId.replace(/^claude-/, '').replace(/^gpt-/, 'GPT-').replace(/-\d+$/, '');
+                },
+
                 async fetchConversations() {
                     try {
                         const response = await fetch('/api/v2/conversations?working_directory=/var/www');
@@ -298,6 +341,9 @@
                     this.cacheReadTokens = 0;
                     this.isStreaming = false;
                     this.lastEventIndex = 0;
+
+                    // Restore saved default settings for new conversations
+                    await this.fetchSettings();
                 },
 
                 async loadConversation(uuid) {
@@ -362,6 +408,7 @@
                         // Update provider/model from conversation
                         if (data.conversation?.provider_type) {
                             this.provider = data.conversation.provider_type;
+                            this.updateModels(); // Refresh available models for this provider
                         }
                         if (data.conversation?.model) {
                             this.model = data.conversation.model;
@@ -380,17 +427,21 @@
 
                 // Check for active stream and reconnect if found
                 async checkAndReconnectStream(uuid) {
+                    // Don't reconnect if we just finished streaming (prevents duplicate events)
+                    if (this._justCompletedStream) {
+                        return;
+                    }
+
                     try {
                         const response = await fetch(`/api/v2/conversations/${uuid}/stream-status`);
                         const data = await response.json();
 
                         if (data.is_streaming) {
-                            console.log('Found active stream, reconnecting...');
                             // Connect to stream events from the beginning to get buffered events
                             await this.connectToStreamEvents(0);
                         }
                     } catch (err) {
-                        console.log('No active stream found:', err.message);
+                        // No active stream, that's fine
                     }
                 },
 
@@ -543,6 +594,7 @@
 
                     // Reset stream state
                     this.lastEventIndex = 0;
+                    this._justCompletedStream = false;
                     this._streamState = {
                         thinkingMsgIndex: -1,
                         textMsgIndex: -1,
@@ -560,7 +612,8 @@
                             body: JSON.stringify({
                                 prompt: userPrompt,
                                 thinking_level: this.thinkingLevel,
-                                response_level: this.responseLevel
+                                response_level: this.responseLevel,
+                                model: this.model
                             })
                         });
 
@@ -581,8 +634,13 @@
                 },
 
                 // Connect to stream events and handle reconnection
-                async connectToStreamEvents(fromIndex = 0) {
-                    if (!this.currentConversationUuid) return;
+                async connectToStreamEvents(fromIndex = 0, retryCount = 0) {
+                    if (!this.currentConversationUuid) {
+                        return;
+                    }
+
+                    // Max retries for not_found status (job hasn't started yet)
+                    const maxRetries = 15; // 15 * 200ms = 3 seconds max wait
 
                     // Abort any existing connection
                     this.disconnectFromStream();
@@ -591,10 +649,8 @@
                     this.streamAbortController = new AbortController();
 
                     try {
-                        const response = await fetch(
-                            `/api/v2/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`,
-                            { signal: this.streamAbortController.signal }
-                        );
+                        const url = `/api/v2/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`;
+                        const response = await fetch(url, { signal: this.streamAbortController.signal });
 
                         const reader = response.body.getReader();
                         const decoder = new TextDecoder();
@@ -621,16 +677,29 @@
 
                                     // Handle stream status events
                                     if (event.type === 'stream_status') {
-                                        console.log('Stream status:', event.status);
+                                        if (event.status === 'not_found') {
+                                            // Race condition: job hasn't started yet, retry
+                                            if (retryCount < maxRetries) {
+                                                setTimeout(() => this.connectToStreamEvents(0, retryCount + 1), 200);
+                                                return;
+                                            } else {
+                                                this.isStreaming = false;
+                                                this.showError('Failed to connect to stream');
+                                                return;
+                                            }
+                                        }
                                         if (event.status === 'completed' || event.status === 'failed') {
                                             this.isStreaming = false;
+                                            // Prevent reconnection for a short period
+                                            this._justCompletedStream = true;
                                             await this.fetchConversations();
+                                            // Clear flag after a delay
+                                            setTimeout(() => { this._justCompletedStream = false; }, 1000);
                                         }
                                         continue;
                                     }
 
                                     if (event.type === 'timeout') {
-                                        console.log('Stream timeout, reconnecting...');
                                         // Reconnect from last known position
                                         setTimeout(() => this.connectToStreamEvents(this.lastEventIndex), 100);
                                         return;

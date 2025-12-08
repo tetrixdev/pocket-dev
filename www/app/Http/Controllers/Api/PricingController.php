@@ -3,27 +3,34 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ModelPricing;
-use Illuminate\Http\Request;
+use App\Models\AiModel;
+use App\Services\ModelRepository;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PricingController extends Controller
 {
+    public function __construct(
+        private ModelRepository $models
+    ) {}
+
     /**
      * Get all pricing data grouped by provider.
      */
     public function index(): JsonResponse
     {
-        $pricing = ModelPricing::all()
+        $pricing = AiModel::active()
+            ->ordered()
+            ->get()
             ->groupBy('provider')
             ->map(function ($models) {
-                return $models->keyBy('model_id')->map(function ($model) {
+                return $models->keyBy('model_id')->map(function (AiModel $model) {
                     return [
-                        'name' => $model->name,
-                        'input' => (float) $model->input_price,
-                        'output' => (float) $model->output_price,
-                        'cacheWrite' => (float) $model->cache_write_price,
-                        'cacheRead' => (float) $model->cache_read_price,
+                        'name' => $model->display_name,
+                        'input' => (float) $model->input_price_per_million,
+                        'output' => (float) $model->output_price_per_million,
+                        'cacheWrite' => (float) ($model->cache_write_price_per_million ?? 0),
+                        'cacheRead' => (float) ($model->cache_read_price_per_million ?? 0),
                     ];
                 });
             });
@@ -36,9 +43,9 @@ class PricingController extends Controller
      */
     public function show(string $modelId): JsonResponse
     {
-        $pricing = ModelPricing::where('model_id', $modelId)->first();
+        $model = $this->models->findByModelId($modelId);
 
-        if (! $pricing) {
+        if (!$model) {
             return response()->json([
                 'error' => 'Model not found',
                 'model_id' => $modelId,
@@ -46,13 +53,13 @@ class PricingController extends Controller
         }
 
         return response()->json([
-            'model_id' => $pricing->model_id,
-            'name' => $pricing->name,
-            'provider' => $pricing->provider,
-            'input' => (float) $pricing->input_price,
-            'output' => (float) $pricing->output_price,
-            'cacheWrite' => (float) $pricing->cache_write_price,
-            'cacheRead' => (float) $pricing->cache_read_price,
+            'model_id' => $model->model_id,
+            'name' => $model->display_name,
+            'provider' => $model->provider,
+            'input' => (float) $model->input_price_per_million,
+            'output' => (float) $model->output_price_per_million,
+            'cacheWrite' => (float) ($model->cache_write_price_per_million ?? 0),
+            'cacheRead' => (float) ($model->cache_read_price_per_million ?? 0),
         ]);
     }
 
@@ -64,34 +71,37 @@ class PricingController extends Controller
         $validated = $request->validate([
             'input' => 'required|numeric|min:0',
             'output' => 'required|numeric|min:0',
-            'cacheWrite' => 'required|numeric|min:0',
-            'cacheRead' => 'required|numeric|min:0',
+            'cacheWrite' => 'nullable|numeric|min:0',
+            'cacheRead' => 'nullable|numeric|min:0',
         ]);
 
-        $pricing = ModelPricing::where('model_id', $modelId)->first();
+        $model = AiModel::where('model_id', $modelId)->first();
 
-        if (! $pricing) {
+        if (!$model) {
             return response()->json([
                 'error' => 'Model not found',
                 'model_id' => $modelId,
             ], 404);
         }
 
-        $pricing->update([
-            'input_price' => $validated['input'],
-            'output_price' => $validated['output'],
-            'cache_write_price' => $validated['cacheWrite'],
-            'cache_read_price' => $validated['cacheRead'],
+        $model->update([
+            'input_price_per_million' => $validated['input'],
+            'output_price_per_million' => $validated['output'],
+            'cache_write_price_per_million' => $validated['cacheWrite'] ?? null,
+            'cache_read_price_per_million' => $validated['cacheRead'] ?? null,
         ]);
 
+        // Clear cache after update
+        $this->models->clearCache();
+
         return response()->json([
-            'model_id' => $pricing->model_id,
-            'name' => $pricing->name,
-            'provider' => $pricing->provider,
-            'input' => (float) $pricing->input_price,
-            'output' => (float) $pricing->output_price,
-            'cacheWrite' => (float) $pricing->cache_write_price,
-            'cacheRead' => (float) $pricing->cache_read_price,
+            'model_id' => $model->model_id,
+            'name' => $model->display_name,
+            'provider' => $model->provider,
+            'input' => (float) $model->input_price_per_million,
+            'output' => (float) $model->output_price_per_million,
+            'cacheWrite' => (float) ($model->cache_write_price_per_million ?? 0),
+            'cacheRead' => (float) ($model->cache_read_price_per_million ?? 0),
         ]);
     }
 }

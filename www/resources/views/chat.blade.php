@@ -333,8 +333,8 @@
                             Sonnet 4.5 (default)
                         </label>
                         <label class="flex items-center text-gray-300 cursor-pointer">
-                            <input type="radio" x-model="quickSettings.model" value="claude-opus-4-1-20250805" class="mr-2">
-                            Opus 4.1
+                            <input type="radio" x-model="quickSettings.model" value="claude-opus-4-5-20251101" class="mr-2">
+                            Opus 4.5
                         </label>
                     </div>
                 </div>

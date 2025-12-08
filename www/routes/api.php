@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ClaudeController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\PricingController;
+use App\Http\Controllers\Api\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('claude')->group(function () {
@@ -60,4 +61,8 @@ Route::prefix('v2')->group(function () {
     Route::get('conversations/{conversation}/stream-events', [ConversationController::class, 'streamEvents']);
     Route::post('conversations/{conversation}/archive', [ConversationController::class, 'archive']);
     Route::post('conversations/{conversation}/unarchive', [ConversationController::class, 'unarchive']);
+
+    // Settings
+    Route::get('settings/chat-defaults', [SettingsController::class, 'chatDefaults']);
+    Route::post('settings/chat-defaults', [SettingsController::class, 'updateChatDefaults']);
 });
