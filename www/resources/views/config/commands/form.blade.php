@@ -108,17 +108,13 @@
     </div>
 
     <div class="flex gap-3">
-        <button
-            type="submit"
-            class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
-        >
+        <x-button type="submit" variant="primary">
             {{ isset($command) ? 'Update Command' : 'Create Command' }}
-        </button>
-        <a
-            href="{{ route('config.commands') }}"
-            class="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded font-medium inline-block"
-        >
-            Cancel
+        </x-button>
+        <a href="{{ route('config.commands') }}">
+            <x-button type="button" variant="secondary">
+                Cancel
+            </x-button>
         </a>
     </div>
 </form>
@@ -128,9 +124,9 @@
     <form method="POST" action="{{ route('config.commands.delete', $command['filename']) }}" class="mt-4">
         @csrf
         @method('DELETE')
-        <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this command?')">
+        <x-button type="submit" variant="danger" onclick="return confirm('Are you sure you want to delete this command?')">
             Delete Command
-        </button>
+        </x-button>
     </form>
 @endif
 @endsection

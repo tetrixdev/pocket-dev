@@ -70,17 +70,13 @@
     @endif
 
     <div class="flex gap-3">
-        <button
-            type="submit"
-            class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
-        >
+        <x-button type="submit" variant="primary">
             {{ isset($agent) ? 'Update Agent' : 'Create Agent' }}
-        </button>
-        <a
-            href="{{ route('config.agents') }}"
-            class="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded font-medium inline-block"
-        >
-            Cancel
+        </x-button>
+        <a href="{{ route('config.agents') }}">
+            <x-button type="button" variant="secondary">
+                Cancel
+            </x-button>
         </a>
     </div>
 </form>
@@ -90,9 +86,9 @@
     <form method="POST" action="{{ route('config.agents.delete', $agent['filename']) }}" class="mt-4">
         @csrf
         @method('DELETE')
-        <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this agent?')">
+        <x-button type="submit" variant="danger" onclick="return confirm('Are you sure you want to delete this agent?')">
             Delete Agent
-        </button>
+        </x-button>
     </form>
 @endif
 @endsection

@@ -63,11 +63,11 @@
 
                 <template x-for="(msg, index) in messages" :key="msg.id">
                     <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
-                        @include('partials.chat-v2.messages.user-message', ['variant' => 'desktop'])
-                        @include('partials.chat-v2.messages.assistant-message', ['variant' => 'desktop'])
-                        @include('partials.chat-v2.messages.thinking-block', ['variant' => 'desktop'])
-                        @include('partials.chat-v2.messages.tool-block', ['variant' => 'desktop'])
-                        @include('partials.chat-v2.messages.empty-response', ['variant' => 'desktop'])
+                        <x-chat.user-message variant="desktop" />
+                        <x-chat.assistant-message variant="desktop" />
+                        <x-chat.thinking-block variant="desktop" />
+                        <x-chat.tool-block variant="desktop" />
+                        <x-chat.empty-response variant="desktop" />
                     </div>
                 </template>
             </div>
@@ -91,11 +91,11 @@
 
             <template x-for="(msg, index) in messages" :key="msg.id + '-mobile'">
                 <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
-                    @include('partials.chat-v2.messages.user-message', ['variant' => 'mobile'])
-                    @include('partials.chat-v2.messages.assistant-message', ['variant' => 'mobile'])
-                    @include('partials.chat-v2.messages.thinking-block', ['variant' => 'mobile'])
-                    @include('partials.chat-v2.messages.tool-block', ['variant' => 'mobile'])
-                    @include('partials.chat-v2.messages.empty-response', ['variant' => 'mobile'])
+                    <x-chat.user-message variant="mobile" />
+                    <x-chat.assistant-message variant="mobile" />
+                    <x-chat.thinking-block variant="mobile" />
+                    <x-chat.tool-block variant="mobile" />
+                    <x-chat.empty-response variant="mobile" />
                 </div>
             </template>
         </div>

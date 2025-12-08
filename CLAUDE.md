@@ -48,6 +48,58 @@ docker compose up -d --force-recreate
 - Use public properties for simple values (booleans, strings, arrays) instead of getter methods
 - Reserve methods for computed values, logic, or actions (like `execute()`)
 
+## Blade Components
+
+Use Laravel anonymous components (`<x-*>`) instead of partials/includes for reusable UI elements.
+
+### Available Components
+
+| Component | Usage | Variants/Props |
+|-----------|-------|----------------|
+| `<x-modal>` | Modal dialogs | `show`, `title`, `max-width` (sm/md/lg/xl/2xl) |
+| `<x-button>` | All buttons | `variant` (primary/secondary/success/danger/purple/ghost), `size` (sm/md/lg), `full-width`, `type` |
+| `<x-text-input>` | Text inputs | `type`, `label`, `hint` |
+| `<x-chat.*>` | Chat messages | `user-message`, `assistant-message`, `thinking-block`, `tool-block`, `empty-response`, `cost-badge` |
+| `<x-icon.*>` | SVG icons | `lightbulb`, `cog`, `chevron-down`, `info`, `menu`, `x`, `chevron-left` |
+
+### Examples
+
+```blade
+{{-- Modal --}}
+<x-modal show="showMyModal" title="My Modal" max-width="lg">
+    <p>Modal content here</p>
+    <x-button variant="primary" @click="showMyModal = false">Close</x-button>
+</x-modal>
+
+{{-- Button variants --}}
+<x-button variant="primary" type="submit">Save</x-button>
+<x-button variant="secondary">Cancel</x-button>
+<x-button variant="danger" onclick="return confirm('Sure?')">Delete</x-button>
+
+{{-- Text input with label --}}
+<x-text-input type="password" label="API Key" x-model="apiKey" placeholder="sk-..." />
+
+{{-- Chat messages (inside Alpine x-for loop) --}}
+<x-chat.user-message variant="desktop" />
+<x-chat.assistant-message variant="mobile" />
+```
+
+### Component Location
+
+Components live in `resources/views/components/`:
+- `modal.blade.php` - Reusable modal wrapper
+- `button.blade.php` - Button with variants
+- `text-input.blade.php` - Styled text input
+- `chat/` - Chat message components
+- `icon/` - SVG icon components
+
+### Guidelines
+
+1. **Use components for reusable UI** - Prefer `<x-button>` over inline button HTML
+2. **Pass Alpine.js state via show prop** - Modals use `show="alpineVariable"` for visibility
+3. **Chat components access parent scope** - They expect `msg` variable from x-for loop
+4. **Add new icons to `components/icon/`** - Keep SVGs as components for consistency
+
 ## Git Workflow
 
 - Create feature branches for changes
