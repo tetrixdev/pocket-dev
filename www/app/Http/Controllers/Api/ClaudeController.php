@@ -502,6 +502,9 @@ class ClaudeController extends Controller
             return response()->json(['error' => 'Session not found'], 404);
         }
 
+        // Pre-load all models indexed by model_id to avoid N+1 queries
+        $modelsLookup = \App\Models\AiModel::all()->keyBy('model_id');
+
         $messages = [];
         $handle = fopen($sessionFile, 'r');
 
@@ -516,10 +519,10 @@ class ClaudeController extends Controller
                 $usage = $data['usage'] ?? $data['message']['usage'] ?? null;
                 $model = $data['message']['model'] ?? null;
 
-                // Calculate cost server-side
+                // Calculate cost server-side using pre-loaded models
                 $cost = null;
                 if ($usage && $model) {
-                    $cost = $this->calculateMessageCost($usage, $model);
+                    $cost = $this->calculateMessageCost($usage, $model, $modelsLookup);
                 }
 
                 $messages[] = [
@@ -543,16 +546,22 @@ class ClaudeController extends Controller
 
     /**
      * Calculate cost for a message based on usage and model pricing.
+     *
+     * @param array|null $usage Token usage data
+     * @param string|null $modelName Model identifier
+     * @param \Illuminate\Support\Collection|null $modelsLookup Pre-loaded models indexed by model_id (avoids N+1)
      */
-    private function calculateMessageCost(?array $usage, ?string $modelName): ?float
+    private function calculateMessageCost(?array $usage, ?string $modelName, ?\Illuminate\Support\Collection $modelsLookup = null): ?float
     {
         if (!$usage || !$modelName) {
             \Log::debug('[COST-CALC] Missing usage or model', ['usage' => !!$usage, 'model' => $modelName]);
             return null;
         }
 
-        // Get pricing for this model from unified ai_models table
-        $model = \App\Models\AiModel::where('model_id', $modelName)->first();
+        // Use pre-loaded lookup if available, otherwise query (fallback for other callers)
+        $model = $modelsLookup
+            ? $modelsLookup->get($modelName)
+            : \App\Models\AiModel::where('model_id', $modelName)->first();
 
         if (!$model || !$model->input_price_per_million || !$model->output_price_per_million) {
             \Log::debug('[COST-CALC] No pricing configured for model', [
@@ -826,28 +835,5 @@ class ClaudeController extends Controller
                 'error' => 'Failed to save settings: ' . $e->getMessage()
             ], 500);
         }
-    }
-
-    /**
-     * Log audio file for debugging.
-     */
-    private function logAudioFile($audioFile): void
-    {
-        $timestamp = now()->format('Y-m-d_H-i-s');
-        $filename = "voice_recording_{$timestamp}.{$audioFile->getClientOriginalExtension()}";
-        $storagePath = storage_path('app/audio_recordings');
-
-        if (!file_exists($storagePath)) {
-            mkdir($storagePath, 0755, true);
-        }
-
-        $fullPath = $storagePath . '/' . $filename;
-        copy($audioFile->getRealPath(), $fullPath);
-
-        Log::debug('Audio file saved for debugging', [
-            'filename' => $filename,
-            'path' => $fullPath,
-            'size' => filesize($fullPath) . ' bytes',
-        ]);
     }
 }
