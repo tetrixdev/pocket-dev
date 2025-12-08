@@ -16,7 +16,6 @@ Route::prefix('claude')->group(function () {
 
     // Streaming queries
     Route::post('sessions/{session}/stream', [ClaudeController::class, 'streamQuery']);
-    Route::get('sessions/{session}/poll', [ClaudeController::class, 'pollMessages']);
     Route::get('sessions/{session}/status', [ClaudeController::class, 'getSessionStatus']);
     Route::get('sessions/{session}/history', [ClaudeController::class, 'getStreamingHistory']);
     Route::post('sessions/{session}/cancel', [ClaudeController::class, 'cancel']);

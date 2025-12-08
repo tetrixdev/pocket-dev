@@ -3,7 +3,6 @@
 namespace App\Providers;
 
 use App\Contracts\AIProviderInterface;
-use App\Services\ConversationStreamHandler;
 use App\Services\Providers\AnthropicProvider;
 use App\Services\SystemPromptBuilder;
 use App\Services\ToolRegistry;
@@ -49,14 +48,6 @@ class AIServiceProvider extends ServiceProvider
 
         // Register SystemPromptBuilder
         $this->app->singleton(SystemPromptBuilder::class);
-
-        // Register ConversationStreamHandler
-        $this->app->singleton(ConversationStreamHandler::class, function ($app) {
-            return new ConversationStreamHandler(
-                $app->make(ToolRegistry::class),
-                $app->make(SystemPromptBuilder::class)
-            );
-        });
 
         // Register providers
         $this->app->singleton(AnthropicProvider::class);
