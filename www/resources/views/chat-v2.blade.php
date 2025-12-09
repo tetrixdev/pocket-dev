@@ -538,7 +538,9 @@
                                     id: 'msg-' + Date.now() + '-' + Math.random(),
                                     role: 'tool',
                                     toolName: block.name,
+                                    toolId: block.id,
                                     toolInput: block.input,
+                                    toolResult: null,
                                     content: JSON.stringify(block.input, null, 2),
                                     timestamp: dbMsg.created_at,
                                     collapsed: true,
@@ -549,6 +551,15 @@
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
                                     cacheReadTokens: isLast ? msgCacheRead : null
                                 });
+                            } else if (block.type === 'tool_result' && block.tool_use_id) {
+                                // Link result to the corresponding tool message
+                                const toolMsgIndex = this.messages.findIndex(m => m.role === 'tool' && m.toolId === block.tool_use_id);
+                                if (toolMsgIndex >= 0) {
+                                    this.messages[toolMsgIndex] = {
+                                        ...this.messages[toolMsgIndex],
+                                        toolResult: block.content
+                                    };
+                                }
                             }
                         }
                     }
@@ -831,6 +842,7 @@
                                 toolName: event.metadata?.tool_name || 'Tool',
                                 toolId: event.metadata?.tool_id,
                                 toolInput: '',
+                                toolResult: null,
                                 content: '',
                                 timestamp: new Date().toISOString(),
                                 collapsed: false
@@ -861,7 +873,17 @@
                             break;
 
                         case 'tool_result':
-                            console.log('Tool result:', event.metadata?.tool_id, event.content?.substring(0, 100));
+                            // Find the tool message with matching toolId and add the result
+                            const toolUseId = event.metadata?.tool_id;
+                            if (toolUseId) {
+                                const toolMsgIndex = this.messages.findIndex(m => m.role === 'tool' && m.toolId === toolUseId);
+                                if (toolMsgIndex >= 0) {
+                                    this.messages[toolMsgIndex] = {
+                                        ...this.messages[toolMsgIndex],
+                                        toolResult: event.content
+                                    };
+                                }
+                            }
                             break;
 
                         case 'usage':
@@ -971,6 +993,16 @@
                                     : JSON.stringify(value);
                                 html += `<div><span class="text-blue-300 font-semibold">${this.escapeHtml(key)}:</span> ${this.escapeHtml(displayValue)}</div>`;
                             }
+                        }
+
+                        // Add result section if available
+                        if (msg.toolResult) {
+                            const resultText = typeof msg.toolResult === 'string' ? msg.toolResult : JSON.stringify(msg.toolResult, null, 2);
+                            const resultPreview = resultText.length > 500 ? resultText.substring(0, 500) + '...' : resultText;
+                            html += `<div class="mt-3 pt-3 border-t border-blue-500/20">
+                                <div class="text-blue-300 font-semibold mb-1">Result:</div>
+                                <pre class="text-green-200 bg-blue-950/50 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(resultPreview)}</pre>
+                            </div>`;
                         }
 
                         return html;
