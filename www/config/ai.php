@@ -46,21 +46,54 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Thinking Configuration
+    | Reasoning Configuration (Provider-Specific)
     |--------------------------------------------------------------------------
     |
-    | Extended thinking configuration for supported providers.
+    | Each provider has different reasoning/thinking models:
     |
+    | Anthropic: Uses explicit budget_tokens allocation
     | - budget_tokens: How many tokens Claude can use for internal thinking
-    | - response_tokens: How many tokens reserved for the actual response (separate setting)
     | - max_tokens is calculated as: budget_tokens + response_tokens
+    | - Anthropic recommends budget_tokens be 40-60% of max_tokens
     |
-    | Anthropic recommends budget_tokens be 40-60% of max_tokens.
+    | OpenAI: Uses abstract effort levels + summary display
+    | - effort: How hard to think (none/low/medium/high)
+    | - summary: What to show user (concise/detailed/auto/null)
+    | - Token usage is determined internally by the model
     |
     */
 
+    'reasoning' => [
+        // Anthropic: explicit token budgets
+        'anthropic' => [
+            'levels' => [
+                ['name' => 'Off', 'budget_tokens' => 0],
+                ['name' => 'Light', 'budget_tokens' => 4000],
+                ['name' => 'Standard', 'budget_tokens' => 10000],
+                ['name' => 'Deep', 'budget_tokens' => 20000],
+                ['name' => 'Maximum', 'budget_tokens' => 32000],
+            ],
+        ],
+
+        // OpenAI: effort levels (model decides token usage)
+        'openai' => [
+            'effort_levels' => [
+                ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
+                ['value' => 'low', 'name' => 'Light', 'description' => 'Quick reasoning'],
+                ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
+                ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
+            ],
+            'summary_options' => [
+                ['value' => null, 'name' => 'Hidden', 'description' => "Don't show thinking"],
+                ['value' => 'concise', 'name' => 'Concise', 'description' => 'Brief summary'],
+                ['value' => 'detailed', 'name' => 'Detailed', 'description' => 'Full summary'],
+                ['value' => 'auto', 'name' => 'Auto', 'description' => 'Best available'],
+            ],
+        ],
+    ],
+
+    // Legacy thinking config - kept for backwards compatibility during transition
     'thinking' => [
-        // Thinking budget levels (how much Claude can "think")
         'levels' => [
             0 => ['name' => 'Off', 'budget_tokens' => 0],
             1 => ['name' => 'Think', 'budget_tokens' => 4000],

@@ -171,15 +171,20 @@ class OpenAIProvider implements AIProviderInterface
             $body['tools'] = $this->convertToolsToResponsesApi($options['tools']);
         }
 
-        // Add reasoning/thinking if requested
-        $thinkingLevel = $options['thinking_level'] ?? config('ai.thinking.default_level', 0);
-        $thinkingConfig = config("ai.thinking.levels.{$thinkingLevel}");
-        $budgetTokens = $thinkingConfig['budget_tokens'] ?? 0;
-        if ($budgetTokens > 0) {
+        // Add reasoning configuration from conversation settings
+        $reasoningConfig = $conversation->getReasoningConfig();
+        $effort = $reasoningConfig['effort'] ?? 'none';
+
+        if ($effort !== 'none') {
             $body['reasoning'] = [
-                'effort' => $this->mapThinkingToEffort($budgetTokens),
-                'summary' => 'auto', // Request reasoning summaries to show thinking
+                'effort' => $effort,
             ];
+
+            // Add summary only if user wants to see thinking
+            $summary = $reasoningConfig['summary'] ?? null;
+            if ($summary !== null) {
+                $body['reasoning']['summary'] = $summary;
+            }
         }
 
         $client = new \GuzzleHttp\Client();
@@ -316,19 +321,6 @@ class OpenAIProvider implements AIProviderInterface
             ]);
             yield StreamEvent::error($e->getMessage());
         }
-    }
-
-    /**
-     * Map thinking tokens to OpenAI reasoning effort level.
-     */
-    private function mapThinkingToEffort(int $tokens): string
-    {
-        if ($tokens >= 20000) {
-            return 'high';
-        } elseif ($tokens >= 10000) {
-            return 'medium';
-        }
-        return 'low';
     }
 
     /**

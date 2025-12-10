@@ -10,15 +10,21 @@
                class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white">
     </div>
 
-    {{-- Controls Row 1: Thinking + Clear --}}
+    {{-- Controls Row 1: Reasoning + Clear --}}
     <div class="px-3 pb-2 grid grid-cols-2 gap-2">
-        {{-- Thinking Toggle --}}
+        {{-- Reasoning Toggle (Provider-specific) --}}
         <button type="button"
-                @click="cycleThinkingMode()"
-                :class="thinkingModes[thinkingLevel].color"
+                @click="cycleReasoningLevel()"
+                :class="{
+                    'bg-gray-600 text-gray-200': currentReasoningName === 'Off',
+                    'bg-blue-600 text-white': currentReasoningName === 'Light',
+                    'bg-purple-600 text-white': currentReasoningName === 'Standard',
+                    'bg-pink-600 text-white': currentReasoningName === 'Deep',
+                    'bg-yellow-600 text-white': currentReasoningName === 'Maximum'
+                }"
                 class="px-4 py-3 rounded-lg font-medium text-sm flex items-center justify-center transition-all">
-            <span x-text="thinkingModes[thinkingLevel].icon"></span>
-            <span class="ml-1" x-text="thinkingModes[thinkingLevel].name"></span>
+            <span x-text="currentReasoningName === 'Off' ? '🧠' : (currentReasoningName === 'Light' ? '💭' : (currentReasoningName === 'Standard' ? '🤔' : (currentReasoningName === 'Deep' ? '🧩' : '🌟')))"></span>
+            <span class="ml-1" x-text="currentReasoningName"></span>
         </button>
 
         {{-- Clear Button --}}
@@ -28,6 +34,19 @@
             Clear
         </button>
     </div>
+
+    {{-- OpenAI Summary Toggle (only shown for OpenAI when reasoning is enabled) --}}
+    <template x-if="provider === 'openai' && openaiReasoningEffort !== 'none'">
+        <div class="px-3 pb-2">
+            <select x-model="openaiReasoningSummary"
+                    @change="saveDefaultSettings()"
+                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500">
+                <template x-for="opt in openaiSummaryOptions" :key="opt.value">
+                    <option :value="opt.value" x-text="'Show Thinking: ' + opt.name"></option>
+                </template>
+            </select>
+        </div>
+    </template>
 
     {{-- Controls Row 2: Voice + Send --}}
     <div class="px-3 pb-3 grid grid-cols-2 gap-2">

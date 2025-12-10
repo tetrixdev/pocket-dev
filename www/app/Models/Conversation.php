@@ -23,12 +23,19 @@ class Conversation extends Model
         'total_output_tokens',
         'status',
         'last_activity_at',
+        // Provider-specific reasoning settings
+        'anthropic_thinking_budget',
+        'openai_reasoning_effort',
+        'openai_reasoning_summary',
+        'response_level',
     ];
 
     protected $casts = [
         'last_activity_at' => 'datetime',
         'total_input_tokens' => 'integer',
         'total_output_tokens' => 'integer',
+        'anthropic_thinking_budget' => 'integer',
+        'response_level' => 'integer',
     ];
 
     protected static function boot(): void
@@ -120,5 +127,26 @@ class Conversation extends Model
     public function scopeForProvider($query, string $providerType)
     {
         return $query->where('provider_type', $providerType);
+    }
+
+    /**
+     * Get provider-specific reasoning configuration.
+     *
+     * Returns the appropriate reasoning settings based on the conversation's provider type.
+     * - Anthropic: uses budget_tokens (explicit token allocation)
+     * - OpenAI: uses effort (none/low/medium/high) + summary (concise/detailed/auto/null)
+     */
+    public function getReasoningConfig(): array
+    {
+        return match ($this->provider_type) {
+            'anthropic' => [
+                'budget_tokens' => $this->anthropic_thinking_budget ?? 0,
+            ],
+            'openai' => [
+                'effort' => $this->openai_reasoning_effort ?? 'none',
+                'summary' => $this->openai_reasoning_summary, // null = don't show thinking
+            ],
+            default => [],
+        };
     }
 }

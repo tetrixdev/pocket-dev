@@ -18,18 +18,36 @@
                :disabled="isStreaming"
                placeholder="Ask Claude to help with your code..."
                class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white"
-               @keydown.ctrl.t.prevent="cycleThinkingMode()"
+               @keydown.ctrl.t.prevent="cycleReasoningLevel()"
                @keydown.ctrl.space.prevent="toggleVoiceRecording()">
 
-        {{-- Thinking Toggle --}}
+        {{-- Reasoning Toggle (Provider-specific) --}}
         <button type="button"
-                @click="cycleThinkingMode()"
-                :class="thinkingModes[thinkingLevel].color"
+                @click="cycleReasoningLevel()"
+                :class="{
+                    'bg-gray-600 text-gray-200': currentReasoningName === 'Off',
+                    'bg-blue-600 text-white': currentReasoningName === 'Light',
+                    'bg-purple-600 text-white': currentReasoningName === 'Standard',
+                    'bg-pink-600 text-white': currentReasoningName === 'Deep',
+                    'bg-yellow-600 text-white': currentReasoningName === 'Maximum'
+                }"
                 class="px-4 py-3 rounded-lg font-medium text-sm cursor-pointer transition-all duration-200 hover:opacity-80 flex items-center justify-center"
-                title="Click to toggle extended thinking (Ctrl+T)">
-            <span x-text="thinkingModes[thinkingLevel].icon"></span>
-            <span class="ml-1" x-text="thinkingModes[thinkingLevel].name"></span>
+                title="Click to toggle reasoning (Ctrl+T)">
+            <span x-text="currentReasoningName === 'Off' ? '🧠' : (currentReasoningName === 'Light' ? '💭' : (currentReasoningName === 'Standard' ? '🤔' : (currentReasoningName === 'Deep' ? '🧩' : '🌟')))"></span>
+            <span class="ml-1" x-text="currentReasoningName"></span>
         </button>
+
+        {{-- OpenAI Summary Toggle (only shown for OpenAI when reasoning is enabled) --}}
+        <template x-if="provider === 'openai' && openaiReasoningEffort !== 'none'">
+            <select x-model="openaiReasoningSummary"
+                    @change="saveDefaultSettings()"
+                    class="px-3 py-3 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+                    title="Thinking visibility">
+                <template x-for="opt in openaiSummaryOptions" :key="opt.value">
+                    <option :value="opt.value" x-text="opt.name"></option>
+                </template>
+            </select>
+        </template>
 
         {{-- Send Button --}}
         <button type="submit"
