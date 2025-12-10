@@ -36,7 +36,6 @@ class ConversationController extends Controller
             // Provider-specific reasoning settings
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
-            'openai_reasoning_summary' => 'nullable|string|in:concise,detailed,auto',
             'response_level' => 'nullable|integer|min:0|max:3',
         ]);
 
@@ -55,13 +54,8 @@ class ConversationController extends Controller
         if ($providerType === 'anthropic' && isset($validated['anthropic_thinking_budget'])) {
             $conversationData['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
         }
-        if ($providerType === 'openai') {
-            if (isset($validated['openai_reasoning_effort'])) {
-                $conversationData['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
-            }
-            if (array_key_exists('openai_reasoning_summary', $validated)) {
-                $conversationData['openai_reasoning_summary'] = $validated['openai_reasoning_summary'];
-            }
+        if ($providerType === 'openai' && isset($validated['openai_reasoning_effort'])) {
+            $conversationData['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
         }
 
         $conversation = Conversation::create($conversationData);
@@ -120,7 +114,6 @@ class ConversationController extends Controller
             // Provider-specific reasoning settings
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
-            'openai_reasoning_summary' => 'nullable|string|in:concise,detailed,auto',
             'response_level' => 'nullable|integer|min:0|max:3',
             // Legacy support - will be converted to provider-specific
             'thinking_level' => 'nullable|integer|min:0|max:4',
@@ -150,12 +143,9 @@ class ConversationController extends Controller
                 $updates['anthropic_thinking_budget'] = $thinkingConfig['budget_tokens'] ?? 0;
             }
         } elseif ($conversation->provider_type === 'openai') {
-            // OpenAI: use native effort/summary settings
+            // OpenAI: use native effort setting
             if (isset($validated['openai_reasoning_effort'])) {
                 $updates['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
-            }
-            if (array_key_exists('openai_reasoning_summary', $validated)) {
-                $updates['openai_reasoning_summary'] = $validated['openai_reasoning_summary'];
             }
         }
 

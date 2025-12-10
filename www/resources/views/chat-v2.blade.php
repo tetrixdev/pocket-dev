@@ -139,7 +139,6 @@
                 // Provider-specific reasoning settings
                 anthropicThinkingBudget: 0,
                 openaiReasoningEffort: 'none',
-                openaiReasoningSummary: null,
 
                 // Response length modes
                 responseLevel: 1,
@@ -249,9 +248,6 @@
                         if (data.openai_reasoning_effort !== undefined) {
                             this.openaiReasoningEffort = data.openai_reasoning_effort;
                         }
-                        if (data.openai_reasoning_summary !== undefined) {
-                            this.openaiReasoningSummary = data.openai_reasoning_summary;
-                        }
                     } catch (err) {
                         console.error('Failed to fetch settings:', err);
                     }
@@ -272,7 +268,6 @@
                                 // Provider-specific reasoning settings
                                 anthropic_thinking_budget: this.anthropicThinkingBudget,
                                 openai_reasoning_effort: this.openaiReasoningEffort,
-                                openai_reasoning_summary: this.openaiReasoningSummary,
                             })
                         });
                     } catch (err) {
@@ -422,7 +417,6 @@
                         this.responseLevel = data.conversation?.response_level ?? 1;
                         this.anthropicThinkingBudget = data.conversation?.anthropic_thinking_budget ?? 0;
                         this.openaiReasoningEffort = data.conversation?.openai_reasoning_effort ?? 'none';
-                        this.openaiReasoningSummary = data.conversation?.openai_reasoning_summary ?? null;
 
                         this.scrollToBottom();
 
@@ -596,7 +590,6 @@
                                 createBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
                             } else if (this.provider === 'openai') {
                                 createBody.openai_reasoning_effort = this.openaiReasoningEffort;
-                                createBody.openai_reasoning_summary = this.openaiReasoningSummary;
                             }
 
                             const response = await fetch('/api/v2/conversations', {
@@ -647,7 +640,6 @@
                             streamBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
                         } else if (this.provider === 'openai') {
                             streamBody.openai_reasoning_effort = this.openaiReasoningEffort;
-                            streamBody.openai_reasoning_summary = this.openaiReasoningSummary;
                         }
 
                         // Start the background streaming job
@@ -979,16 +971,6 @@
                     ];
                 },
 
-                // Get OpenAI summary options from config
-                get openaiSummaryOptions() {
-                    return this.currentReasoningConfig.summary_options || [
-                        { value: null, name: 'Hidden' },
-                        { value: 'concise', name: 'Concise' },
-                        { value: 'detailed', name: 'Detailed' },
-                        { value: 'auto', name: 'Auto' },
-                    ];
-                },
-
                 // Get display name for current reasoning setting
                 get currentReasoningName() {
                     if (this.provider === 'anthropic') {
@@ -1013,10 +995,6 @@
                         const currentIndex = levels.findIndex(l => l.value === this.openaiReasoningEffort);
                         const nextIndex = (currentIndex + 1) % levels.length;
                         this.openaiReasoningEffort = levels[nextIndex].value;
-                        // Auto-enable summary when enabling reasoning
-                        if (this.openaiReasoningEffort !== 'none' && this.openaiReasoningSummary === null) {
-                            this.openaiReasoningSummary = 'auto';
-                        }
                     }
                     this.saveDefaultSettings();
                 },

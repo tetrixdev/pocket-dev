@@ -178,13 +178,8 @@ class OpenAIProvider implements AIProviderInterface
         if ($effort !== 'none') {
             $body['reasoning'] = [
                 'effort' => $effort,
+                'summary' => 'auto', // Always show thinking when reasoning is enabled
             ];
-
-            // Add summary only if user wants to see thinking
-            $summary = $reasoningConfig['summary'] ?? null;
-            if ($summary !== null) {
-                $body['reasoning']['summary'] = $summary;
-            }
         }
 
         $client = new \GuzzleHttp\Client();

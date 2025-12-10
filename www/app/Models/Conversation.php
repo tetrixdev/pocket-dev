@@ -26,7 +26,6 @@ class Conversation extends Model
         // Provider-specific reasoning settings
         'anthropic_thinking_budget',
         'openai_reasoning_effort',
-        'openai_reasoning_summary',
         'response_level',
     ];
 
@@ -134,7 +133,7 @@ class Conversation extends Model
      *
      * Returns the appropriate reasoning settings based on the conversation's provider type.
      * - Anthropic: uses budget_tokens (explicit token allocation)
-     * - OpenAI: uses effort (none/low/medium/high) + summary (concise/detailed/auto/null)
+     * - OpenAI: uses effort (none/low/medium/high)
      */
     public function getReasoningConfig(): array
     {
@@ -144,7 +143,6 @@ class Conversation extends Model
             ],
             'openai' => [
                 'effort' => $this->openai_reasoning_effort ?? 'none',
-                'summary' => $this->openai_reasoning_summary, // null = don't show thinking
             ],
             default => [],
         };

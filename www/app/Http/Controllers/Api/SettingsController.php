@@ -21,7 +21,6 @@ class SettingsController extends Controller
             // Provider-specific reasoning defaults
             'chat.anthropic_thinking_budget',
             'chat.openai_reasoning_effort',
-            'chat.openai_reasoning_summary',
             // Legacy
             'chat.thinking_level',
         ], [
@@ -30,7 +29,6 @@ class SettingsController extends Controller
             'chat.response_level' => 1,
             'chat.anthropic_thinking_budget' => 0,
             'chat.openai_reasoning_effort' => 'none',
-            'chat.openai_reasoning_summary' => null,
             'chat.thinking_level' => 0,
         ]);
 
@@ -41,7 +39,6 @@ class SettingsController extends Controller
             // Provider-specific
             'anthropic_thinking_budget' => (int) $defaults['chat.anthropic_thinking_budget'],
             'openai_reasoning_effort' => $defaults['chat.openai_reasoning_effort'],
-            'openai_reasoning_summary' => $defaults['chat.openai_reasoning_summary'],
             // Legacy (for backwards compatibility)
             'thinking_level' => (int) $defaults['chat.thinking_level'],
         ]);
@@ -59,7 +56,6 @@ class SettingsController extends Controller
             // Provider-specific reasoning settings
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
-            'openai_reasoning_summary' => 'nullable|string|in:concise,detailed,auto',
             // Legacy
             'thinking_level' => 'nullable|integer|min:0|max:4',
         ]);
@@ -81,9 +77,6 @@ class SettingsController extends Controller
         }
         if (isset($validated['openai_reasoning_effort'])) {
             $settings['chat.openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
-        }
-        if (array_key_exists('openai_reasoning_summary', $validated)) {
-            $settings['chat.openai_reasoning_summary'] = $validated['openai_reasoning_summary'];
         }
         // Legacy
         if (isset($validated['thinking_level'])) {

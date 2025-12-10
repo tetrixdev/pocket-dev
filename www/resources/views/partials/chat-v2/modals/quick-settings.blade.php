@@ -60,22 +60,6 @@
             </div>
         </template>
 
-        {{-- OpenAI Summary Display (shown only for OpenAI when reasoning is enabled) --}}
-        <template x-if="provider === 'openai' && openaiReasoningEffort !== 'none'">
-            <div>
-                <label class="block text-sm font-medium text-gray-300 mb-2">Show Thinking</label>
-                <div class="space-y-2">
-                    <template x-for="opt in openaiSummaryOptions" :key="opt.value">
-                        <label class="flex items-center text-gray-300 cursor-pointer">
-                            <input type="radio" x-model="openaiReasoningSummary" :value="opt.value" @change="saveDefaultSettings()" class="mr-2">
-                            <span x-text="opt.name"></span>
-                            <span x-show="opt.description" class="ml-2 text-xs text-gray-500" x-text="'(' + opt.description + ')'"></span>
-                        </label>
-                    </template>
-                </div>
-            </div>
-        </template>
-
         {{-- Response Level --}}
         <div>
             <label class="block text-sm font-medium text-gray-300 mb-2">Response Length</label>

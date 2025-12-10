@@ -37,18 +37,6 @@
             <span class="ml-1" x-text="currentReasoningName"></span>
         </button>
 
-        {{-- OpenAI Summary Toggle (only shown for OpenAI when reasoning is enabled) --}}
-        <template x-if="provider === 'openai' && openaiReasoningEffort !== 'none'">
-            <select x-model="openaiReasoningSummary"
-                    @change="saveDefaultSettings()"
-                    class="px-3 py-3 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
-                    title="Thinking visibility">
-                <template x-for="opt in openaiSummaryOptions" :key="opt.value">
-                    <option :value="opt.value" x-text="opt.name"></option>
-                </template>
-            </select>
-        </template>
-
         {{-- Send Button --}}
         <button type="submit"
                 @click="handleSendClick($event)"

@@ -76,18 +76,13 @@ return [
         ],
 
         // OpenAI: effort levels (model decides token usage)
+        // Summary is always 'auto' when reasoning is enabled
         'openai' => [
             'effort_levels' => [
                 ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
                 ['value' => 'low', 'name' => 'Light', 'description' => 'Quick reasoning'],
                 ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
                 ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
-            ],
-            'summary_options' => [
-                ['value' => null, 'name' => 'Hidden', 'description' => "Don't show thinking"],
-                ['value' => 'concise', 'name' => 'Concise', 'description' => 'Brief summary'],
-                ['value' => 'detailed', 'name' => 'Detailed', 'description' => 'Full summary'],
-                ['value' => 'auto', 'name' => 'Auto', 'description' => 'Best available'],
             ],
         ],
     ],

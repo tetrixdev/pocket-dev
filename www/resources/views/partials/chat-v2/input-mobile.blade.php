@@ -35,19 +35,6 @@
         </button>
     </div>
 
-    {{-- OpenAI Summary Toggle (only shown for OpenAI when reasoning is enabled) --}}
-    <template x-if="provider === 'openai' && openaiReasoningEffort !== 'none'">
-        <div class="px-3 pb-2">
-            <select x-model="openaiReasoningSummary"
-                    @change="saveDefaultSettings()"
-                    class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500">
-                <template x-for="opt in openaiSummaryOptions" :key="opt.value">
-                    <option :value="opt.value" x-text="'Show Thinking: ' + opt.name"></option>
-                </template>
-            </select>
-        </div>
-    </template>
-
     {{-- Controls Row 2: Voice + Send --}}
     <div class="px-3 pb-3 grid grid-cols-2 gap-2">
         {{-- Voice Button --}}
