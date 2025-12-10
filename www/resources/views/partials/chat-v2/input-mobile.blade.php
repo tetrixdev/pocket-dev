@@ -6,7 +6,7 @@
                x-model="prompt"
                :disabled="isStreaming"
                @keydown.enter="sendMessage()"
-               placeholder="Ask Claude..."
+               placeholder="Ask AI..."
                class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white">
     </div>
 

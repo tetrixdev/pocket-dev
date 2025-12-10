@@ -16,7 +16,7 @@
         <input type="text"
                x-model="prompt"
                :disabled="isStreaming"
-               placeholder="Ask Claude to help with your code..."
+               placeholder="Ask AI to help with your code..."
                class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white"
                @keydown.ctrl.t.prevent="cycleReasoningLevel()"
                @keydown.ctrl.space.prevent="toggleVoiceRecording()">

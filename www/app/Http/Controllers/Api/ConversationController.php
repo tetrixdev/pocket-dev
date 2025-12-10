@@ -140,7 +140,9 @@ class ConversationController extends Controller
             } elseif (isset($validated['thinking_level'])) {
                 // Legacy support: convert thinking_level to budget_tokens
                 $thinkingConfig = config("ai.thinking.levels.{$validated['thinking_level']}");
-                $updates['anthropic_thinking_budget'] = $thinkingConfig['budget_tokens'] ?? 0;
+                if ($thinkingConfig) {
+                    $updates['anthropic_thinking_budget'] = $thinkingConfig['budget_tokens'] ?? 0;
+                }
             }
         } elseif ($conversation->provider_type === 'openai') {
             // OpenAI: use native effort setting
