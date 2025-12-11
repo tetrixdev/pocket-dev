@@ -17,20 +17,30 @@ class SettingsController extends Controller
         $defaults = Setting::getMany([
             'chat.default_provider',
             'chat.default_model',
-            'chat.thinking_level',
             'chat.response_level',
+            // Provider-specific reasoning defaults
+            'chat.anthropic_thinking_budget',
+            'chat.openai_reasoning_effort',
+            // Legacy
+            'chat.thinking_level',
         ], [
             'chat.default_provider' => config('ai.default_provider', 'anthropic'),
             'chat.default_model' => config('ai.providers.anthropic.default_model', 'claude-sonnet-4-5-20250929'),
-            'chat.thinking_level' => 0,
             'chat.response_level' => 1,
+            'chat.anthropic_thinking_budget' => 0,
+            'chat.openai_reasoning_effort' => 'none',
+            'chat.thinking_level' => 0,
         ]);
 
         return response()->json([
             'provider' => $defaults['chat.default_provider'],
             'model' => $defaults['chat.default_model'],
-            'thinking_level' => (int) $defaults['chat.thinking_level'],
             'response_level' => (int) $defaults['chat.response_level'],
+            // Provider-specific
+            'anthropic_thinking_budget' => (int) $defaults['chat.anthropic_thinking_budget'],
+            'openai_reasoning_effort' => $defaults['chat.openai_reasoning_effort'],
+            // Legacy (for backwards compatibility)
+            'thinking_level' => (int) $defaults['chat.thinking_level'],
         ]);
     }
 
@@ -42,8 +52,12 @@ class SettingsController extends Controller
         $validated = $request->validate([
             'provider' => 'nullable|string|in:anthropic,openai',
             'model' => 'nullable|string|max:100',
-            'thinking_level' => 'nullable|integer|min:0|max:4',
             'response_level' => 'nullable|integer|min:0|max:3',
+            // Provider-specific reasoning settings
+            'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
+            'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+            // Legacy
+            'thinking_level' => 'nullable|integer|min:0|max:4',
         ]);
 
         $settings = [];
@@ -54,11 +68,19 @@ class SettingsController extends Controller
         if (isset($validated['model'])) {
             $settings['chat.default_model'] = $validated['model'];
         }
-        if (isset($validated['thinking_level'])) {
-            $settings['chat.thinking_level'] = $validated['thinking_level'];
-        }
         if (isset($validated['response_level'])) {
             $settings['chat.response_level'] = $validated['response_level'];
+        }
+        // Provider-specific
+        if (isset($validated['anthropic_thinking_budget'])) {
+            $settings['chat.anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
+        }
+        if (isset($validated['openai_reasoning_effort'])) {
+            $settings['chat.openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
+        }
+        // Legacy
+        if (isset($validated['thinking_level'])) {
+            $settings['chat.thinking_level'] = $validated['thinking_level'];
         }
 
         if (!empty($settings)) {

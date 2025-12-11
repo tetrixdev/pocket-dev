@@ -115,15 +115,13 @@ class AnthropicProvider implements AIProviderInterface
         // Get all messages from conversation (should already include new user message)
         $messages = $this->buildMessagesFromConversation($conversation);
 
-        // Determine max_tokens based on thinking level + response level
-        $thinkingLevel = $options['thinking_level'] ?? 0;
-        $responseLevel = $options['response_level'] ?? config('ai.response.default_level', 1);
+        // Get reasoning config from conversation (provider-specific)
+        $reasoningConfig = $conversation->getReasoningConfig();
+        $budgetTokens = $reasoningConfig['budget_tokens'] ?? 0;
 
-        $thinkingConfig = config("ai.thinking.levels.{$thinkingLevel}");
+        // Response level from conversation or options
+        $responseLevel = $conversation->response_level ?? $options['response_level'] ?? config('ai.response.default_level', 1);
         $responseConfig = config("ai.response.levels.{$responseLevel}");
-
-        // Thinking budget from selected thinking level
-        $budgetTokens = $thinkingConfig['budget_tokens'] ?? 0;
 
         // Response budget from selected response level
         $responseTokens = $responseConfig['tokens'] ?? 8192;

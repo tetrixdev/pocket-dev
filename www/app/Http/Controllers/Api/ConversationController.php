@@ -33,17 +33,32 @@ class ConversationController extends Controller
             'working_directory' => 'required|string|max:500',
             'provider_type' => 'nullable|string|in:anthropic,openai,claude_code',
             'model' => 'nullable|string|max:100',
+            // Provider-specific reasoning settings
+            'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
+            'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+            'response_level' => 'nullable|integer|min:0|max:3',
         ]);
 
         $providerType = $validated['provider_type'] ?? config('ai.default_provider', 'anthropic');
         $provider = $this->providerFactory->make($providerType);
 
-        $conversation = Conversation::create([
+        $conversationData = [
             'provider_type' => $providerType,
             'model' => $validated['model'] ?? config("ai.providers.{$providerType}.default_model"),
             'title' => $validated['title'] ?? null,
             'working_directory' => $validated['working_directory'],
-        ]);
+            'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
+        ];
+
+        // Add provider-specific reasoning settings
+        if ($providerType === 'anthropic' && isset($validated['anthropic_thinking_budget'])) {
+            $conversationData['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
+        }
+        if ($providerType === 'openai' && isset($validated['openai_reasoning_effort'])) {
+            $conversationData['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
+        }
+
+        $conversation = Conversation::create($conversationData);
 
         return response()->json([
             'conversation' => $conversation,
@@ -95,14 +110,50 @@ class ConversationController extends Controller
     {
         $validated = $request->validate([
             'prompt' => 'required|string',
-            'thinking_level' => 'nullable|integer|min:0|max:4',
-            'response_level' => 'nullable|integer|min:0|max:3',
             'model' => 'nullable|string|max:100',
+            // Provider-specific reasoning settings
+            'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
+            'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+            'response_level' => 'nullable|integer|min:0|max:3',
+            // Legacy support - will be converted to provider-specific
+            'thinking_level' => 'nullable|integer|min:0|max:4',
         ]);
+
+        // Build update array for conversation settings
+        $updates = [];
 
         // Update model if provided (allows switching mid-conversation)
         if (!empty($validated['model']) && $validated['model'] !== $conversation->model) {
-            $conversation->update(['model' => $validated['model']]);
+            $updates['model'] = $validated['model'];
+        }
+
+        // Update response level if provided
+        if (isset($validated['response_level'])) {
+            $updates['response_level'] = $validated['response_level'];
+        }
+
+        // Handle provider-specific reasoning settings
+        if ($conversation->provider_type === 'anthropic') {
+            // Anthropic: use budget_tokens directly or convert from legacy thinking_level
+            if (isset($validated['anthropic_thinking_budget'])) {
+                $updates['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
+            } elseif (isset($validated['thinking_level'])) {
+                // Legacy support: convert thinking_level to budget_tokens
+                $thinkingConfig = config("ai.thinking.levels.{$validated['thinking_level']}");
+                if ($thinkingConfig) {
+                    $updates['anthropic_thinking_budget'] = $thinkingConfig['budget_tokens'] ?? 0;
+                }
+            }
+        } elseif ($conversation->provider_type === 'openai') {
+            // OpenAI: use native effort setting
+            if (isset($validated['openai_reasoning_effort'])) {
+                $updates['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
+            }
+        }
+
+        // Apply updates to conversation
+        if (!empty($updates)) {
+            $conversation->update($updates);
         }
 
         $provider = $this->providerFactory->make($conversation->provider_type);
@@ -122,20 +173,15 @@ class ConversationController extends Controller
             ], 409);
         }
 
-        $options = [
-            'thinking_level' => $validated['thinking_level'] ?? 0,
-            'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
-        ];
-
         // Clear any old stream data BEFORE dispatching job
         // This prevents the race condition where frontend connects and sees old events
         $this->streamManager->cleanup($conversation->uuid);
 
-        // Dispatch background job
+        // Dispatch background job - reasoning settings are now stored on conversation
         ProcessConversationStream::dispatch(
             $conversation->uuid,
             $validated['prompt'],
-            $options
+            [] // Options no longer needed for reasoning - stored on conversation
         );
 
         return response()->json([
@@ -311,15 +357,24 @@ class ConversationController extends Controller
 
         foreach ($this->providerFactory->availableTypes() as $type) {
             $provider = $this->providerFactory->make($type);
-            $providers[$type] = [
+            $providerData = [
                 'available' => $provider->isAvailable(),
                 'models' => $provider->getModels(),
             ];
+
+            // Include provider-specific reasoning configuration
+            $reasoningConfig = config("ai.reasoning.{$type}");
+            if ($reasoningConfig) {
+                $providerData['reasoning_config'] = $reasoningConfig;
+            }
+
+            $providers[$type] = $providerData;
         }
 
         return response()->json([
             'default' => config('ai.default_provider', 'anthropic'),
             'providers' => $providers,
+            'response_levels' => config('ai.response.levels'),
         ]);
     }
 }

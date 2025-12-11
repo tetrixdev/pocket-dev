@@ -63,37 +63,79 @@ class OpenAIProvider implements AIProviderInterface
     }
 
     /**
-     * Build the messages array for the API request (for reference/debugging).
+     * Build the input array for the OpenAI Responses API.
+     *
+     * Converts Anthropic-style messages to OpenAI Responses API format:
+     * - User text → { role: "user", content: "text" }
+     * - Assistant text → { role: "assistant", content: "text" }
+     * - Assistant tool_use → { type: "function_call", call_id, name, arguments }
+     * - User tool_result → { type: "function_call_output", call_id, output }
      */
     public function buildMessagesFromConversation(Conversation $conversation): array
     {
-        $messages = [];
+        $input = [];
 
         foreach ($conversation->messages as $message) {
-            $content = $message->content;
-
-            // Handle array content (extract text)
-            if (is_array($content)) {
-                $textParts = [];
-                foreach ($content as $block) {
-                    if (isset($block['type']) && $block['type'] === 'text') {
-                        $textParts[] = $block['text'];
-                    }
-                }
-                $content = implode("\n", $textParts);
-            }
-
-            if (empty($content)) {
+            // Skip system messages - handled via 'instructions' parameter
+            if ($message->role === 'system') {
                 continue;
             }
 
-            $messages[] = [
-                'role' => $message->role,
-                'content' => $content,
-            ];
+            $content = $message->content;
+
+            // Handle string content (simple user messages)
+            if (is_string($content)) {
+                $input[] = [
+                    'role' => $message->role,
+                    'content' => $content,
+                ];
+                continue;
+            }
+
+            // Handle array content (complex messages with blocks)
+            if (is_array($content)) {
+                foreach ($content as $block) {
+                    $type = $block['type'] ?? null;
+
+                    switch ($type) {
+                        case 'text':
+                            // Text block from assistant
+                            $input[] = [
+                                'role' => $message->role,
+                                'content' => $block['text'],
+                            ];
+                            break;
+
+                        case 'tool_use':
+                            // Assistant's function call - convert to OpenAI format
+                            $input[] = [
+                                'type' => 'function_call',
+                                'call_id' => $block['id'],
+                                'name' => $block['name'],
+                                'arguments' => is_array($block['input'])
+                                    ? json_encode($block['input'])
+                                    : ($block['input'] ?? '{}'),
+                            ];
+                            break;
+
+                        case 'tool_result':
+                            // Tool result - convert to OpenAI function_call_output
+                            $input[] = [
+                                'type' => 'function_call_output',
+                                'call_id' => $block['tool_use_id'],
+                                'output' => $block['content'] ?? '',
+                            ];
+                            break;
+
+                        case 'thinking':
+                            // Skip thinking blocks - OpenAI handles reasoning internally
+                            break;
+                    }
+                }
+            }
         }
 
-        return $messages;
+        return $input;
     }
 
     /**
@@ -129,6 +171,17 @@ class OpenAIProvider implements AIProviderInterface
             $body['tools'] = $this->convertToolsToResponsesApi($options['tools']);
         }
 
+        // Add reasoning configuration from conversation settings
+        $reasoningConfig = $conversation->getReasoningConfig();
+        $effort = $reasoningConfig['effort'] ?? 'none';
+
+        if ($effort !== 'none') {
+            $body['reasoning'] = [
+                'effort' => $effort,
+                'summary' => 'auto', // Always show thinking when reasoning is enabled
+            ];
+        }
+
         $client = new \GuzzleHttp\Client();
 
         Log::channel('api')->info('OpenAIProvider: RESPONSES API REQUEST', [
@@ -136,6 +189,8 @@ class OpenAIProvider implements AIProviderInterface
             'model' => $model,
             'input_count' => count($input),
             'max_output_tokens' => $maxTokens,
+            'has_reasoning' => isset($body['reasoning']),
+            'has_tools' => isset($body['tools']),
         ]);
 
         try {
@@ -150,8 +205,17 @@ class OpenAIProvider implements AIProviderInterface
 
             $stream = $response->getBody();
             $buffer = '';
-            $textStarted = false;
             $eventCount = 0;
+
+            // Track state for different content types
+            $state = [
+                'textStarted' => false,
+                'thinkingStarted' => false,
+                'currentFunctionCall' => null, // {id, name, call_id, arguments}
+                'blockIndex' => 0,
+                'hasToolCalls' => false, // Track if any tool calls were made
+                'doneEmitted' => false, // Track if done event was already emitted
+            ];
 
             while (!$stream->eof()) {
                 $chunk = $stream->read(64);
@@ -176,15 +240,42 @@ class OpenAIProvider implements AIProviderInterface
                         $data = trim(substr($line, 5));
 
                         if ($data === '[DONE]') {
-                            if ($textStarted) {
-                                yield StreamEvent::textStop(0);
+                            // [DONE] is a fallback - response.completed should have already emitted done
+                            if ($state['doneEmitted']) {
+                                Log::channel('api')->debug('OpenAIProvider: [DONE] received but done already emitted');
+                                continue;
                             }
-                            yield StreamEvent::done('end_turn');
+                            Log::channel('api')->info('OpenAIProvider: [DONE] received', [
+                                'hasToolCalls' => $state['hasToolCalls'],
+                                'textStarted' => $state['textStarted'],
+                                'thinkingStarted' => $state['thinkingStarted'],
+                                'blockIndex' => $state['blockIndex'],
+                            ]);
+                            if ($state['textStarted']) {
+                                yield StreamEvent::textStop($state['blockIndex']);
+                            }
+                            if ($state['thinkingStarted']) {
+                                yield StreamEvent::thinkingStop($state['blockIndex']);
+                            }
+                            // Use 'tool_use' stop reason if any tool calls were made
+                            $stopReason = $state['hasToolCalls'] ? 'tool_use' : 'end_turn';
+                            Log::channel('api')->info('OpenAIProvider: Emitting done event from [DONE]', [
+                                'stop_reason' => $stopReason,
+                            ]);
+                            yield StreamEvent::done($stopReason);
+                            $state['doneEmitted'] = true;
                             continue;
                         }
 
                         $eventCount++;
-                        yield from $this->parseResponsesApiEvent($data, $textStarted);
+                        $prevHasToolCalls = $state['hasToolCalls'];
+                        yield from $this->parseResponsesApiEvent($data, $state);
+                        if ($state['hasToolCalls'] !== $prevHasToolCalls) {
+                            Log::channel('api')->info('OpenAIProvider: hasToolCalls changed after parseResponsesApiEvent', [
+                                'from' => $prevHasToolCalls,
+                                'to' => $state['hasToolCalls'],
+                            ]);
+                        }
                     }
                 }
             }
@@ -230,7 +321,7 @@ class OpenAIProvider implements AIProviderInterface
     /**
      * Parse a Responses API streaming event.
      */
-    private function parseResponsesApiEvent(string $data, bool &$textStarted): Generator
+    private function parseResponsesApiEvent(string $data, array &$state): Generator
     {
         $payload = json_decode($data, true);
 
@@ -244,32 +335,156 @@ class OpenAIProvider implements AIProviderInterface
         $type = $payload['type'] ?? '';
 
         // Log non-delta events for debugging
-        if ($type !== 'response.output_text.delta') {
+        if (!str_contains($type, '.delta')) {
             Log::channel('api')->debug('OpenAIProvider: RESPONSES API EVENT', [
                 'type' => $type,
+                'payload_keys' => array_keys($payload),
             ]);
         }
 
         switch ($type) {
+            // === Text output events ===
             case 'response.output_text.delta':
-                if (!$textStarted) {
-                    yield StreamEvent::textStart(0);
-                    $textStarted = true;
+                if (!$state['textStarted']) {
+                    yield StreamEvent::textStart($state['blockIndex']);
+                    $state['textStarted'] = true;
                 }
                 $delta = $payload['delta'] ?? '';
                 if ($delta !== '') {
-                    yield StreamEvent::textDelta(0, $delta);
+                    yield StreamEvent::textDelta($state['blockIndex'], $delta);
                 }
                 break;
 
             case 'response.output_text.done':
-                if ($textStarted) {
-                    yield StreamEvent::textStop(0);
-                    $textStarted = false;
+                if ($state['textStarted']) {
+                    yield StreamEvent::textStop($state['blockIndex']);
+                    $state['textStarted'] = false;
+                    $state['blockIndex']++;
                 }
                 break;
 
+            // === Reasoning/thinking events ===
+            // Note: OpenAI sends both summary_text and summary_part events for the same content.
+            // We only handle summary_part events to avoid duplicate thinking blocks.
+            case 'response.reasoning_text.delta':
+                if (!$state['thinkingStarted']) {
+                    yield StreamEvent::thinkingStart($state['blockIndex']);
+                    $state['thinkingStarted'] = true;
+                }
+                $delta = $payload['delta'] ?? '';
+                if ($delta !== '') {
+                    yield StreamEvent::thinkingDelta($state['blockIndex'], $delta);
+                }
+                break;
+
+            case 'response.reasoning_text.done':
+                if ($state['thinkingStarted']) {
+                    yield StreamEvent::thinkingStop($state['blockIndex']);
+                    $state['thinkingStarted'] = false;
+                    $state['blockIndex']++;
+                }
+                break;
+
+            // Reasoning summary part events - these contain the summary text
+            case 'response.reasoning_summary_part.added':
+                if (!$state['thinkingStarted']) {
+                    yield StreamEvent::thinkingStart($state['blockIndex']);
+                    $state['thinkingStarted'] = true;
+                }
+                break;
+
+            case 'response.reasoning_summary_text.delta':
+                // Stream the summary text as it arrives
+                if (!$state['thinkingStarted']) {
+                    yield StreamEvent::thinkingStart($state['blockIndex']);
+                    $state['thinkingStarted'] = true;
+                }
+                $delta = $payload['delta'] ?? '';
+                if ($delta !== '') {
+                    yield StreamEvent::thinkingDelta($state['blockIndex'], $delta);
+                }
+                break;
+
+            case 'response.reasoning_summary_part.done':
+                // Close the thinking block when the part is done
+                if ($state['thinkingStarted']) {
+                    yield StreamEvent::thinkingStop($state['blockIndex']);
+                    $state['thinkingStarted'] = false;
+                    $state['blockIndex']++;
+                }
+                break;
+
+            // Ignore these - they duplicate the summary_part events
+            case 'response.reasoning_summary_text.done':
+                break;
+
+            // === Function call events ===
+            case 'response.output_item.added':
+                $item = $payload['item'] ?? [];
+                Log::channel('api')->debug('OpenAIProvider: output_item.added', [
+                    'item_type' => $item['type'] ?? 'unknown',
+                    'item_keys' => array_keys($item),
+                    'item' => $item,
+                ]);
+                if (($item['type'] ?? '') === 'function_call') {
+                    $state['hasToolCalls'] = true;
+                    $state['currentFunctionCall'] = [
+                        'id' => $item['id'] ?? '',
+                        'call_id' => $item['call_id'] ?? '',
+                        'name' => $item['name'] ?? '',
+                        'arguments' => '',
+                    ];
+                    Log::channel('api')->info('OpenAIProvider: Starting tool use - SET hasToolCalls=true', [
+                        'tool_name' => $state['currentFunctionCall']['name'],
+                        'call_id' => $state['currentFunctionCall']['call_id'],
+                        'hasToolCalls' => $state['hasToolCalls'],
+                    ]);
+                    yield StreamEvent::toolUseStart(
+                        $state['blockIndex'],
+                        $state['currentFunctionCall']['call_id'],
+                        $state['currentFunctionCall']['name']
+                    );
+                }
+                break;
+
+            case 'response.function_call_arguments.delta':
+                $delta = $payload['delta'] ?? '';
+                if ($delta !== '' && $state['currentFunctionCall'] !== null) {
+                    $state['currentFunctionCall']['arguments'] .= $delta;
+                    yield StreamEvent::toolUseDelta($state['blockIndex'], $delta);
+                }
+                break;
+
+            case 'response.function_call_arguments.done':
+                if ($state['currentFunctionCall'] !== null) {
+                    // The done event contains the full arguments - emit them if we haven't already
+                    $arguments = $payload['arguments'] ?? '';
+                    if ($arguments !== '' && $state['currentFunctionCall']['arguments'] === '') {
+                        // No deltas were received, emit the full arguments now
+                        yield StreamEvent::toolUseDelta($state['blockIndex'], $arguments);
+                    }
+                    Log::channel('api')->debug('OpenAIProvider: Tool use complete', [
+                        'tool_name' => $state['currentFunctionCall']['name'],
+                        'arguments' => $arguments,
+                    ]);
+                    yield StreamEvent::toolUseStop($state['blockIndex']);
+                    $state['currentFunctionCall'] = null;
+                    $state['blockIndex']++;
+                }
+                break;
+
+            // === Completion events ===
             case 'response.completed':
+                // Close any open blocks
+                if ($state['textStarted']) {
+                    yield StreamEvent::textStop($state['blockIndex']);
+                    $state['textStarted'] = false;
+                }
+                if ($state['thinkingStarted']) {
+                    yield StreamEvent::thinkingStop($state['blockIndex']);
+                    $state['thinkingStarted'] = false;
+                }
+
                 // Extract usage from completed event
                 $usage = $payload['response']['usage'] ?? $payload['usage'] ?? null;
                 if ($usage) {
@@ -277,6 +492,18 @@ class OpenAIProvider implements AIProviderInterface
                         $usage['input_tokens'] ?? 0,
                         $usage['output_tokens'] ?? 0
                     );
+                }
+
+                // Emit done event with correct stop reason
+                // OpenAI Responses API uses 'response.completed' instead of [DONE]
+                if (!$state['doneEmitted']) {
+                    $stopReason = $state['hasToolCalls'] ? 'tool_use' : 'end_turn';
+                    Log::channel('api')->info('OpenAIProvider: response.completed - emitting done', [
+                        'hasToolCalls' => $state['hasToolCalls'],
+                        'stop_reason' => $stopReason,
+                    ]);
+                    yield StreamEvent::done($stopReason);
+                    $state['doneEmitted'] = true;
                 }
                 break;
         }

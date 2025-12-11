@@ -94,6 +94,8 @@ class ProcessConversationStream implements ShouldQueue
         }
     }
 
+    private const MAX_TOOL_ITERATIONS = 25;
+
     /**
      * Stream from provider and handle tool execution.
      */
@@ -104,7 +106,20 @@ class ProcessConversationStream implements ShouldQueue
         ToolRegistry $toolRegistry,
         SystemPromptBuilder $systemPromptBuilder,
         array $options,
+        int $iteration = 0,
     ): void {
+        // Safety guard against infinite tool loops
+        if ($iteration >= self::MAX_TOOL_ITERATIONS) {
+            Log::warning('ProcessConversationStream: Max tool iterations reached', [
+                'conversation' => $this->conversationUuid,
+                'iterations' => $iteration,
+            ]);
+            $streamManager->appendEvent(
+                $this->conversationUuid,
+                StreamEvent::error('Maximum tool execution iterations reached (safety limit)')
+            );
+            return;
+        }
         // Reload messages
         $conversation->load('messages');
 
@@ -195,11 +210,23 @@ class ProcessConversationStream implements ShouldQueue
                         $parsedInput = json_decode($inputJson, true) ?? [];
                         $contentBlocks[$event->blockIndex]['input'] = $parsedInput;
                         $pendingToolUses[] = $contentBlocks[$event->blockIndex];
+                        Log::channel('api')->info('ProcessConversationStream: Tool use completed', [
+                            'block_index' => $event->blockIndex,
+                            'tool_name' => $contentBlocks[$event->blockIndex]['name'] ?? 'unknown',
+                            'tool_id' => $contentBlocks[$event->blockIndex]['id'] ?? 'unknown',
+                            'input_json_length' => strlen($inputJson),
+                            'pending_count' => count($pendingToolUses),
+                        ]);
                     }
                     break;
 
                 case StreamEvent::DONE:
                     $stopReason = $event->metadata['stop_reason'] ?? 'end_turn';
+                    Log::channel('api')->info('ProcessConversationStream: Received DONE event', [
+                        'stop_reason' => $stopReason,
+                        'pending_tool_uses_count' => count($pendingToolUses),
+                        'conversation' => $this->conversationUuid,
+                    ]);
                     break;
 
                 case StreamEvent::ERROR:
@@ -222,6 +249,11 @@ class ProcessConversationStream implements ShouldQueue
         );
 
         // Handle tool execution
+        Log::channel('api')->info('ProcessConversationStream: Checking tool execution', [
+            'stop_reason' => $stopReason,
+            'pending_tool_uses_count' => count($pendingToolUses),
+            'will_execute' => ($stopReason === 'tool_use' && !empty($pendingToolUses)),
+        ]);
         if ($stopReason === 'tool_use' && !empty($pendingToolUses)) {
             $toolResults = $this->executeTools($pendingToolUses, $conversation);
 
@@ -247,7 +279,8 @@ class ProcessConversationStream implements ShouldQueue
                 $streamManager,
                 $toolRegistry,
                 $systemPromptBuilder,
-                $options
+                $options,
+                $iteration + 1
             );
         }
     }

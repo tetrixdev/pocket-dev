@@ -136,24 +136,13 @@
                 providers: {},
                 availableModels: {},
 
-                // Thinking modes
-                thinkingLevel: 0,
-                thinkingModes: [
-                    { level: 0, name: 'Off', icon: '🧠', color: 'bg-gray-600 text-gray-200', tokens: 0 },
-                    { level: 1, name: 'Think', icon: '💭', color: 'bg-blue-600 text-white', tokens: 4000 },
-                    { level: 2, name: 'Think Hard', icon: '🤔', color: 'bg-purple-600 text-white', tokens: 10000 },
-                    { level: 3, name: 'Think Harder', icon: '🧩', color: 'bg-pink-600 text-white', tokens: 20000 },
-                    { level: 4, name: 'Ultrathink', icon: '🌟', color: 'bg-yellow-600 text-white', tokens: 32000 }
-                ],
+                // Provider-specific reasoning settings
+                anthropicThinkingBudget: 0,
+                openaiReasoningEffort: 'none',
 
                 // Response length modes
                 responseLevel: 1,
-                responseModes: [
-                    { level: 0, name: 'Short', icon: '📝', tokens: 4000 },
-                    { level: 1, name: 'Normal', icon: '📄', tokens: 8192 },
-                    { level: 2, name: 'Long', icon: '📜', tokens: 16000 },
-                    { level: 3, name: 'Very Long', icon: '📚', tokens: 32000 }
-                ],
+                responseLevels: [], // Loaded from API
 
                 // Modals
                 showMobileDrawer: false,
@@ -225,6 +214,10 @@
                         const data = await response.json();
                         this.providers = data.providers;
                         this.provider = data.default || 'anthropic';
+                        // Store response levels from API
+                        if (data.response_levels) {
+                            this.responseLevels = Object.values(data.response_levels);
+                        }
                         this.updateModels();
                     } catch (err) {
                         console.error('Failed to fetch providers:', err);
@@ -245,11 +238,15 @@
                         if (data.model && this.availableModels[data.model]) {
                             this.model = data.model;
                         }
-                        if (data.thinking_level !== undefined) {
-                            this.thinkingLevel = data.thinking_level;
-                        }
                         if (data.response_level !== undefined) {
                             this.responseLevel = data.response_level;
+                        }
+                        // Provider-specific reasoning settings
+                        if (data.anthropic_thinking_budget !== undefined) {
+                            this.anthropicThinkingBudget = data.anthropic_thinking_budget;
+                        }
+                        if (data.openai_reasoning_effort !== undefined) {
+                            this.openaiReasoningEffort = data.openai_reasoning_effort;
                         }
                     } catch (err) {
                         console.error('Failed to fetch settings:', err);
@@ -267,8 +264,10 @@
                             body: JSON.stringify({
                                 provider: this.provider,
                                 model: this.model,
-                                thinking_level: this.thinkingLevel,
                                 response_level: this.responseLevel,
+                                // Provider-specific reasoning settings
+                                anthropic_thinking_budget: this.anthropicThinkingBudget,
+                                openai_reasoning_effort: this.openaiReasoningEffort,
                             })
                         });
                     } catch (err) {
@@ -413,6 +412,11 @@
                         if (data.conversation?.model) {
                             this.model = data.conversation.model;
                         }
+
+                        // Load provider-specific reasoning settings from conversation
+                        this.responseLevel = data.conversation?.response_level ?? 1;
+                        this.anthropicThinkingBudget = data.conversation?.anthropic_thinking_budget ?? 0;
+                        this.openaiReasoningEffort = data.conversation?.openai_reasoning_effort ?? 'none';
 
                         this.scrollToBottom();
 
@@ -574,15 +578,24 @@
                     // Create conversation if needed
                     if (!this.currentConversationUuid) {
                         try {
+                            const createBody = {
+                                working_directory: '/var/www',
+                                provider_type: this.provider,
+                                model: this.model,
+                                title: userPrompt.substring(0, 50),
+                                response_level: this.responseLevel,
+                            };
+                            // Add provider-specific reasoning settings
+                            if (this.provider === 'anthropic') {
+                                createBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
+                            } else if (this.provider === 'openai') {
+                                createBody.openai_reasoning_effort = this.openaiReasoningEffort;
+                            }
+
                             const response = await fetch('/api/v2/conversations', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    working_directory: '/var/www',
-                                    provider_type: this.provider,
-                                    model: this.model,
-                                    title: userPrompt.substring(0, 50)
-                                })
+                                body: JSON.stringify(createBody)
                             });
                             const data = await response.json();
                             this.currentConversationUuid = data.conversation.uuid;
@@ -616,16 +629,24 @@
                     };
 
                     try {
+                        // Build stream request body with provider-specific reasoning settings
+                        const streamBody = {
+                            prompt: userPrompt,
+                            response_level: this.responseLevel,
+                            model: this.model
+                        };
+                        // Add provider-specific reasoning settings
+                        if (this.provider === 'anthropic') {
+                            streamBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
+                        } else if (this.provider === 'openai') {
+                            streamBody.openai_reasoning_effort = this.openaiReasoningEffort;
+                        }
+
                         // Start the background streaming job
                         const response = await fetch(`/api/v2/conversations/${this.currentConversationUuid}/stream`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                prompt: userPrompt,
-                                thinking_level: this.thinkingLevel,
-                                response_level: this.responseLevel,
-                                model: this.model
-                            })
+                            body: JSON.stringify(streamBody)
                         });
 
                         const data = await response.json();
@@ -924,9 +945,58 @@
                     }
                 },
 
-                cycleThinkingMode() {
-                    this.thinkingLevel = (this.thinkingLevel + 1) % this.thinkingModes.length;
-                    localStorage.setItem('thinkingLevel', this.thinkingLevel);
+                // Get current provider's reasoning config from loaded providers data
+                get currentReasoningConfig() {
+                    return this.providers[this.provider]?.reasoning_config || {};
+                },
+
+                // Get Anthropic thinking levels from config
+                get anthropicThinkingLevels() {
+                    return this.currentReasoningConfig.levels || [
+                        { name: 'Off', budget_tokens: 0 },
+                        { name: 'Light', budget_tokens: 4000 },
+                        { name: 'Standard', budget_tokens: 10000 },
+                        { name: 'Deep', budget_tokens: 20000 },
+                        { name: 'Maximum', budget_tokens: 32000 },
+                    ];
+                },
+
+                // Get OpenAI effort levels from config
+                get openaiEffortLevels() {
+                    return this.currentReasoningConfig.effort_levels || [
+                        { value: 'none', name: 'Off' },
+                        { value: 'low', name: 'Light' },
+                        { value: 'medium', name: 'Standard' },
+                        { value: 'high', name: 'Deep' },
+                    ];
+                },
+
+                // Get display name for current reasoning setting
+                get currentReasoningName() {
+                    if (this.provider === 'anthropic') {
+                        const level = this.anthropicThinkingLevels.find(l => l.budget_tokens === this.anthropicThinkingBudget);
+                        return level?.name || 'Off';
+                    } else if (this.provider === 'openai') {
+                        const level = this.openaiEffortLevels.find(l => l.value === this.openaiReasoningEffort);
+                        return level?.name || 'Off';
+                    }
+                    return 'Off';
+                },
+
+                // Cycle through reasoning levels (for button tap)
+                cycleReasoningLevel() {
+                    if (this.provider === 'anthropic') {
+                        const levels = this.anthropicThinkingLevels;
+                        const currentIndex = levels.findIndex(l => l.budget_tokens === this.anthropicThinkingBudget);
+                        const nextIndex = (currentIndex + 1) % levels.length;
+                        this.anthropicThinkingBudget = levels[nextIndex].budget_tokens;
+                    } else if (this.provider === 'openai') {
+                        const levels = this.openaiEffortLevels;
+                        const currentIndex = levels.findIndex(l => l.value === this.openaiReasoningEffort);
+                        const nextIndex = (currentIndex + 1) % levels.length;
+                        this.openaiReasoningEffort = levels[nextIndex].value;
+                    }
+                    this.saveDefaultSettings();
                 },
 
                 showError(message) {
