@@ -45,12 +45,13 @@ INSTRUCTIONS;
         // Resolve path
         $resolvedPath = $context->resolvePath($filePath);
 
-        // Validate path is within allowed working directory
-        if (!$context->isPathAllowed($resolvedPath)) {
+        // Validate path structure is within allowed working directory
+        // (uses isPathStructureAllowed since file may not exist yet)
+        if (!$context->isPathStructureAllowed($resolvedPath)) {
             return ToolResult::error("Access denied: Path is outside allowed working directory");
         }
 
-        // Check if path is within allowed directory
+        // Get parent directory for subsequent checks
         $parentDir = dirname($resolvedPath);
 
         // Create parent directories if needed

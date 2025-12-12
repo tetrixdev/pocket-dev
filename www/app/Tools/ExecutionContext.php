@@ -31,7 +31,7 @@ class ExecutionContext
 
     /**
      * Check if a path is within the working directory.
-     * Used for security checks.
+     * Used for security checks on existing files.
      */
     public function isPathAllowed(string $path): bool
     {
@@ -43,5 +43,50 @@ class ExecutionContext
         }
 
         return str_starts_with($realPath, $realWorkDir);
+    }
+
+    /**
+     * Check if a path structure is within the working directory.
+     * Used for security checks on paths that may not exist yet (e.g., new files).
+     *
+     * This validates the resolved path starts with the working directory,
+     * preventing path traversal attacks (../) and absolute path escapes.
+     */
+    public function isPathStructureAllowed(string $resolvedPath): bool
+    {
+        $realWorkDir = realpath($this->workingDirectory);
+
+        if ($realWorkDir === false) {
+            return false;
+        }
+
+        // Normalize the resolved path to handle .. and . segments
+        $normalizedPath = $this->normalizePath($resolvedPath);
+
+        // Check if normalized path starts with working directory
+        return str_starts_with($normalizedPath, $realWorkDir . '/')
+            || $normalizedPath === $realWorkDir;
+    }
+
+    /**
+     * Normalize a path by resolving . and .. segments without requiring the path to exist.
+     */
+    private function normalizePath(string $path): string
+    {
+        $parts = explode('/', $path);
+        $normalized = [];
+
+        foreach ($parts as $part) {
+            if ($part === '' || $part === '.') {
+                continue;
+            }
+            if ($part === '..') {
+                array_pop($normalized);
+            } else {
+                $normalized[] = $part;
+            }
+        }
+
+        return '/' . implode('/', $normalized);
     }
 }
