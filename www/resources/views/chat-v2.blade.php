@@ -212,6 +212,39 @@
 
                     // Check OpenAI key for voice transcription
                     await this.checkOpenAiKey();
+
+                    // Check URL for conversation UUID and load if present
+                    const urlConversationUuid = this.getConversationUuidFromUrl();
+                    if (urlConversationUuid) {
+                        await this.loadConversation(urlConversationUuid);
+                    }
+
+                    // Handle browser back/forward navigation
+                    window.addEventListener('popstate', (event) => {
+                        if (event.state && event.state.conversationUuid) {
+                            this.loadConversation(event.state.conversationUuid);
+                        } else {
+                            // Back to new conversation state
+                            this.newConversation();
+                        }
+                    });
+                },
+
+                // Extract conversation UUID from URL path
+                getConversationUuidFromUrl() {
+                    const match = window.location.pathname.match(/\/chat-v2\/([a-f0-9-]+)/i);
+                    return match ? match[1] : null;
+                },
+
+                // Update URL to reflect current conversation
+                updateUrl(conversationUuid = null) {
+                    const newPath = conversationUuid ? `/chat-v2/${conversationUuid}` : '/chat-v2';
+                    const state = conversationUuid ? { conversationUuid } : {};
+
+                    // Only push if path actually changed
+                    if (window.location.pathname !== newPath) {
+                        window.history.pushState(state, '', newPath);
+                    }
                 },
 
                 async fetchProviders() {
@@ -347,6 +380,9 @@
                     this.isStreaming = false;
                     this.lastEventIndex = 0;
 
+                    // Clear URL to base path
+                    this.updateUrl(null);
+
                     // Restore saved default settings for new conversations
                     await this.fetchSettings();
                 },
@@ -360,6 +396,9 @@
                         const data = await response.json();
 
                         this.currentConversationUuid = uuid;
+
+                        // Update URL to reflect loaded conversation
+                        this.updateUrl(uuid);
                         this.messages = [];
 
                         // Reset token counters
@@ -433,6 +472,8 @@
                     } catch (err) {
                         console.error('Failed to load conversation:', err);
                         this.showError('Failed to load conversation');
+                        // Clear URL since conversation couldn't be loaded
+                        this.updateUrl(null);
                     }
                 },
 
@@ -606,6 +647,10 @@
                             });
                             const data = await response.json();
                             this.currentConversationUuid = data.conversation.uuid;
+
+                            // Update URL with new conversation UUID
+                            this.updateUrl(this.currentConversationUuid);
+
                             await this.fetchConversations();
                         } catch (err) {
                             this.showError('Failed to create conversation: ' + err.message);
