@@ -77,7 +77,6 @@
             <button @click="showQuickSettings = true; showMobileDrawer = false" class="text-blue-400 hover:text-blue-300">
                 Quick Settings
             </button>
-            <a href="/" class="text-blue-400 hover:text-blue-300">V1 Chat</a>
             <button @click="showShortcutsModal = true; showMobileDrawer = false" class="text-blue-400 hover:text-blue-300">
                 Shortcuts
             </button>

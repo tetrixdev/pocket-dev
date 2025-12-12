@@ -47,7 +47,6 @@
         <div class="flex flex-wrap gap-2 mt-2">
             <button @click="showQuickSettings = true" class="text-blue-400 hover:text-blue-300">Quick Settings</button>
             <a href="/config" class="text-blue-400 hover:text-blue-300">Config</a>
-            <a href="/" class="text-blue-400 hover:text-blue-300">V1 Chat</a>
             <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300">Shortcuts</button>
         </div>
     </div>

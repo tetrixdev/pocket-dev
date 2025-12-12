@@ -2,7 +2,7 @@
 
 **Last Updated**: December 2025
 
-PocketDev is a Docker-based development environment that provides a web interface for interacting with Claude Code CLI. Designed for mobile-first coding workflows.
+PocketDev is a Docker-based development environment that provides a multi-provider AI chat interface (Anthropic/OpenAI) and web terminal access. Designed for mobile-first coding workflows.
 
 ---
 

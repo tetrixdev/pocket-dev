@@ -36,7 +36,7 @@ Multi-provider conversation storage with full message history.
 
 **Model:** `app/Models/Conversation.php`
 
-### conversation_messages
+### messages
 
 Messages within conversations.
 
@@ -44,18 +44,25 @@ Messages within conversations.
 |--------|------|----------|---------|-------------|
 | id | bigint | No | auto | Primary key |
 | conversation_id | bigint | No | - | Foreign key to conversations |
-| role | varchar | No | - | user/assistant/system |
-| content | json | No | - | Message content (text, tools, etc.) |
+| role | varchar(20) | No | - | user/assistant/system/tool |
+| content | json | No | - | Message content (native provider format) |
 | input_tokens | int | Yes | null | Input tokens used |
 | output_tokens | int | Yes | null | Output tokens used |
-| cost | decimal | Yes | null | Calculated cost |
+| cache_creation_tokens | int | Yes | null | Cache creation tokens (Anthropic) |
+| cache_read_tokens | int | Yes | null | Cache read tokens (Anthropic) |
+| stop_reason | varchar(50) | Yes | null | Stop reason |
+| model | varchar(100) | Yes | null | Model used for this message |
+| sequence | int | No | - | Ordering within conversation |
 | created_at | timestamp | Yes | null | Created timestamp |
-| updated_at | timestamp | Yes | null | Updated timestamp |
 
 **Indexes:**
-- `conversation_messages_conversation_id_foreign` on `conversation_id`
+- `messages_conversation_id_sequence_unique` on `(conversation_id, sequence)` (unique)
+- `messages_conversation_id_sequence_index` on `(conversation_id, sequence)`
 
-**Model:** `app/Models/ConversationMessage.php`
+**Foreign Keys:**
+- `messages_conversation_id_foreign` on `conversation_id` → `conversations.id` (cascade delete)
+
+**Model:** `app/Models/Message.php`
 
 ### ai_models
 
