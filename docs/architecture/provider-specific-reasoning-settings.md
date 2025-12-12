@@ -46,7 +46,7 @@ private function mapThinkingToEffort(int $tokens): string
 | **Control mechanism** | `budget_tokens` - explicit token allocation | `effort` - abstract effort level |
 | **What it means** | "Use exactly N tokens for thinking" | "Try this hard" (model decides tokens) |
 | **Token accounting** | Counts against `max_tokens` | Internal, separate budget |
-| **Visibility control** | Thinking always visible when enabled | Separate `summary` parameter |
+| **Visibility control** | Thinking always visible when enabled | Configurable via `summary` parameter |
 
 **OpenAI's `reasoning` object has TWO independent parameters:**
 
@@ -61,10 +61,12 @@ private function mapThinkingToEffort(int $tokens): string
 
 The current mapping is **semantically meaningless** - converting "10000 tokens" to "medium effort" doesn't translate to equivalent behavior because they're different concepts entirely.
 
+**Note:** While OpenAI supports configuring `summary` independently, this implementation hardcodes it to `'auto'` for simplicity. Users can only control the `effort` level.
+
 ### User Impact
 
 1. **Misleading UI**: Labels like "Think Hard" and "Ultrathink" are Anthropic-specific and don't reflect what OpenAI actually does
-2. **No fine-grained control**: Users can't independently control OpenAI's `effort` vs `summary`
+2. **Limited control**: Users can control OpenAI's `effort`, but `summary` is always `'auto'` (simplified for better UX)
 3. **Inconsistent experience**: Same UI setting produces very different behavior across providers
 4. **CodeRabbit flagged this as a Major issue** in PR #16
 
@@ -93,7 +95,7 @@ Schema::table('conversations', function (Blueprint $table) {
 
     // OpenAI-specific
     $table->string('openai_reasoning_effort', 20)->nullable();  // none/low/medium/high
-    $table->string('openai_reasoning_summary', 20)->nullable(); // concise/detailed/auto/null
+    // Note: OpenAI summary is NOT stored - it's always hardcoded to 'auto' in the provider
 
     // Shared
     $table->unsignedSmallInteger('response_level')->default(1);
@@ -108,7 +110,6 @@ protected $fillable = [
     // ... existing
     'anthropic_thinking_budget',
     'openai_reasoning_effort',
-    'openai_reasoning_summary',
     'response_level',
 ];
 
@@ -126,7 +127,7 @@ public function getReasoningConfig(): array
         ],
         'openai' => [
             'effort' => $this->openai_reasoning_effort ?? 'none',
-            'summary' => $this->openai_reasoning_summary,  // null = don't show thinking
+            // Note: summary is NOT returned here - it's hardcoded to 'auto' in OpenAIProvider
         ],
         default => [],
     };
@@ -151,18 +152,13 @@ public function getReasoningConfig(): array
     ],
 
     // OpenAI: effort levels (model decides token usage)
+    // Note: summary is always 'auto' (hardcoded in OpenAIProvider)
     'openai' => [
         'effort_levels' => [
             ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
             ['value' => 'low', 'name' => 'Light', 'description' => 'Quick reasoning'],
             ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
             ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
-        ],
-        'summary_options' => [
-            ['value' => null, 'name' => 'Hidden', 'description' => 'Don\'t show thinking'],
-            ['value' => 'concise', 'name' => 'Concise', 'description' => 'Brief summary'],
-            ['value' => 'detailed', 'name' => 'Detailed', 'description' => 'Full summary'],
-            ['value' => 'auto', 'name' => 'Auto', 'description' => 'Best available'],
         ],
     ],
 ],
@@ -195,20 +191,18 @@ private function streamResponsesApi(Conversation $conversation, array $options):
     if ($effort !== 'none') {
         $body['reasoning'] = [
             'effort' => $effort,
+            'summary' => 'auto', // Always show thinking when reasoning is enabled
         ];
-
-        // Add summary only if user wants to see thinking
-        $summary = $reasoningConfig['summary'] ?? null;
-        if ($summary !== null) {
-            $body['reasoning']['summary'] = $summary;
-        }
     }
 
     // ... rest of request
 }
 ```
 
-**Remove the `mapThinkingToEffort()` method entirely** - no more fake mapping.
+**Implementation notes:**
+- The `mapThinkingToEffort()` method has been removed - no more fake mapping
+- The `summary` field is always hardcoded to `'auto'` (not configurable per-conversation)
+- When effort is `'none'`, no reasoning block is added to the request
 
 ### API Changes
 
@@ -235,17 +229,13 @@ private function streamResponsesApi(Conversation $conversation, array $options):
       "available": true,
       "models": { ... },
       "reasoning_config": {
-        "type": "effort_and_summary",
+        "type": "effort",
         "effort_levels": [
           { "value": "none", "name": "Off" },
           { "value": "low", "name": "Light" },
           ...
-        ],
-        "summary_options": [
-          { "value": null, "name": "Hidden" },
-          { "value": "auto", "name": "Auto" },
-          ...
         ]
+        // Note: summary is always 'auto', not configurable
       }
     }
   }
@@ -259,7 +249,6 @@ private function streamResponsesApi(Conversation $conversation, array $options):
   "provider": "openai",
   "model": "gpt-5.1-codex-max",
   "openai_reasoning_effort": "medium",
-  "openai_reasoning_summary": "auto",
   "response_level": 1
 }
 ```
@@ -268,8 +257,7 @@ private function streamResponsesApi(Conversation $conversation, array $options):
 
 ```json
 {
-  "openai_reasoning_effort": "high",
-  "openai_reasoning_summary": "detailed"
+  "openai_reasoning_effort": "high"
 }
 ```
 
@@ -281,7 +269,6 @@ private function streamResponsesApi(Conversation $conversation, array $options):
   "model": "gpt-5.1-codex-max",
   "anthropic_thinking_budget": 10000,
   "openai_reasoning_effort": "medium",
-  "openai_reasoning_summary": "auto",
   "response_level": 1
 }
 ```
@@ -296,7 +283,6 @@ return {
     // Provider-specific reasoning state
     anthropicThinkingBudget: 0,
     openaiReasoningEffort: 'none',
-    openaiReasoningSummary: null,
 
     // Provider reasoning configs (loaded from API)
     providerReasoningConfig: {},
@@ -321,28 +307,16 @@ return {
     </div>
 </template>
 
-<!-- OpenAI: Effort dropdown + Summary toggle -->
+<!-- OpenAI: Effort dropdown only (summary is always 'auto') -->
 <template x-if="provider === 'openai'">
-    <div class="flex gap-4">
-        <!-- Effort Level -->
-        <div>
-            <label class="text-xs text-gray-400">Reasoning Effort</label>
-            <select x-model="openaiReasoningEffort" @change="saveSettings()" class="bg-gray-700 rounded px-2 py-1">
-                <template x-for="level in providerReasoningConfig.openai?.effort_levels">
-                    <option :value="level.value" x-text="level.name"></option>
-                </template>
-            </select>
-        </div>
-
-        <!-- Summary (only shown if effort != none) -->
-        <div x-show="openaiReasoningEffort !== 'none'">
-            <label class="text-xs text-gray-400">Show Thinking</label>
-            <select x-model="openaiReasoningSummary" @change="saveSettings()" class="bg-gray-700 rounded px-2 py-1">
-                <template x-for="opt in providerReasoningConfig.openai?.summary_options">
-                    <option :value="opt.value" x-text="opt.name"></option>
-                </template>
-            </select>
-        </div>
+    <div>
+        <label class="text-xs text-gray-400">Reasoning Effort</label>
+        <select x-model="openaiReasoningEffort" @change="saveSettings()" class="bg-gray-700 rounded px-2 py-1">
+            <template x-for="level in providerReasoningConfig.openai?.effort_levels">
+                <option :value="level.value" x-text="level.name"></option>
+            </template>
+        </select>
+        <p class="text-xs text-gray-500 mt-1">Thinking summary is always shown when reasoning is enabled</p>
     </div>
 </template>
 ```
@@ -362,7 +336,6 @@ async loadConversation(uuid) {
     // Load provider-specific settings
     this.anthropicThinkingBudget = data.conversation.anthropic_thinking_budget ?? 0;
     this.openaiReasoningEffort = data.conversation.openai_reasoning_effort ?? 'none';
-    this.openaiReasoningSummary = data.conversation.openai_reasoning_summary ?? null;
     this.responseLevel = data.conversation.response_level ?? 1;
 
     this.updateModels();
@@ -381,7 +354,6 @@ startNewConversation() {
     this.model = this.defaultSettings.model;
     this.anthropicThinkingBudget = this.defaultSettings.anthropic_thinking_budget ?? 0;
     this.openaiReasoningEffort = this.defaultSettings.openai_reasoning_effort ?? 'none';
-    this.openaiReasoningSummary = this.defaultSettings.openai_reasoning_summary ?? null;
     this.responseLevel = this.defaultSettings.response_level ?? 1;
 
     this.updateModels();
@@ -433,21 +405,20 @@ private function buildOptions(Conversation $conversation): array
 5. **Update `startNewConversation()`** - reset to defaults
 6. **Create provider-specific UI components**:
    - Anthropic: Token budget buttons (similar to current)
-   - OpenAI: Effort dropdown + Summary dropdown
+   - OpenAI: Effort dropdown only (summary is hardcoded to 'auto')
 7. **Update `sendMessage()`** - include provider-specific settings in request
 8. **Update `saveDefaultSettings()`** - save all provider settings
 
 ### Phase 3: Testing & Cleanup
 
 1. **Test Anthropic flow** - ensure thinking works as before
-2. **Test OpenAI flow** - verify effort/summary combinations work:
+2. **Test OpenAI flow** - verify effort levels work:
    - `effort: none` - no thinking block
-   - `effort: medium, summary: null` - reasoning but no visible thinking
-   - `effort: high, summary: auto` - full thinking block
+   - `effort: low/medium/high` - thinking block with summary automatically shown (hardcoded to 'auto')
 3. **Test conversation switching** - settings persist correctly
 4. **Test new conversation** - defaults applied correctly
-5. **Remove deprecated code**:
-   - `mapThinkingToEffort()` method
+5. **Verify deprecated code removed**:
+   - `mapThinkingToEffort()` method (already removed)
    - Old `thinking_level` references (if any stored)
 
 ---
@@ -464,10 +435,7 @@ DB::table('conversations')
 
 DB::table('conversations')
     ->where('provider_type', 'openai')
-    ->update([
-        'openai_reasoning_effort' => 'none',
-        'openai_reasoning_summary' => null,
-    ]);
+    ->update(['openai_reasoning_effort' => 'none']);
 ```
 
 ---
@@ -494,7 +462,14 @@ DB::table('conversations')
 
 1. **Claude Code provider** - Does it need reasoning settings? (Currently uses CLI, not API)
 2. **Model-specific defaults** - Some OpenAI models default to `effort: none`, others to `medium`. Should we handle this?
-3. **UI complexity** - Is two dropdowns for OpenAI (effort + summary) too complex? Could simplify to presets.
+
+## Implementation Decisions
+
+1. **OpenAI Summary Field** - Decided to hardcode `summary: 'auto'` in the provider instead of making it configurable:
+   - Simplifies the UI (only one dropdown for OpenAI instead of two)
+   - Reduces database columns (`openai_reasoning_summary` NOT added)
+   - Reasoning is always visible when enabled, which aligns with user expectations
+   - Can be made configurable later if users request it
 
 ---
 

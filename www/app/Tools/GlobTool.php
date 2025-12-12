@@ -48,6 +48,10 @@ class GlobTool extends Tool
             ? $context->resolvePath($path)
             : $context->getWorkingDirectory();
 
+        if (!$context->isPathAllowed($basePath)) {
+            return ToolResult::error("Access denied: Path is outside allowed working directory");
+        }
+
         if (!is_dir($basePath)) {
             return ToolResult::error("Directory not found: {$basePath}");
         }

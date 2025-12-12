@@ -14,6 +14,8 @@ class SettingsController extends Controller
      */
     public function chatDefaults(): JsonResponse
     {
+        $provider = config('ai.default_provider', 'anthropic');
+
         $defaults = Setting::getMany([
             'chat.default_provider',
             'chat.default_model',
@@ -24,8 +26,8 @@ class SettingsController extends Controller
             // Legacy
             'chat.thinking_level',
         ], [
-            'chat.default_provider' => config('ai.default_provider', 'anthropic'),
-            'chat.default_model' => config('ai.providers.anthropic.default_model', 'claude-sonnet-4-5-20250929'),
+            'chat.default_provider' => $provider,
+            'chat.default_model' => config("ai.providers.{$provider}.default_model"),
             'chat.response_level' => 1,
             'chat.anthropic_thinking_budget' => 0,
             'chat.openai_reasoning_effort' => 'none',

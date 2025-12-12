@@ -105,3 +105,4 @@ Components live in `resources/views/components/`:
 - Create feature branches for changes
 - **Do not create PRs automatically** - only when explicitly requested
 - Never commit `.env` or credential files
+- **Use regular merge commits** (`gh pr merge --merge`), not squash merges

@@ -91,6 +91,9 @@ class PricingController extends Controller
             'cache_read_price_per_million' => $validated['cacheRead'] ?? null,
         ]);
 
+        // Refresh model to get updated values
+        $model->refresh();
+
         // Clear cache after update
         $this->models->clearCache();
 

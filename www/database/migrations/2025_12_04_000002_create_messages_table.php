@@ -34,6 +34,8 @@ return new class extends Migration
 
             $table->timestamp('created_at')->nullable();
 
+            // Composite unique constraint to prevent race conditions
+            $table->unique(['conversation_id', 'sequence']);
             $table->index(['conversation_id', 'sequence']);
         });
     }

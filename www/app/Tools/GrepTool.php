@@ -97,6 +97,10 @@ class GrepTool extends Tool
             ? $context->resolvePath($path)
             : $context->getWorkingDirectory();
 
+        if (!$context->isPathAllowed($searchPath)) {
+            return ToolResult::error("Access denied: Path is outside allowed working directory");
+        }
+
         $args[] = $searchPath;
 
         // Execute

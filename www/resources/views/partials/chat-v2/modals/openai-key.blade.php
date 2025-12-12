@@ -14,7 +14,7 @@
 
     <p class="text-gray-500 text-xs mb-4">
         Your key is stored locally and used only for transcription. Get one at
-        <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-400 hover:underline">platform.openai.com</a>
+        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline">platform.openai.com</a>
     </p>
 
     <div class="flex gap-2">

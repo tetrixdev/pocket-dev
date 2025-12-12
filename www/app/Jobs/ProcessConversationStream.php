@@ -207,8 +207,20 @@ class ProcessConversationStream implements ShouldQueue
                 case StreamEvent::TOOL_USE_STOP:
                     if (isset($currentToolInput[$event->blockIndex])) {
                         $inputJson = $currentToolInput[$event->blockIndex];
-                        $parsedInput = json_decode($inputJson, true) ?? [];
-                        $contentBlocks[$event->blockIndex]['input'] = $parsedInput;
+                        $parsedInput = json_decode($inputJson, true);
+
+                        if ($parsedInput === null && json_last_error() !== JSON_ERROR_NONE) {
+                            Log::warning('ProcessConversationStream: Failed to parse tool input JSON', [
+                                'block_index' => $event->blockIndex,
+                                'tool_name' => $contentBlocks[$event->blockIndex]['name'] ?? 'unknown',
+                                'tool_id' => $contentBlocks[$event->blockIndex]['id'] ?? 'unknown',
+                                'json_error' => json_last_error_msg(),
+                                'input_preview' => substr($inputJson, 0, 200),
+                            ]);
+                            $parsedInput = [];
+                        }
+
+                        $contentBlocks[$event->blockIndex]['input'] = $parsedInput ?? [];
                         $pendingToolUses[] = $contentBlocks[$event->blockIndex];
                         Log::channel('api')->info('ProcessConversationStream: Tool use completed', [
                             'block_index' => $event->blockIndex,
@@ -255,7 +267,7 @@ class ProcessConversationStream implements ShouldQueue
             'will_execute' => ($stopReason === 'tool_use' && !empty($pendingToolUses)),
         ]);
         if ($stopReason === 'tool_use' && !empty($pendingToolUses)) {
-            $toolResults = $this->executeTools($pendingToolUses, $conversation);
+            $toolResults = $this->executeTools($pendingToolUses, $conversation, $toolRegistry);
 
             // Publish tool results to Redis
             foreach ($toolResults as $result) {
@@ -339,9 +351,8 @@ class ProcessConversationStream implements ShouldQueue
         ]);
     }
 
-    private function executeTools(array $toolUses, Conversation $conversation): array
+    private function executeTools(array $toolUses, Conversation $conversation, ToolRegistry $toolRegistry): array
     {
-        $toolRegistry = app(ToolRegistry::class);
         $context = new ExecutionContext($conversation->working_directory);
         $results = [];
 

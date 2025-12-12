@@ -49,11 +49,9 @@
         <x-button type="submit" variant="primary">
             {{ isset($skill) ? 'Update Skill' : 'Create Skill' }}
         </x-button>
-        <a href="{{ route('config.skills') }}">
-            <x-button type="button" variant="secondary">
-                Cancel
-            </x-button>
-        </a>
+        <x-button type="button" variant="secondary" onclick="window.location.href='{{ route('config.skills') }}'">
+            Cancel
+        </x-button>
     </div>
 </form>
 

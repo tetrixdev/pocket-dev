@@ -341,6 +341,9 @@ class ConversationController extends Controller
      */
     public function destroy(Conversation $conversation): JsonResponse
     {
+        // Clean up Redis stream data before deletion
+        $this->streamManager->cleanup($conversation->uuid);
+
         $conversation->delete();
 
         return response()->json([

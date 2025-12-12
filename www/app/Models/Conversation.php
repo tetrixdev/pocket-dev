@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class Conversation extends Model
@@ -108,9 +109,24 @@ class Conversation extends Model
         $this->increment('total_output_tokens', $outputTokens);
     }
 
+    /**
+     * Get the next sequence number for a message in this conversation.
+     *
+     * Uses a database transaction with row locking to prevent race conditions
+     * when multiple messages are created concurrently for the same conversation.
+     */
     public function getNextSequence(): int
     {
-        return ($this->messages()->max('sequence') ?? 0) + 1;
+        return DB::transaction(function () {
+            // Lock the conversation row to prevent concurrent sequence assignment
+            DB::table('conversations')
+                ->where('id', $this->id)
+                ->lockForUpdate()
+                ->first();
+
+            // Get the max sequence within the transaction
+            return ($this->messages()->max('sequence') ?? 0) + 1;
+        });
     }
 
     public function scopeActive($query)
