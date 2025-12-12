@@ -17,7 +17,9 @@ Route::view("/session/{sessionId}", "chat")->name("claude.session");
 Route::view("/", "chat")->name("claude.index");
 
 // V2 Chat - Multi-provider direct API
-Route::view("/chat-v2/{conversationUuid?}", "chat-v2")->name("chat.v2");
+Route::view("/chat-v2/{conversationUuid?}", "chat-v2")
+    ->whereUuid("conversationUuid")
+    ->name("chat.v2");
 
 Route::get("/terminal", [TerminalController::class, "index"])->name("terminal.index");
 Route::post("/transcribe", [TerminalController::class, "transcribe"])->name("terminal.transcribe");

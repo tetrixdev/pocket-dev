@@ -230,20 +230,26 @@
                     });
                 },
 
-                // Extract conversation UUID from URL path
+                // Extract conversation UUID from URL path (strict UUID validation)
                 getConversationUuidFromUrl() {
-                    const match = window.location.pathname.match(/\/chat-v2\/([a-f0-9-]+)/i);
+                    const path = window.location.pathname.replace(/\/+$/, ''); // tolerate trailing slash
+                    const match = path.match(/^\/chat-v2\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
                     return match ? match[1] : null;
                 },
 
                 // Update URL to reflect current conversation
-                updateUrl(conversationUuid = null) {
+                // Use replace: true to avoid back-button loops when clearing invalid URLs
+                updateUrl(conversationUuid = null, { replace = false } = {}) {
                     const newPath = conversationUuid ? `/chat-v2/${conversationUuid}` : '/chat-v2';
                     const state = conversationUuid ? { conversationUuid } : {};
 
-                    // Only push if path actually changed
+                    // Only update if path actually changed
                     if (window.location.pathname !== newPath) {
-                        window.history.pushState(state, '', newPath);
+                        if (replace) {
+                            window.history.replaceState(state, '', newPath);
+                        } else {
+                            window.history.pushState(state, '', newPath);
+                        }
                     }
                 },
 
@@ -393,8 +399,15 @@
 
                     try {
                         const response = await fetch(`/api/v2/conversations/${uuid}`);
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
                         const data = await response.json();
+                        if (!data?.conversation) {
+                            throw new Error('Missing conversation payload');
+                        }
 
+                        // Only set state after validating response
                         this.currentConversationUuid = uuid;
 
                         // Update URL to reflect loaded conversation
@@ -472,8 +485,10 @@
                     } catch (err) {
                         console.error('Failed to load conversation:', err);
                         this.showError('Failed to load conversation');
-                        // Clear URL since conversation couldn't be loaded
-                        this.updateUrl(null);
+                        // Reset local state and clear URL without creating a back-button loop
+                        this.currentConversationUuid = null;
+                        this.messages = [];
+                        this.updateUrl(null, { replace: true });
                     }
                 },
 
