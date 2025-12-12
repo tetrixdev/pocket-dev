@@ -1,6 +1,6 @@
 # Chat Module
 
-The chat module provides a web interface for interacting with Claude Code CLI.
+The chat module provides a web interface for multi-provider AI conversations.
 
 ## Contents
 
@@ -8,14 +8,41 @@ The chat module provides a web interface for interacting with Claude Code CLI.
 
 ## Overview
 
-**Primary file:** `resources/views/chat.blade.php` (~1500 lines)
+**Primary file:** `resources/views/chat-v2.blade.php` + `partials/chat-v2/`
 
-**Controller:** `app/Http/Controllers/Api/ClaudeController.php`
+**Controller:** `app/Http/Controllers/Api/ConversationController.php`
 
 **Routes:**
-- `/` - Chat interface (web)
-- `/session/{sessionId}` - Session-specific chat (web)
-- `/api/claude/sessions/{id}/stream` - Streaming endpoint (API)
+- `/` - Chat interface (default)
+- `/chat/{uuid}` - Conversation-specific view
+- `/api/v2/conversations` - Conversation CRUD
+- `/api/v2/conversations/{uuid}/stream` - Start streaming
+- `/api/v2/conversations/{uuid}/stream-events` - SSE endpoint
+
+## Architecture
+
+The chat system uses a multi-provider architecture:
+
+```
+Frontend (Alpine.js)          Backend                      Providers
+────────────────────          ───────                      ─────────
+POST /api/v2/conversations/   ConversationController
+{uuid}/stream                 │
+                              ▼
+                              ProcessConversationStream
+                              (Background Job)
+                              │
+                              ▼
+                              ProviderFactory::make()
+                              │
+                              ├─► AnthropicProvider ──────► Anthropic API
+                              └─► OpenAIProvider ─────────► OpenAI API
+                              │
+                              ▼
+                              StreamManager (Redis)
+                              │
+GET /stream-events ◄──────────┘ (SSE)
+```
 
 ## Key Concepts
 
@@ -26,53 +53,35 @@ The chat interface maintains **two separate DOM containers** for responsive desi
 - `#messages` - Desktop view (sidebar layout, container scroll)
 - `#messages-mobile` - Mobile view (full-page scroll)
 
-**Critical:** Every message operation must update BOTH containers:
+**Critical:** Every message operation must update BOTH containers.
 
-```javascript
-// Pattern used throughout chat.blade.php
-const container = document.getElementById('messages');
-const mobileContainer = document.getElementById('messages-mobile');
+### Conversation Model
 
-if (container) {
-    container.innerHTML += html;
-    container.scrollTop = container.scrollHeight;  // Desktop scroll
-}
-if (mobileContainer) {
-    mobileContainer.innerHTML += html;
-    window.scrollTo(0, document.body.scrollHeight);  // Mobile scroll
-}
+Conversations are stored in the database with full message history:
+
+| Field | Description |
+|-------|-------------|
+| `uuid` | URL-safe identifier |
+| `provider_type` | 'anthropic' or 'openai' |
+| `model` | Model identifier |
+| `working_directory` | Context directory |
+| `status` | active/archived |
+| `anthropic_thinking_budget` | Thinking tokens (Anthropic) |
+| `openai_reasoning_effort` | Reasoning level (OpenAI) |
+| `response_level` | Response verbosity (0-3) |
+
+**Model:** `app/Models/Conversation.php`
+
+### Provider Abstraction
+
+The `ProviderFactory` creates provider instances based on type:
+
+```php
+$provider = $this->providerFactory->make('anthropic');
+$provider->isAvailable();  // Check API key
+$provider->getModels();    // List available models
+$provider->stream(...);    // Stream a response
 ```
-
-**Functions that must update both:**
-- `addMsg()` - Add new message
-- `updateMsg()` - Update existing message
-- `clearMessages()` - Clear all messages
-- `updateSessionCost()` - Update cost display
-- `loadSessionsList()` - Update session sidebar
-
-**Why this pattern?**
-- CSS media queries show/hide containers based on viewport
-- Both exist in DOM simultaneously
-- Avoids JavaScript viewport detection complexity
-
-**Limitation:** Code duplication, easy to forget one container.
-
-### Session Management
-
-**Two IDs per session:**
-
-| ID | Type | Source | Used For |
-|----|------|--------|----------|
-| `sessionId` | Integer | Database (auto-increment) | Laravel routes, database queries |
-| `claudeSessionId` | UUID | Claude CLI | Continuing conversations |
-
-**Flow:**
-1. User creates session → Database generates ID + UUID
-2. Claude CLI uses UUID for session persistence
-3. Frontend tracks both for API calls
-4. Loading from .jsonl uses UUID, may create database record
-
-**Source:** `app/Models/ClaudeSession.php`
 
 ### Message Types
 
@@ -84,159 +93,114 @@ if (mobileContainer) {
 | `tool` | Blue block | Formatted tool call | Yes |
 | `error` | Red bubble | Error text | No |
 
-**Rendering:**
-- User messages: `escapeHtml(content)` (plain text)
-- Assistant messages: `marked.parse(content)` (markdown)
-- Thinking/Tool: Custom formatting with collapsible UI
-
 ### Cost Tracking
 
-**Two calculation contexts:**
+Cost is calculated using the `ai_models` table pricing:
 
-| Context | Calculator | Source | When |
-|---------|------------|--------|------|
-| Streaming | Client JavaScript | `PRICING` constants | Real-time, during response |
-| Historical | Server (Claude CLI) | .jsonl metadata | Loading saved sessions |
+| Context | Calculator | Source |
+|---------|------------|--------|
+| Streaming | Client JavaScript | `ai_models` table |
+| Historical | Server + Client | Stored on message |
 
-**Client-side calculation:**
-```javascript
-const PRICING = {
-    input: inputPricePerMillion / 1_000_000,
-    output: outputPricePerMillion / 1_000_000,
-    cacheWriteMultiplier: 1.25,
-    cacheReadMultiplier: 0.1
-};
+### Voice Input
 
-function calculateCost(usage) {
-    return (usage.input_tokens * PRICING.input) +
-           (usage.cache_creation_input_tokens * PRICING.input * 1.25) +
-           (usage.cache_read_input_tokens * PRICING.input * 0.1) +
-           (usage.output_tokens * PRICING.output);
-}
-```
+Voice transcription uses OpenAI Whisper:
 
-**Server-side:** Claude CLI calculates and stores cost in .jsonl file metadata.
+1. User clicks mic or presses Ctrl+Space
+2. `MediaRecorder` captures audio as `audio/webm`
+3. Audio sent to `/api/claude/transcribe`
+4. Transcribed text inserted into prompt
+5. Optional auto-send after transcription
 
-**Risk:** Client and server calculations could drift if pricing changes.
+**Requirements:**
+- OpenAI API key configured
+- Secure context (HTTPS or localhost)
 
 ## State Management (Alpine.js)
 
-```javascript
-function appState() {
-    return {
-        // Voice recording
-        isRecording: false,
-        isProcessing: false,
-        mediaRecorder: null,
-        audioChunks: [],
+The chat uses Alpine.js for reactive state management. Key state includes:
 
-        // Modals
-        showOpenAiModal: false,
-        showShortcutsModal: false,
-        showMobileDrawer: false,
-
-        // Configuration
-        openAiKeyConfigured: false,
-        autoSendAfterTranscription: true
-    }
-}
-```
-
-**Usage:** `x-data="appState()"` on body element.
-
-## Voice Recording
-
-**Flow:**
-1. User clicks mic or presses Ctrl+Space
-2. `MediaRecorder` starts with `audio/webm` format
-3. Chunks collected in `audioChunks` array
-4. On stop: Blob created, FormData sent to `/api/claude/transcribe`
-5. Transcribed text inserted into prompt
-6. If `autoSendAfterTranscription`: Form submitted
-
-**Requirements:**
-- OpenAI API key configured (stored encrypted in database)
-- Secure context (HTTPS or localhost) - mic won't work on plain IP
-
-**Source:** `appState()` methods in `chat.blade.php`
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Shift+T` (in prompt) | Cycle thinking modes |
-| `Ctrl+Space` | Toggle voice recording |
-| `Ctrl+?` | Show shortcuts modal |
+- `messages[]` - Conversation messages
+- `currentConversationUuid` - Active conversation
+- `isStreaming` - Stream status
+- `providers` - Available AI providers
+- `chatDefaults` - Default settings
 
 ## UI Components
 
-### Thinking Mode Toggle
+### Quick Settings Modal
 
-Three levels:
-- Off (gray)
-- Low (yellow) - `thinking_budget: "low"`
-- High (green) - `thinking_budget: "high"`
+Configures per-conversation settings:
+- Model selection (provider-specific)
+- Thinking/reasoning level
+- Response verbosity level
 
-Cycles through on Shift+T.
+### Conversation Sidebar
 
-### Session Sidebar
+- Lists recent conversations
+- Shows title or first prompt preview
+- Archive/delete actions
+- Click to switch conversations
 
-**Desktop:** Fixed left sidebar with session list
-**Mobile:** Accessible via hamburger menu → drawer
+### Keyboard Shortcuts
 
-Sessions show:
-- First 50 chars of first prompt
-- Date and time
-- Click to load
-
-### Cost Display
-
-Per-message:
-- Shows `$X.XXXX` after assistant messages
-- Cog icon opens breakdown modal
-
-Session total:
-- Desktop: Bottom of sidebar
-- Mobile: In drawer
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+T` | Cycle thinking modes |
+| `Ctrl+Space` | Toggle voice recording |
+| `Ctrl+?` | Show shortcuts modal |
 
 ## File Structure
 
 ```
-resources/views/chat.blade.php
-├── HTML Structure
-│   ├── Desktop layout (sidebar + main)
-│   ├── Mobile layout (full-page + drawer)
-│   └── Modals (OpenAI key, shortcuts, cost breakdown)
-├── CSS (inline styles)
-│   ├── Markdown styling
-│   ├── Responsive breakpoints
-│   └── Animation keyframes
-└── JavaScript
-    ├── Global variables (sessionId, claudeSessionId, PRICING, etc.)
-    ├── marked.js configuration
-    ├── Helper functions (escapeHtml, formatTimestamp, calculateCost)
-    ├── Session functions (loadSessionsList, loadSession, newSession)
-    ├── Message functions (addMsg, updateMsg, clearMessages)
-    ├── Streaming (sendMessage with SSE handling)
-    ├── Tool formatting (formatToolCall)
-    ├── Cost tracking (updateSessionCost, showCostBreakdown)
-    ├── Alpine.js state (appState with voice recording)
-    └── Keyboard shortcuts
+resources/views/
+├── chat-v2.blade.php              # Main chat view
+└── partials/chat-v2/
+    ├── sidebar.blade.php          # Conversation list
+    ├── mobile-layout.blade.php    # Mobile view
+    ├── input-desktop.blade.php    # Desktop input
+    ├── input-mobile.blade.php     # Mobile input
+    ├── modals.blade.php           # Modal container
+    ├── modals/
+    │   ├── quick-settings.blade.php
+    │   ├── pricing-settings.blade.php
+    │   ├── openai-key.blade.php
+    │   ├── shortcuts.blade.php
+    │   ├── cost-breakdown.blade.php
+    │   └── error.blade.php
+    └── messages/
+        ├── user-message.blade.php
+        ├── assistant-message.blade.php
+        ├── thinking-block.blade.php
+        ├── tool-block.blade.php
+        └── empty-response.blade.php
 ```
 
-## Known Issues / Complexity
+## API Endpoints
 
-1. **File size:** 1500+ lines in single file
-2. **Dual container:** Easy to forget to update both
-3. **Session ID confusion:** Two IDs tracked throughout
-4. **Cost duplication:** Client and server both calculate
-5. **No code splitting:** All JS loaded regardless of need
-6. **Mixed concerns:** HTML, CSS, JS all in one file
+### Conversation Management
 
-## Refactoring Opportunities
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v2/conversations` | List conversations |
+| POST | `/api/v2/conversations` | Create conversation |
+| GET | `/api/v2/conversations/{uuid}` | Get conversation |
+| DELETE | `/api/v2/conversations/{uuid}` | Delete conversation |
+| POST | `/api/v2/conversations/{uuid}/archive` | Archive |
+| POST | `/api/v2/conversations/{uuid}/unarchive` | Unarchive |
 
-1. Extract JavaScript to separate files
-2. Use a single message container with CSS-only responsive
-3. Consolidate session ID handling
-4. Move cost calculation to server-only
-5. Consider Livewire for simpler reactivity
+### Streaming
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v2/conversations/{uuid}/stream` | Start streaming |
+| GET | `/api/v2/conversations/{uuid}/stream-status` | Check status |
+| GET | `/api/v2/conversations/{uuid}/stream-events` | SSE endpoint |
+
+### Settings
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v2/providers` | List providers |
+| GET | `/api/v2/settings/chat-defaults` | Get defaults |
+| POST | `/api/v2/settings/chat-defaults` | Update defaults |

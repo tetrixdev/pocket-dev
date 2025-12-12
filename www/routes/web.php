@@ -12,11 +12,13 @@ Route::post("/claude/auth/upload", [ClaudeAuthController::class, "upload"])->nam
 Route::post("/claude/auth/upload-json", [ClaudeAuthController::class, "uploadJson"])->name("claude.auth.uploadJson");
 Route::delete("/claude/auth/logout", [ClaudeAuthController::class, "logout"])->name("claude.auth.logout");
 
-// Claude chat routes - Blade view with streaming
-Route::view("/session/{sessionId}", "chat")->name("claude.session");
-Route::view("/", "chat")->name("claude.index");
+// Chat - Multi-provider conversation interface (default)
+Route::view("/", "chat-v2")->name("chat.index");
+Route::view("/chat/{conversationUuid?}", "chat-v2")
+    ->whereUuid("conversationUuid")
+    ->name("chat.conversation");
 
-// V2 Chat - Multi-provider direct API
+// Legacy route alias for backward compatibility
 Route::view("/chat-v2/{conversationUuid?}", "chat-v2")
     ->whereUuid("conversationUuid")
     ->name("chat.v2");

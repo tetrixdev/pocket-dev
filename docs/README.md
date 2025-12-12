@@ -56,7 +56,7 @@ PocketDev is a Docker-based development environment that provides a web interfac
 
 ### 🗄️ Database (`database/`)
 
-**TLDR:** Three custom tables: `claude_sessions` (metadata only - messages live in .jsonl files), `app_settings` (encrypted key-value store for API keys), `model_pricing` (token pricing for cost calculation). Plus standard Laravel tables (users, cache, jobs).
+**TLDR:** Three custom tables: `conversations` (multi-provider conversations with messages stored in DB), `app_settings` (encrypted key-value store for API keys), `ai_models` (model configuration and pricing). Plus standard Laravel tables (users, cache, jobs).
 
 **Read level:** ✅ TLDR likely sufficient - Schema is simple, use TLDR to identify relevant tables.
 
@@ -65,7 +65,7 @@ PocketDev is a Docker-based development environment that provides a web interfac
 
 ### ⚙️ Configuration (`configuration/`)
 
-**TLDR:** Key config files: `config/claude.php` (model, timeout, permissions), `.env` (Docker settings, Basic Auth credentials), `nginx.conf.template` (proxy routing). Config editor allows runtime editing of Claude settings in TTYD container.
+**TLDR:** Key config files: `config/ai.php` (providers, models, thinking settings), `.env` (Docker settings, Basic Auth credentials, API keys), `nginx.conf.template` (proxy routing). Config editor allows runtime editing of Claude settings in TTYD container.
 
 **Read level:** ✅ TLDR likely sufficient - Configuration is straightforward.
 
@@ -80,13 +80,9 @@ These areas have accumulated complexity and are candidates for refactoring:
 
 1. **Dual Container Pattern** (`modules/chat/`) - Desktop `#messages` + mobile `#messages-mobile` must be updated in parallel for every DOM change.
 
-2. **Session ID Duality** - Database ID (integer) vs Claude session ID (UUID) tracked separately, creating confusion.
+2. **Cost Calculation** - Duplicated in client JS (during streaming) and server-side (for historical messages).
 
-3. **Cost Calculation** - Duplicated in client JS (during streaming) and server-side (.jsonl files for historical).
-
-4. **Credential Separation** - TTYD and PHP containers have separate credential files at different paths.
-
-5. **chat.blade.php Size** - 1500+ lines mixing HTML, JS, CSS, Alpine.js state.
+3. **Credential Separation** - TTYD and PHP containers have separate credential files at different paths.
 
 ---
 
@@ -116,9 +112,11 @@ docker compose logs -f pocket-dev-php
 
 | Component | Primary Files |
 |-----------|---------------|
-| Claude CLI wrapper | `app/Services/ClaudeCodeService.php` |
-| Main API | `app/Http/Controllers/Api/ClaudeController.php` |
-| Chat interface | `resources/views/chat.blade.php` |
+| Provider factory | `app/Services/ProviderFactory.php` |
+| Anthropic provider | `app/Services/Providers/AnthropicProvider.php` |
+| OpenAI provider | `app/Services/Providers/OpenAIProvider.php` |
+| Conversation API | `app/Http/Controllers/Api/ConversationController.php` |
+| Chat interface | `resources/views/chat-v2.blade.php` |
 | Config editor | `app/Http/Controllers/ConfigController.php` |
 | Docker setup | `compose.yml` |
 | Proxy config | `docker-proxy/shared/` |

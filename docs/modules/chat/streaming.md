@@ -1,103 +1,136 @@
 # Streaming Implementation
 
-Real-time streaming of Claude responses using Server-Sent Events (SSE).
+Real-time streaming of AI responses using Server-Sent Events (SSE) with Redis-backed event buffering.
 
 ## Architecture
 
 ```
-Frontend                    Backend                     Claude CLI
-────────                    ───────                     ──────────
-fetch() ──────────────────► ClaudeController::stream()
+Frontend                    Backend                          Provider APIs
+────────                    ───────                          ─────────────
+POST /stream ─────────────► ConversationController::stream()
                             │
                             ▼
-                            ClaudeCodeService::streamQuery()
+                            Dispatch ProcessConversationStream job
                             │
                             ▼
-                            proc_open('claude --output-format stream-json')
+                            Job runs in background
+                            │
+                            ├─► StreamManager::startStream()
                             │
                             ▼
-                            Read stdout line by line ◄── Claude CLI output
+                            ProviderFactory::make() ──────► AnthropicProvider
+                            │                              or OpenAIProvider
+                            ▼
+                            Provider::stream() ────────────► API (streaming)
                             │
                             ▼
-SSE: data: {...} ◄───────── echo "data: " . $line
-reader.read() ◄─────────────│
-│
-▼
-Parse JSON, update DOM
+                            StreamManager::pushEvent() ◄─── Parse chunks
+                            │
+                            ▼
+                            Redis event buffer
+                            │
+GET /stream-events ◄────────┘ (SSE polling)
 ```
 
 ## Backend (PHP)
 
-### Controller Entry Point
+### Starting a Stream
 
-**File:** `app/Http/Controllers/Api/ClaudeController.php:stream()`
+**File:** `app/Http/Controllers/Api/ConversationController.php:stream()`
 
 ```php
-public function stream(Request $request, ClaudeSession $session)
+public function stream(Request $request, Conversation $conversation): JsonResponse
 {
-    $validated = $request->validate([
-        'prompt' => 'required|string',
-        'thinking_level' => 'nullable|string|in:none,low,high',
+    // Initialize stream state in Redis
+    $this->streamManager->startStream($conversation->uuid, [
+        'model' => $conversation->model,
+        'provider' => $conversation->provider_type,
     ]);
 
-    return response()->stream(function () use ($validated, $session) {
-        $this->claudeService->streamQuery(
-            prompt: $validated['prompt'],
-            sessionId: $session->claude_session_id,
-            onChunk: function ($chunk) {
-                echo "data: " . json_encode($chunk) . "\n\n";
-                ob_flush();
-                flush();
-            },
-            workingDirectory: $session->project_path,
-            thinkingLevel: $validated['thinking_level'] ?? 'none',
-        );
-    }, 200, [
-        'Content-Type' => 'text/event-stream',
-        'Cache-Control' => 'no-cache',
-        'Connection' => 'keep-alive',
-        'X-Accel-Buffering' => 'no',
+    // Clear old events
+    Redis::del("stream:{$conversation->uuid}:events");
+
+    // Dispatch background job
+    ProcessConversationStream::dispatch(
+        $conversation->uuid,
+        $validated['prompt'],
+        []
+    );
+
+    return response()->json([
+        'success' => true,
+        'conversation_uuid' => $conversation->uuid,
     ]);
 }
 ```
 
-### Service Layer
+### Background Job
 
-**File:** `app/Services/ClaudeCodeService.php:streamQuery()`
+**File:** `app/Jobs/ProcessConversationStream.php`
 
-Key aspects:
-1. Builds command with `--output-format stream-json`
-2. Uses `proc_open()` with pipes for stdin/stdout
-3. Writes prompt to stdin, closes it
-4. Reads stdout line by line
-5. Calls `$onChunk` callback for each line
+The job:
+1. Loads the conversation
+2. Creates the appropriate provider
+3. Calls `provider->stream()` with a callback
+4. Callback pushes events to StreamManager
+5. Handles completion/errors
+
+### SSE Endpoint
+
+**File:** `app/Http/Controllers/Api/ConversationController.php:streamEvents()`
 
 ```php
-$command = [
-    $this->binaryPath,
-    '--print',
-    '--output-format', 'stream-json',
-    '--model', $this->model,
-];
+public function streamEvents(Request $request, Conversation $conversation): StreamedResponse
+{
+    $fromIndex = max(0, (int) $request->query('from_index', 0));
 
-if ($sessionId) {
-    $command[] = '--session';
-    $command[] = $sessionId;
-    $command[] = '--resume';
+    return response()->stream(function () use ($conversation, $fromIndex) {
+        $sse = new SseWriter();
+        $currentIndex = $fromIndex;
+
+        // Send buffered events first
+        $events = $this->streamManager->getEvents($conversation->uuid, $fromIndex);
+        foreach ($events as $event) {
+            $sse->writeRaw(json_encode(array_merge($event, ['index' => $currentIndex])));
+            $currentIndex++;
+        }
+
+        // Poll for new events until stream completes
+        while ($this->streamManager->getStatus($conversation->uuid) === 'streaming') {
+            $newEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
+            foreach ($newEvents as $event) {
+                $sse->writeRaw(json_encode(array_merge($event, ['index' => $currentIndex])));
+                $currentIndex++;
+            }
+            usleep(100000); // 100ms
+            flush();
+        }
+
+        // Send final status
+        $sse->writeRaw(json_encode([
+            'type' => 'stream_status',
+            'status' => $this->streamManager->getStatus($conversation->uuid),
+        ]));
+    }, 200, SseWriter::headers());
 }
+```
 
-$process = proc_open($command, $descriptorspec, $pipes);
+### Stream Manager
 
-// Write prompt to stdin
-fwrite($pipes[0], $prompt);
-fclose($pipes[0]);
+**File:** `app/Services/StreamManager.php`
 
-// Read stdout line by line
-while (!feof($pipes[1])) {
-    $line = fgets($pipes[1]);
-    if ($line !== false && trim($line) !== '') {
-        $onChunk(json_decode($line, true));
-    }
+Redis-backed event storage:
+
+```php
+class StreamManager
+{
+    public function startStream(string $uuid, array $metadata): void;
+    public function pushEvent(string $uuid, array $event): void;
+    public function getEvents(string $uuid, int $fromIndex = 0): array;
+    public function getStatus(string $uuid): ?string;
+    public function completeStream(string $uuid): void;
+    public function failStream(string $uuid, string $error): void;
+    public function cleanup(string $uuid): void;
 }
 ```
 
@@ -105,195 +138,172 @@ while (!feof($pipes[1])) {
 
 ### Initiating Stream
 
-**File:** `resources/views/chat.blade.php:sendMessage()`
+**File:** `resources/views/chat-v2.blade.php`
 
 ```javascript
-const response = await fetch(`${baseUrl}/api/claude/sessions/${sessionId}/stream`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-        prompt: originalPrompt,
-        thinking_level: currentThinkingLevel
-    })
-});
+async startStream(prompt) {
+    // Start the stream
+    const response = await fetch(`/api/v2/conversations/${uuid}/stream`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ prompt })
+    });
 
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-let buffer = '';
+    // Connect to SSE endpoint
+    this.connectToStreamEvents();
+}
 
-while (true) {
-    const {done, value} = await reader.read();
-    if (done) break;
+connectToStreamEvents(fromIndex = 0) {
+    const url = `/api/v2/conversations/${uuid}/stream-events?from_index=${fromIndex}`;
+    const eventSource = new EventSource(url);
 
-    buffer += decoder.decode(value, {stream: true});
-    const lines = buffer.split('\n');
-    buffer = lines.pop(); // Keep incomplete line
-
-    for (const line of lines) {
-        if (line.startsWith('data: ')) {
-            const data = JSON.parse(line.substring(6));
-            // Handle event...
-        }
-    }
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        this.handleStreamEvent(data);
+    };
 }
 ```
 
 ### Event Types
 
-Claude CLI emits these event types in stream-json mode:
+#### `text_delta`
 
-#### `content_block_start`
-
-Signals start of a new content block.
+Incremental text content:
 
 ```json
 {
-    "type": "stream_event",
-    "event": {
-        "type": "content_block_start",
-        "index": 0,
-        "content_block": {
-            "type": "thinking" | "text" | "tool_use",
-            "id": "...",
-            "name": "ToolName"  // Only for tool_use
-        }
-    }
+    "type": "text_delta",
+    "text": "partial response..."
 }
 ```
 
-**Handling:**
-- Set `currentBlockType` to track what we're receiving
-- For `thinking`: Reset `thinkingContent`, prepare new thinking block
-- For `text`: Reset `textContent`, prepare new assistant message
-- For `tool_use`: Initialize tool tracking with name and ID
+#### `thinking_start` / `thinking_delta` / `thinking_stop`
 
-#### `content_block_delta`
-
-Incremental content update.
-
-**Thinking delta:**
-```json
-{
-    "type": "stream_event",
-    "event": {
-        "type": "content_block_delta",
-        "delta": {
-            "type": "thinking_delta",
-            "thinking": "partial thinking text..."
-        }
-    }
-}
-```
-
-**Text delta:**
-```json
-{
-    "type": "stream_event",
-    "event": {
-        "type": "content_block_delta",
-        "delta": {
-            "type": "text_delta",
-            "text": "partial response text..."
-        }
-    }
-}
-```
-
-**Tool input delta:**
-```json
-{
-    "type": "stream_event",
-    "event": {
-        "type": "content_block_delta",
-        "delta": {
-            "type": "input_json_delta",
-            "partial_json": "{\"command\": \"ls"
-        }
-    }
-}
-```
-
-**Handling:**
-- Append delta to accumulated content
-- Create message block if doesn't exist
-- Update message block with new content
-
-#### `message_delta`
-
-Contains usage data.
+Extended thinking content:
 
 ```json
 {
-    "type": "stream_event",
-    "event": {
-        "type": "message_delta",
-        "usage": {
-            "input_tokens": 1234,
-            "output_tokens": 567,
-            "cache_creation_input_tokens": 100,
-            "cache_read_input_tokens": 50
-        }
-    }
+    "type": "thinking_delta",
+    "thinking": "reasoning text..."
 }
 ```
 
-**Handling:**
-- Store usage data for cost calculation
-- Calculate cost after stream completes
+#### `tool_use_start` / `tool_input_delta`
 
-#### Tool Results
-
-Tool results come as user messages:
+Tool invocation:
 
 ```json
 {
-    "type": "user",
-    "message": {
-        "content": [
-            {
-                "type": "tool_result",
-                "tool_use_id": "...",
-                "content": "tool output here"
-            }
-        ]
-    }
+    "type": "tool_use_start",
+    "tool_name": "Read",
+    "tool_id": "tool_123"
 }
 ```
 
-**Handling:**
-- Match `tool_use_id` to existing tool block
-- Update tool block with result
+#### `tool_result`
 
-### Block Tracking
+Tool execution result:
 
-The frontend tracks multiple concurrent blocks:
-
-```javascript
-let thinkingMsgId = null;      // Current thinking block ID
-let assistantMsgId = null;     // Current text block ID
-let toolBlocks = {};           // Map: block index → {msgId, name, content, toolId}
-let toolBlockMap = {};         // Map: tool_use_id → block msgId
-let currentBlockIndex = -1;    // Current block being streamed
-let currentBlockType = null;   // 'thinking', 'text', or 'tool_use'
-```
-
-### Auto-Collapse Behavior
-
-When a new collapsible block starts (thinking or tool_use), the previous one is collapsed:
-
-```javascript
-if ((currentBlockType === 'thinking' || currentBlockType === 'tool_use') && lastExpandedBlockId) {
-    collapseBlock(lastExpandedBlockId);
+```json
+{
+    "type": "tool_result",
+    "tool_id": "tool_123",
+    "content": "file contents..."
 }
 ```
 
-This keeps the UI focused on the current activity.
+#### `usage`
+
+Token usage data:
+
+```json
+{
+    "type": "usage",
+    "input_tokens": 1234,
+    "output_tokens": 567,
+    "cache_creation_input_tokens": 100,
+    "cache_read_input_tokens": 50
+}
+```
+
+#### `stream_status`
+
+Final stream status:
+
+```json
+{
+    "type": "stream_status",
+    "status": "completed"  // or "failed"
+}
+```
+
+## Provider Implementation
+
+### Anthropic Provider
+
+**File:** `app/Services/Providers/AnthropicProvider.php`
+
+Uses Anthropic's streaming API with SSE:
+
+```php
+public function stream(
+    Conversation $conversation,
+    string $prompt,
+    callable $onEvent
+): void {
+    $response = Http::withHeaders([
+        'x-api-key' => $this->apiKey,
+        'anthropic-version' => '2023-06-01',
+    ])->withOptions([
+        'stream' => true,
+    ])->post($this->baseUrl . '/messages', [
+        'model' => $conversation->model,
+        'messages' => $this->buildMessages($conversation, $prompt),
+        'stream' => true,
+    ]);
+
+    // Parse SSE and call $onEvent for each chunk
+}
+```
+
+### OpenAI Provider
+
+**File:** `app/Services/Providers/OpenAIProvider.php`
+
+Uses OpenAI's streaming API:
+
+```php
+public function stream(
+    Conversation $conversation,
+    string $prompt,
+    callable $onEvent
+): void {
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $this->apiKey,
+    ])->withOptions([
+        'stream' => true,
+    ])->post($this->baseUrl . '/chat/completions', [
+        'model' => $conversation->model,
+        'messages' => $this->buildMessages($conversation, $prompt),
+        'stream' => true,
+    ]);
+
+    // Parse SSE and call $onEvent for each chunk
+}
+```
+
+## Reconnection Handling
+
+The SSE endpoint supports reconnection via `from_index`:
+
+1. Frontend tracks last received event index
+2. On disconnect, reconnect with `?from_index=N`
+3. Backend sends all events from index N onwards
+4. No data loss during temporary disconnections
 
 ## Nginx Configuration
 
 SSE requires specific nginx settings:
-
-**File:** `docker-proxy/shared/nginx.conf.template`
 
 ```nginx
 location / {
@@ -305,71 +315,51 @@ location / {
 
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
-
-**Key:** `proxy_buffering off` ensures events stream immediately.
 
 ## Error Handling
 
 ### Backend Errors
 
+Errors are pushed to the event stream:
+
 ```php
-// In streamQuery(), errors are caught and sent as chunks
 try {
-    // ... streaming logic
-} catch (ClaudeCodeException $e) {
-    $onChunk([
-        'type' => 'result',
-        'is_error' => true,
-        'result' => $e->getMessage()
-    ]);
+    $provider->stream($conversation, $prompt, $onEvent);
+    $this->streamManager->completeStream($uuid);
+} catch (\Exception $e) {
+    $this->streamManager->failStream($uuid, $e->getMessage());
 }
 ```
 
 ### Frontend Error Display
 
 ```javascript
-if (data.type === 'result' && data.is_error) {
-    if (!assistantMsgId) assistantMsgId = addMsg('assistant', '');
-    updateMsg(assistantMsgId, 'Error: ' + data.result);
+handleStreamEvent(data) {
+    if (data.type === 'stream_status' && data.status === 'failed') {
+        this.showError(data.error || 'Stream failed');
+    }
 }
 ```
-
-### Stream Interruption
-
-If stream ends without content:
-
-```javascript
-if (!textContent && !thinkingContent) {
-    if (!assistantMsgId) assistantMsgId = addMsg('assistant', '');
-    updateMsg(assistantMsgId, 'No response received from Claude');
-}
-```
-
-## Performance Considerations
-
-1. **Buffer management:** Incomplete lines kept in buffer to handle split UTF-8
-2. **DOM updates:** `updateMsg()` is called frequently during streaming
-3. **Dual container:** Updates happen twice (desktop + mobile)
-4. **Memory:** `audioChunks` for voice recording should be cleared after use
 
 ## Debugging
 
-Add logging to see stream events:
+View stream events in Redis:
 
-```javascript
-console.log('[FRONTEND-SSE] Received:', {
-    type: data.type,
-    event_type: data.event?.type,
-    data_preview: JSON.stringify(data).substring(0, 100)
-});
+```bash
+redis-cli LRANGE stream:{uuid}:events 0 -1
+redis-cli GET stream:{uuid}:status
 ```
 
-Backend logging in ClaudeCodeService:
+Backend logging:
 
 ```php
-Log::debug('Claude stream chunk', ['chunk' => $chunk]);
+Log::debug('Stream event', ['uuid' => $uuid, 'event' => $event]);
+```
+
+Frontend logging:
+
+```javascript
+console.log('[SSE]', data.type, data);
 ```

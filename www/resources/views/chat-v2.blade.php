@@ -231,16 +231,17 @@
                 },
 
                 // Extract conversation UUID from URL path (strict UUID validation)
+                // Supports both /chat/{uuid} and legacy /chat-v2/{uuid}
                 getConversationUuidFromUrl() {
                     const path = window.location.pathname.replace(/\/+$/, ''); // tolerate trailing slash
-                    const match = path.match(/^\/chat-v2\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+                    const match = path.match(/^\/chat(?:-v2)?\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
                     return match ? match[1] : null;
                 },
 
                 // Update URL to reflect current conversation
                 // Use replace: true to avoid back-button loops when clearing invalid URLs
                 updateUrl(conversationUuid = null, { replace = false } = {}) {
-                    const newPath = conversationUuid ? `/chat-v2/${conversationUuid}` : '/chat-v2';
+                    const newPath = conversationUuid ? `/chat/${conversationUuid}` : '/';
                     const state = conversationUuid ? { conversationUuid } : {};
 
                     // Only update if path actually changed
