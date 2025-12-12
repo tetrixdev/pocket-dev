@@ -212,6 +212,45 @@
 
                     // Check OpenAI key for voice transcription
                     await this.checkOpenAiKey();
+
+                    // Check URL for conversation UUID and load if present
+                    const urlConversationUuid = this.getConversationUuidFromUrl();
+                    if (urlConversationUuid) {
+                        await this.loadConversation(urlConversationUuid);
+                    }
+
+                    // Handle browser back/forward navigation
+                    window.addEventListener('popstate', (event) => {
+                        if (event.state && event.state.conversationUuid) {
+                            this.loadConversation(event.state.conversationUuid);
+                        } else {
+                            // Back to new conversation state
+                            this.newConversation();
+                        }
+                    });
+                },
+
+                // Extract conversation UUID from URL path (strict UUID validation)
+                getConversationUuidFromUrl() {
+                    const path = window.location.pathname.replace(/\/+$/, ''); // tolerate trailing slash
+                    const match = path.match(/^\/chat-v2\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+                    return match ? match[1] : null;
+                },
+
+                // Update URL to reflect current conversation
+                // Use replace: true to avoid back-button loops when clearing invalid URLs
+                updateUrl(conversationUuid = null, { replace = false } = {}) {
+                    const newPath = conversationUuid ? `/chat-v2/${conversationUuid}` : '/chat-v2';
+                    const state = conversationUuid ? { conversationUuid } : {};
+
+                    // Only update if path actually changed
+                    if (window.location.pathname !== newPath) {
+                        if (replace) {
+                            window.history.replaceState(state, '', newPath);
+                        } else {
+                            window.history.pushState(state, '', newPath);
+                        }
+                    }
                 },
 
                 async fetchProviders() {
@@ -347,6 +386,9 @@
                     this.isStreaming = false;
                     this.lastEventIndex = 0;
 
+                    // Clear URL to base path
+                    this.updateUrl(null);
+
                     // Restore saved default settings for new conversations
                     await this.fetchSettings();
                 },
@@ -357,9 +399,19 @@
 
                     try {
                         const response = await fetch(`/api/v2/conversations/${uuid}`);
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
                         const data = await response.json();
+                        if (!data?.conversation) {
+                            throw new Error('Missing conversation payload');
+                        }
 
+                        // Only set state after validating response
                         this.currentConversationUuid = uuid;
+
+                        // Update URL to reflect loaded conversation
+                        this.updateUrl(uuid);
                         this.messages = [];
 
                         // Reset token counters
@@ -433,6 +485,10 @@
                     } catch (err) {
                         console.error('Failed to load conversation:', err);
                         this.showError('Failed to load conversation');
+                        // Reset local state and clear URL without creating a back-button loop
+                        this.currentConversationUuid = null;
+                        this.messages = [];
+                        this.updateUrl(null, { replace: true });
                     }
                 },
 
@@ -606,6 +662,10 @@
                             });
                             const data = await response.json();
                             this.currentConversationUuid = data.conversation.uuid;
+
+                            // Update URL with new conversation UUID
+                            this.updateUrl(this.currentConversationUuid);
+
                             await this.fetchConversations();
                         } catch (err) {
                             this.showError('Failed to create conversation: ' + err.message);
