@@ -39,7 +39,7 @@
                 </svg>
             </div>
             <div x-show="!msg.collapsed" class="{{ $contentPadding }} text-xs text-blue-200 @if($variant === 'desktop') space-y-2 @endif">
-                <div x-html="formatToolContent(msg)"></div>
+                <div x-html="DOMPurify.sanitize(formatToolContent(msg))"></div>
             </div>
         </div>
     </div>

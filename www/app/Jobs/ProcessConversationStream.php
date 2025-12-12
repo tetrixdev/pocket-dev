@@ -48,11 +48,8 @@ class ProcessConversationStream implements ShouldQueue
     ): void {
         $conversation = Conversation::where('uuid', $this->conversationUuid)->firstOrFail();
 
-        // Start the stream in Redis
-        $streamManager->startStream($this->conversationUuid, [
-            'model' => $conversation->model,
-            'provider' => $conversation->provider_type,
-        ]);
+        // Note: Stream state is already initialized by the controller to prevent race conditions
+        // We don't call startStream() here to avoid overwriting the state
 
         // Mark conversation as processing
         $conversation->startProcessing();
@@ -118,7 +115,8 @@ class ProcessConversationStream implements ShouldQueue
                 $this->conversationUuid,
                 StreamEvent::error('Maximum tool execution iterations reached (safety limit)')
             );
-            return;
+            // Throw exception to trigger the failStream logic in the catch block
+            throw new \RuntimeException('Maximum tool execution iterations reached (safety limit)');
         }
         // Reload messages
         $conversation->load('messages');

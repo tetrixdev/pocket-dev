@@ -45,6 +45,11 @@ INSTRUCTIONS;
         // Resolve path
         $resolvedPath = $context->resolvePath($filePath);
 
+        // Validate path is within allowed working directory
+        if (!$context->isPathAllowed($resolvedPath)) {
+            return ToolResult::error("Access denied: Path is outside allowed working directory");
+        }
+
         // Check if path is within allowed directory
         $parentDir = dirname($resolvedPath);
 
@@ -65,6 +70,9 @@ INSTRUCTIONS;
             return ToolResult::error("Directory is not writable: {$parentDir}");
         }
 
+        // Check if file is new BEFORE writing
+        $isNew = !file_exists($resolvedPath);
+
         // Write file
         $result = file_put_contents($resolvedPath, $content);
 
@@ -74,7 +82,6 @@ INSTRUCTIONS;
 
         $bytes = strlen($content);
         $lines = substr_count($content, "\n") + 1;
-        $isNew = !file_exists($resolvedPath);
 
         $action = $isNew ? 'Created' : 'Wrote';
 

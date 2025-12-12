@@ -65,14 +65,18 @@ class PricingController extends Controller
 
     /**
      * Save or update pricing for a model.
+     *
+     * SECURITY NOTE: This endpoint is unprotected and allows any user to modify pricing.
+     * In a production environment, this should be protected with authentication middleware.
+     * For a single-user Docker development environment, strict validation is used instead.
      */
     public function store(Request $request, string $modelId): JsonResponse
     {
         $validated = $request->validate([
-            'input' => 'required|numeric|min:0',
-            'output' => 'required|numeric|min:0',
-            'cacheWrite' => 'nullable|numeric|min:0',
-            'cacheRead' => 'nullable|numeric|min:0',
+            'input' => 'required|numeric|min:0|max:1000',
+            'output' => 'required|numeric|min:0|max:1000',
+            'cacheWrite' => 'nullable|numeric|min:0|max:1000',
+            'cacheRead' => 'nullable|numeric|min:0|max:1000',
         ]);
 
         $model = AiModel::where('model_id', $modelId)->first();

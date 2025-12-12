@@ -563,12 +563,12 @@ class ClaudeController extends Controller
             ? $modelsLookup->get($modelName)
             : \App\Models\AiModel::where('model_id', $modelName)->first();
 
-        if (!$model || !$model->input_price_per_million || !$model->output_price_per_million) {
+        if (!$model || $model->input_price_per_million === null || $model->output_price_per_million === null) {
             \Log::debug('[COST-CALC] No pricing configured for model', [
                 'model' => $modelName,
-                'pricing_exists' => !!$model,
-                'has_input_price' => $model ? !!$model->input_price_per_million : false,
-                'has_output_price' => $model ? !!$model->output_price_per_million : false
+                'pricing_exists' => $model !== null,
+                'has_input_price' => $model ? ($model->input_price_per_million !== null) : false,
+                'has_output_price' => $model ? ($model->output_price_per_million !== null) : false
             ]);
             return null;
         }

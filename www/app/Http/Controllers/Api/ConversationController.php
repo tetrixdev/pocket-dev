@@ -31,7 +31,7 @@ class ConversationController extends Controller
         $validated = $request->validate([
             'title' => 'nullable|string|max:255',
             'working_directory' => 'required|string|max:500',
-            'provider_type' => 'nullable|string|in:anthropic,openai,claude_code',
+            'provider_type' => 'nullable|string|in:anthropic,openai',
             'model' => 'nullable|string|max:100',
             // Provider-specific reasoning settings
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
@@ -173,9 +173,16 @@ class ConversationController extends Controller
             ], 409);
         }
 
-        // Clear any old stream data BEFORE dispatching job
-        // This prevents the race condition where frontend connects and sees old events
-        $this->streamManager->cleanup($conversation->uuid);
+        // Initialize stream state BEFORE cleanup to prevent race condition
+        // This ensures clients won't see 'not_found' after cleanup and before job starts
+        $this->streamManager->startStream($conversation->uuid, [
+            'model' => $conversation->model,
+            'provider' => $conversation->provider_type,
+        ]);
+
+        // Clear any old stream events (but keep the status we just set)
+        $key = 'stream:' . $conversation->uuid;
+        \Illuminate\Support\Facades\Redis::del("{$key}:events");
 
         // Dispatch background job - reasoning settings are now stored on conversation
         ProcessConversationStream::dispatch(
@@ -248,7 +255,7 @@ class ConversationController extends Controller
 
             // Subscribe to live updates
             // Use polling instead of blocking pub/sub for better compatibility
-            $lastCheck = microtime(true);
+            $lastActivity = microtime(true);
             $timeout = 60; // 60 second timeout for SSE connection
 
             while (true) {
@@ -258,6 +265,7 @@ class ConversationController extends Controller
                 foreach ($newEvents as $event) {
                     $sse->writeRaw(json_encode(array_merge($event, ['index' => $currentIndex])));
                     $currentIndex++;
+                    $lastActivity = microtime(true); // Update activity time when data is sent
                 }
 
                 // Check stream status
@@ -272,7 +280,7 @@ class ConversationController extends Controller
                 }
 
                 // Check timeout
-                if ((microtime(true) - $lastCheck) > $timeout) {
+                if ((microtime(true) - $lastActivity) > $timeout) {
                     $sse->writeRaw(json_encode([
                         'type' => 'timeout',
                         'message' => 'Connection timeout, please reconnect',

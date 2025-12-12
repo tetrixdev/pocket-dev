@@ -28,7 +28,7 @@ class GlobTool extends Tool
             ],
             'limit' => [
                 'type' => 'integer',
-                'description' => 'Maximum number of files to return. Default: 100',
+                'description' => 'Maximum number of files to return. Default: 100, Max: 1000',
             ],
         ],
         'required' => ['pattern'],
@@ -111,7 +111,7 @@ class GlobTool extends Tool
         // ? matches single char except /
         $regex = str_replace('\\?', '[^/]', $regex);
 
-        return '#' . $regex . '$#';
+        return '#^' . $regex . '$#';
     }
 
     /**

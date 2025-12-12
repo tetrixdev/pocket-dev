@@ -127,7 +127,6 @@ public function getReasoningConfig(): array
         ],
         'openai' => [
             'effort' => $this->openai_reasoning_effort ?? 'none',
-            // Note: summary is NOT returned here - it's hardcoded to 'auto' in OpenAIProvider
         ],
         default => [],
     };

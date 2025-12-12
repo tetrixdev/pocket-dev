@@ -160,6 +160,9 @@ class StreamManager
         // In production, consider using Redis Streams (XREAD) for better reliability.
         $redis = Redis::connection('default')->client();
 
+        // Use a separate connection for status checks (can't use same connection inside pub/sub loop)
+        $statusRedis = Redis::connection('default')->client();
+
         // For predis, we need to use pubSubLoop
         $pubsub = $redis->pubSubLoop();
         $pubsub->subscribe("stream:{$conversationUuid}");
@@ -179,8 +182,8 @@ class StreamManager
                 break;
             }
 
-            // Check if stream completed
-            $status = $this->getStatus($conversationUuid);
+            // Check if stream completed using separate connection
+            $status = $statusRedis->get($this->key($conversationUuid) . ':status');
             if ($status !== 'streaming') {
                 break;
             }

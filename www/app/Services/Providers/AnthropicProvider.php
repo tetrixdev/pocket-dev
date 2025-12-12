@@ -197,6 +197,7 @@ class AnthropicProvider implements AIProviderInterface
             $buffer = '';
             $currentBlocks = [];
             $eventCount = 0;
+            $doneEmitted = false;
 
             // Read stream in chunks
             while (!$stream->eof()) {
@@ -219,14 +220,14 @@ class AnthropicProvider implements AIProviderInterface
                     }
 
                     $eventCount++;
-                    yield from $this->parseSSEEvent($event, $currentBlocks);
+                    yield from $this->parseSSEEvent($event, $currentBlocks, $doneEmitted);
                 }
             }
 
             // Process any remaining buffer
             if (!empty(trim($buffer))) {
                 $eventCount++;
-                yield from $this->parseSSEEvent($buffer, $currentBlocks);
+                yield from $this->parseSSEEvent($buffer, $currentBlocks, $doneEmitted);
             }
 
             Log::debug('AnthropicProvider: Stream completed', [
@@ -256,7 +257,8 @@ class AnthropicProvider implements AIProviderInterface
      */
     private function parseSSEEvent(
         string $event,
-        array &$currentBlocks
+        array &$currentBlocks,
+        bool &$doneEmitted
     ): Generator {
         $lines = explode("\n", $event);
         $eventType = null;
@@ -379,11 +381,16 @@ class AnthropicProvider implements AIProviderInterface
                 // stop_reason is in delta
                 if (isset($payload['delta']['stop_reason'])) {
                     yield StreamEvent::done($payload['delta']['stop_reason']);
+                    $doneEmitted = true;
                 }
                 break;
 
             case 'message_stop':
-                // Just a marker event, done already emitted from message_delta
+                // Fallback: emit done if it wasn't already emitted in message_delta
+                if (!$doneEmitted) {
+                    yield StreamEvent::done('end_turn');
+                    $doneEmitted = true;
+                }
                 break;
 
             case 'error':

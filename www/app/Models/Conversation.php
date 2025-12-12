@@ -114,6 +114,13 @@ class Conversation extends Model
      *
      * Uses a database transaction with row locking to prevent race conditions
      * when multiple messages are created concurrently for the same conversation.
+     *
+     * LIMITATION: The sequence is calculated inside a transaction, but the actual
+     * message insert happens outside this method (by the caller). This means the
+     * lock is released before the insert completes. While this creates a potential
+     * race condition window, the unique constraint on (conversation_id, sequence)
+     * will catch any duplicate sequences and cause an error. For typical usage
+     * patterns (single client per conversation), this is sufficient.
      */
     public function getNextSequence(): int
     {

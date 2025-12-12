@@ -16,6 +16,7 @@
 
     <!-- Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
     <!-- Code syntax highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -522,8 +523,8 @@
 
         // Helper to render markdown
         function renderMarkdown(text) {
-            const html = marked.parse(text);
-            return html;
+            if (!text) return '';
+            return DOMPurify.sanitize(marked.parse(text));
         }
 
         // Helper to format timestamp (same format as sidebar)
