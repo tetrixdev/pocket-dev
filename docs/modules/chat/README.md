@@ -8,16 +8,16 @@ The chat module provides a web interface for multi-provider AI conversations.
 
 ## Overview
 
-**Primary file:** `resources/views/chat-v2.blade.php` + `partials/chat-v2/`
+**Primary file:** `resources/views/chat.blade.php` + `partials/chat/`
 
 **Controller:** `app/Http/Controllers/Api/ConversationController.php`
 
 **Routes:**
 - `/` - Chat interface (default)
 - `/chat/{uuid}` - Conversation-specific view
-- `/api/v2/conversations` - Conversation CRUD
-- `/api/v2/conversations/{uuid}/stream` - Start streaming
-- `/api/v2/conversations/{uuid}/stream-events` - SSE endpoint
+- `/api/conversations` - Conversation CRUD
+- `/api/conversations/{uuid}/stream` - Start streaming
+- `/api/conversations/{uuid}/stream-events` - SSE endpoint
 
 ## Architecture
 
@@ -26,7 +26,7 @@ The chat system uses a multi-provider architecture:
 ```
 Frontend (Alpine.js)          Backend                      Providers
 ────────────────────          ───────                      ─────────
-POST /api/v2/conversations/   ConversationController
+POST /api/conversations/      ConversationController
 {uuid}/stream                 │
                               ▼
                               ProcessConversationStream
@@ -154,8 +154,8 @@ Configures per-conversation settings:
 
 ```
 resources/views/
-├── chat-v2.blade.php              # Main chat view
-└── partials/chat-v2/
+├── chat.blade.php                 # Main chat view
+└── partials/chat/
     ├── sidebar.blade.php          # Conversation list
     ├── mobile-layout.blade.php    # Mobile view
     ├── input-desktop.blade.php    # Desktop input
@@ -182,25 +182,25 @@ resources/views/
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v2/conversations` | List conversations |
-| POST | `/api/v2/conversations` | Create conversation |
-| GET | `/api/v2/conversations/{uuid}` | Get conversation |
-| DELETE | `/api/v2/conversations/{uuid}` | Delete conversation |
-| POST | `/api/v2/conversations/{uuid}/archive` | Archive |
-| POST | `/api/v2/conversations/{uuid}/unarchive` | Unarchive |
+| GET | `/api/conversations` | List conversations |
+| POST | `/api/conversations` | Create conversation |
+| GET | `/api/conversations/{uuid}` | Get conversation |
+| DELETE | `/api/conversations/{uuid}` | Delete conversation |
+| POST | `/api/conversations/{uuid}/archive` | Archive |
+| POST | `/api/conversations/{uuid}/unarchive` | Unarchive |
 
 ### Streaming
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v2/conversations/{uuid}/stream` | Start streaming |
-| GET | `/api/v2/conversations/{uuid}/stream-status` | Check status |
-| GET | `/api/v2/conversations/{uuid}/stream-events` | SSE endpoint |
+| POST | `/api/conversations/{uuid}/stream` | Start streaming |
+| GET | `/api/conversations/{uuid}/stream-status` | Check status |
+| GET | `/api/conversations/{uuid}/stream-events` | SSE endpoint |
 
 ### Settings
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v2/providers` | List providers |
-| GET | `/api/v2/settings/chat-defaults` | Get defaults |
-| POST | `/api/v2/settings/chat-defaults` | Update defaults |
+| GET | `/api/providers` | List providers |
+| GET | `/api/settings/chat-defaults` | Get defaults |
+| POST | `/api/settings/chat-defaults` | Update defaults |

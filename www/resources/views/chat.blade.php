@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>PocketDev Chat V2</title>
+    <title>PocketDev Chat</title>
 
     @if (file_exists(public_path('build/manifest.json')))
         @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -48,18 +48,18 @@
         }
     </style>
 </head>
-<body class="antialiased bg-gray-900 text-gray-100" x-data="chatV2App()" x-init="init()">
+<body class="antialiased bg-gray-900 text-gray-100" x-data="chatApp()" x-init="init()">
 
     {{-- Desktop Layout --}}
     <div class="desktop-layout flex h-screen">
-        @include('partials.chat-v2.sidebar')
+        @include('partials.chat.sidebar')
 
         <div class="flex-1 flex flex-col">
             {{-- Messages Area --}}
             <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-4">
                 <template x-if="messages.length === 0">
                     <div class="text-center text-gray-400 mt-20">
-                        <h3 class="text-xl mb-2">Welcome to PocketDev V2</h3>
+                        <h3 class="text-xl mb-2">Welcome to PocketDev</h3>
                         <p>Multi-provider AI chat with direct API streaming</p>
                     </div>
                 </template>
@@ -75,19 +75,19 @@
                 </template>
             </div>
 
-            @include('partials.chat-v2.input-desktop')
+            @include('partials.chat.input-desktop')
         </div>
     </div>
 
     {{-- Mobile Layout --}}
     <div class="mobile-layout">
-        @include('partials.chat-v2.mobile-layout')
+        @include('partials.chat.mobile-layout')
 
         {{-- Messages Area --}}
         <div id="messages-mobile" class="p-4 space-y-4 pb-56 min-h-screen">
             <template x-if="messages.length === 0">
                 <div class="text-center text-gray-400 mt-10">
-                    <h3 class="text-xl mb-2">Welcome to PocketDev V2</h3>
+                    <h3 class="text-xl mb-2">Welcome to PocketDev</h3>
                     <p class="text-sm">Multi-provider AI chat</p>
                 </div>
             </template>
@@ -103,10 +103,10 @@
             </template>
         </div>
 
-        @include('partials.chat-v2.input-mobile')
+        @include('partials.chat.input-mobile')
     </div>
 
-    @include('partials.chat-v2.modals')
+    @include('partials.chat.modals')
 
     <script>
         // Configure marked.js
@@ -121,7 +121,7 @@
             }
         });
 
-        function chatV2App() {
+        function chatApp() {
             return {
                 // State
                 prompt: '',
@@ -231,10 +231,9 @@
                 },
 
                 // Extract conversation UUID from URL path (strict UUID validation)
-                // Supports both /chat/{uuid} and legacy /chat-v2/{uuid}
                 getConversationUuidFromUrl() {
                     const path = window.location.pathname.replace(/\/+$/, ''); // tolerate trailing slash
-                    const match = path.match(/^\/chat(?:-v2)?\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+                    const match = path.match(/^\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
                     return match ? match[1] : null;
                 },
 
@@ -256,7 +255,7 @@
 
                 async fetchProviders() {
                     try {
-                        const response = await fetch('/api/v2/providers');
+                        const response = await fetch('/api/providers');
                         const data = await response.json();
                         this.providers = data.providers;
                         this.provider = data.default || 'anthropic';
@@ -273,7 +272,7 @@
 
                 async fetchSettings() {
                     try {
-                        const response = await fetch('/api/v2/settings/chat-defaults');
+                        const response = await fetch('/api/settings/chat-defaults');
                         const data = await response.json();
 
                         // Apply saved defaults
@@ -304,7 +303,7 @@
                     if (this.currentConversationUuid) return;
 
                     try {
-                        await fetch('/api/v2/settings/chat-defaults', {
+                        await fetch('/api/settings/chat-defaults', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -364,7 +363,7 @@
 
                 async fetchConversations() {
                     try {
-                        const response = await fetch('/api/v2/conversations?working_directory=/var/www');
+                        const response = await fetch('/api/conversations?working_directory=/var/www');
                         const data = await response.json();
                         this.conversations = data.data || [];
                     } catch (err) {
@@ -399,7 +398,7 @@
                     this.disconnectFromStream();
 
                     try {
-                        const response = await fetch(`/api/v2/conversations/${uuid}`);
+                        const response = await fetch(`/api/conversations/${uuid}`);
                         if (!response.ok) {
                             throw new Error(`HTTP ${response.status}`);
                         }
@@ -501,7 +500,7 @@
                     }
 
                     try {
-                        const response = await fetch(`/api/v2/conversations/${uuid}/stream-status`);
+                        const response = await fetch(`/api/conversations/${uuid}/stream-status`);
                         const data = await response.json();
 
                         if (data.is_streaming) {
@@ -656,7 +655,7 @@
                                 createBody.openai_reasoning_effort = this.openaiReasoningEffort;
                             }
 
-                            const response = await fetch('/api/v2/conversations', {
+                            const response = await fetch('/api/conversations', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(createBody)
@@ -712,7 +711,7 @@
                         }
 
                         // Start the background streaming job
-                        const response = await fetch(`/api/v2/conversations/${this.currentConversationUuid}/stream`, {
+                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/stream`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(streamBody)
@@ -753,7 +752,7 @@
                     this.streamAbortController = new AbortController();
 
                     try {
-                        const url = `/api/v2/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`;
+                        const url = `/api/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`;
                         const response = await fetch(url, { signal: this.streamAbortController.signal });
 
                         // Check if we've been superseded by a newer connection attempt

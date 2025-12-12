@@ -116,7 +116,7 @@ docker compose logs -f pocket-dev-php
 | Anthropic provider | `app/Services/Providers/AnthropicProvider.php` |
 | OpenAI provider | `app/Services/Providers/OpenAIProvider.php` |
 | Conversation API | `app/Http/Controllers/Api/ConversationController.php` |
-| Chat interface | `resources/views/chat-v2.blade.php` |
+| Chat interface | `resources/views/chat.blade.php` |
 | Config editor | `app/Http/Controllers/ConfigController.php` |
 | Docker setup | `compose.yml` |
 | Proxy config | `docker-proxy/shared/` |

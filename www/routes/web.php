@@ -12,16 +12,11 @@ Route::post("/claude/auth/upload", [ClaudeAuthController::class, "upload"])->nam
 Route::post("/claude/auth/upload-json", [ClaudeAuthController::class, "uploadJson"])->name("claude.auth.uploadJson");
 Route::delete("/claude/auth/logout", [ClaudeAuthController::class, "logout"])->name("claude.auth.logout");
 
-// Chat - Multi-provider conversation interface (default)
-Route::view("/", "chat-v2")->name("chat.index");
-Route::view("/chat/{conversationUuid?}", "chat-v2")
+// Chat - Multi-provider conversation interface
+Route::view("/", "chat")->name("chat.index");
+Route::view("/chat/{conversationUuid?}", "chat")
     ->whereUuid("conversationUuid")
     ->name("chat.conversation");
-
-// Legacy route alias for backward compatibility
-Route::view("/chat-v2/{conversationUuid?}", "chat-v2")
-    ->whereUuid("conversationUuid")
-    ->name("chat.v2");
 
 Route::get("/terminal", [TerminalController::class, "index"])->name("terminal.index");
 Route::post("/transcribe", [TerminalController::class, "transcribe"])->name("terminal.transcribe");

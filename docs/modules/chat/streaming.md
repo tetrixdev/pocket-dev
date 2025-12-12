@@ -138,12 +138,12 @@ class StreamManager
 
 ### Initiating Stream
 
-**File:** `resources/views/chat-v2.blade.php`
+**File:** `resources/views/chat.blade.php`
 
 ```javascript
 async startStream(prompt) {
     // Start the stream
-    const response = await fetch(`/api/v2/conversations/${uuid}/stream`, {
+    const response = await fetch(`/api/conversations/${uuid}/stream`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ prompt })
@@ -154,7 +154,7 @@ async startStream(prompt) {
 }
 
 connectToStreamEvents(fromIndex = 0) {
-    const url = `/api/v2/conversations/${uuid}/stream-events?from_index=${fromIndex}`;
+    const url = `/api/conversations/${uuid}/stream-events?from_index=${fromIndex}`;
     const eventSource = new EventSource(url);
 
     eventSource.onmessage = (event) => {
