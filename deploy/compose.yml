@@ -41,6 +41,8 @@ services:
     depends_on:
       pocket-dev-postgres:
         condition: service_healthy
+      pocket-dev-redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "php-fpm -t || exit 1"]
       interval: 15s
@@ -85,6 +87,22 @@ services:
       retries: 3
       start_period: 10s
 
+  pocket-dev-redis:
+    image: redis:7-alpine
+    container_name: pocket-dev-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - pocket-dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
   pocket-dev-ttyd:
     image: ghcr.io/tetrixdev/pocket-dev-ttyd:${IMAGE_TAG:-latest}
     container_name: pocket-dev-ttyd
@@ -118,6 +136,9 @@ networks:
 volumes:
   postgres-data:
     name: pocket-dev-postgres
+    driver: local
+  redis-data:
+    name: pocket-dev-redis
     driver: local
   workspace-data:
     name: pocket-dev-workspace

@@ -46,18 +46,12 @@
     </div>
 
     <div class="flex gap-3">
-        <button
-            type="submit"
-            class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
-        >
+        <x-button type="submit" variant="primary">
             {{ isset($skill) ? 'Update Skill' : 'Create Skill' }}
-        </button>
-        <a
-            href="{{ route('config.skills') }}"
-            class="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded font-medium inline-block"
-        >
+        </x-button>
+        <x-button type="button" variant="secondary" onclick="window.location.href='{{ route('config.skills') }}'">
             Cancel
-        </a>
+        </x-button>
     </div>
 </form>
 
@@ -66,9 +60,9 @@
     <form method="POST" action="{{ route('config.skills.delete', $skill['filename']) }}" class="mt-4">
         @csrf
         @method('DELETE')
-        <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this skill?')">
+        <x-button type="submit" variant="danger" onclick="return confirm('Are you sure you want to delete this skill?')">
             Delete Skill
-        </button>
+        </x-button>
     </form>
 @endif
 @endsection

@@ -32,6 +32,7 @@ PocketDev is a Docker-based development environment that provides a web interfac
 - `system-overview.md` - Container architecture, networking, volumes, data flow
 - `authentication.md` - Basic Auth, IP whitelist, Claude credential management
 - `technology-stack.md` - Laravel, Alpine.js, Docker, key dependencies
+- `multi-provider-implementation-plan.md` - **[WIP]** Implementation plan for multi-provider conversation architecture
 
 ### 📦 Modules (`modules/`)
 

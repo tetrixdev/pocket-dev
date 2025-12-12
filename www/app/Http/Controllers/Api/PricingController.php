@@ -3,49 +3,112 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\ModelPricing;
-use Illuminate\Http\Request;
+use App\Models\AiModel;
+use App\Services\ModelRepository;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PricingController extends Controller
 {
+    public function __construct(
+        private ModelRepository $models
+    ) {}
+
+    /**
+     * Get all pricing data grouped by provider.
+     */
+    public function index(): JsonResponse
+    {
+        $pricing = AiModel::active()
+            ->ordered()
+            ->get()
+            ->groupBy('provider')
+            ->map(function ($models) {
+                return $models->keyBy('model_id')->map(function (AiModel $model) {
+                    return [
+                        'name' => $model->display_name,
+                        'input' => (float) $model->input_price_per_million,
+                        'output' => (float) $model->output_price_per_million,
+                        'cacheWrite' => (float) ($model->cache_write_price_per_million ?? 0),
+                        'cacheRead' => (float) ($model->cache_read_price_per_million ?? 0),
+                    ];
+                });
+            });
+
+        return response()->json(['pricing' => $pricing]);
+    }
+
     /**
      * Get pricing for a specific model.
      */
-    public function show(string $modelName): JsonResponse
+    public function show(string $modelId): JsonResponse
     {
-        $pricing = ModelPricing::where('model_name', $modelName)->first();
+        $model = $this->models->findByModelId($modelId);
 
-        if (!$pricing) {
+        if (!$model) {
             return response()->json([
-                'model_name' => $modelName,
-                'input_price_per_million' => null,
-                'cache_write_multiplier' => 1.25,
-                'cache_read_multiplier' => 0.1,
-                'output_price_per_million' => null,
-            ]);
+                'error' => 'Model not found',
+                'model_id' => $modelId,
+            ], 404);
         }
 
-        return response()->json($pricing);
+        return response()->json([
+            'model_id' => $model->model_id,
+            'name' => $model->display_name,
+            'provider' => $model->provider,
+            'input' => (float) $model->input_price_per_million,
+            'output' => (float) $model->output_price_per_million,
+            'cacheWrite' => (float) ($model->cache_write_price_per_million ?? 0),
+            'cacheRead' => (float) ($model->cache_read_price_per_million ?? 0),
+        ]);
     }
 
     /**
      * Save or update pricing for a model.
+     *
+     * SECURITY NOTE: This endpoint is unprotected and allows any user to modify pricing.
+     * In a production environment, this should be protected with authentication middleware.
+     * For a single-user Docker development environment, strict validation is used instead.
      */
-    public function store(Request $request, string $modelName): JsonResponse
+    public function store(Request $request, string $modelId): JsonResponse
     {
         $validated = $request->validate([
-            'input_price_per_million' => 'required|numeric|min:0',
-            'cache_write_multiplier' => 'nullable|numeric|min:0',
-            'cache_read_multiplier' => 'nullable|numeric|min:0',
-            'output_price_per_million' => 'required|numeric|min:0',
+            'input' => 'required|numeric|min:0|max:1000',
+            'output' => 'required|numeric|min:0|max:1000',
+            'cacheWrite' => 'nullable|numeric|min:0|max:1000',
+            'cacheRead' => 'nullable|numeric|min:0|max:1000',
         ]);
 
-        $pricing = ModelPricing::updateOrCreate(
-            ['model_name' => $modelName],
-            $validated
-        );
+        $model = AiModel::where('model_id', $modelId)->first();
 
-        return response()->json($pricing);
+        if (!$model) {
+            return response()->json([
+                'error' => 'Model not found',
+                'model_id' => $modelId,
+            ], 404);
+        }
+
+        $model->update([
+            'input_price_per_million' => $validated['input'],
+            'output_price_per_million' => $validated['output'],
+            'cache_write_price_per_million' => $validated['cacheWrite'] ?? null,
+            'cache_read_price_per_million' => $validated['cacheRead'] ?? null,
+        ]);
+
+        // Refresh model to get updated values
+        $model->refresh();
+
+        // Clear cache after update
+        $this->models->clearCache();
+
+        return response()->json([
+            'model_id' => $model->model_id,
+            'name' => $model->display_name,
+            'provider' => $model->provider,
+            'input' => (float) $model->input_price_per_million,
+            'output' => (float) $model->output_price_per_million,
+            'cacheWrite' => (float) ($model->cache_write_price_per_million ?? 0),
+            'cacheRead' => (float) ($model->cache_read_price_per_million ?? 0),
+        ]);
     }
 }

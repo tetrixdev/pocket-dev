@@ -502,6 +502,9 @@ class ClaudeController extends Controller
             return response()->json(['error' => 'Session not found'], 404);
         }
 
+        // Pre-load all models indexed by model_id to avoid N+1 queries
+        $modelsLookup = \App\Models\AiModel::all()->keyBy('model_id');
+
         $messages = [];
         $handle = fopen($sessionFile, 'r');
 
@@ -516,10 +519,10 @@ class ClaudeController extends Controller
                 $usage = $data['usage'] ?? $data['message']['usage'] ?? null;
                 $model = $data['message']['model'] ?? null;
 
-                // Calculate cost server-side
+                // Calculate cost server-side using pre-loaded models
                 $cost = null;
                 if ($usage && $model) {
-                    $cost = $this->calculateMessageCost($usage, $model);
+                    $cost = $this->calculateMessageCost($usage, $model, $modelsLookup);
                 }
 
                 $messages[] = [
@@ -543,23 +546,29 @@ class ClaudeController extends Controller
 
     /**
      * Calculate cost for a message based on usage and model pricing.
+     *
+     * @param array|null $usage Token usage data
+     * @param string|null $modelName Model identifier
+     * @param \Illuminate\Support\Collection|null $modelsLookup Pre-loaded models indexed by model_id (avoids N+1)
      */
-    private function calculateMessageCost(?array $usage, ?string $modelName): ?float
+    private function calculateMessageCost(?array $usage, ?string $modelName, ?\Illuminate\Support\Collection $modelsLookup = null): ?float
     {
         if (!$usage || !$modelName) {
             \Log::debug('[COST-CALC] Missing usage or model', ['usage' => !!$usage, 'model' => $modelName]);
             return null;
         }
 
-        // Get pricing for this model
-        $pricing = \App\Models\ModelPricing::where('model_name', $modelName)->first();
+        // Use pre-loaded lookup if available, otherwise query (fallback for other callers)
+        $model = $modelsLookup
+            ? $modelsLookup->get($modelName)
+            : \App\Models\AiModel::where('model_id', $modelName)->first();
 
-        if (!$pricing || !$pricing->input_price_per_million || !$pricing->output_price_per_million) {
+        if (!$model || $model->input_price_per_million === null || $model->output_price_per_million === null) {
             \Log::debug('[COST-CALC] No pricing configured for model', [
                 'model' => $modelName,
-                'pricing_exists' => !!$pricing,
-                'has_input_price' => $pricing ? !!$pricing->input_price_per_million : false,
-                'has_output_price' => $pricing ? !!$pricing->output_price_per_million : false
+                'pricing_exists' => $model !== null,
+                'has_input_price' => $model ? ($model->input_price_per_million !== null) : false,
+                'has_output_price' => $model ? ($model->output_price_per_million !== null) : false
             ]);
             return null;
         }
@@ -570,15 +579,22 @@ class ClaudeController extends Controller
         $cacheReadTokens = $usage['cache_read_input_tokens'] ?? 0;
         $outputTokens = $usage['output_tokens'] ?? 0;
 
-        // Get multipliers (with defaults)
-        $cacheWriteMultiplier = $pricing->cache_write_multiplier ?? 1.25;
-        $cacheReadMultiplier = $pricing->cache_read_multiplier ?? 0.1;
+        // Calculate costs using direct cache pricing (or calculate from base input price)
+        $inputCost = ($inputTokens / 1_000_000) * $model->input_price_per_million;
+        $outputCost = ($outputTokens / 1_000_000) * $model->output_price_per_million;
 
-        // Calculate costs with multipliers
-        $inputCost = ($inputTokens / 1000000) * $pricing->input_price_per_million;
-        $cacheWriteCost = ($cacheCreationTokens / 1000000) * $pricing->input_price_per_million * $cacheWriteMultiplier;
-        $cacheReadCost = ($cacheReadTokens / 1000000) * $pricing->input_price_per_million * $cacheReadMultiplier;
-        $outputCost = ($outputTokens / 1000000) * $pricing->output_price_per_million;
+        // Use explicit cache pricing if available, otherwise calculate with multipliers
+        if ($model->cache_write_price_per_million) {
+            $cacheWriteCost = ($cacheCreationTokens / 1_000_000) * $model->cache_write_price_per_million;
+        } else {
+            $cacheWriteCost = ($cacheCreationTokens / 1_000_000) * $model->input_price_per_million * 1.25;
+        }
+
+        if ($model->cache_read_price_per_million) {
+            $cacheReadCost = ($cacheReadTokens / 1_000_000) * $model->cache_read_price_per_million;
+        } else {
+            $cacheReadCost = ($cacheReadTokens / 1_000_000) * $model->input_price_per_million * 0.1;
+        }
 
         $totalCost = $inputCost + $cacheWriteCost + $cacheReadCost + $outputCost;
 
@@ -791,7 +807,7 @@ class ClaudeController extends Controller
     public function saveQuickSettings(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'model' => 'required|string|in:claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929,claude-opus-4-1-20250805',
+            'model' => 'required|string|in:claude-haiku-4-5-20251001,claude-sonnet-4-5-20250929,claude-opus-4-5-20251101',
             'permissionMode' => 'required|string|in:default,acceptEdits,plan,bypassPermissions',
             'maxTurns' => 'required|integer|min:1|max:9999',
         ]);
@@ -819,28 +835,5 @@ class ClaudeController extends Controller
                 'error' => 'Failed to save settings: ' . $e->getMessage()
             ], 500);
         }
-    }
-
-    /**
-     * Log audio file for debugging.
-     */
-    private function logAudioFile($audioFile): void
-    {
-        $timestamp = now()->format('Y-m-d_H-i-s');
-        $filename = "voice_recording_{$timestamp}.{$audioFile->getClientOriginalExtension()}";
-        $storagePath = storage_path('app/audio_recordings');
-
-        if (!file_exists($storagePath)) {
-            mkdir($storagePath, 0755, true);
-        }
-
-        $fullPath = $storagePath . '/' . $filename;
-        copy($audioFile->getRealPath(), $fullPath);
-
-        Log::debug('Audio file saved for debugging', [
-            'filename' => $filename,
-            'path' => $fullPath,
-            'size' => filesize($fullPath) . ' bytes',
-        ]);
     }
 }

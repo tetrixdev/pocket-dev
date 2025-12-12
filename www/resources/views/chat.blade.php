@@ -16,6 +16,9 @@
 
     <!-- Markdown rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"
+            integrity="sha384-cwS6YdhLI7XS60eoDiC+egV0qHp8zI+Cms46R0nbn8JrmoAzV9uFL60etMZhAnSu"
+            crossorigin="anonymous"></script>
     <!-- Code syntax highlighting -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -333,8 +336,8 @@
                             Sonnet 4.5 (default)
                         </label>
                         <label class="flex items-center text-gray-300 cursor-pointer">
-                            <input type="radio" x-model="quickSettings.model" value="claude-opus-4-1-20250805" class="mr-2">
-                            Opus 4.1
+                            <input type="radio" x-model="quickSettings.model" value="claude-opus-4-5-20251101" class="mr-2">
+                            Opus 4.5
                         </label>
                     </div>
                 </div>
@@ -522,8 +525,8 @@
 
         // Helper to render markdown
         function renderMarkdown(text) {
-            const html = marked.parse(text);
-            return html;
+            if (!text) return '';
+            return DOMPurify.sanitize(marked.parse(text));
         }
 
         // Helper to format timestamp (same format as sidebar)

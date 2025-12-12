@@ -435,6 +435,12 @@ Migrate one component at a time, keep app working throughout:
   - Webhook configuration UI
 
 ### Security
+- [ ] **Tool path traversal protection**
+  - `ExecutionContext::isPathAllowed()` is defined but never called
+  - All file tools (ReadTool, WriteTool, EditTool, GlobTool, GrepTool) should validate paths
+  - Users could potentially access files outside working directory
+  - Implement mandatory path validation before file operations
+
 - [ ] **CSRF protection audit**
   - Verify all POST endpoints have CSRF
   - Test CSRF token validation

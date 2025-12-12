@@ -60,9 +60,9 @@
             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded"
         >
             <option value="" {{ old('model', $command['model'] ?? '') == '' ? 'selected' : '' }}>Inherit from conversation</option>
+            <option value="claude-haiku-4-5-20251001" {{ old('model', $command['model'] ?? '') == 'claude-haiku-4-5-20251001' ? 'selected' : '' }}>Claude Haiku 4.5</option>
             <option value="claude-sonnet-4-5-20250929" {{ old('model', $command['model'] ?? '') == 'claude-sonnet-4-5-20250929' ? 'selected' : '' }}>Claude Sonnet 4.5</option>
-            <option value="claude-opus-4-20250514" {{ old('model', $command['model'] ?? '') == 'claude-opus-4-20250514' ? 'selected' : '' }}>Claude Opus 4</option>
-            <option value="claude-3-5-sonnet-20241022" {{ old('model', $command['model'] ?? '') == 'claude-3-5-sonnet-20241022' ? 'selected' : '' }}>Claude 3.5 Sonnet</option>
+            <option value="claude-opus-4-5-20251101" {{ old('model', $command['model'] ?? '') == 'claude-opus-4-5-20251101' ? 'selected' : '' }}>Claude Opus 4.5</option>
         </select>
     </div>
 
@@ -108,17 +108,13 @@
     </div>
 
     <div class="flex gap-3">
-        <button
-            type="submit"
-            class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
-        >
+        <x-button type="submit" variant="primary">
             {{ isset($command) ? 'Update Command' : 'Create Command' }}
-        </button>
-        <a
-            href="{{ route('config.commands') }}"
-            class="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded font-medium inline-block"
-        >
-            Cancel
+        </x-button>
+        <a href="{{ route('config.commands') }}">
+            <x-button type="button" variant="secondary">
+                Cancel
+            </x-button>
         </a>
     </div>
 </form>
@@ -128,9 +124,9 @@
     <form method="POST" action="{{ route('config.commands.delete', $command['filename']) }}" class="mt-4">
         @csrf
         @method('DELETE')
-        <button type="submit" class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium" onclick="return confirm('Are you sure you want to delete this command?')">
+        <x-button type="submit" variant="danger" onclick="return confirm('Are you sure you want to delete this command?')">
             Delete Command
-        </button>
+        </x-button>
     </form>
 @endif
 @endsection
