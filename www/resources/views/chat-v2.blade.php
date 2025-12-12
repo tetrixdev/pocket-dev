@@ -185,6 +185,8 @@
                 // Stream reconnection state
                 lastEventIndex: 0,
                 streamAbortController: null,
+                _streamConnectNonce: 0,
+                _streamRetryTimeoutId: null,
                 _streamState: {
                     thinkingMsgIndex: -1,
                     textMsgIndex: -1,
@@ -192,6 +194,7 @@
                     thinkingContent: '',
                     textContent: '',
                     toolInput: '',
+                    turnCost: 0,
                 },
 
                 async init() {
@@ -375,6 +378,7 @@
                             thinkingContent: '',
                             textContent: '',
                             toolInput: '',
+                            turnCost: 0,
                         };
 
                         // Calculate totals and costs per-message using each message's model
@@ -629,6 +633,7 @@
                         thinkingContent: '',
                         textContent: '',
                         toolInput: '',
+                        turnCost: 0,
                     };
 
                     try {
@@ -680,12 +685,20 @@
                     // Abort any existing connection
                     this.disconnectFromStream();
 
+                    // Increment nonce to invalidate any pending reconnection attempts
+                    const myNonce = ++this._streamConnectNonce;
+
                     this.isStreaming = true;
                     this.streamAbortController = new AbortController();
 
                     try {
                         const url = `/api/v2/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`;
                         const response = await fetch(url, { signal: this.streamAbortController.signal });
+
+                        // Check if we've been superseded by a newer connection attempt
+                        if (myNonce !== this._streamConnectNonce) {
+                            return;
+                        }
 
                         const reader = response.body.getReader();
                         const decoder = new TextDecoder();
@@ -715,7 +728,10 @@
                                         if (event.status === 'not_found') {
                                             // Race condition: job hasn't started yet, retry
                                             if (retryCount < maxRetries) {
-                                                setTimeout(() => this.connectToStreamEvents(0, retryCount + 1), 200);
+                                                // Check nonce before scheduling retry
+                                                if (myNonce === this._streamConnectNonce) {
+                                                    this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(0, retryCount + 1), 200);
+                                                }
                                                 return;
                                             } else {
                                                 this.isStreaming = false;
@@ -736,7 +752,10 @@
 
                                     if (event.type === 'timeout') {
                                         // Reconnect from last known position
-                                        setTimeout(() => this.connectToStreamEvents(this.lastEventIndex), 100);
+                                        // Check nonce before scheduling retry
+                                        if (myNonce === this._streamConnectNonce) {
+                                            this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(this.lastEventIndex), 100);
+                                        }
                                         return;
                                     }
 
@@ -764,6 +783,12 @@
 
                 // Disconnect from stream (for navigation or cleanup)
                 disconnectFromStream() {
+                    // Clear any pending retry timeout
+                    if (this._streamRetryTimeoutId) {
+                        clearTimeout(this._streamRetryTimeoutId);
+                        this._streamRetryTimeoutId = null;
+                    }
+
                     if (this.streamAbortController) {
                         this.streamAbortController.abort();
                         this.streamAbortController = null;
@@ -825,6 +850,7 @@
                             }
                             state.textMsgIndex = this.messages.length;
                             state.textContent = '';
+                            state.turnCost = 0;
                             this.messages.push({
                                 id: 'msg-' + Date.now() + '-text',
                                 role: 'assistant',
@@ -922,7 +948,10 @@
                                 this.cacheCreationTokens += cacheCreation;
                                 this.cacheReadTokens += cacheRead;
                                 this.totalTokens += input + output;
-                                this.sessionCost += this.calculateCost(this.model, input, output, cacheCreation, cacheRead);
+
+                                const delta = this.calculateCost(this.model, input, output, cacheCreation, cacheRead);
+                                this.sessionCost += delta;
+                                state.turnCost += delta;
                             }
                             break;
 
@@ -930,7 +959,7 @@
                             if (state.textMsgIndex >= 0) {
                                 this.messages[state.textMsgIndex] = {
                                     ...this.messages[state.textMsgIndex],
-                                    cost: this.sessionCost
+                                    cost: state.turnCost
                                 };
                             }
                             break;

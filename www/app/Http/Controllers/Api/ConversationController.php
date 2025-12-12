@@ -40,6 +40,9 @@ class ConversationController extends Controller
         ]);
 
         $providerType = $validated['provider_type'] ?? config('ai.default_provider', 'anthropic');
+        if (!in_array($providerType, $this->providerFactory->availableTypes(), true)) {
+            $providerType = 'anthropic';
+        }
         $provider = $this->providerFactory->make($providerType);
 
         $conversationData = [
@@ -226,7 +229,7 @@ class ConversationController extends Controller
      */
     public function streamEvents(Request $request, Conversation $conversation): StreamedResponse
     {
-        $fromIndex = (int) $request->query('from_index', 0);
+        $fromIndex = max(0, (int) $request->query('from_index', 0));
 
         return response()->stream(function () use ($conversation, $fromIndex) {
             $sse = new SseWriter();
@@ -259,6 +262,11 @@ class ConversationController extends Controller
             $timeout = 60; // 60 second timeout for SSE connection
 
             while (true) {
+                // Exit if client disconnected
+                if (connection_aborted()) {
+                    break;
+                }
+
                 // Check for new events
                 $newEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
 

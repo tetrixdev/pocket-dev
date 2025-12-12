@@ -64,13 +64,13 @@ INSTRUCTIONS;
         // Resolve path
         $resolvedPath = $context->resolvePath($filePath);
 
+        if (!file_exists($resolvedPath)) {
+            return ToolResult::error("File not found: {$filePath}");
+        }
+
         // Validate path is within allowed working directory
         if (!$context->isPathAllowed($resolvedPath)) {
             return ToolResult::error("Access denied: Path is outside allowed working directory");
-        }
-
-        if (!file_exists($resolvedPath)) {
-            return ToolResult::error("File not found: {$filePath}");
         }
 
         if (!is_writable($resolvedPath)) {

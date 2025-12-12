@@ -48,12 +48,13 @@ class GlobTool extends Tool
             ? $context->resolvePath($path)
             : $context->getWorkingDirectory();
 
-        if (!$context->isPathAllowed($basePath)) {
-            return ToolResult::error("Access denied: Path is outside allowed working directory");
-        }
-
         if (!is_dir($basePath)) {
             return ToolResult::error("Directory not found: {$basePath}");
+        }
+
+        $basePath = realpath($basePath) ?: $basePath;
+        if (!$context->isPathAllowed($basePath)) {
+            return ToolResult::error("Access denied: Path is outside allowed working directory");
         }
 
         // Convert glob pattern to regex
@@ -73,6 +74,7 @@ class GlobTool extends Tool
         usort($files, fn($a, $b) => $b['mtime'] <=> $a['mtime']);
 
         // Apply limit
+        $totalMatches = count($files);
         $files = array_slice($files, 0, $limit);
 
         // Format output - show relative paths
@@ -84,7 +86,7 @@ class GlobTool extends Tool
 
         $result = implode("\n", $output);
 
-        if (count($files) === $limit) {
+        if ($totalMatches > $limit) {
             $result .= "\n\n[Limited to {$limit} results]";
         }
 
@@ -101,6 +103,9 @@ class GlobTool extends Tool
         // Handle ? (matches single char)
 
         $regex = preg_quote($pattern, '#');
+
+        // Handle "**/" as "zero or more directories"
+        $regex = str_replace('\\*\\*/', '(?:.*/)?', $regex);
 
         // ** matches any path segment (including /)
         $regex = str_replace('\\*\\*', '.*', $regex);
@@ -166,6 +171,7 @@ class GlobTool extends Tool
             return substr($fullPath, strlen($basePath));
         }
 
-        return $fullPath;
+        // Safety: avoid leaking absolute paths
+        return basename($fullPath);
     }
 }

@@ -42,7 +42,8 @@ class ExecutionContext
             return false;
         }
 
-        return str_starts_with($realPath, $realWorkDir);
+        return str_starts_with($realPath, $realWorkDir . '/')
+            || $realPath === $realWorkDir;
     }
 
     /**
