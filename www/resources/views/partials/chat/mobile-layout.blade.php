@@ -46,9 +46,9 @@
                 </svg>
             </button>
         </div>
-        <button @click="newConversation(); showMobileDrawer = false" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">
+        <x-button @click="newConversation(); showMobileDrawer = false" variant="primary" full-width>
             New Conversation
-        </button>
+        </x-button>
     </div>
 
     {{-- Conversations List --}}
@@ -74,12 +74,12 @@
             <span class="text-gray-500">Model:</span> <span x-text="availableModels[model]?.name || model"></span>
         </div>
         <div class="flex flex-wrap gap-3">
-            <button @click="showQuickSettings = true; showMobileDrawer = false" class="text-blue-400 hover:text-blue-300">
+            <x-button @click="showQuickSettings = true; showMobileDrawer = false" variant="ghost" size="sm">
                 Quick Settings
-            </button>
-            <button @click="showShortcutsModal = true; showMobileDrawer = false" class="text-blue-400 hover:text-blue-300">
+            </x-button>
+            <x-button @click="showShortcutsModal = true; showMobileDrawer = false" variant="ghost" size="sm">
                 Shortcuts
-            </button>
+            </x-button>
         </div>
     </div>
 </div>

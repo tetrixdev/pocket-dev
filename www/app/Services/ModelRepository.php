@@ -103,11 +103,16 @@ class ModelRepository
     /**
      * Calculate cost for token usage on a model.
      */
-    public function calculateCost(string $modelId, int $inputTokens, int $outputTokens): ?float
-    {
+    public function calculateCost(
+        string $modelId,
+        int $inputTokens,
+        int $outputTokens,
+        ?int $cacheCreationTokens = null,
+        ?int $cacheReadTokens = null
+    ): ?float {
         $model = $this->findByModelId($modelId);
 
-        return $model?->calculateCost($inputTokens, $outputTokens);
+        return $model?->calculateCost($inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens);
     }
 
     /**

@@ -17,7 +17,8 @@ use Illuminate\Validation\ValidationException;
 class TranscriptionController extends Controller
 {
     public function __construct(
-        protected AppSettingsService $appSettings
+        protected AppSettingsService $appSettings,
+        protected TranscriptionService $transcriptionService
     ) {}
 
     /**
@@ -41,8 +42,7 @@ class TranscriptionController extends Controller
             $audioFile = $request->file('audio');
 
             // Transcribe using OpenAI service
-            $transcriptionService = app(TranscriptionService::class);
-            $transcription = $transcriptionService->transcribeAudio($audioFile);
+            $transcription = $this->transcriptionService->transcribeAudio($audioFile);
 
             return response()->json([
                 'transcription' => trim($transcription),

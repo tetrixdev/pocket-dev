@@ -44,6 +44,7 @@ class StreamEvent
     // Event type constants
     public const THINKING_START = 'thinking_start';
     public const THINKING_DELTA = 'thinking_delta';
+    public const THINKING_SIGNATURE = 'thinking_signature';
     public const THINKING_STOP = 'thinking_stop';
     public const TEXT_START = 'text_start';
     public const TEXT_DELTA = 'text_delta';
@@ -55,6 +56,7 @@ class StreamEvent
     public const USAGE = 'usage';
     public const DONE = 'done';
     public const ERROR = 'error';
+    public const DEBUG = 'debug';
 
     public function __construct(
         public string $type,
@@ -64,13 +66,24 @@ class StreamEvent
     ) {}
 
     // Static factory methods
-    public static function textDelta(int $blockIndex, string $content): self;
+    public static function thinkingStart(int $blockIndex): self;
     public static function thinkingDelta(int $blockIndex, string $content): self;
+    public static function thinkingSignature(int $blockIndex, string $signature): self;
+    public static function thinkingStop(int $blockIndex): self;
+    public static function textStart(int $blockIndex): self;
+    public static function textDelta(int $blockIndex, string $content): self;
+    public static function textStop(int $blockIndex): self;
     public static function toolUseStart(int $blockIndex, string $toolId, string $toolName): self;
-    public static function usage(int $inputTokens, int $outputTokens, ...): self;
+    public static function toolUseDelta(int $blockIndex, string $partialJson): self;
+    public static function toolUseStop(int $blockIndex): self;
+    public static function toolResult(string $toolId, string $content, bool $isError = false): self;
+    public static function usage(int $inputTokens, int $outputTokens, ?int $cacheCreation = null, ?int $cacheRead = null, ?float $cost = null): self;
     public static function done(string $stopReason): self;
     public static function error(string $message): self;
-    // ... etc
+    public static function debug(string $message, array $context = []): self;
+
+    public function toArray(): array;
+    public function toJson(): string;
 }
 ```
 
@@ -266,14 +279,16 @@ connectToStreamEvents(fromIndex = 0) {
 
 ## Event Types
 
+All events include an `index` field added by the SSE endpoint, tracking sequential position for reconnection support.
+
 ### `text_start` / `text_delta` / `text_stop`
 
 Text content blocks:
 
 ```json
-{"type": "text_start", "block_index": 0}
-{"type": "text_delta", "block_index": 0, "content": "Hello..."}
-{"type": "text_stop", "block_index": 0}
+{"type": "text_start", "block_index": 0, "index": 0}
+{"type": "text_delta", "block_index": 0, "content": "Hello...", "index": 1}
+{"type": "text_stop", "block_index": 0, "index": 2}
 ```
 
 ### `thinking_start` / `thinking_delta` / `thinking_stop`
@@ -281,9 +296,9 @@ Text content blocks:
 Extended thinking content (when enabled):
 
 ```json
-{"type": "thinking_start", "block_index": 0}
-{"type": "thinking_delta", "block_index": 0, "content": "Let me think..."}
-{"type": "thinking_stop", "block_index": 0}
+{"type": "thinking_start", "block_index": 0, "index": 0}
+{"type": "thinking_delta", "block_index": 0, "content": "Let me think...", "index": 1}
+{"type": "thinking_stop", "block_index": 0, "index": 2}
 ```
 
 ### `tool_use_start` / `tool_use_delta` / `tool_use_stop`
@@ -291,9 +306,9 @@ Extended thinking content (when enabled):
 Tool invocation:
 
 ```json
-{"type": "tool_use_start", "block_index": 1, "metadata": {"tool_id": "tool_123", "tool_name": "Read"}}
-{"type": "tool_use_delta", "block_index": 1, "content": "{\"file_path\": \"/..."}
-{"type": "tool_use_stop", "block_index": 1}
+{"type": "tool_use_start", "block_index": 1, "metadata": {"tool_id": "tool_123", "tool_name": "Read"}, "index": 3}
+{"type": "tool_use_delta", "block_index": 1, "content": "{\"file_path\": \"/...", "index": 4}
+{"type": "tool_use_stop", "block_index": 1, "index": 5}
 ```
 
 ### `tool_result`
@@ -301,15 +316,15 @@ Tool invocation:
 Tool execution result (sent after job executes tool):
 
 ```json
-{"type": "tool_result", "content": "file contents...", "metadata": {"tool_id": "tool_123", "is_error": false}}
+{"type": "tool_result", "content": "file contents...", "metadata": {"tool_id": "tool_123", "is_error": false}, "index": 6}
 ```
 
 ### `usage`
 
-Token usage data:
+Token usage data (includes cost when calculated server-side):
 
 ```json
-{"type": "usage", "metadata": {"input_tokens": 1234, "output_tokens": 567}}
+{"type": "usage", "metadata": {"input_tokens": 1234, "output_tokens": 567, "cost": 0.0123}, "index": 7}
 ```
 
 ### `done`
@@ -317,7 +332,7 @@ Token usage data:
 Stream completion:
 
 ```json
-{"type": "done", "metadata": {"stop_reason": "end_turn"}}
+{"type": "done", "metadata": {"stop_reason": "end_turn"}, "index": 8}
 ```
 
 Stop reasons: `end_turn`, `tool_use`, `max_tokens`
@@ -327,7 +342,7 @@ Stop reasons: `end_turn`, `tool_use`, `max_tokens`
 Final stream status (sent by SSE endpoint):
 
 ```json
-{"type": "stream_status", "status": "completed"}
+{"type": "stream_status", "status": "completed", "index": 9}
 ```
 
 ## Reconnection Handling

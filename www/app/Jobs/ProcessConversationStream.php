@@ -147,6 +147,12 @@ class ProcessConversationStream implements ShouldQueue
 
         // Get the model for cost calculation
         $aiModel = $modelRepository->findByModelId($conversation->model);
+        if (!$aiModel) {
+            Log::warning('ProcessConversationStream: Model not found for cost calculation', [
+                'conversation' => $this->conversationUuid,
+                'model' => $conversation->model,
+            ]);
+        }
 
         // Stream from provider
         foreach ($provider->streamMessage($conversation, $providerOptions) as $event) {
