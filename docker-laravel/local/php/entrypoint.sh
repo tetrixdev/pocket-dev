@@ -77,5 +77,11 @@ php artisan optimize:clear
 php artisan config:cache
 php artisan queue:restart
 
+# Set up pocketdev CLI if source is mounted (self-development mode)
+if [ -x "/pocketdev-source/scripts/pocketdev" ] && [ -n "${HOST_PROJECT_PATH:-}" ]; then
+    echo "✅ Self-development mode enabled"
+    echo "   Run: /pocketdev-source/scripts/pocketdev help"
+fi
+
 echo "Starting PHP-FPM"
 exec php-fpm
