@@ -1,5 +1,5 @@
 services:
-  # Main nginx reverse proxy - handles both Laravel and TTYD with security
+  # Main nginx reverse proxy - handles Laravel with security
   pocket-dev-proxy:
     build:
       context: .
@@ -18,7 +18,6 @@ services:
       - proxy-config-data:/etc/nginx-proxy-config
     depends_on:
       - pocket-dev-nginx
-      - pocket-dev-ttyd
     networks:
       - pocket-dev
       - pocket-dev-public
@@ -152,34 +151,6 @@ services:
         condition: service_healthy
       pocket-dev-postgres:
         condition: service_healthy
-
-  pocket-dev-ttyd:
-    build:
-      context: .
-      dockerfile: docker-ttyd/shared/Dockerfile
-    container_name: pocket-dev-ttyd
-    restart: unless-stopped
-    working_dir: /workspace
-    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
-    environment:
-      - GIT_TOKEN=${GIT_TOKEN:-}
-      - GIT_USER_NAME=${GIT_USER_NAME:-}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
-      - GH_TOKEN=${GIT_TOKEN:-}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - workspace-data:/workspace
-      - user-data:/home/devuser
-      - ./docker-ttyd/shared/entrypoint.sh:/entrypoint.sh
-      - proxy-config-data:/etc/nginx-proxy-config
-    networks:
-      - pocket-dev
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:7681/ || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
 
 networks:
   pocket-dev:

@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\ConfigController;
-use App\Http\Controllers\TerminalController;
 use Illuminate\Support\Facades\Route;
 
 // Claude authentication routes - MUST be before wildcard routes
@@ -17,9 +16,6 @@ Route::view("/", "chat")->name("chat.index");
 Route::view("/chat/{conversationUuid?}", "chat")
     ->whereUuid("conversationUuid")
     ->name("chat.conversation");
-
-Route::get("/terminal", [TerminalController::class, "index"])->name("terminal.index");
-Route::post("/transcribe", [TerminalController::class, "transcribe"])->name("terminal.transcribe");
 
 // Config - Redirect to last visited section
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");

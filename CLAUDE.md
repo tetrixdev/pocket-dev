@@ -35,13 +35,11 @@ docker compose up -d --force-recreate
 
 1. **Dual-container DOM pattern**: Chat interface has BOTH `#messages` (desktop) and `#messages-mobile` containers. JavaScript must update both.
 
-2. **Credentials are container-specific**: TTYD uses `/home/devuser/.claude/`, PHP uses `/var/www/.claude/`. Authentication in one doesn't work in the other.
+2. **File permissions**: PHP runs as `www-data`. Files in `/var/www/.claude/` must be owned by `www-data:www-data`.
 
-3. **File permissions**: PHP runs as `www-data`. Files in `/var/www/.claude/` must be owned by `www-data:www-data`.
+3. **Route order matters**: Specific routes (like `/claude/auth`) must come BEFORE wildcard routes (`/claude/{sessionId?}`).
 
-4. **Route order matters**: Specific routes (like `/claude/auth`) must come BEFORE wildcard routes (`/claude/{sessionId?}`).
-
-5. **Claude CLI flags**: Use `--print --output-format json`, NOT `--json`.
+4. **Claude CLI flags**: Use `--print --output-format json`, NOT `--json`.
 
 ## PHP Style Preferences
 

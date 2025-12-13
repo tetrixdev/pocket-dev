@@ -24,9 +24,9 @@ PocketDev is a Docker-based development environment that provides a multi-provid
 
 ### 🏗️ Architecture (`architecture/`)
 
-**TLDR:** Five Docker containers (proxy, php, nginx, postgres, ttyd) connected via bridge network. Proxy handles Basic Auth + IP whitelist. PHP container runs Laravel + Claude CLI + Node.js. TTYD provides web terminal with tmux. Two separate credential files exist (TTYD vs PHP container). Volumes share workspace and user data between containers.
+**TLDR:** Six Docker containers (proxy, php, nginx, postgres, redis, queue) connected via bridge network. Proxy handles Basic Auth + IP whitelist. PHP container runs Laravel + Claude CLI + Node.js. Redis provides caching and queue backend. Volumes share workspace and user data.
 
-**Read level:** 📖 Full read recommended - Understanding container relationships and credential separation is critical for debugging.
+**Read level:** 📖 Full read recommended - Understanding container relationships is helpful for debugging.
 
 **Contents:**
 - `system-overview.md` - Container architecture, networking, volumes, data flow
@@ -65,7 +65,7 @@ PocketDev is a Docker-based development environment that provides a multi-provid
 
 ### ⚙️ Configuration (`configuration/`)
 
-**TLDR:** Key config files: `config/ai.php` (providers, models, thinking settings), `.env` (Docker settings, Basic Auth credentials, API keys), `nginx.conf.template` (proxy routing). Config editor allows runtime editing of Claude settings in TTYD container.
+**TLDR:** Key config files: `config/ai.php` (providers, models, thinking settings), `.env` (Docker settings, Basic Auth credentials, API keys), `nginx.conf.template` (proxy routing). Config editor allows runtime editing of Claude settings in PHP container.
 
 **Read level:** ✅ TLDR likely sufficient - Configuration is straightforward.
 
@@ -81,8 +81,6 @@ These areas have accumulated complexity and are candidates for refactoring:
 1. **Dual Container Pattern** (`modules/chat/`) - Desktop `#messages` + mobile `#messages-mobile` must be updated in parallel for every DOM change.
 
 2. **Cost Calculation** - Duplicated in client JS (during streaming) and server-side (for historical messages).
-
-3. **Credential Separation** - TTYD and PHP containers have separate credential files at different paths.
 
 ---
 

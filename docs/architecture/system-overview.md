@@ -14,28 +14,28 @@
 │  │   │              Nginx Reverse Proxy                         │    │   │
 │  │   │              - Basic Auth (required)                     │    │   │
 │  │   │              - IP Whitelist (optional)                   │    │   │
-│  │   │              - Routes: / → Laravel, /terminal-ws/ → TTYD │    │   │
-│  │   └─────────────────────┬───────────────┬────────────────────┘    │   │
-│  │                         │               │                         │   │
-│  │           ┌─────────────▼───────┐   ┌───▼───────────────┐        │   │
-│  │           │  pocket-dev-nginx   │   │  pocket-dev-ttyd  │        │   │
-│  │           │  (Internal Server)  │   │  (Web Terminal)   │        │   │
-│  │           └─────────┬───────────┘   │  - Claude CLI     │        │   │
-│  │                     │               │  - tmux sessions  │        │   │
-│  │           ┌─────────▼───────────┐   │  - Port 7681      │        │   │
-│  │           │  pocket-dev-php     │   └───────────────────┘        │   │
-│  │           │  - PHP 8.4-FPM      │                                 │   │
-│  │           │  - Laravel App      │                                 │   │
-│  │           │  - Claude CLI       │                                 │   │
-│  │           │  - Node.js 22       │                                 │   │
-│  │           │  - Vite (Port 5173) │                                 │   │
-│  │           └─────────┬───────────┘                                 │   │
+│  │   │              - Routes: / → Laravel                       │    │   │
+│  │   └─────────────────────┬────────────────────────────────────┘    │   │
+│  │                         │                                         │   │
+│  │           ┌─────────────▼───────────┐                            │   │
+│  │           │  pocket-dev-nginx       │                            │   │
+│  │           │  (Internal Server)      │                            │   │
+│  │           └─────────┬───────────────┘                            │   │
 │  │                     │                                             │   │
-│  │           ┌─────────▼───────────┐                                 │   │
-│  │           │ pocket-dev-postgres │                                 │   │
-│  │           │   PostgreSQL 17     │                                 │   │
-│  │           │   (Port 5432)       │                                 │   │
-│  │           └─────────────────────┘                                 │   │
+│  │           ┌─────────▼───────────┐   ┌───────────────────┐        │   │
+│  │           │  pocket-dev-php     │   │  pocket-dev-queue │        │   │
+│  │           │  - PHP 8.4-FPM      │   │  (Queue Worker)   │        │   │
+│  │           │  - Laravel App      │   └─────────┬─────────┘        │   │
+│  │           │  - Claude CLI       │             │                   │   │
+│  │           │  - Node.js 22       │             │                   │   │
+│  │           │  - Vite (Port 5173) │             │                   │   │
+│  │           └─────────┬───────────┘             │                   │   │
+│  │                     │                         │                   │   │
+│  │           ┌─────────▼───────────┐   ┌────────▼──────────┐        │   │
+│  │           │ pocket-dev-postgres │   │  pocket-dev-redis │        │   │
+│  │           │   PostgreSQL 17     │   │     Redis 7       │        │   │
+│  │           │   (Port 5432)       │   │                   │        │   │
+│  │           └─────────────────────┘   └───────────────────┘        │   │
 │  └───────────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
@@ -55,7 +55,6 @@
 - Basic Auth via htpasswd (required, env: `BASIC_AUTH_USER`, `BASIC_AUTH_PASS`)
 - IP whitelist (optional, env: `IP_WHITELIST`)
 - Route `/` to Laravel (pocket-dev-nginx)
-- Route `/terminal-ws/` to TTYD (with WebSocket support)
 - SSE streaming support (`proxy_buffering off`)
 - Maintenance page on 502/503
 
@@ -113,43 +112,29 @@ Stock postgres:17-alpine image with:
 
 **Health check:** `pg_isready -U pocket-dev -d pocket-dev`
 
-### pocket-dev-ttyd
+### pocket-dev-redis
 
-**Purpose:** Web terminal for direct CLI access.
+**Purpose:** Caching and queue backend.
 
-**Source files:**
-- `docker-ttyd/shared/Dockerfile`
-- `docker-ttyd/shared/entrypoint.sh`
-- `docker-ttyd/shared/defaults/` (default config files)
+Stock redis:7-alpine image with append-only mode enabled.
 
-**Installed software:**
-- Ubuntu 24.04 base
-- Claude Code CLI
-- Node.js 22
-- Docker CLI
-- GitHub CLI
-- tmux
-- TTYD (web terminal server)
+**Health check:** `redis-cli ping`
 
-**Entrypoint actions:**
-1. Configure git credentials
-2. Initialize default Claude config files (CLAUDE.md, settings.json, agents)
-3. Start TTYD with tmux (`ttyd tmux -u new-session -A -s main`)
+### pocket-dev-queue
 
-**User context:** Runs as `devuser` (mapped to host user via `USER_ID`/`GROUP_ID`)
+**Purpose:** Laravel queue worker for background jobs.
 
-**Health check:** `curl -f http://localhost:7681/`
+Uses the same image as pocket-dev-php but runs `php artisan queue:work` instead of PHP-FPM.
 
 ## Volumes
 
 | Volume | Purpose | Mounted In |
 |--------|---------|------------|
-| `workspace-data` | Shared workspace for projects | PHP (`/workspace`), TTYD (`/workspace`) |
-| `user-data` | User home directories | PHP (`/home/appuser`), TTYD (`/home/devuser`) |
+| `workspace-data` | Shared workspace for projects | PHP (`/workspace`) |
+| `user-data` | User home directory | PHP (`/home/appuser`) |
 | `proxy-config-data` | Editable nginx config | Proxy, PHP |
 | `postgres-data` | Database persistence | Postgres |
-
-**Note:** `workspace-data` and `user-data` are shared between PHP and TTYD containers, enabling both to access the same projects and Claude configurations.
+| `redis-data` | Redis persistence | Redis |
 
 ## Networks
 
@@ -176,53 +161,27 @@ pocket-dev-nginx
     ▼
 pocket-dev-php (PHP-FPM)
     │ Laravel handles request
-    │ For /api/claude/* → ClaudeController
+    │ For /api/conversations/* → ConversationController
     ▼
-ClaudeCodeService
-    │ proc_open('claude --print ...')
-    ▼
-Claude CLI
-    │ Reads/writes ~/.claude/projects/*/
-    │ Returns JSON/streaming output
+Provider (Anthropic/OpenAI)
+    │ Streams response via SSE
     ▼
 Response (SSE or JSON)
 ```
 
-### Request Flow (Web Terminal)
-
-```
-Browser (Port 80)
-    │
-    ▼
-pocket-dev-proxy
-    │ Basic Auth check
-    │ Route: /terminal-ws/* → pocket-dev-ttyd
-    │ WebSocket upgrade
-    ▼
-pocket-dev-ttyd (TTYD)
-    │ tmux session
-    ▼
-User shell (bash)
-    │ Can run: claude, git, docker, etc.
-```
-
 ## File Locations
 
-### Credentials (Container-Specific)
+### Credentials
 
-| Container | Path | User |
-|-----------|------|------|
-| TTYD | `/home/devuser/.claude/.credentials.json` | devuser |
-| PHP | `/var/www/.claude/.credentials.json` | www-data |
-
-**Critical:** These are separate files. Authentication in one container does NOT authenticate the other.
+| Path | User |
+|------|------|
+| `/var/www/.claude/.credentials.json` | www-data |
 
 ### Claude Session Files
 
-| Container | Path |
-|-----------|------|
-| TTYD | `/home/devuser/.claude/projects/*/` |
-| PHP | `/var/www/.claude/projects/*/` |
+| Path |
+|------|
+| `/var/www/.claude/projects/*/` |
 
 Sessions are stored as `.jsonl` files in project-specific directories.
 
@@ -231,7 +190,7 @@ Sessions are stored as `.jsonl` files in project-specific directories.
 | File | Host Path | Container Path |
 |------|-----------|----------------|
 | Laravel .env | `./` | `/var/www/.env` |
-| Claude config | N/A | `/home/devuser/.claude/` (TTYD) |
+| Claude config | N/A | `/home/appuser/.claude/` |
 | Nginx template | `docker-proxy/shared/nginx.conf.template` | `/etc/nginx-proxy-config/nginx.conf.template` |
 
 ## Startup Order
@@ -239,7 +198,8 @@ Sessions are stored as `.jsonl` files in project-specific directories.
 Docker Compose enforces this startup order via `depends_on`:
 
 1. **pocket-dev-postgres** (database ready first)
-2. **pocket-dev-php** (depends on postgres health)
-3. **pocket-dev-nginx** (depends on php health)
-4. **pocket-dev-ttyd** (independent, starts in parallel)
-5. **pocket-dev-proxy** (depends on nginx and ttyd)
+2. **pocket-dev-redis** (cache ready)
+3. **pocket-dev-php** (depends on postgres and redis health)
+4. **pocket-dev-nginx** (depends on php health)
+5. **pocket-dev-proxy** (depends on nginx)
+6. **pocket-dev-queue** (depends on postgres and redis)

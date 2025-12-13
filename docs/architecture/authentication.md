@@ -58,18 +58,15 @@ Claude CLI uses OAuth tokens stored in `.credentials.json`:
 }
 ```
 
-### Credential Locations
+### Credential Location
 
-| Container | Path | User |
-|-----------|------|------|
-| TTYD | `/home/devuser/.claude/.credentials.json` | devuser |
-| PHP | `/var/www/.claude/.credentials.json` | www-data |
-
-**Critical:** These are SEPARATE files. Authentication in TTYD does NOT authenticate the PHP container.
+| Path | User |
+|------|------|
+| `/var/www/.claude/.credentials.json` | www-data |
 
 ### Authentication Methods
 
-#### 1. Web UI Upload (PHP Container)
+#### 1. Web UI Upload
 
 **Route:** `/claude/auth`
 
@@ -84,7 +81,7 @@ The controller:
 2. Writes to `/var/www/.claude/.credentials.json`
 3. Sets ownership to `www-data:www-data`
 
-#### 2. Docker Exec (PHP Container)
+#### 2. Docker Exec
 
 Run authentication directly in PHP container:
 
@@ -93,26 +90,6 @@ docker exec -it pocket-dev-php claude setup-token
 ```
 
 This opens a browser auth flow and writes credentials to `/var/www/.claude/`.
-
-#### 3. Terminal Authentication (TTYD Container)
-
-From the web terminal:
-
-```bash
-claude setup-token
-```
-
-Writes credentials to `/home/devuser/.claude/`.
-
-### Copying Credentials Between Containers
-
-If you authenticated in TTYD but need PHP container access:
-
-```bash
-docker cp pocket-dev-ttyd:/home/devuser/.claude/.credentials.json /tmp/creds.json
-docker cp /tmp/creds.json pocket-dev-php:/var/www/.claude/.credentials.json
-docker exec pocket-dev-php chown www-data:www-data /var/www/.claude/.credentials.json
-```
 
 ### Checking Authentication Status
 
@@ -168,4 +145,3 @@ Chat interface loads
 1. **Basic Auth is always required** - There's no "development mode" without auth
 2. **Credentials are sensitive** - Never commit `.credentials.json` or `.env` to git
 3. **Token expiry** - Claude tokens expire; the auth status page shows days remaining
-4. **Container isolation** - Separate credential files prevent accidental cross-container access

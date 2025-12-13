@@ -72,9 +72,9 @@ RUN mkdir -p /var/www/storage/framework/{sessions,views,cache} \
 
 # Set up Claude Code defaults
 RUN mkdir -p /home/www-data/.claude/agents
-COPY docker-ttyd/shared/defaults/CLAUDE.md /home/www-data/.claude/
-COPY docker-ttyd/shared/defaults/settings.json /home/www-data/.claude/
-COPY docker-ttyd/shared/defaults/agents/ /home/www-data/.claude/agents/
+COPY docker-laravel/shared/defaults/CLAUDE.md /home/www-data/.claude/
+COPY docker-laravel/shared/defaults/settings.json /home/www-data/.claude/
+COPY docker-laravel/shared/defaults/agents/ /home/www-data/.claude/agents/
 RUN chown -R www-data:www-data /home/www-data/.claude
 
 # Set working directory

@@ -12,7 +12,6 @@ services:
       - IP_WHITELIST=${IP_WHITELIST:-}
     depends_on:
       - pocket-dev-nginx
-      - pocket-dev-ttyd
     networks:
       - pocket-dev
     healthcheck:
@@ -102,31 +101,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
-
-  pocket-dev-ttyd:
-    image: ghcr.io/tetrixdev/pocket-dev-ttyd:${IMAGE_TAG:-latest}
-    container_name: pocket-dev-ttyd
-    restart: unless-stopped
-    working_dir: /workspace
-    user: "1001:1001"
-    group_add:
-      - "1000"
-    environment:
-      - GIT_TOKEN=${GIT_TOKEN:-}
-      - GIT_USER_NAME=${GIT_USER_NAME:-}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - workspace-data:/workspace
-      - user-data:/home/devuser
-    networks:
-      - pocket-dev
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:7681/ || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
 
 networks:
   pocket-dev:
