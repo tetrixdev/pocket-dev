@@ -56,8 +56,7 @@ Messages within conversations.
 | created_at | timestamp | Yes | null | Created timestamp |
 
 **Indexes:**
-- `messages_conversation_id_sequence_unique` on `(conversation_id, sequence)` (unique)
-- `messages_conversation_id_sequence_index` on `(conversation_id, sequence)`
+- `messages_conversation_id_sequence_unique` on `(conversation_id, sequence)` (unique, implicitly provides indexing)
 
 **Foreign Keys:**
 - `messages_conversation_id_foreign` on `conversation_id` → `conversations.id` (cascade delete)
@@ -209,9 +208,9 @@ ORDER BY last_activity_at DESC;
 ```sql
 SELECT c.*, m.*
 FROM conversations c
-LEFT JOIN conversation_messages m ON c.id = m.conversation_id
+LEFT JOIN messages m ON c.id = m.conversation_id
 WHERE c.uuid = ?
-ORDER BY m.created_at ASC;
+ORDER BY m.sequence ASC;
 ```
 
 ### Get Model Pricing
