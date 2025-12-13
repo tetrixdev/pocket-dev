@@ -142,7 +142,8 @@ class ConversationController extends Controller
                 $updates['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
             } elseif (isset($validated['thinking_level'])) {
                 // Legacy support: convert thinking_level to budget_tokens
-                $thinkingConfig = config("ai.thinking.levels.{$validated['thinking_level']}");
+                $reasoningLevels = config('ai.reasoning.anthropic.levels');
+                $thinkingConfig = $reasoningLevels[$validated['thinking_level']] ?? null;
                 if ($thinkingConfig) {
                     $updates['anthropic_thinking_budget'] = $thinkingConfig['budget_tokens'] ?? 0;
                 }

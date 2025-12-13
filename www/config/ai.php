@@ -7,7 +7,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | This option controls the default AI provider used for conversations.
-    | Supported: "anthropic", "openai", "claude_code"
+    | Supported: "anthropic", "openai"
     |
     */
 
@@ -29,11 +29,6 @@ return [
             'default_model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929'),
             'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS', 8192),
             'api_version' => '2023-06-01',
-        ],
-
-        'claude_code' => [
-            'binary_path' => env('CLAUDE_BINARY_PATH', 'claude'),
-            'timeout' => (int) env('CLAUDE_TIMEOUT', 300),
         ],
 
         'openai' => [
@@ -84,17 +79,6 @@ return [
                 ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
                 ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
             ],
-        ],
-    ],
-
-    // Legacy thinking config - kept for backwards compatibility during transition
-    'thinking' => [
-        'levels' => [
-            0 => ['name' => 'Off', 'budget_tokens' => 0],
-            1 => ['name' => 'Think', 'budget_tokens' => 4000],
-            2 => ['name' => 'Think Hard', 'budget_tokens' => 10000],
-            3 => ['name' => 'Think Harder', 'budget_tokens' => 20000],
-            4 => ['name' => 'Ultrathink', 'budget_tokens' => 32000],
         ],
     ],
 

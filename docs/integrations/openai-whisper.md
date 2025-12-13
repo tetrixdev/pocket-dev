@@ -4,7 +4,7 @@ Voice transcription for voice-to-text input in the chat interface.
 
 ## Service
 
-**File:** `app/Services/OpenAIService.php`
+**File:** `app/Services/TranscriptionService.php`
 
 ## Configuration
 

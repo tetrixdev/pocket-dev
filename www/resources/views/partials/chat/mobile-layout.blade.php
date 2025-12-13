@@ -1,5 +1,5 @@
-{{-- Mobile Header (Sticky) --}}
-<div class="sticky top-0 z-10 bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
+{{-- Mobile Header (Fixed) --}}
+<div class="fixed top-0 left-0 right-0 z-10 bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
     <button @click="showMobileDrawer = true" class="text-gray-300 hover:text-white">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -46,9 +46,9 @@
                 </svg>
             </button>
         </div>
-        <button @click="newConversation(); showMobileDrawer = false" class="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">
+        <x-button @click="newConversation(); showMobileDrawer = false" variant="primary" full-width>
             New Conversation
-        </button>
+        </x-button>
     </div>
 
     {{-- Conversations List --}}
@@ -74,12 +74,12 @@
             <span class="text-gray-500">Model:</span> <span x-text="availableModels[model]?.name || model"></span>
         </div>
         <div class="flex flex-wrap gap-3">
-            <button @click="showQuickSettings = true; showMobileDrawer = false" class="text-blue-400 hover:text-blue-300">
+            <x-button @click="showQuickSettings = true; showMobileDrawer = false" variant="ghost" size="sm">
                 Quick Settings
-            </button>
-            <button @click="showShortcutsModal = true; showMobileDrawer = false" class="text-blue-400 hover:text-blue-300">
+            </x-button>
+            <x-button @click="showShortcutsModal = true; showMobileDrawer = false" variant="ghost" size="sm">
                 Shortcuts
-            </button>
+            </x-button>
         </div>
     </div>
 </div>

@@ -1,27 +1,16 @@
-@props(['variant' => 'desktop'])
-
-@php
-    $maxWidth = $variant === 'mobile' ? 'max-w-[85%] w-full' : 'max-w-3xl w-full';
-    $headerPadding = $variant === 'mobile' ? 'px-3 py-2' : 'px-4 py-2';
-    $contentPadding = $variant === 'mobile' ? 'px-3 py-2' : 'px-4 py-3';
-    $iconSize = $variant === 'mobile' ? 'w-3 h-3' : 'w-4 h-4';
-    $labelClass = $variant === 'mobile' ? 'text-xs' : 'text-sm';
-    $flexWrap = $variant === 'mobile' ? 'flex-wrap' : '';
-    $hasBorder = $variant === 'desktop';
-@endphp
-
+{{-- Thinking block - responsive design using Tailwind breakpoints --}}
 <template x-if="msg.role === 'thinking'">
-    <div class="{{ $maxWidth }}">
+    <div class="max-w-[85%] md:max-w-3xl w-full">
         <div class="border border-purple-500/30 rounded-lg bg-purple-900/20 overflow-hidden">
-            <div class="flex items-center {{ $flexWrap }} gap-2 {{ $headerPadding }} bg-purple-900/30 @if($hasBorder) border-b border-purple-500/20 @endif cursor-pointer"
+            {{-- Header --}}
+            <div class="flex items-center flex-wrap md:flex-nowrap gap-2 px-3 md:px-4 py-2 bg-purple-900/30 md:border-b md:border-purple-500/20 cursor-pointer"
                  @click="msg.collapsed = !msg.collapsed">
-                @if($variant === 'desktop')
-                <x-icon.lightbulb class="w-4 h-4 text-purple-400" />
-                @endif
-                <span class="{{ $labelClass }} font-semibold text-purple-300">Thinking</span>
+                {{-- Icon (desktop only) --}}
+                <x-icon.lightbulb class="hidden md:block w-4 h-4 text-purple-400" />
+                <span class="text-xs md:text-sm font-semibold text-purple-300">Thinking</span>
                 <span class="text-xs text-gray-500" x-text="formatTimestamp(msg.timestamp)"></span>
                 <template x-if="msg.cost">
-                    <span class="flex items-center gap-1 @if($variant === 'desktop') ml-2 @endif">
+                    <span class="flex items-center gap-1 md:ml-2">
                         <span class="text-xs text-green-400" x-text="'$' + msg.cost.toFixed(4)"></span>
                         <button @click.stop="showMessageBreakdown(msg)" class="text-gray-500 hover:text-gray-300 transition-colors" title="View cost breakdown">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -30,13 +19,15 @@
                         </button>
                     </span>
                 </template>
-                <svg class="{{ $iconSize }} text-purple-400 ml-auto transition-transform"
+                {{-- Chevron --}}
+                <svg class="w-3 md:w-4 h-3 md:h-4 text-purple-400 ml-auto transition-transform"
                      :class="msg.collapsed ? '-rotate-90' : ''"
                      fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                 </svg>
             </div>
-            <div x-show="!msg.collapsed" class="{{ $contentPadding }}">
+            {{-- Content --}}
+            <div x-show="!msg.collapsed" class="px-3 md:px-4 py-2 md:py-3">
                 <div class="text-xs text-purple-200 whitespace-pre-wrap font-mono" x-text="msg.content"></div>
             </div>
         </div>

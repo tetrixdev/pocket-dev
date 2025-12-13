@@ -52,6 +52,7 @@ Messages within conversations.
 | cache_read_tokens | int | Yes | null | Cache read tokens (Anthropic) |
 | stop_reason | varchar(50) | Yes | null | Stop reason |
 | model | varchar(100) | Yes | null | Model used for this message |
+| cost | decimal(10,6) | Yes | null | Cost in USD (calculated server-side) |
 | sequence | int | No | - | Ordering within conversation |
 | created_at | timestamp | Yes | null | Created timestamp |
 

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\OpenAIService;
+use App\Services\TranscriptionService;
 use App\Services\AppSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -17,7 +17,8 @@ use Illuminate\Validation\ValidationException;
 class TranscriptionController extends Controller
 {
     public function __construct(
-        protected AppSettingsService $appSettings
+        protected AppSettingsService $appSettings,
+        protected TranscriptionService $transcriptionService
     ) {}
 
     /**
@@ -41,8 +42,7 @@ class TranscriptionController extends Controller
             $audioFile = $request->file('audio');
 
             // Transcribe using OpenAI service
-            $openAI = app(OpenAIService::class);
-            $transcription = $openAI->transcribeAudio($audioFile);
+            $transcription = $this->transcriptionService->transcribeAudio($audioFile);
 
             return response()->json([
                 'transcription' => trim($transcription),
