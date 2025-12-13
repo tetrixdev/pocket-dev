@@ -32,10 +32,6 @@ http {
         server pocket-dev-nginx:80;
     }
 
-    upstream ttyd {
-        server pocket-dev-ttyd:7681;
-    }
-
     # =============================================================================
     # CUSTOM UPSTREAM SERVERS - ADD YOUR UPSTREAMS HERE
     # Example:
@@ -100,44 +96,6 @@ http {
 
             # Disable buffering for SSE streaming support
             proxy_buffering off;
-
-            # Docker DNS resolution
-            resolver 127.0.0.11 valid=30s;
-            proxy_redirect off;
-        }
-
-        # TTYD terminal proxy (same-origin for iframe)
-        location /terminal-ws/ {
-            # Remove the /terminal-ws prefix when forwarding to ttyd
-            rewrite ^/terminal-ws/(.*)$ /$1 break;
-
-            proxy_pass http://ttyd;
-            proxy_http_version 1.1;
-
-            # Headers for regular HTTP requests
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-
-            # WebSocket support
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection $connection_upgrade;
-
-            # Remove X-Frame-Options to allow iframe embedding
-            proxy_hide_header X-Frame-Options;
-
-            # Optimized timeout settings for iframe loading and WebSocket
-            proxy_connect_timeout 10s;
-            proxy_send_timeout 300s;
-            proxy_read_timeout 300s;
-
-            # Buffer settings for better performance
-            proxy_buffering off;
-            proxy_cache off;
-
-            # Connection reuse
-            proxy_socket_keepalive on;
 
             # Docker DNS resolution
             resolver 127.0.0.11 valid=30s;

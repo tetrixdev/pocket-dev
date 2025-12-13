@@ -7,7 +7,6 @@ A complete, secure development environment with Laravel + PostgreSQL + AI-powere
 - 🤖 **Claude Code Integration** - AI-powered development through web interface
 - 🐘 **PHP 8.4-FPM** with Laravel, PostgreSQL, Composer, and Node.js 22 LTS
 - 🌐 **Nginx Proxy** with security features (Basic Auth + IP Whitelist)
-- 🖥️ **TTYD Terminal** - Web-based terminal with full development tools
 - 🗄️ **PostgreSQL 17** with persistent data storage
 - 🔥 **Vite Dev Server** with hot reload support
 - 🔐 **Git & GitHub CLI** pre-configured with your credentials
@@ -58,8 +57,6 @@ A complete, secure development environment with Laravel + PostgreSQL + AI-powere
 
 4. **Access your environment**:
    - **Laravel App**: http://localhost (or your configured port)
-   - **Terminal**: http://localhost/terminal-ws/
-   - **Claude Code**: Use the web terminal interface for AI-powered development
 
 ## 🌍 Production Deployment
 
@@ -101,7 +98,8 @@ Certbot will automatically:
 - **pocket-dev-php**: Laravel application with PHP 8.4-FPM
 - **pocket-dev-nginx**: Laravel web server
 - **pocket-dev-postgres**: PostgreSQL 17 database
-- **pocket-dev-ttyd**: Web terminal with development tools
+- **pocket-dev-redis**: Redis for caching and queues
+- **pocket-dev-queue**: Laravel queue worker
 
 ### Security Features
 
@@ -130,7 +128,6 @@ pocket-dev/
 │   ├── local/                 # Development proxy
 │   ├── production/            # Production proxy
 │   └── shared/                # Shared proxy configs
-├── docker-ttyd/               # Terminal container
 ├── www/                       # Laravel application
 ├── deploy/                    # Production deployment package
 ├── compose.yml                # Development Docker Compose
@@ -139,32 +136,19 @@ pocket-dev/
 
 ## 🔧 Development Workflow
 
-### Using Claude Code (Recommended)
-
-1. Access the terminal at http://localhost/terminal-ws/
-2. Claude Code provides AI-powered assistance for:
-   - Code editing and refactoring
-   - Debugging and troubleshooting
-   - Architecture decisions
-   - Documentation generation
-
 ### Using VS Code Remote Development
 
-1. Install the "Remote - Containers" extension
-2. Connect to the running container:
-   ```bash
-   # Get container ID
-   docker ps | grep pocket-dev-ttyd
-
-   # Connect with VS Code
-   code --remote-host pocket-dev-ttyd:/workspace
-   ```
+1. Install the "Dev Containers" extension in VS Code
+2. Open the Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+3. Select "Dev Containers: Attach to Running Container..."
+4. Choose `pocket-dev-php` from the list
+5. Open the `/var/www` folder
 
 ### Using JetBrains Gateway
 
 1. Install JetBrains Gateway
-2. Configure SSH connection to the container
-3. Open the workspace directory for development
+2. Use "Docker" connection type to attach to `pocket-dev-php`
+3. Open the `/var/www` directory for development
 
 ### Common Development Commands
 
@@ -186,7 +170,6 @@ docker compose exec pocket-dev-postgres psql -U pocket-dev -d pocket-dev
 
 # View logs
 docker compose logs -f pocket-dev-php
-docker compose logs -f pocket-dev-ttyd
 ```
 
 ## 🔐 Security Configuration
@@ -234,7 +217,6 @@ GitHub Actions automatically builds production Docker images when you create rel
 3. **GitHub Actions builds**:
    - `ghcr.io/your-username/pocket-dev-php:v1.0.0`
    - `ghcr.io/your-username/pocket-dev-nginx:v1.0.0`
-   - `ghcr.io/your-username/pocket-dev-ttyd:v1.0.0`
    - `ghcr.io/your-username/pocket-dev-proxy:v1.0.0`
 
 ### Deploying to Production
@@ -273,7 +255,6 @@ GitHub Actions automatically builds production Docker images when you create rel
 
 5. **Access**:
    - **Main App**: http://your-domain.com
-   - **Terminal**: http://your-domain.com/terminal
 
 ## 🔄 Hard Reset (Development)
 
@@ -298,7 +279,6 @@ docker compose up -d --build
 ```
 
 **When to use:**
-- After modifying files in `docker-ttyd/shared/defaults/`
 - After changing Dockerfiles or entrypoints
 - When you need fresh volumes for testing
 
@@ -308,15 +288,10 @@ See `CLAUDE.md` in the project root for detailed development instructions.
 
 ### Common Issues
 
-**Permission denied in terminal**:
-```bash
-docker compose exec pocket-dev-ttyd sudo chown -R $(id -u):$(id -g) /workspace
-```
-
 **Git authentication not working**:
 - Verify your GitHub token has repo permissions
 - Check token format: `ghp_...` (not classic token)
-- Restart the ttyd container: `docker compose restart pocket-dev-ttyd`
+- Restart the php container: `docker compose restart pocket-dev-php`
 
 **Basic auth not working**:
 - Ensure both `BASIC_AUTH_USER` and `BASIC_AUTH_PASS` are set
@@ -334,14 +309,13 @@ docker compose logs -f
 
 # Individual service logs
 docker compose logs -f pocket-dev-proxy
-docker compose logs -f pocket-dev-ttyd
 docker compose logs -f pocket-dev-php
 
 # Check container health
 docker compose ps
 
 # Access container shell
-docker compose exec pocket-dev-ttyd bash
+docker compose exec pocket-dev-php bash
 ```
 
 ## 🤝 Contributing

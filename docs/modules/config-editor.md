@@ -15,20 +15,20 @@ Administrative interface for editing Claude configuration files.
 | Category | Files | Storage Location |
 |----------|-------|------------------|
 | Files | CLAUDE.md, settings.json, nginx.conf | Various (see below) |
-| Agents | `*.md` files | `/home/devuser/.claude/agents/` |
-| Commands | `*.md` files | `/home/devuser/.claude/commands/` |
-| Hooks | JSON in settings.json | `/home/devuser/.claude/settings.json` |
-| Skills | `*.md` files | `/home/devuser/.claude/skills/` |
+| Agents | `*.md` files | `/home/appuser/.claude/agents/` |
+| Commands | `*.md` files | `/home/appuser/.claude/commands/` |
+| Hooks | JSON in settings.json | `/home/appuser/.claude/settings.json` |
+| Skills | `*.md` files | `/home/appuser/.claude/skills/` |
 
 ## File Paths
 
 | File | Container Path | Editable Via |
 |------|----------------|--------------|
-| CLAUDE.md | `/home/devuser/.claude/CLAUDE.md` | Text editor |
-| settings.json | `/home/devuser/.claude/settings.json` | Text editor (JSON) |
+| CLAUDE.md | `/home/appuser/.claude/CLAUDE.md` | Text editor |
+| settings.json | `/home/appuser/.claude/settings.json` | Text editor (JSON) |
 | nginx.conf | `/etc/nginx-proxy-config/nginx.conf.template` | Text editor |
 
-**Note:** All paths are in TTYD container context (`/home/devuser/`), not PHP container.
+**Note:** All paths are in PHP container context (`/home/appuser/`).
 
 ## Routes
 
@@ -73,7 +73,7 @@ DELETE /config/skills/{filename}    → Delete skill
 ```php
 public function claude()
 {
-    $path = '/home/devuser/.claude/CLAUDE.md';
+    $path = '/home/appuser/.claude/CLAUDE.md';
     $content = file_exists($path) ? file_get_contents($path) : '';
     return view('config.claude', compact('content'));
 }
@@ -81,7 +81,7 @@ public function claude()
 public function saveClaude(Request $request)
 {
     $validated = $request->validate(['content' => 'required|string']);
-    file_put_contents('/home/devuser/.claude/CLAUDE.md', $validated['content']);
+    file_put_contents('/home/appuser/.claude/CLAUDE.md', $validated['content']);
     return redirect()->back()->with('success', 'CLAUDE.md saved');
 }
 ```
@@ -93,7 +93,7 @@ Standard Laravel resource pattern:
 ```php
 public function agents()
 {
-    $agents = $this->scanDirectory('/home/devuser/.claude/agents', '*.md');
+    $agents = $this->scanDirectory('/home/appuser/.claude/agents', '*.md');
     return view('config.agents.index', compact('agents'));
 }
 
@@ -105,7 +105,7 @@ public function storeAgent(Request $request)
     ]);
 
     $filename = $validated['name'] . '.md';
-    $path = '/home/devuser/.claude/agents/' . $filename;
+    $path = '/home/appuser/.claude/agents/' . $filename;
 
     if (file_exists($path)) {
         return redirect()->back()->withErrors(['name' => 'Agent already exists']);
@@ -160,9 +160,9 @@ Provides sidebar data to all config views:
 public function compose(View $view)
 {
     $view->with([
-        'agents' => $this->scanDirectory('/home/devuser/.claude/agents', '*.md'),
-        'commands' => $this->scanDirectory('/home/devuser/.claude/commands', '*.md'),
-        'skills' => $this->scanDirectory('/home/devuser/.claude/skills', '*.md'),
+        'agents' => $this->scanDirectory('/home/appuser/.claude/agents', '*.md'),
+        'commands' => $this->scanDirectory('/home/appuser/.claude/commands', '*.md'),
+        'skills' => $this->scanDirectory('/home/appuser/.claude/skills', '*.md'),
     ]);
 }
 ```
@@ -231,10 +231,10 @@ Auto-hide after 3 seconds via CSS animation.
 
 ## File Permissions
 
-The PHP container needs write access to TTYD user's home directory. This is handled by:
+The PHP container needs write access to the appuser home directory. This is handled by:
 
-1. Shared volume (`user-data`) between containers
+1. User-data volume mounted at `/home/appuser`
 2. Entrypoint sets group permissions
-3. Both containers run as same host user (via `USER_ID`/`GROUP_ID`)
+3. Container runs as host user (via `USER_ID`/`GROUP_ID`)
 
-**Source:** `docker-laravel/local/php/entrypoint.sh:45-55`
+**Source:** `docker-laravel/local/php/entrypoint.sh`

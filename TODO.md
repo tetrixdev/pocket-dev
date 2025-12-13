@@ -467,56 +467,17 @@ Migrate one component at a time, keep app working throughout:
   - Log errors and failures
   - Retention policy
 
-## 🗑️ TTYD Removal Plan
+## ✅ TTYD Removal (Completed)
 
-### Phase 1: Ensure Independence (Do First)
-- [ ] **Verify authentication works without TTYD**
-  - Test `claude setup-token` in PHP container
-  - Ensure credentials can be created independently
-  - Document process for users
-
-- [ ] **Test all functionality without TTYD**
-  - Chat interface works
-  - Authentication works
-  - All API endpoints work
-  - No dependencies on TTYD paths
-
-- [ ] **Update documentation**
-  - Remove TTYD references from user docs
-  - Update README.md
-  - Update CLAUDE.md
-  - Create migration guide for existing users
-
-### Phase 2: Remove Container (After Phase 1)
-- [ ] **Remove TTYD from docker-compose.yml**
-  - Remove service definition
-  - Remove volume mounts
-  - Remove network dependencies
-
-- [ ] **Remove TTYD Dockerfile**
-  - Delete `docker-ttyd/` directory
-  - Or mark as deprecated
-
-- [ ] **Update CI/CD**
-  - Stop building TTYD image
-  - Remove from GitHub Actions
-  - Remove from GHCR
-
-- [ ] **Clean up routing**
-  - Remove `/terminal` routes
-  - Remove TerminalController
-  - Remove terminal views
-
-### Phase 3: Alternative Terminal (Optional)
-- [ ] **Evaluate need for terminal access**
-  - Do users actually need terminal?
-  - Can Claude Code replace it?
-  - Survey users
-
-- [ ] **If needed, implement alternative**
-  - Option 1: Web-based terminal in PHP container
-  - Option 2: SSH access only
-  - Option 3: No terminal (Claude Code only)
+The TTYD web terminal container has been removed:
+- [x] Removed `docker-ttyd/` directory
+- [x] Removed from docker-compose.yml (local and production)
+- [x] Removed from nginx proxy configuration
+- [x] Removed TerminalController and routes
+- [x] Removed terminal views
+- [x] Updated GitHub Actions (stopped building TTYD image)
+- [x] Updated all documentation
+- [x] Created default configs in `docker-laravel/shared/defaults/`
 
 ## 📚 Documentation
 

@@ -45,13 +45,6 @@ if [ -d "/etc/nginx-proxy-config" ]; then
     find /etc/nginx-proxy-config -exec chgrp hostdocker {} \; 2>/dev/null || true
 fi
 
-if [ -d "/ttyd-user-home" ]; then
-    echo "Setting permissions on /ttyd-user-home..."
-    chmod 775 /ttyd-user-home 2>/dev/null || true
-    find /ttyd-user-home -type f -exec chmod 664 {} \; 2>/dev/null || true
-    find /ttyd-user-home -type d -exec chmod 775 {} \; 2>/dev/null || true
-fi
-
 # Generate Laravel application key if not set
 if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
     echo "Generating Laravel application key..."

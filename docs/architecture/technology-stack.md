@@ -45,18 +45,17 @@
 |------------|---------|---------|
 | Docker | - | Containerization |
 | Docker Compose | - | Multi-container orchestration |
-| TTYD | 1.7.7 | Web terminal |
-| tmux | - | Persistent terminal sessions |
+| Redis | 7 | Caching and queues |
 
 **Why Docker?**
 - Consistent environment across machines
 - Easy deployment
 - Isolation between services
 
-**Why TTYD + tmux?**
-- Browser-based terminal access
-- Persistent sessions (reconnect without losing work)
-- No SSH configuration needed
+**Why Redis?**
+- Fast in-memory cache
+- Queue backend for Laravel jobs
+- Session and broadcast support
 
 ## External Services
 
@@ -98,15 +97,6 @@ vite: ^5.x
 - GitHub CLI
 - Docker CLI
 
-**TTYD Container:**
-- Ubuntu 24.04 base
-- Node.js 22
-- Claude Code CLI
-- GitHub CLI
-- Docker CLI
-- TTYD 1.7.7
-- tmux
-
 ## Build Process
 
 ### Frontend Assets
@@ -133,9 +123,8 @@ docker compose up -d --build
 Builds:
 - `pocket-dev-proxy` from `docker-proxy/shared/Dockerfile`
 - `pocket-dev-php` from `docker-laravel/local/php/Dockerfile`
-- `pocket-dev-ttyd` from `docker-ttyd/shared/Dockerfile`
 
-Others use stock images (nginx:alpine, postgres:17-alpine).
+Others use stock images (nginx:alpine, postgres:17-alpine, redis:7-alpine).
 
 ## Future Considerations
 
@@ -143,7 +132,6 @@ Others use stock images (nginx:alpine, postgres:17-alpine).
 1. Extract frontend JS to separate files (chat.blade.php is 1500+ lines)
 2. Add TypeScript for better type safety
 3. Consider Livewire for more Laravel-native reactivity
-4. Add Redis for caching/queues if scaling needed
 
 **Migration Path:**
 - Current architecture allows incremental improvements

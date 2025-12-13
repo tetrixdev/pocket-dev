@@ -61,7 +61,6 @@ Reverse proxy configuration with:
 - Basic auth enforcement
 - IP whitelist support
 - SSE streaming (`proxy_buffering off`)
-- WebSocket support for TTYD
 
 **Editable at runtime:** `/etc/nginx-proxy-config/nginx.conf.template`
 
@@ -74,9 +73,9 @@ Container orchestration with:
 - Health checks
 - Environment variable mapping
 
-## Claude Configuration (TTYD Container)
+## Claude Configuration (PHP Container)
 
-Files in `/home/devuser/.claude/`:
+Files in `/home/appuser/.claude/`:
 
 ### CLAUDE.md
 
