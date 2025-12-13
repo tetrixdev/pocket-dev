@@ -17,6 +17,7 @@ PocketDev is a Docker-based development environment that provides a multi-provid
 | Add voice features | `integrations/openai-whisper.md` |
 | Database changes | `database/schema.md` |
 | Docker/container changes | `architecture/system-overview.md` |
+| Develop PocketDev itself | `development/self-development.md` |
 
 ---
 
@@ -70,6 +71,15 @@ PocketDev is a Docker-based development environment that provides a multi-provid
 
 **Contents:**
 - `README.md` - Configuration files overview
+
+### 🛠️ Development (`development/`)
+
+**TLDR:** Self-development mode allows developing PocketDev using PocketDev itself. Set `HOST_PROJECT_PATH` in `.env`, then use `pocketdev` CLI to restart/rebuild containers from inside. Most code changes (PHP, Blade, JS) don't require restarts.
+
+**Read level:** ✅ TLDR likely sufficient - Simple setup and usage.
+
+**Contents:**
+- `self-development.md` - Dogfooding setup and container management
 
 ---
 
