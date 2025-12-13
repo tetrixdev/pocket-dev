@@ -78,14 +78,16 @@ The self-development feature uses a clever technique to allow the container to r
 
 1. **Source Mount**: PocketDev source is mounted at `/pocketdev-source`
 2. **Docker Socket**: Docker socket is mounted for container management
-3. **Helper Container**: Restart commands run via a detached `docker:cli` container
+3. **Helper Container**: Restart commands run via a detached `docker:27-cli` container
 4. **Host Path Mapping**: `HOST_PROJECT_PATH` ensures correct volume mounts
 
 When you run `pocketdev restart`, it:
-1. Launches a temporary `docker:cli` container (detached)
+1. Launches a temporary `docker:27-cli` container (detached)
 2. Mounts the project at the same path as on the host
 3. Runs `docker compose up -d --force-recreate` from that container
 4. The original PHP container is recreated while the command runs in the helper
+
+**Security Note**: Mounting `/var/run/docker.sock` grants the container full control over the Docker daemon (equivalent to root access on the host). This is acceptable for local development but should never be used in production environments.
 
 ## Troubleshooting
 
@@ -105,4 +107,4 @@ Ensure `USER_ID` and `GROUP_ID` in `.env` match your host user.
 
 - `scripts/pocketdev` - CLI script
 - `compose.yml` - HOST_PROJECT_PATH environment variable
-- `docker-laravel/local/php/entrypoint.sh` - Symlink setup for pocketdev CLI
+- `docker-laravel/local/php/entrypoint.sh` - Prints self-dev hint when the CLI is available
