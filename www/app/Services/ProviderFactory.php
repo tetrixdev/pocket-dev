@@ -16,7 +16,6 @@ class ProviderFactory
     private array $providers = [
         'anthropic' => AnthropicProvider::class,
         'openai' => OpenAIProvider::class,
-        // 'claude_code' => ClaudeCodeProvider::class,
     ];
 
     /**

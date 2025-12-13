@@ -16,7 +16,7 @@ The primary user-facing module. Provides a web interface for interacting with Cl
 - Session management (create, load, continue)
 - Voice input via OpenAI Whisper
 - Cost tracking per message and session
-- Mobile-responsive with dual-container pattern
+- Mobile-responsive design with Tailwind CSS
 
 **Complexity:** High - ~1500 line Blade file with extensive JavaScript.
 

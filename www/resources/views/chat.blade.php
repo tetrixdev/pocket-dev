@@ -39,70 +39,68 @@
 
         .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
+        /* Mobile: fixed layout with contained scrolling */
         @media (max-width: 767px) {
-            .desktop-layout { display: none !important; }
-            html, body { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
-        }
-        @media (min-width: 768px) {
-            .mobile-layout { display: none !important; }
+            html, body { overflow: hidden; height: 100%; }
+            #messages { -webkit-overflow-scrolling: touch; }
         }
     </style>
 </head>
-<body class="antialiased bg-gray-900 text-gray-100" x-data="chatApp()" x-init="init()">
+<body class="antialiased bg-gray-900 text-gray-100 h-screen overflow-hidden" x-data="chatApp()" x-init="init()">
 
-    {{-- Desktop Layout --}}
-    <div class="desktop-layout flex h-screen">
-        @include('partials.chat.sidebar')
+    {{-- Main Layout Container --}}
+    <div class="md:flex md:h-screen">
 
+        {{-- Desktop Sidebar (hidden on mobile) --}}
+        <div class="hidden md:block md:h-full">
+            @include('partials.chat.sidebar')
+        </div>
+
+        {{-- Mobile Header (hidden on desktop) --}}
+        <div class="md:hidden">
+            @include('partials.chat.mobile-layout')
+        </div>
+
+        {{-- Main Content Area --}}
         <div class="flex-1 flex flex-col">
-            {{-- Messages Area --}}
-            <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+
+            {{-- Messages Container --}}
+            {{-- Mobile: fixed position between header and input, contained scroll --}}
+            {{-- Desktop: flex container scroll with overflow-y-auto --}}
+            <div id="messages"
+                 class="p-4 space-y-4 overflow-y-auto bg-gray-900
+                        fixed top-[60px] bottom-[200px] left-0 right-0 z-0
+                        md:static md:pt-4 md:pb-4 md:flex-1">
+
+                {{-- Empty State --}}
                 <template x-if="messages.length === 0">
-                    <div class="text-center text-gray-400 mt-20">
+                    <div class="text-center text-gray-400 mt-10 md:mt-20">
                         <h3 class="text-xl mb-2">Welcome to PocketDev</h3>
-                        <p>Multi-provider AI chat with direct API streaming</p>
+                        <p class="text-sm md:text-base">Multi-provider AI chat with direct API streaming</p>
                     </div>
                 </template>
 
+                {{-- Messages List --}}
                 <template x-for="(msg, index) in messages" :key="msg.id">
                     <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
-                        <x-chat.user-message variant="desktop" />
-                        <x-chat.assistant-message variant="desktop" />
-                        <x-chat.thinking-block variant="desktop" />
-                        <x-chat.tool-block variant="desktop" />
-                        <x-chat.empty-response variant="desktop" />
+                        <x-chat.user-message />
+                        <x-chat.assistant-message />
+                        <x-chat.thinking-block />
+                        <x-chat.tool-block />
+                        <x-chat.empty-response />
                     </div>
                 </template>
             </div>
 
-            @include('partials.chat.input-desktop')
+            {{-- Desktop Input (hidden on mobile) --}}
+            <div class="hidden md:block">
+                @include('partials.chat.input-desktop')
+            </div>
         </div>
     </div>
 
-    {{-- Mobile Layout --}}
-    <div class="mobile-layout">
-        @include('partials.chat.mobile-layout')
-
-        {{-- Messages Area --}}
-        <div id="messages-mobile" class="p-4 space-y-4 pb-56 min-h-screen">
-            <template x-if="messages.length === 0">
-                <div class="text-center text-gray-400 mt-10">
-                    <h3 class="text-xl mb-2">Welcome to PocketDev</h3>
-                    <p class="text-sm">Multi-provider AI chat</p>
-                </div>
-            </template>
-
-            <template x-for="(msg, index) in messages" :key="msg.id + '-mobile'">
-                <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
-                    <x-chat.user-message variant="mobile" />
-                    <x-chat.assistant-message variant="mobile" />
-                    <x-chat.thinking-block variant="mobile" />
-                    <x-chat.tool-block variant="mobile" />
-                    <x-chat.empty-response variant="mobile" />
-                </div>
-            </template>
-        </div>
-
+    {{-- Mobile Input (hidden on desktop) --}}
+    <div class="md:hidden">
         @include('partials.chat.input-mobile')
     </div>
 
@@ -431,25 +429,28 @@
                             textContent: '',
                             toolInput: '',
                             turnCost: 0,
+                            turnInputTokens: 0,
+                            turnOutputTokens: 0,
+                            turnCacheCreationTokens: 0,
+                            turnCacheReadTokens: 0,
                         };
 
-                        // Calculate totals and costs per-message using each message's model
+                        // Calculate totals and sum costs from stored values
                         if (data.conversation?.messages) {
                             for (const msg of data.conversation.messages) {
                                 const inputToks = msg.input_tokens || 0;
                                 const outputToks = msg.output_tokens || 0;
                                 const cacheCreate = msg.cache_creation_tokens || 0;
                                 const cacheRead = msg.cache_read_tokens || 0;
-                                const msgModel = msg.model || data.conversation.model || this.model;
 
                                 this.inputTokens += inputToks;
                                 this.outputTokens += outputToks;
                                 this.cacheCreationTokens += cacheCreate;
                                 this.cacheReadTokens += cacheRead;
 
-                                // Calculate cost using the model that generated this message
-                                if (inputToks > 0 || outputToks > 0) {
-                                    this.sessionCost += this.calculateCost(msgModel, inputToks, outputToks, cacheCreate, cacheRead);
+                                // Use stored cost (calculated server-side)
+                                if (msg.cost) {
+                                    this.sessionCost += msg.cost;
                                 }
                             }
                         }
@@ -516,17 +517,15 @@
                     // Convert DB message format to UI format
                     const content = dbMsg.content;
 
-                    // Get token counts and model for cost calculation
+                    // Get token counts and stored cost
                     const msgInputTokens = dbMsg.input_tokens || 0;
                     const msgOutputTokens = dbMsg.output_tokens || 0;
                     const msgCacheCreation = dbMsg.cache_creation_tokens || 0;
                     const msgCacheRead = dbMsg.cache_read_tokens || 0;
-                    const msgModel = dbMsg.model || this.model; // Use stored model or current default
+                    const msgModel = dbMsg.model || this.model;
 
-                    // Calculate cost using per-model pricing
-                    const msgCost = msgInputTokens > 0 || msgOutputTokens > 0
-                        ? this.calculateCost(msgModel, msgInputTokens, msgOutputTokens, msgCacheCreation, msgCacheRead)
-                        : null;
+                    // Use stored cost from server (no client-side calculation)
+                    const msgCost = dbMsg.cost || null;
 
                     if (typeof content === 'string') {
                         this.messages.push({
@@ -694,6 +693,10 @@
                         textContent: '',
                         toolInput: '',
                         turnCost: 0,
+                        turnInputTokens: 0,
+                        turnOutputTokens: 0,
+                        turnCacheCreationTokens: 0,
+                        turnCacheReadTokens: 0,
                     };
 
                     try {
@@ -911,6 +914,10 @@
                             state.textMsgIndex = this.messages.length;
                             state.textContent = '';
                             state.turnCost = 0;
+                            state.turnInputTokens = 0;
+                            state.turnOutputTokens = 0;
+                            state.turnCacheCreationTokens = 0;
+                            state.turnCacheReadTokens = 0;
                             this.messages.push({
                                 id: 'msg-' + Date.now() + '-text',
                                 role: 'assistant',
@@ -1002,6 +1009,7 @@
                                 const output = event.metadata.output_tokens || 0;
                                 const cacheCreation = event.metadata.cache_creation_tokens || 0;
                                 const cacheRead = event.metadata.cache_read_tokens || 0;
+                                const cost = event.metadata.cost || 0;
 
                                 this.inputTokens += input;
                                 this.outputTokens += output;
@@ -1009,9 +1017,15 @@
                                 this.cacheReadTokens += cacheRead;
                                 this.totalTokens += input + output;
 
-                                const delta = this.calculateCost(this.model, input, output, cacheCreation, cacheRead);
-                                this.sessionCost += delta;
-                                state.turnCost += delta;
+                                // Use server-calculated cost
+                                this.sessionCost += cost;
+
+                                // Store in turn state for message update on done
+                                state.turnCost = cost;
+                                state.turnInputTokens = input;
+                                state.turnOutputTokens = output;
+                                state.turnCacheCreationTokens = cacheCreation;
+                                state.turnCacheReadTokens = cacheRead;
                             }
                             break;
 
@@ -1019,7 +1033,12 @@
                             if (state.textMsgIndex >= 0) {
                                 this.messages[state.textMsgIndex] = {
                                     ...this.messages[state.textMsgIndex],
-                                    cost: state.turnCost
+                                    cost: state.turnCost,
+                                    inputTokens: state.turnInputTokens,
+                                    outputTokens: state.turnOutputTokens,
+                                    cacheCreationTokens: state.turnCacheCreationTokens,
+                                    cacheReadTokens: state.turnCacheReadTokens,
+                                    model: this.model
                                 };
                             }
                             break;
@@ -1098,10 +1117,19 @@
 
                 scrollToBottom() {
                     this.$nextTick(() => {
-                        const desktop = document.getElementById('messages');
-                        const mobile = document.getElementById('messages-mobile');
-                        if (desktop) desktop.scrollTop = desktop.scrollHeight;
-                        if (mobile) window.scrollTo(0, document.body.scrollHeight);
+                        const container = document.getElementById('messages');
+                        if (!container) return;
+
+                        // Check if we're on mobile (below md breakpoint = 768px)
+                        const isMobile = window.innerWidth < 768;
+
+                        if (isMobile) {
+                            // Mobile: scroll the document/window
+                            window.scrollTo(0, document.body.scrollHeight);
+                        } else {
+                            // Desktop: scroll the container
+                            container.scrollTop = container.scrollHeight;
+                        }
                     });
                 },
 

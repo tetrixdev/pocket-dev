@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\OpenAIService;
+use App\Services\TranscriptionService;
 use App\Services\AppSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -41,8 +41,8 @@ class TranscriptionController extends Controller
             $audioFile = $request->file('audio');
 
             // Transcribe using OpenAI service
-            $openAI = app(OpenAIService::class);
-            $transcription = $openAI->transcribeAudio($audioFile);
+            $transcriptionService = app(TranscriptionService::class);
+            $transcription = $transcriptionService->transcribeAudio($audioFile);
 
             return response()->json([
                 'transcription' => trim($transcription),

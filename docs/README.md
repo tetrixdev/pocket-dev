@@ -32,13 +32,12 @@ PocketDev is a Docker-based development environment that provides a multi-provid
 - `system-overview.md` - Container architecture, networking, volumes, data flow
 - `authentication.md` - Basic Auth, IP whitelist, Claude credential management
 - `technology-stack.md` - Laravel, Alpine.js, Docker, key dependencies
-- `multi-provider-implementation-plan.md` - **[WIP]** Implementation plan for multi-provider conversation architecture
 
 ### 📦 Modules (`modules/`)
 
-**TLDR:** Two main modules: Chat (web interface for Claude conversations with SSE streaming, dual-container responsive pattern, voice input, cost tracking) and Config Editor (CRUD for CLAUDE.md, settings.json, agents, commands, hooks, skills). Chat is complex (~1500 line Blade file), Config Editor is straightforward Laravel CRUD.
+**TLDR:** Two main modules: Chat (web interface for Claude conversations with SSE streaming, responsive design, voice input, cost tracking) and Config Editor (CRUD for CLAUDE.md, settings.json, agents, commands, hooks, skills). Chat is complex (~1500 line Blade file), Config Editor is straightforward Laravel CRUD.
 
-**Read level:** ⚠️ TLDR insufficient - Chat module has significant complexity (dual-container pattern, streaming, session management) that requires full documentation.
+**Read level:** ⚠️ TLDR insufficient - Chat module has significant complexity (streaming, session management) that requires full documentation.
 
 **Contents:**
 - `chat/` - Chat interface module (streaming, sessions, voice, cost tracking)
@@ -71,16 +70,6 @@ PocketDev is a Docker-based development environment that provides a multi-provid
 
 **Contents:**
 - `README.md` - Configuration files overview
-
----
-
-## Known Complexity Areas
-
-These areas have accumulated complexity and are candidates for refactoring:
-
-1. **Dual Container Pattern** (`modules/chat/`) - Desktop `#messages` + mobile `#messages-mobile` must be updated in parallel for every DOM change.
-
-2. **Cost Calculation** - Duplicated in client JS (during streaming) and server-side (for historical messages).
 
 ---
 

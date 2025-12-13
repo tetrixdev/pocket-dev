@@ -60,7 +60,6 @@ class AIServiceProvider extends ServiceProvider
                 'anthropic' => $app->make(AnthropicProvider::class),
                 // Add other providers here as they're implemented
                 // 'openai' => $app->make(OpenAIProvider::class),
-                // 'claude_code' => $app->make(ClaudeCodeProvider::class),
                 default => $app->make(AnthropicProvider::class),
             };
         });

@@ -46,14 +46,14 @@ GET /stream-events ◄──────────┘ (SSE)
 
 ## Key Concepts
 
-### Dual-Container Pattern
+### Responsive Layout
 
-The chat interface maintains **two separate DOM containers** for responsive design:
+The chat interface uses a **single `#messages` container** with Tailwind CSS responsive classes:
 
-- `#messages` - Desktop view (sidebar layout, container scroll)
-- `#messages-mobile` - Mobile view (full-page scroll)
+- Mobile (< md): Document scrolling, full-page layout
+- Desktop (>= md): Container scrolling, sidebar layout
 
-**Critical:** Every message operation must update BOTH containers.
+The same DOM element adapts to different screen sizes via responsive breakpoint prefixes (`md:`, `lg:`, etc.).
 
 ### Conversation Model
 
@@ -95,12 +95,12 @@ $provider->stream(...);    // Stream a response
 
 ### Cost Tracking
 
-Cost is calculated using the `ai_models` table pricing:
+Cost is calculated **server-side only** using the `ai_models` table pricing:
 
-| Context | Calculator | Source |
-|---------|------------|--------|
-| Streaming | Client JavaScript | `ai_models` table |
-| Historical | Server + Client | Stored on message |
+- During streaming: `ProcessConversationStream` calculates cost when receiving usage events
+- Cost is included in the `usage` stream event and stored in the `messages.cost` column
+- Frontend displays the server-provided cost without any client-side calculation
+- Formula: `(input_tokens * input_price + output_tokens * output_price + cache_creation * cache_write_price + cache_read * cache_read_price) / 1,000,000`
 
 ### Voice Input
 

@@ -8,7 +8,7 @@ use Generator;
 interface AIProviderInterface
 {
     /**
-     * Get the provider identifier (e.g., 'anthropic', 'openai', 'claude_code').
+     * Get the provider identifier (e.g., 'anthropic', 'openai').
      */
     public function getProviderType(): string;
 

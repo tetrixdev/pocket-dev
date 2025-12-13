@@ -87,12 +87,18 @@ class AiModel extends Model
     /**
      * Calculate cost for given token usage.
      */
-    public function calculateCost(int $inputTokens, int $outputTokens): float
-    {
+    public function calculateCost(
+        int $inputTokens,
+        int $outputTokens,
+        ?int $cacheCreationTokens = null,
+        ?int $cacheReadTokens = null
+    ): float {
         $inputCost = ($inputTokens / 1_000_000) * $this->input_price_per_million;
         $outputCost = ($outputTokens / 1_000_000) * $this->output_price_per_million;
+        $cacheWriteCost = (($cacheCreationTokens ?? 0) / 1_000_000) * ($this->cache_write_price_per_million ?? 0);
+        $cacheReadCost = (($cacheReadTokens ?? 0) / 1_000_000) * ($this->cache_read_price_per_million ?? 0);
 
-        return $inputCost + $outputCost;
+        return $inputCost + $outputCost + $cacheWriteCost + $cacheReadCost;
     }
 
     /**
