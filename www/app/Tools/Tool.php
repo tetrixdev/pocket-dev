@@ -2,13 +2,11 @@
 
 namespace App\Tools;
 
-use App\Contracts\ToolInterface;
-
 /**
  * Abstract base class for all tools.
  * Tools use public properties instead of getter methods.
  */
-abstract class Tool implements ToolInterface
+abstract class Tool
 {
     /** Tool name (matches API tool_use.name) */
     public string $name;
@@ -21,6 +19,15 @@ abstract class Tool implements ToolInterface
 
     /** Detailed instructions for system prompt (optional) */
     public ?string $instructions = null;
+
+    /**
+     * Execute the tool with the given input.
+     *
+     * @param array $input The tool input parameters
+     * @param ExecutionContext $context Execution context (working directory, etc.)
+     * @return ToolResult The result of the tool execution
+     */
+    abstract public function execute(array $input, ExecutionContext $context): ToolResult;
 
     /**
      * Convert to API tool definition format.

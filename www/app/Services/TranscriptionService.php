@@ -6,7 +6,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class OpenAIService
+class TranscriptionService
 {
     private string $apiKey;
     private string $baseUrl;

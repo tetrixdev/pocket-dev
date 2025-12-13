@@ -24,6 +24,7 @@ class Message extends Model
         'cache_read_tokens',
         'stop_reason',
         'model',
+        'cost',
         'sequence',
         'created_at',
     ];
@@ -34,6 +35,7 @@ class Message extends Model
         'output_tokens' => 'integer',
         'cache_creation_tokens' => 'integer',
         'cache_read_tokens' => 'integer',
+        'cost' => 'float',
         'created_at' => 'datetime',
     ];
 

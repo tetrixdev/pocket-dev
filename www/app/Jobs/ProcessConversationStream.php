@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Services\ModelRepository;
 use App\Services\ProviderFactory;
 use App\Services\StreamManager;
 use App\Services\SystemPromptBuilder;
@@ -45,6 +46,7 @@ class ProcessConversationStream implements ShouldQueue
         StreamManager $streamManager,
         ToolRegistry $toolRegistry,
         SystemPromptBuilder $systemPromptBuilder,
+        ModelRepository $modelRepository,
     ): void {
         $conversation = Conversation::where('uuid', $this->conversationUuid)->firstOrFail();
 
@@ -72,6 +74,7 @@ class ProcessConversationStream implements ShouldQueue
                 $streamManager,
                 $toolRegistry,
                 $systemPromptBuilder,
+                $modelRepository,
                 $this->options
             );
 
@@ -102,6 +105,7 @@ class ProcessConversationStream implements ShouldQueue
         StreamManager $streamManager,
         ToolRegistry $toolRegistry,
         SystemPromptBuilder $systemPromptBuilder,
+        ModelRepository $modelRepository,
         array $options,
         int $iteration = 0,
     ): void {
@@ -137,22 +141,51 @@ class ProcessConversationStream implements ShouldQueue
         $outputTokens = 0;
         $cacheCreationTokens = null;
         $cacheReadTokens = null;
+        $turnCost = 0.0;
         $stopReason = null;
         $currentToolInput = [];
 
+        // Get the model for cost calculation
+        $aiModel = $modelRepository->findByModelId($conversation->model);
+
         // Stream from provider
         foreach ($provider->streamMessage($conversation, $providerOptions) as $event) {
-            // Publish to Redis for frontend
+            // For usage events, calculate cost and emit enriched event
+            if ($event->type === StreamEvent::USAGE) {
+                $inputTokens = $event->metadata['input_tokens'] ?? $inputTokens;
+                $outputTokens = $event->metadata['output_tokens'] ?? $outputTokens;
+                $cacheCreationTokens = $event->metadata['cache_creation_tokens'] ?? $cacheCreationTokens;
+                $cacheReadTokens = $event->metadata['cache_read_tokens'] ?? $cacheReadTokens;
+
+                // Calculate cost using model pricing
+                $cost = null;
+                if ($aiModel) {
+                    $cost = $aiModel->calculateCost(
+                        $inputTokens,
+                        $outputTokens,
+                        $cacheCreationTokens,
+                        $cacheReadTokens
+                    );
+                    $turnCost = $cost;
+                }
+
+                // Emit enriched usage event with cost
+                $enrichedEvent = StreamEvent::usage(
+                    $inputTokens,
+                    $outputTokens,
+                    $cacheCreationTokens,
+                    $cacheReadTokens,
+                    $cost
+                );
+                $streamManager->appendEvent($this->conversationUuid, $enrichedEvent);
+                continue;
+            }
+
+            // Publish other events to Redis for frontend
             $streamManager->appendEvent($this->conversationUuid, $event);
 
             // Track state
             switch ($event->type) {
-                case StreamEvent::USAGE:
-                    $inputTokens = $event->metadata['input_tokens'] ?? $inputTokens;
-                    $outputTokens = $event->metadata['output_tokens'] ?? $outputTokens;
-                    $cacheCreationTokens = $event->metadata['cache_creation_tokens'] ?? $cacheCreationTokens;
-                    $cacheReadTokens = $event->metadata['cache_read_tokens'] ?? $cacheReadTokens;
-                    break;
 
                 case StreamEvent::THINKING_START:
                     $contentBlocks[$event->blockIndex] = [
@@ -255,7 +288,8 @@ class ProcessConversationStream implements ShouldQueue
             $outputTokens,
             $cacheCreationTokens,
             $cacheReadTokens,
-            $stopReason
+            $stopReason,
+            $turnCost > 0 ? $turnCost : null
         );
 
         // Handle tool execution
@@ -289,6 +323,7 @@ class ProcessConversationStream implements ShouldQueue
                 $streamManager,
                 $toolRegistry,
                 $systemPromptBuilder,
+                $modelRepository,
                 $options,
                 $iteration + 1
             );
@@ -311,7 +346,8 @@ class ProcessConversationStream implements ShouldQueue
         int $outputTokens,
         ?int $cacheCreationTokens,
         ?int $cacheReadTokens,
-        ?string $stopReason
+        ?string $stopReason,
+        ?float $cost = null
     ): Message {
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -323,6 +359,7 @@ class ProcessConversationStream implements ShouldQueue
             'cache_read_tokens' => $cacheReadTokens,
             'stop_reason' => $stopReason,
             'model' => $conversation->model,
+            'cost' => $cost,
         ]);
 
         $conversation->addTokenUsage($inputTokens, $outputTokens);

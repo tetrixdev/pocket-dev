@@ -33,13 +33,11 @@ docker compose up -d --force-recreate
 
 ## Critical Pitfalls
 
-1. **Dual-container DOM pattern**: Chat interface has BOTH `#messages` (desktop) and `#messages-mobile` containers. JavaScript must update both.
+1. **File permissions**: PHP runs as `www-data`. Files in `/var/www/.claude/` must be owned by `www-data:www-data`.
 
-2. **File permissions**: PHP runs as `www-data`. Files in `/var/www/.claude/` must be owned by `www-data:www-data`.
+2. **Route order matters**: Specific routes (like `/claude/auth`) must come BEFORE wildcard routes (`/claude/{sessionId?}`).
 
-3. **Route order matters**: Specific routes (like `/claude/auth`) must come BEFORE wildcard routes (`/claude/{sessionId?}`).
-
-4. **Claude CLI flags**: Use `--print --output-format json`, NOT `--json`.
+3. **Claude CLI flags**: Use `--print --output-format json`, NOT `--json`.
 
 ## PHP Style Preferences
 

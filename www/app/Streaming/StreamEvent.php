@@ -93,13 +93,19 @@ class StreamEvent
         ]);
     }
 
-    public static function usage(int $inputTokens, int $outputTokens, ?int $cacheCreation = null, ?int $cacheRead = null): self
-    {
+    public static function usage(
+        int $inputTokens,
+        int $outputTokens,
+        ?int $cacheCreation = null,
+        ?int $cacheRead = null,
+        ?float $cost = null
+    ): self {
         return new self(self::USAGE, null, null, array_filter([
             'input_tokens' => $inputTokens,
             'output_tokens' => $outputTokens,
             'cache_creation_tokens' => $cacheCreation,
             'cache_read_tokens' => $cacheRead,
+            'cost' => $cost,
         ], fn($v) => $v !== null));
     }
 

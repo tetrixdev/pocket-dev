@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('conversations', function (Blueprint $table) {
             $table->id();
             $table->uuid('uuid')->unique();
-            $table->string('provider_type', 50);     // 'anthropic', 'openai', 'claude_code'
+            $table->string('provider_type', 50);     // 'anthropic', 'openai'
             $table->string('model', 100);            // Can change mid-conversation
             $table->string('title')->nullable();
             $table->string('working_directory', 500);
