@@ -57,9 +57,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI for AI-powered development
-RUN npm install -g @anthropic-ai/claude-code
-
 # Install Composer
 RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
     && php composer-setup.php --install-dir=/usr/local/bin --filename=composer \
@@ -69,13 +66,6 @@ RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
 RUN mkdir -p /var/www/storage/framework/{sessions,views,cache} \
     && mkdir -p /var/www/storage/logs \
     && mkdir -p /var/www/bootstrap/cache
-
-# Set up Claude Code defaults
-RUN mkdir -p /home/www-data/.claude/agents
-COPY docker-laravel/shared/defaults/CLAUDE.md /home/www-data/.claude/
-COPY docker-laravel/shared/defaults/settings.json /home/www-data/.claude/
-COPY docker-laravel/shared/defaults/agents/ /home/www-data/.claude/agents/
-RUN chown -R www-data:www-data /home/www-data/.claude
 
 # Set working directory
 WORKDIR /var/www

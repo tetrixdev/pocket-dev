@@ -138,20 +138,16 @@ pocket-dev/
 
 ### Using VS Code Remote Development
 
-1. Install the "Remote - Containers" extension
-2. Connect to the running container:
-   ```bash
-   # Get container ID
-   docker ps | grep pocket-dev-php
-
-   # Connect with VS Code
-   code --remote-host pocket-dev-php:/var/www
-   ```
+1. Install the "Dev Containers" extension in VS Code
+2. Open the Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+3. Select "Dev Containers: Attach to Running Container..."
+4. Choose `pocket-dev-php` from the list
+5. Open the `/var/www` folder
 
 ### Using JetBrains Gateway
 
 1. Install JetBrains Gateway
-2. Configure SSH connection to the container
+2. Use "Docker" connection type to attach to `pocket-dev-php`
 3. Open the `/var/www` directory for development
 
 ### Common Development Commands
