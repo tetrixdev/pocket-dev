@@ -6,36 +6,89 @@ Current schema as of December 2025.
 
 ## Custom Tables
 
-### claude_sessions
+### conversations
 
-Session metadata. Messages are stored in Claude's `.jsonl` files, not here.
+Multi-provider conversation storage with full message history.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
 | id | bigint | No | auto | Primary key |
-| claude_session_id | uuid | Yes | null | Claude CLI session UUID |
+| uuid | uuid | No | - | URL-safe identifier (unique) |
 | title | varchar | Yes | null | Display name |
-| project_path | varchar | No | - | Working directory |
-| model | varchar | No | 'claude-sonnet-4-5-20250929' | Model name |
-| turn_count | int | No | 0 | Conversation turns |
-| status | varchar | No | 'active' | active/completed/failed |
-| streaming_state | json | Yes | null | Incomplete stream state (for recovery) |
+| working_directory | varchar | No | '/var/www' | Context directory |
+| provider_type | varchar | No | 'anthropic' | Provider: anthropic, openai |
+| model | varchar | No | - | Model identifier |
+| status | varchar | No | 'active' | active/archived |
+| anthropic_thinking_budget | int | Yes | null | Thinking tokens (Anthropic) |
+| openai_reasoning_effort | varchar | Yes | null | Reasoning level (OpenAI) |
+| response_level | int | No | 1 | Response verbosity (0-3) |
+| total_input_tokens | bigint | No | 0 | Cumulative input tokens |
+| total_output_tokens | bigint | No | 0 | Cumulative output tokens |
 | last_activity_at | timestamp | Yes | null | Last interaction time |
 | created_at | timestamp | Yes | null | Created timestamp |
 | updated_at | timestamp | Yes | null | Updated timestamp |
 
 **Indexes:**
-- `claude_sessions_status_index` on `status`
-- `claude_sessions_last_activity_at_index` on `last_activity_at`
-- `claude_sessions_project_path_index` on `project_path`
-- `claude_sessions_claude_session_id_unique` on `claude_session_id` (unique)
+- `conversations_uuid_unique` on `uuid` (unique)
+- `conversations_status_index` on `status`
+- `conversations_provider_type_index` on `provider_type`
+- `conversations_last_activity_at_index` on `last_activity_at`
 
-**Model:** `app/Models/ClaudeSession.php`
+**Model:** `app/Models/Conversation.php`
 
-**Key Notes:**
-- `claude_session_id` is the UUID used by Claude CLI
-- `id` is the Laravel auto-increment ID used in routes
-- `messages` and `context` columns were removed; messages live in `.jsonl` files
+### messages
+
+Messages within conversations.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | bigint | No | auto | Primary key |
+| conversation_id | bigint | No | - | Foreign key to conversations |
+| role | varchar(20) | No | - | user/assistant/system/tool |
+| content | json | No | - | Message content (native provider format) |
+| input_tokens | int | Yes | null | Input tokens used |
+| output_tokens | int | Yes | null | Output tokens used |
+| cache_creation_tokens | int | Yes | null | Cache creation tokens (Anthropic) |
+| cache_read_tokens | int | Yes | null | Cache read tokens (Anthropic) |
+| stop_reason | varchar(50) | Yes | null | Stop reason |
+| model | varchar(100) | Yes | null | Model used for this message |
+| sequence | int | No | - | Ordering within conversation |
+| created_at | timestamp | Yes | null | Created timestamp |
+
+**Indexes:**
+- `messages_conversation_id_sequence_unique` on `(conversation_id, sequence)` (unique, implicitly provides indexing)
+
+**Foreign Keys:**
+- `messages_conversation_id_foreign` on `conversation_id` → `conversations.id` (cascade delete)
+
+**Model:** `app/Models/Message.php`
+
+### ai_models
+
+AI model configuration and pricing.
+
+| Column | Type | Nullable | Default | Description |
+|--------|------|----------|---------|-------------|
+| id | bigint | No | auto | Primary key |
+| model_id | varchar | No | - | Model identifier (unique) |
+| provider | varchar | No | - | Provider: anthropic, openai |
+| display_name | varchar | Yes | null | Human-readable name |
+| input_price_per_million | decimal(10,6) | Yes | null | Input token price |
+| output_price_per_million | decimal(10,6) | Yes | null | Output token price |
+| cache_write_price_per_million | decimal(10,6) | Yes | null | Cache write price |
+| cache_read_price_per_million | decimal(10,6) | Yes | null | Cache read price |
+| context_window | int | Yes | null | Context window size |
+| supports_thinking | tinyint | No | 0 | Extended thinking support |
+| supports_tools | tinyint | No | 1 | Tool use support |
+| is_available | tinyint | No | 1 | Currently available |
+| created_at | timestamp | Yes | null | Created timestamp |
+| updated_at | timestamp | Yes | null | Updated timestamp |
+
+**Indexes:**
+- `ai_models_model_id_unique` on `model_id` (unique)
+- `ai_models_provider_index` on `provider`
+
+**Model:** `app/Models/AiModel.php`
 
 ### app_settings
 
@@ -56,32 +109,7 @@ Encrypted key-value store for sensitive application settings.
 
 **Key Notes:**
 - Values are automatically encrypted/decrypted using Laravel's `encrypted` cast
-- Currently stores: `openai_api_key`
-
-### model_pricing
-
-Token pricing for cost calculation.
-
-| Column | Type | Nullable | Default | Description |
-|--------|------|----------|---------|-------------|
-| id | bigint | No | auto | Primary key |
-| model_name | varchar | No | - | Model identifier (unique) |
-| input_price_per_million | decimal(10,6) | Yes | null | Input token price |
-| cache_write_multiplier | decimal(5,3) | No | 1.250 | Cache write price multiplier |
-| cache_read_multiplier | decimal(5,3) | No | 0.100 | Cache read price multiplier |
-| output_price_per_million | decimal(10,6) | Yes | null | Output token price |
-| created_at | timestamp | Yes | null | Created timestamp |
-| updated_at | timestamp | Yes | null | Updated timestamp |
-
-**Indexes:**
-- `model_pricing_model_name_unique` on `model_name` (unique)
-
-**Model:** `app/Models/ModelPricing.php`
-
-**Key Notes:**
-- Prices are per million tokens
-- Cache multipliers apply to input price (e.g., cache_write = input_price * 1.25)
-- Used by frontend for real-time cost calculation during streaming
+- Currently stores: `openai_api_key`, `anthropic_api_key`, chat defaults
 
 ## Laravel Standard Tables
 
@@ -167,27 +195,29 @@ Failed job storage for debugging.
 
 ## Common Queries
 
-### Get Active Sessions
+### Get Active Conversations
 
 ```sql
-SELECT * FROM claude_sessions
+SELECT * FROM conversations
 WHERE status = 'active'
 ORDER BY last_activity_at DESC;
 ```
 
-### Get Sessions for Project
+### Get Conversation with Messages
 
 ```sql
-SELECT * FROM claude_sessions
-WHERE project_path = '/workspace/myproject'
-ORDER BY created_at DESC;
+SELECT c.*, m.*
+FROM conversations c
+LEFT JOIN messages m ON c.id = m.conversation_id
+WHERE c.uuid = ?
+ORDER BY m.sequence ASC;
 ```
 
 ### Get Model Pricing
 
 ```sql
-SELECT * FROM model_pricing
-WHERE model_name = 'claude-sonnet-4-5-20250929';
+SELECT * FROM ai_models
+WHERE model_id = 'claude-sonnet-4-5-20250929';
 ```
 
 ### Get Setting
@@ -200,19 +230,8 @@ WHERE key = 'openai_api_key';
 
 ## Migrations
 
-Located in `www/database/migrations/`:
+Located in `www/database/migrations/`. Run with:
 
-- `0001_01_01_000000_create_users_table.php`
-- `0001_01_01_000001_create_cache_table.php`
-- `0001_01_01_000002_create_jobs_table.php`
-- `2025_10_16_201350_create_claude_sessions_table.php`
-- `2025_10_20_124210_add_claude_session_id_to_claude_sessions_table.php`
-- `2025_10_20_200821_remove_messages_and_context_from_claude_sessions_table.php`
-- `2025_10_25_142434_add_streaming_state_to_claude_sessions_table.php`
-- `2025_10_26_140938_create_model_pricing_table.php`
-- `2025_10_26_214333_create_app_settings_table.php`
-
-**Run migrations:**
 ```bash
 docker compose exec pocket-dev-php php artisan migrate
 ```

@@ -1,7 +1,7 @@
 {{-- Desktop Sidebar --}}
 <div class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
     <div class="p-4 border-b border-gray-700">
-        <h2 class="text-lg font-semibold">PocketDev <span class="text-xs text-gray-500">V2</span></h2>
+        <h2 class="text-lg font-semibold">PocketDev</h2>
         <button @click="newConversation()" class="mt-2 w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">New Conversation</button>
     </div>
 
@@ -47,7 +47,6 @@
         <div class="flex flex-wrap gap-2 mt-2">
             <button @click="showQuickSettings = true" class="text-blue-400 hover:text-blue-300">Quick Settings</button>
             <a href="/config" class="text-blue-400 hover:text-blue-300">Config</a>
-            <a href="/" class="text-blue-400 hover:text-blue-300">V1 Chat</a>
             <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300">Shortcuts</button>
         </div>
     </div>
