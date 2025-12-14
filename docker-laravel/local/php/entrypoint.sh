@@ -49,6 +49,13 @@ if [ -d "/etc/nginx-proxy-config" ]; then
     find /etc/nginx-proxy-config -exec chgrp hostdocker {} \; 2>/dev/null || true
 fi
 
+# Fix permissions for pocketdev storage volume
+if [ -d "/var/www/storage/pocketdev" ]; then
+    echo "Setting permissions on /var/www/storage/pocketdev..."
+    chmod 775 /var/www/storage/pocketdev 2>/dev/null || true
+    chgrp www-data /var/www/storage/pocketdev 2>/dev/null || true
+fi
+
 # Generate Laravel application key if not set
 if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
     echo "Generating Laravel application key..."

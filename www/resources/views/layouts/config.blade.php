@@ -126,6 +126,14 @@
             <!-- Sidebar (Categories) -->
             <div class="w-64 bg-gray-800 border-r border-gray-700 overflow-y-auto">
 
+                <!-- System Prompt (Primary Setting) -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.system-prompt') }}"
+                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.system-prompt') ? 'active' : '' }}">
+                        🧠 System Prompt
+                    </a>
+                </div>
+
                 <!-- Files Category -->
                 <div class="border-b border-gray-700">
                     <div class="category-button w-full {{ in_array(Route::currentRouteName(), ['config.claude', 'config.settings', 'config.nginx']) ? 'active' : '' }}">
@@ -332,6 +340,15 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
+            </div>
+
+            <!-- System Prompt (Primary Setting) -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.system-prompt') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.system-prompt') ? 'active' : '' }}">
+                    🧠 System Prompt
+                </a>
             </div>
 
             <!-- Files Category -->
