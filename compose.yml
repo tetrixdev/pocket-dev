@@ -38,7 +38,7 @@ services:
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     group_add:
       - "1000"
-      - "1001"
+      - "${DOCKER_GID:-1001}"
     environment:
       - HOME=/home/appuser
       - COMPOSER_HOME=/tmp/.composer
@@ -142,7 +142,7 @@ services:
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     group_add:
       - "1000"
-      - "1001"
+      - "${DOCKER_GID:-1001}"
     command: php artisan queue:work redis --sleep=1 --tries=1 --timeout=600
     environment:
       - HOME=/home/appuser

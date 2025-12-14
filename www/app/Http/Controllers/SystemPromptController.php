@@ -43,6 +43,7 @@ class SystemPromptController extends Controller
 
     /**
      * Save the additional system prompt.
+     * Saves content as override (even if empty - use Reset to return to default).
      */
     public function saveAdditional(Request $request)
     {
@@ -51,13 +52,7 @@ class SystemPromptController extends Controller
         ]);
 
         $content = $validated['content'] ?? '';
-
-        if (empty(trim($content))) {
-            // If empty, reset to default instead of saving empty override
-            $this->systemPromptService->resetAdditionalToDefault();
-        } else {
-            $this->systemPromptService->saveAdditionalOverride($content);
-        }
+        $this->systemPromptService->saveAdditionalOverride($content);
 
         return redirect()
             ->route('config.system-prompt')

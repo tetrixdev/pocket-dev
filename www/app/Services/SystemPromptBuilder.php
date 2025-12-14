@@ -21,7 +21,7 @@ class SystemPromptBuilder
     {
         $sections = [];
 
-        // Core prompt (customizable via settings)
+        // System prompt (core + additional, customizable via settings)
         $sections[] = $this->systemPromptService->get();
 
         // Tool instructions (from tools that have them)

@@ -49,11 +49,12 @@ if [ -d "/etc/nginx-proxy-config" ]; then
     find /etc/nginx-proxy-config -exec chgrp hostdocker {} \; 2>/dev/null || true
 fi
 
-# Fix permissions for pocketdev storage volume
+# Fix permissions for pocketdev storage volume (recursive with setgid)
 if [ -d "/var/www/storage/pocketdev" ]; then
     echo "Setting permissions on /var/www/storage/pocketdev..."
-    chmod 775 /var/www/storage/pocketdev 2>/dev/null || true
-    chgrp www-data /var/www/storage/pocketdev 2>/dev/null || true
+    chgrp -R www-data /var/www/storage/pocketdev 2>/dev/null || true
+    find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
 fi
 
 # Generate Laravel application key if not set

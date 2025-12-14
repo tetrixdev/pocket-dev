@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\File;
  * Storage:
  * - Core default: resources/defaults/system-prompt.md
  * - Core override: storage/pocketdev/system-prompt.md
- * - Additional default: From env var ADDITIONAL_SYSTEM_PROMPT_FILE (optional)
+ * - Additional default: From config ai.additional_system_prompt_file (optional)
  * - Additional override: storage/pocketdev/additional-system-prompt.md
  */
 class SystemPromptService
@@ -112,11 +112,11 @@ class SystemPromptService
 
     /**
      * Get the default additional system prompt.
-     * Returns content from env var file path, or empty string if not set.
+     * Returns content from config file path, or empty string if not set.
      */
     public function getAdditionalDefault(): string
     {
-        $defaultFile = env('ADDITIONAL_SYSTEM_PROMPT_FILE');
+        $defaultFile = config('ai.additional_system_prompt_file');
 
         if (empty($defaultFile)) {
             return '';
