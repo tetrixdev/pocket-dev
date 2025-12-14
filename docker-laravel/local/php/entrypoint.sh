@@ -7,19 +7,23 @@ echo "🚀 Configuring PHP development environment..."
 if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
     echo "⚙️  Configuring git credentials..."
 
-    # Configure git user information
-    git config --global user.name "$GIT_USER_NAME"
-    git config --global user.email "$GIT_USER_EMAIL"
+    # Ensure home directory exists and is writable
+    mkdir -p "$HOME" 2>/dev/null || true
 
-    # Configure git credential helper for HTTPS repos
-    git config --global credential.helper store
+    # Configure git user information (continue on failure)
+    if git config --global user.name "$GIT_USER_NAME" 2>/dev/null && \
+       git config --global user.email "$GIT_USER_EMAIL" 2>/dev/null && \
+       git config --global credential.helper store 2>/dev/null; then
 
-    # Store GitHub credentials in standard format (username = "token" for GitHub tokens)
-    echo "https://token:$GIT_TOKEN@github.com" > ~/.git-credentials
-    chmod 600 ~/.git-credentials
+        # Store GitHub credentials in standard format (username = "token" for GitHub tokens)
+        echo "https://token:$GIT_TOKEN@github.com" > ~/.git-credentials 2>/dev/null
+        chmod 600 ~/.git-credentials 2>/dev/null || true
 
-    echo "✅ Git and GitHub CLI configured for user: $GIT_USER_NAME"
-    echo "   GitHub CLI will use GH_TOKEN environment variable"
+        echo "✅ Git and GitHub CLI configured for user: $GIT_USER_NAME"
+        echo "   GitHub CLI will use GH_TOKEN environment variable"
+    else
+        echo "⚠️  Could not configure git credentials (permission issue) - continuing without"
+    fi
 else
     echo "ℹ️  Git credentials not provided - skipping git/GitHub CLI setup"
     echo "   Set GIT_TOKEN, GIT_USER_NAME, and GIT_USER_EMAIL to enable"
@@ -76,12 +80,6 @@ php artisan migrate --force
 php artisan optimize:clear
 php artisan config:cache
 php artisan queue:restart
-
-# Set up pocketdev CLI if source is mounted (self-development mode)
-if [ -x "/pocketdev-source/scripts/pocketdev" ] && [ -n "${HOST_PROJECT_PATH:-}" ]; then
-    echo "✅ Self-development mode enabled"
-    echo "   Run: /pocketdev-source/scripts/pocketdev help"
-fi
 
 echo "Starting PHP-FPM"
 exec php-fpm

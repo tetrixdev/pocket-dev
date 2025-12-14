@@ -1228,43 +1228,6 @@
                     ) / 1000000;
                 },
 
-                async savePricing(modelId) {
-                    const pricing = this.modelPricing[modelId];
-                    if (!pricing) return;
-
-                    try {
-                        const response = await fetch(`/api/pricing/${encodeURIComponent(modelId)}`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
-                            },
-                            body: JSON.stringify({
-                                input: pricing.input,
-                                output: pricing.output,
-                                cacheWrite: pricing.cacheWrite,
-                                cacheRead: pricing.cacheRead,
-                            }),
-                        });
-
-                        if (!response.ok) {
-                            console.error('Failed to save pricing:', await response.text());
-                        }
-                    } catch (err) {
-                        console.error('Failed to save pricing:', err);
-                    }
-                },
-
-                updateModelPricing(modelId, field, value) {
-                    if (!this.modelPricing[modelId]) {
-                        this.modelPricing[modelId] = { ...this.defaultPricing };
-                    }
-                    this.modelPricing[modelId][field] = parseFloat(value) || 0;
-                    // Debounce the save to avoid too many API calls while typing
-                    clearTimeout(this._pricingSaveTimeout);
-                    this._pricingSaveTimeout = setTimeout(() => this.savePricing(modelId), 500);
-                },
-
                 openPricingForModel(modelId) {
                     this.pricingModel = modelId;
                     // Determine provider from model ID

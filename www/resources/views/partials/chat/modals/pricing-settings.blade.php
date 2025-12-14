@@ -1,5 +1,5 @@
-{{-- Pricing Settings Modal --}}
-<x-modal show="showPricingSettings" title="Pricing Settings" max-width="lg" class="max-h-[90vh] overflow-y-auto">
+{{-- Pricing Settings Modal (Read-Only) --}}
+<x-modal show="showPricingSettings" title="Model Pricing" max-width="lg" class="max-h-[90vh] overflow-y-auto">
     {{-- Provider Selection --}}
     <div class="mb-4">
         <label class="block text-sm text-gray-400 mb-2">Provider:</label>
@@ -33,7 +33,7 @@
         </div>
     </div>
 
-    {{-- Pricing Inputs for Selected Model --}}
+    {{-- Pricing Display for Selected Model --}}
     <template x-if="currentPricing">
         <div class="space-y-3 border-t border-gray-700 pt-4">
             <div class="text-sm text-gray-300 font-medium mb-2">
@@ -41,45 +41,36 @@
             </div>
 
             <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Input ($/MTok):</label>
-                    <input type="number"
-                           :value="currentPricing.input"
-                           @change="updateModelPricing(pricingModel, 'input', $event.target.value)"
-                           step="0.01"
-                           class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500 text-sm">
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-400 mb-1">Input</div>
+                    <div class="text-lg text-gray-200">$<span x-text="currentPricing.input.toFixed(2)"></span><span class="text-xs text-gray-500">/MTok</span></div>
                 </div>
 
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Output ($/MTok):</label>
-                    <input type="number"
-                           :value="currentPricing.output"
-                           @change="updateModelPricing(pricingModel, 'output', $event.target.value)"
-                           step="0.01"
-                           class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500 text-sm">
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-400 mb-1">Output</div>
+                    <div class="text-lg text-gray-200">$<span x-text="currentPricing.output.toFixed(2)"></span><span class="text-xs text-gray-500">/MTok</span></div>
                 </div>
 
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Cache Write ($/MTok):</label>
-                    <input type="number"
-                           :value="currentPricing.cacheWrite"
-                           @change="updateModelPricing(pricingModel, 'cacheWrite', $event.target.value)"
-                           step="0.01"
-                           class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500 text-sm">
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-400 mb-1">Cache Write</div>
+                    <div class="text-lg text-gray-200">
+                        <template x-if="currentPricing.cacheWrite > 0">
+                            <span>$<span x-text="currentPricing.cacheWrite.toFixed(2)"></span><span class="text-xs text-gray-500">/MTok</span></span>
+                        </template>
+                        <template x-if="currentPricing.cacheWrite === 0">
+                            <span class="text-gray-500 text-sm">N/A</span>
+                        </template>
+                    </div>
                 </div>
 
-                <div>
-                    <label class="block text-xs text-gray-400 mb-1">Cache Read ($/MTok):</label>
-                    <input type="number"
-                           :value="currentPricing.cacheRead"
-                           @change="updateModelPricing(pricingModel, 'cacheRead', $event.target.value)"
-                           step="0.01"
-                           class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-gray-200 focus:outline-none focus:border-blue-500 text-sm">
+                <div class="bg-gray-900 rounded p-3">
+                    <div class="text-xs text-gray-400 mb-1">Cache Read</div>
+                    <div class="text-lg text-gray-200">$<span x-text="currentPricing.cacheRead.toFixed(3)"></span><span class="text-xs text-gray-500">/MTok</span></div>
                 </div>
             </div>
 
             <div class="text-xs text-gray-500 mt-2">
-                Prices are per million tokens. Changes are saved automatically.
+                Prices are per million tokens. To modify pricing, edit <code class="bg-gray-900 px-1 rounded">config/ai.php</code>.
             </div>
         </div>
     </template>

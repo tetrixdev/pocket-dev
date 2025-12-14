@@ -35,7 +35,7 @@
                 <div class="space-y-2">
                     <template x-for="level in anthropicThinkingLevels" :key="level.budget_tokens">
                         <label class="flex items-center text-gray-300 cursor-pointer">
-                            <input type="radio" x-model="anthropicThinkingBudget" :value="level.budget_tokens" @change="saveDefaultSettings()" class="mr-2">
+                            <input type="radio" x-model.number="anthropicThinkingBudget" :value="level.budget_tokens" @change="saveDefaultSettings()" class="mr-2">
                             <span x-text="level.name"></span>
                             <span x-show="level.budget_tokens > 0" class="ml-2 text-xs text-gray-500" x-text="'(' + level.budget_tokens.toLocaleString() + ' tokens)'"></span>
                         </label>
@@ -66,7 +66,7 @@
             <div class="space-y-2">
                 <template x-for="(level, index) in responseLevels" :key="index">
                     <label class="flex items-center text-gray-300 cursor-pointer">
-                        <input type="radio" x-model="responseLevel" :value="index" @change="saveDefaultSettings()" class="mr-2">
+                        <input type="radio" x-model.number="responseLevel" :value="index" @change="saveDefaultSettings()" class="mr-2">
                         <span x-text="level.name"></span>
                         <span class="ml-2 text-xs text-gray-500" x-text="'(' + level.tokens.toLocaleString() + ' tokens)'"></span>
                     </label>
