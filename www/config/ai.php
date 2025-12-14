@@ -120,18 +120,77 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Context Windows
+    | AI Models
     |--------------------------------------------------------------------------
     |
-    | Maximum context window size for each model.
+    | Available models for each provider with pricing and capabilities.
+    | Order determines display order (best/most capable first).
+    |
+    | Pricing is per 1 million tokens.
+    | Cache pricing: Anthropic uses write (1.25x input) and read (0.1x input).
+    | OpenAI doesn't support cache writes, only reads.
     |
     */
 
-    // Context windows are now managed in the ai_models database table.
-    // Use ModelRepository::getContextWindow() to look up values.
-    // This fallback is only used if a model is not found in the database.
-    'context_windows' => [
-        'default' => 128000,
+    'models' => [
+        'anthropic' => [
+            // Claude 4.5 models - ordered by capability (best first)
+            // Source: https://docs.anthropic.com/en/docs/about-claude/models
+            [
+                'model_id' => 'claude-opus-4-5-20251101',
+                'display_name' => 'Claude Opus 4.5',
+                'context_window' => 200000,
+                'max_output_tokens' => 64000,
+                'input_price_per_million' => 5.00,
+                'output_price_per_million' => 25.00,
+                'cache_write_price_per_million' => 6.25,
+                'cache_read_price_per_million' => 0.50,
+            ],
+            [
+                'model_id' => 'claude-sonnet-4-5-20250929',
+                'display_name' => 'Claude Sonnet 4.5',
+                'context_window' => 200000,
+                'max_output_tokens' => 64000,
+                'input_price_per_million' => 3.00,
+                'output_price_per_million' => 15.00,
+                'cache_write_price_per_million' => 3.75,
+                'cache_read_price_per_million' => 0.30,
+            ],
+            [
+                'model_id' => 'claude-haiku-4-5-20251001',
+                'display_name' => 'Claude Haiku 4.5',
+                'context_window' => 200000,
+                'max_output_tokens' => 64000,
+                'input_price_per_million' => 1.00,
+                'output_price_per_million' => 5.00,
+                'cache_write_price_per_million' => 1.25,
+                'cache_read_price_per_million' => 0.10,
+            ],
+        ],
+
+        'openai' => [
+            // GPT-5.1 Codex models - ordered by capability (best first)
+            [
+                'model_id' => 'gpt-5.1-codex-max',
+                'display_name' => 'Codex 5.1 Max',
+                'context_window' => 400000,
+                'max_output_tokens' => 32768,
+                'input_price_per_million' => 1.25,
+                'output_price_per_million' => 10.00,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => 0.125,
+            ],
+            [
+                'model_id' => 'gpt-5.1-codex-mini',
+                'display_name' => 'Codex 5.1 Mini',
+                'context_window' => 200000,
+                'max_output_tokens' => 32768,
+                'input_price_per_million' => 0.25,
+                'output_price_per_million' => 2.00,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => 0.025,
+            ],
+        ],
     ],
 
     /*

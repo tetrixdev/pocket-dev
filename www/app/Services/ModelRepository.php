@@ -2,48 +2,50 @@
 
 namespace App\Services;
 
-use App\Models\AiModel;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Repository for managing AI models across providers.
  * Single source of truth for model availability, capabilities, and pricing.
+ *
+ * Models are defined in config/ai.php - no database or caching required.
  */
 class ModelRepository
 {
-    private const CACHE_TTL = 300; // 5 minutes
-    private const CACHE_KEY_ALL = 'ai_models:all';
-    private const CACHE_KEY_PROVIDER = 'ai_models:provider:';
-
     /**
-     * Get all active models.
+     * Get all active models from all providers.
      *
-     * @return Collection<int, AiModel>
+     * @return Collection<int, array>
      */
     public function all(): Collection
     {
-        return Cache::remember(self::CACHE_KEY_ALL, self::CACHE_TTL, function () {
-            return AiModel::active()->ordered()->get();
-        });
+        $models = collect();
+
+        foreach (config('ai.models', []) as $provider => $providerModels) {
+            foreach ($providerModels as $model) {
+                $models->push(array_merge($model, ['provider' => $provider]));
+            }
+        }
+
+        return $models;
     }
 
     /**
-     * Get all active models for a specific provider.
+     * Get all models for a specific provider.
      *
-     * @return Collection<int, AiModel>
+     * @return Collection<int, array>
      */
     public function forProvider(string $provider): Collection
     {
-        return Cache::remember(self::CACHE_KEY_PROVIDER . $provider, self::CACHE_TTL, function () use ($provider) {
-            return AiModel::active()->forProvider($provider)->ordered()->get();
-        });
+        $providerModels = config("ai.models.{$provider}", []);
+
+        return collect($providerModels)->map(fn (array $model) => array_merge($model, ['provider' => $provider]));
     }
 
     /**
      * Get a specific model by provider and model_id.
      */
-    public function find(string $provider, string $modelId): ?AiModel
+    public function find(string $provider, string $modelId): ?array
     {
         return $this->forProvider($provider)->firstWhere('model_id', $modelId);
     }
@@ -51,27 +53,25 @@ class ModelRepository
     /**
      * Get a model by model_id (searches all providers).
      */
-    public function findByModelId(string $modelId): ?AiModel
+    public function findByModelId(string $modelId): ?array
     {
         return $this->all()->firstWhere('model_id', $modelId);
     }
 
     /**
      * Get models as array format for API/frontend.
+     * Keyed by model_id for easy lookup.
      *
-     * @return array<string, array{name: string, context_window: int}>
+     * @return array<string, array{name: string, context_window: int, max_output_tokens: int}>
      */
     public function getModelsArray(string $provider): array
     {
         return $this->forProvider($provider)
-            ->mapWithKeys(fn (AiModel $model) => [
-                $model->model_id => [
-                    'name' => $model->display_name,
-                    'context_window' => $model->context_window,
-                    'max_output_tokens' => $model->max_output_tokens,
-                    'supports_vision' => $model->supports_vision,
-                    'supports_tools' => $model->supports_tools,
-                    'supports_extended_thinking' => $model->supports_extended_thinking,
+            ->mapWithKeys(fn (array $model) => [
+                $model['model_id'] => [
+                    'name' => $model['display_name'],
+                    'context_window' => $model['context_window'],
+                    'max_output_tokens' => $model['max_output_tokens'],
                 ],
             ])
             ->toArray();
@@ -86,8 +86,26 @@ class ModelRepository
     {
         return $this->all()
             ->groupBy('provider')
-            ->map(fn (Collection $models) => $models->map(fn (AiModel $m) => $m->toApiArray())->values())
+            ->map(fn (Collection $models) => $models->map(fn (array $m) => $this->toApiArray($m))->values())
             ->toArray();
+    }
+
+    /**
+     * Convert a model to API array format.
+     */
+    private function toApiArray(array $model): array
+    {
+        return [
+            'model_id' => $model['model_id'],
+            'display_name' => $model['display_name'],
+            'provider' => $model['provider'],
+            'context_window' => $model['context_window'],
+            'max_output_tokens' => $model['max_output_tokens'],
+            'input_price_per_million' => $model['input_price_per_million'],
+            'output_price_per_million' => $model['output_price_per_million'],
+            'cache_write_price_per_million' => $model['cache_write_price_per_million'],
+            'cache_read_price_per_million' => $model['cache_read_price_per_million'],
+        ];
     }
 
     /**
@@ -97,7 +115,7 @@ class ModelRepository
     {
         $model = $this->findByModelId($modelId);
 
-        return $model?->context_window ?? config('ai.context_windows.default', 128000);
+        return $model['context_window'] ?? 128000;
     }
 
     /**
@@ -112,43 +130,40 @@ class ModelRepository
     ): ?float {
         $model = $this->findByModelId($modelId);
 
-        return $model?->calculateCost($inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens);
+        if (!$model) {
+            return null;
+        }
+
+        $inputCost = ($inputTokens / 1_000_000) * $model['input_price_per_million'];
+        $outputCost = ($outputTokens / 1_000_000) * $model['output_price_per_million'];
+
+        $cacheWriteCost = 0;
+        if ($cacheCreationTokens && $model['cache_write_price_per_million']) {
+            $cacheWriteCost = ($cacheCreationTokens / 1_000_000) * $model['cache_write_price_per_million'];
+        }
+
+        $cacheReadCost = 0;
+        if ($cacheReadTokens && $model['cache_read_price_per_million']) {
+            $cacheReadCost = ($cacheReadTokens / 1_000_000) * $model['cache_read_price_per_million'];
+        }
+
+        return $inputCost + $outputCost + $cacheWriteCost + $cacheReadCost;
     }
 
     /**
-     * Get the default model for a provider.
+     * Get the default model for a provider (first in list).
      */
-    public function getDefaultModel(string $provider): ?AiModel
+    public function getDefaultModel(string $provider): ?array
     {
         return $this->forProvider($provider)->first();
     }
 
     /**
-     * Check if a model exists and is active.
+     * Check if a model exists.
      */
     public function isValidModel(string $modelId): bool
     {
         return $this->findByModelId($modelId) !== null;
-    }
-
-    /**
-     * Check if a model supports a specific capability.
-     */
-    public function supports(string $modelId, string $capability): bool
-    {
-        $model = $this->findByModelId($modelId);
-
-        if (!$model) {
-            return false;
-        }
-
-        return match ($capability) {
-            'streaming' => $model->supports_streaming,
-            'tools' => $model->supports_tools,
-            'vision' => $model->supports_vision,
-            'extended_thinking' => $model->supports_extended_thinking,
-            default => false,
-        };
     }
 
     /**
@@ -158,19 +173,47 @@ class ModelRepository
      */
     public function getProviders(): array
     {
-        return $this->all()->pluck('provider')->unique()->values()->toArray();
+        return array_keys(config('ai.models', []));
     }
 
     /**
-     * Clear the model cache.
+     * Get pricing data for a model.
      */
-    public function clearCache(): void
+    public function getPricing(string $modelId): ?array
     {
-        Cache::forget(self::CACHE_KEY_ALL);
+        $model = $this->findByModelId($modelId);
 
-        // Clear provider-specific caches
-        foreach (['anthropic', 'openai'] as $provider) {
-            Cache::forget(self::CACHE_KEY_PROVIDER . $provider);
+        if (!$model) {
+            return null;
         }
+
+        return [
+            'name' => $model['display_name'],
+            'input' => (float) $model['input_price_per_million'],
+            'output' => (float) $model['output_price_per_million'],
+            'cacheWrite' => (float) ($model['cache_write_price_per_million'] ?? 0),
+            'cacheRead' => (float) ($model['cache_read_price_per_million'] ?? 0),
+        ];
+    }
+
+    /**
+     * Get all pricing data grouped by provider.
+     */
+    public function getAllPricing(): array
+    {
+        return $this->all()
+            ->groupBy('provider')
+            ->map(function (Collection $models) {
+                return $models->mapWithKeys(fn (array $model) => [
+                    $model['model_id'] => [
+                        'name' => $model['display_name'],
+                        'input' => (float) $model['input_price_per_million'],
+                        'output' => (float) $model['output_price_per_million'],
+                        'cacheWrite' => (float) ($model['cache_write_price_per_million'] ?? 0),
+                        'cacheRead' => (float) ($model['cache_read_price_per_million'] ?? 0),
+                    ],
+                ]);
+            })
+            ->toArray();
     }
 }

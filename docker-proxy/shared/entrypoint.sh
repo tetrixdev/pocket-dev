@@ -17,30 +17,36 @@ echo "   - Domain name: $DOMAIN_NAME"
 # Default values
 IP_ALLOWED="1"
 
-# Basic authentication is REQUIRED for security
-if [ -z "$BASIC_AUTH_USER" ] || [ -z "$BASIC_AUTH_PASS" ]; then
-    echo "❌ ERROR: Basic authentication credentials are required!"
-    echo "   Please set BASIC_AUTH_USER and BASIC_AUTH_PASS in your .env file"
-    echo "   Example:"
-    echo "     BASIC_AUTH_USER=admin"
-    echo "     BASIC_AUTH_PASS=your_secure_password"
-    exit 1
-fi
+# Skip basic auth in local mode
+if [ "$DEPLOYMENT_MODE" = "local" ]; then
+    echo "🏠 Local mode: Basic authentication disabled"
+    # Create empty htpasswd file (nginx requires it to exist)
+    touch /etc/nginx/.htpasswd
+    AUTH_ENABLED="off"
+else
+    # Basic authentication is REQUIRED for production
+    if [ -z "$BASIC_AUTH_USER" ] || [ -z "$BASIC_AUTH_PASS" ]; then
+        echo "❌ ERROR: Basic authentication credentials are required!"
+        echo "   Please set BASIC_AUTH_USER and BASIC_AUTH_PASS in your .env file"
+        echo "   Example:"
+        echo "     BASIC_AUTH_USER=admin"
+        echo "     BASIC_AUTH_PASS=your_secure_password"
+        exit 1
+    fi
 
-# Check if using insecure default password (production check)
-if [ "$DEPLOYMENT_MODE" = "production" ]; then
+    # Check if using insecure default password (production check)
     if [ "$BASIC_AUTH_PASS" = "CHANGE_BASIC_AUTH_PASS" ]; then
         echo "❌ ERROR: You must change the default BASIC_AUTH_PASS value!"
         echo "   Current value: $BASIC_AUTH_PASS"
         echo "   Please set a secure password in your .env file"
         exit 1
     fi
-fi
 
-echo "🔐 Setting up basic authentication..."
-htpasswd -cb /etc/nginx/.htpasswd "$BASIC_AUTH_USER" "$BASIC_AUTH_PASS"
-AUTH_ENABLED="Secure Access"
-echo "✅ Basic authentication enabled for user: $BASIC_AUTH_USER"
+    echo "🔐 Setting up basic authentication..."
+    htpasswd -cb /etc/nginx/.htpasswd "$BASIC_AUTH_USER" "$BASIC_AUTH_PASS"
+    AUTH_ENABLED="Secure Access"
+    echo "✅ Basic authentication enabled for user: $BASIC_AUTH_USER"
+fi
 
 # Setup IP whitelist if provided
 if [ -n "$IP_WHITELIST" ]; then

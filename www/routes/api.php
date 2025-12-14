@@ -28,13 +28,12 @@ Route::prefix('claude')->group(function () {
 | Pricing Routes
 |--------------------------------------------------------------------------
 |
-| Model pricing information and customization.
+| Model pricing information (read-only, defined in config/ai.php).
 |
 */
 
 Route::get('pricing', [PricingController::class, 'index']);
 Route::get('pricing/{modelId}', [PricingController::class, 'show']);
-Route::post('pricing/{modelId}', [PricingController::class, 'store']);
 
 /*
 |--------------------------------------------------------------------------

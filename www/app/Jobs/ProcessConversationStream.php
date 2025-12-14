@@ -166,7 +166,8 @@ class ProcessConversationStream implements ShouldQueue
                 // Calculate cost using model pricing
                 $cost = null;
                 if ($aiModel) {
-                    $cost = $aiModel->calculateCost(
+                    $cost = $modelRepository->calculateCost(
+                        $conversation->model,
                         $inputTokens,
                         $outputTokens,
                         $cacheCreationTokens,
