@@ -47,7 +47,6 @@ services:
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
       - GH_TOKEN=${GIT_TOKEN:-}
-      - HOST_PROJECT_PATH=${HOST_PROJECT_PATH:-}
     entrypoint: ["/entrypoint.sh"]
     ports:
       - "${VITE_PORT:-5173}:5173"
@@ -141,11 +140,9 @@ services:
     command: php artisan queue:work redis --sleep=1 --tries=1 --timeout=600
     environment:
       - HOME=/home/appuser
-      - HOST_PROJECT_PATH=${HOST_PROJECT_PATH:-}
     volumes:
       - ./www:/var/www
       - .env:/var/www/.env
-      - .:/pocketdev-source
     networks:
       - pocket-dev
     depends_on:

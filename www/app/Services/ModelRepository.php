@@ -115,7 +115,11 @@ class ModelRepository
     {
         $model = $this->findByModelId($modelId);
 
-        return $model['context_window'] ?? 128000;
+        if (!$model) {
+            throw new \InvalidArgumentException("Model not found: {$modelId}");
+        }
+
+        return $model['context_window'];
     }
 
     /**
