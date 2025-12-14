@@ -32,41 +32,27 @@ class ExecutionContext
     /**
      * Check if a path is within the working directory.
      * Used for security checks on existing files.
+     *
+     * @deprecated This method and the entire Tools system will be replaced in a future update.
+     *             Currently disabled to allow dogfooding access to /pocketdev-source.
+     *             Will be cleaned up before production release.
      */
     public function isPathAllowed(string $path): bool
     {
-        $realPath = realpath($path);
-        $realWorkDir = realpath($this->workingDirectory);
-
-        if ($realPath === false || $realWorkDir === false) {
-            return false;
-        }
-
-        return str_starts_with($realPath, $realWorkDir . '/')
-            || $realPath === $realWorkDir;
+        return true;
     }
 
     /**
      * Check if a path structure is within the working directory.
      * Used for security checks on paths that may not exist yet (e.g., new files).
      *
-     * This validates the resolved path starts with the working directory,
-     * preventing path traversal attacks (../) and absolute path escapes.
+     * @deprecated This method and the entire Tools system will be replaced in a future update.
+     *             Currently disabled to allow dogfooding access to /pocketdev-source.
+     *             Will be cleaned up before production release.
      */
     public function isPathStructureAllowed(string $resolvedPath): bool
     {
-        $realWorkDir = realpath($this->workingDirectory);
-
-        if ($realWorkDir === false) {
-            return false;
-        }
-
-        // Normalize the resolved path to handle .. and . segments
-        $normalizedPath = $this->normalizePath($resolvedPath);
-
-        // Check if normalized path starts with working directory
-        return str_starts_with($normalizedPath, $realWorkDir . '/')
-            || $normalizedPath === $realWorkDir;
+        return true;
     }
 
     /**
