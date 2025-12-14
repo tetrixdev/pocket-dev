@@ -38,7 +38,7 @@ services:
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     group_add:
       - "1000"
-      - "1001"
+      - "${DOCKER_GID:-1001}"
     environment:
       - HOME=/home/appuser
       - COMPOSER_HOME=/tmp/.composer
@@ -47,6 +47,7 @@ services:
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
       - GH_TOKEN=${GIT_TOKEN:-}
+      - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
     entrypoint: ["/entrypoint.sh"]
     ports:
       - "${VITE_PORT:-5173}:5173"
@@ -59,6 +60,8 @@ services:
       - proxy-config-data:/etc/nginx-proxy-config
       - user-data:/home/appuser
       - workspace-data:/workspace
+      - pocketdev-storage:/var/www/storage/pocketdev
+      - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
     networks:
       - pocket-dev
     depends_on:
@@ -137,12 +140,26 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    group_add:
+      - "1000"
+      - "${DOCKER_GID:-1001}"
     command: php artisan queue:work redis --sleep=1 --tries=1 --timeout=600
     environment:
       - HOME=/home/appuser
+      - GIT_TOKEN=${GIT_TOKEN:-}
+      - GIT_USER_NAME=${GIT_USER_NAME:-}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
+      - GH_TOKEN=${GIT_TOKEN:-}
+      - HOST_PROJECT_PATH=${PWD}
+      - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
     volumes:
       - ./www:/var/www
       - .env:/var/www/.env
+      - /var/run/docker.sock:/var/run/docker.sock
+      - user-data:/home/appuser
+      - .:/pocketdev-source
+      - pocketdev-storage:/var/www/storage/pocketdev
+      - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
     networks:
       - pocket-dev
     depends_on:
@@ -174,4 +191,7 @@ volumes:
     driver: local
   proxy-config-data:
     name: pocket-dev-proxy-config
+    driver: local
+  pocketdev-storage:
+    name: pocket-dev-storage
     driver: local

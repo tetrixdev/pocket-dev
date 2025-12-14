@@ -1,7 +1,11 @@
 import './bootstrap';
 
-// Import Alpine.js
+// Import Alpine.js and plugins
 import Alpine from 'alpinejs';
+import collapse from '@alpinejs/collapse';
+
+// Register Alpine plugins
+Alpine.plugin(collapse);
 
 // Import HTMX
 import 'htmx.org';

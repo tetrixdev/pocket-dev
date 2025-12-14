@@ -113,11 +113,11 @@ class ConfigController extends Controller
     // =========================================================================
 
     /**
-     * Main index - redirect to last visited section or default to claude
+     * Main index - redirect to last visited section or default to system-prompt
      */
     public function index(Request $request)
     {
-        $lastSection = $request->session()->get('config_last_section', 'claude');
+        $lastSection = $request->session()->get('config_last_section', 'system-prompt');
         return redirect()->route('config.' . $lastSection);
     }
 
@@ -142,7 +142,7 @@ class ConfigController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to load CLAUDE.md', ['error' => $e->getMessage()]);
-            return redirect()->route('config.index')
+            return redirect()->route('config.system-prompt')
                 ->with('error', 'Failed to load CLAUDE.md: ' . $e->getMessage());
         }
     }
@@ -184,7 +184,7 @@ class ConfigController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to load settings.json', ['error' => $e->getMessage()]);
-            return redirect()->route('config.index')
+            return redirect()->route('config.system-prompt')
                 ->with('error', 'Failed to load settings.json: ' . $e->getMessage());
         }
     }
@@ -226,7 +226,7 @@ class ConfigController extends Controller
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to load nginx config', ['error' => $e->getMessage()]);
-            return redirect()->route('config.index')
+            return redirect()->route('config.system-prompt')
                 ->with('error', 'Failed to load nginx config: ' . $e->getMessage());
         }
     }

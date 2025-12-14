@@ -31,6 +31,32 @@ Use after changing JS, CSS, or Alpine.js directives in Blade templates:
 docker compose up -d --force-recreate
 ```
 
+### Docker Self-Management (for AI/Dogfooding)
+The queue container has full dogfooding capabilities:
+- **`/pocketdev-source`** - Full PocketDev project (read/write) for editing code, git operations
+- **Docker socket** - Can run docker commands and restart containers
+- **Git/GitHub CLI** - Configured with credentials from environment
+
+```bash
+# Work on PocketDev source
+cd /pocketdev-source
+git status
+git diff
+
+# Safe self-restart (spawns helper container that survives the restart)
+docker run --rm -d \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$HOST_PROJECT_PATH:$HOST_PROJECT_PATH" \
+    -w "$HOST_PROJECT_PATH" \
+    docker:27-cli \
+    docker compose restart pocket-dev-queue
+
+# Restart other containers directly
+docker restart pocket-dev-php
+docker restart pocket-dev-nginx
+docker logs pocket-dev-php --tail 50
+```
+
 ## Critical Pitfalls
 
 1. **File permissions**: PHP runs as `www-data`. Files in `/var/www/.claude/` must be owned by `www-data:www-data`.

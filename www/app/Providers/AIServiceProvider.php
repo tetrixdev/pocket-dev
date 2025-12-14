@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Contracts\AIProviderInterface;
 use App\Services\Providers\AnthropicProvider;
 use App\Services\SystemPromptBuilder;
+use App\Services\SystemPromptService;
 use App\Services\ToolRegistry;
 use App\Tools\BashTool;
 use App\Tools\EditTool;
@@ -46,7 +47,8 @@ class AIServiceProvider extends ServiceProvider
             return $registry;
         });
 
-        // Register SystemPromptBuilder
+        // Register SystemPromptService and SystemPromptBuilder
+        $this->app->singleton(SystemPromptService::class);
         $this->app->singleton(SystemPromptBuilder::class);
 
         // Register providers

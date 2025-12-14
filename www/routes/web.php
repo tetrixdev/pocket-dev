@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\ConfigController;
+use App\Http\Controllers\SystemPromptController;
 use Illuminate\Support\Facades\Route;
 
 // Claude authentication routes - MUST be before wildcard routes
@@ -19,6 +20,17 @@ Route::view("/chat/{conversationUuid?}", "chat")
 
 // Config - Redirect to last visited section
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");
+
+// System Prompt (core AI instructions)
+Route::get("/config/system-prompt", [SystemPromptController::class, "show"])->name("config.system-prompt");
+// Additional prompt (project-specific, commonly customized)
+Route::get("/config/system-prompt/additional/edit", [SystemPromptController::class, "editAdditional"])->name("config.system-prompt.additional.edit");
+Route::post("/config/system-prompt/additional", [SystemPromptController::class, "saveAdditional"])->name("config.system-prompt.additional.save");
+Route::delete("/config/system-prompt/additional", [SystemPromptController::class, "resetAdditional"])->name("config.system-prompt.additional.reset");
+// Core prompt (rarely modified)
+Route::get("/config/system-prompt/core/edit", [SystemPromptController::class, "editCore"])->name("config.system-prompt.core.edit");
+Route::post("/config/system-prompt/core", [SystemPromptController::class, "saveCore"])->name("config.system-prompt.core.save");
+Route::delete("/config/system-prompt/core", [SystemPromptController::class, "resetCore"])->name("config.system-prompt.core.reset");
 
 // Simple config file pages (CLAUDE.md, settings.json, nginx)
 Route::get("/config/claude", [ConfigController::class, "showClaude"])->name("config.claude");

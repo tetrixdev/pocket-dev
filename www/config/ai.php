@@ -209,4 +209,16 @@ return [
         // How long to keep completed stream files (seconds)
         'cleanup_after' => (int) env('STREAM_CLEANUP_AFTER', 3600),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | System Prompt Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Path to file containing additional system prompt instructions.
+    | This is appended to the core system prompt for project-specific guidance.
+    |
+    */
+
+    'additional_system_prompt_file' => env('ADDITIONAL_SYSTEM_PROMPT_FILE', ''),
 ];
