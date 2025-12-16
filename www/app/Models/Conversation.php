@@ -27,7 +27,10 @@ class Conversation extends Model
         // Provider-specific reasoning settings
         'anthropic_thinking_budget',
         'openai_reasoning_effort',
+        'claude_code_thinking_tokens',
         'response_level',
+        // Claude Code session management
+        'claude_session_id',
     ];
 
     protected $casts = [
@@ -35,6 +38,7 @@ class Conversation extends Model
         'total_input_tokens' => 'integer',
         'total_output_tokens' => 'integer',
         'anthropic_thinking_budget' => 'integer',
+        'claude_code_thinking_tokens' => 'integer',
         'response_level' => 'integer',
     ];
 
@@ -157,6 +161,7 @@ class Conversation extends Model
      * Returns the appropriate reasoning settings based on the conversation's provider type.
      * - Anthropic: uses budget_tokens (explicit token allocation)
      * - OpenAI: uses effort (none/low/medium/high)
+     * - Claude Code: uses thinking_tokens (via MAX_THINKING_TOKENS env var)
      */
     public function getReasoningConfig(): array
     {
@@ -166,6 +171,9 @@ class Conversation extends Model
             ],
             'openai' => [
                 'effort' => $this->openai_reasoning_effort ?? 'none',
+            ],
+            'claude_code' => [
+                'thinking_tokens' => $this->claude_code_thinking_tokens ?? 0,
             ],
             default => [],
         };

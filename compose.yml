@@ -143,7 +143,8 @@ services:
     group_add:
       - "1000"
       - "${DOCKER_GID:-1001}"
-    command: php artisan queue:work redis --sleep=1 --tries=1 --timeout=600
+    entrypoint: ["/queue-entrypoint.sh"]
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=1", "--timeout=600"]
     environment:
       - HOME=/home/appuser
       - GIT_TOKEN=${GIT_TOKEN:-}
@@ -160,6 +161,7 @@ services:
       - .:/pocketdev-source
       - pocketdev-storage:/var/www/storage/pocketdev
       - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
+      - ./docker-laravel/local/php/queue-entrypoint.sh:/queue-entrypoint.sh
     networks:
       - pocket-dev
     depends_on:

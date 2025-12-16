@@ -43,11 +43,15 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Create host docker group (GID 1001) and file access group for volumes
-# Add www-data to both groups for docker socket and mounted volume access
+# Create groups for various access needs:
+# - docker (999): Docker socket access
+# - hostdocker (1001): Host Docker group compatibility
+# - appgroup (1000): Shared group for home directory access (Claude CLI, git, etc.)
+# Add www-data to all groups so it can access docker socket and write to /home/appuser
 RUN groupadd -g 999 docker || true \
     && groupadd -g 1001 hostdocker || true \
-    && usermod -aG docker,hostdocker www-data
+    && groupadd -g 1000 appgroup || true \
+    && usermod -aG docker,hostdocker,appgroup www-data
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo pdo_pgsql zip
@@ -56,6 +60,9 @@ RUN docker-php-ext-install pdo pdo_pgsql zip
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI for AI-powered development
+RUN npm install -g @anthropic-ai/claude-code
 
 # Install Composer
 RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
@@ -66,6 +73,15 @@ RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
 RUN mkdir -p /var/www/storage/framework/{sessions,views,cache} \
     && mkdir -p /var/www/storage/logs \
     && mkdir -p /var/www/bootstrap/cache
+
+# Create home directory for Claude Code CLI and other tools that need $HOME
+# - Owned by UID 1000, GID 1000 (appgroup) with group-writable permissions (775)
+# - www-data is in group 1000 (appgroup), so it can write here
+# - In local dev: volume mount may override this, group_add handles permissions
+# - In production: www-data writes directly via group membership
+RUN mkdir -p /home/appuser/.claude \
+    && chown -R 1000:1000 /home/appuser \
+    && chmod 775 /home/appuser /home/appuser/.claude
 
 # Set working directory
 WORKDIR /var/www

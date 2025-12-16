@@ -23,6 +23,8 @@ class SettingsController extends Controller
             // Provider-specific reasoning defaults
             'chat.anthropic_thinking_budget',
             'chat.openai_reasoning_effort',
+            'chat.claude_code_thinking_tokens',
+            'chat.claude_code_allowed_tools',
             // Legacy
             'chat.thinking_level',
         ], [
@@ -31,8 +33,16 @@ class SettingsController extends Controller
             'chat.response_level' => 1,
             'chat.anthropic_thinking_budget' => 0,
             'chat.openai_reasoning_effort' => 'none',
+            'chat.claude_code_thinking_tokens' => 0,
+            'chat.claude_code_allowed_tools' => [], // Empty array = all tools allowed
             'chat.thinking_level' => 0,
         ]);
+
+        // Setting::getMany already decodes JSON, so allowed_tools is already an array
+        $allowedTools = $defaults['chat.claude_code_allowed_tools'];
+        if (!is_array($allowedTools)) {
+            $allowedTools = [];
+        }
 
         return response()->json([
             'provider' => $defaults['chat.default_provider'],
@@ -41,6 +51,8 @@ class SettingsController extends Controller
             // Provider-specific
             'anthropic_thinking_budget' => (int) $defaults['chat.anthropic_thinking_budget'],
             'openai_reasoning_effort' => $defaults['chat.openai_reasoning_effort'],
+            'claude_code_thinking_tokens' => (int) $defaults['chat.claude_code_thinking_tokens'],
+            'claude_code_allowed_tools' => $allowedTools,
             // Legacy (for backwards compatibility)
             'thinking_level' => (int) $defaults['chat.thinking_level'],
         ]);
@@ -52,12 +64,15 @@ class SettingsController extends Controller
     public function updateChatDefaults(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'provider' => 'nullable|string|in:anthropic,openai',
+            'provider' => 'nullable|string|in:anthropic,openai,claude_code',
             'model' => 'nullable|string|max:100',
             'response_level' => 'nullable|integer|min:0|max:3',
             // Provider-specific reasoning settings
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+            'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
+            'claude_code_allowed_tools' => 'nullable|array',
+            'claude_code_allowed_tools.*' => 'string|max:50',
             // Legacy
             'thinking_level' => 'nullable|integer|min:0|max:4',
         ]);
@@ -79,6 +94,12 @@ class SettingsController extends Controller
         }
         if (isset($validated['openai_reasoning_effort'])) {
             $settings['chat.openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
+        }
+        if (isset($validated['claude_code_thinking_tokens'])) {
+            $settings['chat.claude_code_thinking_tokens'] = $validated['claude_code_thinking_tokens'];
+        }
+        if (array_key_exists('claude_code_allowed_tools', $validated)) {
+            $settings['chat.claude_code_allowed_tools'] = json_encode($validated['claude_code_allowed_tools'] ?? []);
         }
         // Legacy
         if (isset($validated['thinking_level'])) {

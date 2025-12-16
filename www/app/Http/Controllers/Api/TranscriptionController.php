@@ -112,4 +112,51 @@ class TranscriptionController extends Controller
             'message' => $deleted ? 'API key deleted' : 'No API key found',
         ]);
     }
+
+    /**
+     * Check if Anthropic API key is configured (for Claude Code CLI).
+     */
+    public function checkAnthropicKey(): JsonResponse
+    {
+        return response()->json([
+            'configured' => $this->appSettings->hasAnthropicApiKey(),
+        ]);
+    }
+
+    /**
+     * Set Anthropic API key.
+     */
+    public function setAnthropicKey(Request $request): JsonResponse
+    {
+        try {
+            $request->validate([
+                'api_key' => 'required|string|min:20',
+            ]);
+
+            $this->appSettings->setAnthropicApiKey($request->input('api_key'));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Anthropic API key saved successfully',
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Invalid API key format'
+            ], 422);
+        }
+    }
+
+    /**
+     * Delete Anthropic API key.
+     */
+    public function deleteAnthropicKey(): JsonResponse
+    {
+        $deleted = $this->appSettings->deleteAnthropicApiKey();
+
+        return response()->json([
+            'success' => $deleted,
+            'message' => $deleted ? 'API key deleted' : 'No API key found',
+        ]);
+    }
 }

@@ -2,7 +2,7 @@
 
 **Last Updated**: December 2025
 
-PocketDev is a Docker-based development environment that provides a multi-provider AI chat interface (Anthropic/OpenAI) and web terminal access. Designed for mobile-first coding workflows.
+PocketDev is a Docker-based development environment that provides a multi-provider AI chat interface (Anthropic/OpenAI/Claude Code) and web terminal access. Designed for mobile-first coding workflows.
 
 ---
 
@@ -112,6 +112,7 @@ docker compose logs -f pocket-dev-php
 | Provider factory | `app/Services/ProviderFactory.php` |
 | Anthropic provider | `app/Services/Providers/AnthropicProvider.php` |
 | OpenAI provider | `app/Services/Providers/OpenAIProvider.php` |
+| Claude Code provider | `app/Services/Providers/ClaudeCodeProvider.php` |
 | Conversation API | `app/Http/Controllers/Api/ConversationController.php` |
 | Chat interface | `resources/views/chat.blade.php` |
 | Config editor | `app/Http/Controllers/ConfigController.php` |

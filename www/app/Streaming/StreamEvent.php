@@ -24,6 +24,7 @@ class StreamEvent
     public const DONE = 'done';
     public const ERROR = 'error';
     public const DEBUG = 'debug';
+    public const SYSTEM_INFO = 'system_info';
 
     public function __construct(
         public string $type,
@@ -122,6 +123,11 @@ class StreamEvent
     public static function debug(string $message, array $context = []): self
     {
         return new self(self::DEBUG, null, $message, $context);
+    }
+
+    public static function systemInfo(string $content, ?string $command = null): self
+    {
+        return new self(self::SYSTEM_INFO, null, $content, $command ? ['command' => $command] : null);
     }
 
     public function toArray(): array

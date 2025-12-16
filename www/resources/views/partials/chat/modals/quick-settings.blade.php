@@ -6,11 +6,18 @@
             <label class="block text-sm font-medium text-gray-300 mb-2">Provider</label>
             <div class="space-y-2">
                 <template x-for="(p, key) in providers" :key="key">
-                    <label class="flex items-center text-gray-300 cursor-pointer" :class="{'opacity-50': !p.available}">
-                        <input type="radio" x-model="provider" :value="key" @change="updateModels(); saveDefaultSettings()" :disabled="!p.available" class="mr-2">
-                        <span x-text="key" class="capitalize"></span>
-                        <span x-show="!p.available" class="ml-2 text-xs text-red-400">(not configured)</span>
-                    </label>
+                    <div class="flex items-center text-gray-300" :class="{'opacity-50': !p.available}">
+                        <label class="flex items-center cursor-pointer flex-1">
+                            <input type="radio" x-model="provider" :value="key" @change="updateModels(); saveDefaultSettings()" :disabled="!p.available" class="mr-2">
+                            <span x-text="key.replace('_', ' ')" class="capitalize"></span>
+                            <span x-show="!p.available && key !== 'claude_code'" class="ml-2 text-xs text-red-400">(not configured)</span>
+                        </label>
+                        <button
+                            x-show="key === 'claude_code' && !p.available"
+                            @click="showQuickSettings = false; showClaudeCodeAuthModal = true"
+                            class="text-xs text-blue-400 hover:underline"
+                        >Setup</button>
+                    </div>
                 </template>
             </div>
         </div>
@@ -57,6 +64,38 @@
                         </label>
                     </template>
                 </div>
+            </div>
+        </template>
+
+        {{-- Claude Code Thinking Tokens (shown only for Claude Code) --}}
+        <template x-if="provider === 'claude_code'">
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">Thinking Budget</label>
+                <div class="space-y-2">
+                    <template x-for="level in claudeCodeThinkingLevels" :key="level.thinking_tokens">
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model.number="claudeCodeThinkingTokens" :value="level.thinking_tokens" @change="saveDefaultSettings()" class="mr-2">
+                            <span x-text="level.name"></span>
+                            <span x-show="level.thinking_tokens > 0" class="ml-2 text-xs text-gray-500" x-text="'(' + level.thinking_tokens.toLocaleString() + ' tokens)'"></span>
+                        </label>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        {{-- Claude Code Tool Selection (shown only for Claude Code) --}}
+        <template x-if="provider === 'claude_code'">
+            <div>
+                <p class="text-xs text-gray-500 mb-2">Select which tools Claude Code can use. Remove tools to restrict access.</p>
+                <x-multi-select
+                    options="claudeCodeAvailableTools"
+                    selected="claudeCodeAllowedTools"
+                    label="Allowed Tools"
+                    placeholder="No tools selected"
+                    all-selected-text="All tools enabled"
+                    none-selected-text="No tools (restricted)"
+                    on-change="saveDefaultSettings"
+                />
             </div>
         </template>
 

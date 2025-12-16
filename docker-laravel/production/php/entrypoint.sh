@@ -3,6 +3,13 @@ set -e
 
 echo "Starting Laravel production container..."
 
+# Set HOME for Claude Code CLI and other tools that expect a writable home directory
+# www-data is in group 1000 (appgroup) which owns /home/appuser with 775 permissions
+export HOME=/home/appuser
+
+# Ensure Claude Code CLI config directory exists
+mkdir -p "$HOME/.claude" 2>/dev/null || true
+
 # Configure git and GitHub CLI if credentials are provided
 if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
     echo "⚙️  Configuring git credentials..."
