@@ -81,6 +81,7 @@ Use Laravel anonymous components (`<x-*>`) instead of partials/includes for reus
 | `<x-modal>` | Modal dialogs | `show`, `title`, `max-width` (sm/md/lg/xl/2xl) |
 | `<x-button>` | All buttons | `variant` (primary/secondary/success/danger/purple/ghost), `size` (sm/md/lg), `full-width`, `type` |
 | `<x-text-input>` | Text inputs | `type`, `label`, `hint` |
+| `<x-multi-select>` | Multi-select dropdown | `options`, `selected`, `label`, `placeholder`, `on-change` |
 | `<x-chat.*>` | Chat messages | `user-message`, `assistant-message`, `thinking-block`, `tool-block`, `empty-response`, `cost-badge` |
 | `<x-icon.*>` | SVG icons | `lightbulb`, `cog`, `chevron-down`, `info`, `menu`, `x`, `chevron-left` |
 
@@ -104,6 +105,15 @@ Use Laravel anonymous components (`<x-*>`) instead of partials/includes for reus
 {{-- Chat messages (inside Alpine x-for loop) --}}
 <x-chat.user-message variant="desktop" />
 <x-chat.assistant-message variant="mobile" />
+
+{{-- Multi-select (uses Alpine variables from parent scope) --}}
+<x-multi-select
+    options="availableOptions"
+    selected="selectedItems"
+    label="Select Items"
+    placeholder="Click to select..."
+    on-change="saveSettings"
+/>
 ```
 
 ### Component Location
@@ -112,6 +122,7 @@ Components live in `resources/views/components/`:
 - `modal.blade.php` - Reusable modal wrapper
 - `button.blade.php` - Button with variants
 - `text-input.blade.php` - Styled text input
+- `multi-select.blade.php` - Multi-select dropdown with tags
 - `chat/` - Chat message components
 - `icon/` - SVG icon components
 

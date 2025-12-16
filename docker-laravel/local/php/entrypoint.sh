@@ -3,6 +3,9 @@ set -e
 
 echo "🚀 Configuring PHP development environment..."
 
+# Ensure home directory and Claude Code CLI config directory exist
+mkdir -p "$HOME/.claude" 2>/dev/null || true
+
 # Configure git and GitHub CLI if credentials are provided
 if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
     echo "⚙️  Configuring git credentials..."

@@ -87,6 +87,7 @@
                         <x-chat.assistant-message />
                         <x-chat.thinking-block />
                         <x-chat.tool-block />
+                        <x-chat.system-block />
                         <x-chat.empty-response />
                     </div>
                 </template>
@@ -140,6 +141,8 @@
                 // Provider-specific reasoning settings
                 anthropicThinkingBudget: 0,
                 openaiReasoningEffort: 'none',
+                claudeCodeThinkingTokens: 0,
+                claudeCodeAllowedTools: [], // Empty = all tools allowed
 
                 // Response length modes
                 responseLevel: 1,
@@ -152,6 +155,7 @@
                 showPricingSettings: false,
                 showCostBreakdown: false,
                 showOpenAiModal: false,
+                showClaudeCodeAuthModal: false,
                 showErrorModal: false,
                 errorMessage: '',
                 openAiKeyInput: '',
@@ -179,6 +183,10 @@
                 audioChunks: [],
                 openAiKeyConfigured: false,
                 autoSendAfterTranscription: false,
+
+                // Anthropic API key state (for Claude Code)
+                anthropicKeyInput: '',
+                anthropicKeyConfigured: false,
 
                 // Stream reconnection state
                 lastEventIndex: 0,
@@ -210,6 +218,9 @@
 
                     // Check OpenAI key for voice transcription
                     await this.checkOpenAiKey();
+
+                    // Check Anthropic key for Claude Code
+                    await this.checkAnthropicKey();
 
                     // Check URL for conversation UUID and load if present
                     const urlConversationUuid = this.getConversationUuidFromUrl();
@@ -291,6 +302,16 @@
                         if (data.openai_reasoning_effort !== undefined) {
                             this.openaiReasoningEffort = data.openai_reasoning_effort;
                         }
+                        if (data.claude_code_thinking_tokens !== undefined) {
+                            this.claudeCodeThinkingTokens = data.claude_code_thinking_tokens;
+                        }
+                        if (data.claude_code_allowed_tools !== undefined) {
+                            // If empty array, default to all tools selected
+                            const savedTools = data.claude_code_allowed_tools || [];
+                            this.claudeCodeAllowedTools = savedTools.length > 0
+                                ? savedTools
+                                : [...this.claudeCodeAvailableTools];
+                        }
                     } catch (err) {
                         console.error('Failed to fetch settings:', err);
                     }
@@ -311,6 +332,8 @@
                                 // Provider-specific reasoning settings
                                 anthropic_thinking_budget: this.anthropicThinkingBudget,
                                 openai_reasoning_effort: this.openaiReasoningEffort,
+                                claude_code_thinking_tokens: this.claudeCodeThinkingTokens,
+                                claude_code_allowed_tools: this.claudeCodeAllowedTools,
                             })
                         });
                     } catch (err) {
@@ -477,6 +500,7 @@
                         this.responseLevel = data.conversation?.response_level ?? 1;
                         this.anthropicThinkingBudget = data.conversation?.anthropic_thinking_budget ?? 0;
                         this.openaiReasoningEffort = data.conversation?.openai_reasoning_effort ?? 'none';
+                        this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
 
                         this.scrollToBottom();
 
@@ -652,6 +676,8 @@
                                 createBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
                             } else if (this.provider === 'openai') {
                                 createBody.openai_reasoning_effort = this.openaiReasoningEffort;
+                            } else if (this.provider === 'claude_code') {
+                                createBody.claude_code_thinking_tokens = this.claudeCodeThinkingTokens;
                             }
 
                             const response = await fetch('/api/conversations', {
@@ -711,6 +737,8 @@
                             streamBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
                         } else if (this.provider === 'openai') {
                             streamBody.openai_reasoning_effort = this.openaiReasoningEffort;
+                        } else if (this.provider === 'claude_code') {
+                            streamBody.claude_code_thinking_tokens = this.claudeCodeThinkingTokens;
                         }
 
                         // Start the background streaming job
@@ -1003,6 +1031,17 @@
                             }
                             break;
 
+                        case 'system_info':
+                            // System info from CLI commands like /context, /usage
+                            this.messages.push({
+                                id: 'msg-' + Date.now() + '-' + Math.random(),
+                                role: 'system',
+                                content: event.content,
+                                command: event.metadata?.command || null
+                            });
+                            this.scrollToBottom();
+                            break;
+
                         case 'usage':
                             if (event.metadata) {
                                 const input = event.metadata.input_tokens || 0;
@@ -1044,7 +1083,12 @@
                             break;
 
                         case 'error':
-                            this.showError(event.content || 'Unknown error');
+                            // Check for Claude Code auth required error
+                            if (event.content && event.content.startsWith('CLAUDE_CODE_AUTH_REQUIRED:')) {
+                                this.showClaudeCodeAuthModal = true;
+                            } else {
+                                this.showError(event.content || 'Unknown error');
+                            }
                             break;
 
                         case 'debug':
@@ -1082,6 +1126,25 @@
                     ];
                 },
 
+                // Get Claude Code thinking levels from config
+                get claudeCodeThinkingLevels() {
+                    return this.currentReasoningConfig.levels || [
+                        { name: 'Off', thinking_tokens: 0 },
+                        { name: 'Light', thinking_tokens: 4000 },
+                        { name: 'Standard', thinking_tokens: 10000 },
+                        { name: 'Deep', thinking_tokens: 20000 },
+                        { name: 'Maximum', thinking_tokens: 32000 },
+                    ];
+                },
+
+                // Get available tools for Claude Code from config
+                get claudeCodeAvailableTools() {
+                    return this.providers.claude_code?.available_tools || [
+                        'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'LS',
+                        'Bash', 'Task', 'WebFetch', 'WebSearch', 'NotebookRead', 'NotebookEdit',
+                    ];
+                },
+
                 // Get display name for current reasoning setting
                 get currentReasoningName() {
                     if (this.provider === 'anthropic') {
@@ -1089,6 +1152,9 @@
                         return level?.name || 'Off';
                     } else if (this.provider === 'openai') {
                         const level = this.openaiEffortLevels.find(l => l.value === this.openaiReasoningEffort);
+                        return level?.name || 'Off';
+                    } else if (this.provider === 'claude_code') {
+                        const level = this.claudeCodeThinkingLevels.find(l => l.thinking_tokens === this.claudeCodeThinkingTokens);
                         return level?.name || 'Off';
                     }
                     return 'Off';
@@ -1106,6 +1172,11 @@
                         const currentIndex = levels.findIndex(l => l.value === this.openaiReasoningEffort);
                         const nextIndex = (currentIndex + 1) % levels.length;
                         this.openaiReasoningEffort = levels[nextIndex].value;
+                    } else if (this.provider === 'claude_code') {
+                        const levels = this.claudeCodeThinkingLevels;
+                        const currentIndex = levels.findIndex(l => l.thinking_tokens === this.claudeCodeThinkingTokens);
+                        const nextIndex = (currentIndex + 1) % levels.length;
+                        this.claudeCodeThinkingTokens = levels[nextIndex].thinking_tokens;
                     }
                     this.saveDefaultSettings();
                 },
@@ -1269,6 +1340,47 @@
                         this.openAiKeyConfigured = data.configured;
                     } catch (err) {
                         console.error('OpenAI key check failed:', err);
+                    }
+                },
+
+                async checkAnthropicKey() {
+                    try {
+                        const response = await fetch('/api/claude/anthropic-key/check');
+                        const data = await response.json();
+                        this.anthropicKeyConfigured = data.configured;
+                    } catch (err) {
+                        console.error('Anthropic key check failed:', err);
+                    }
+                },
+
+                async saveAnthropicKey() {
+                    if (!this.anthropicKeyInput || this.anthropicKeyInput.length < 20) {
+                        this.showError('Please enter a valid Anthropic API key');
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/claude/anthropic-key', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
+                            body: JSON.stringify({ api_key: this.anthropicKeyInput })
+                        });
+
+                        if (response.ok) {
+                            this.anthropicKeyConfigured = true;
+                            this.showClaudeCodeAuthModal = false;
+                            this.anthropicKeyInput = '';
+                            // Refresh providers to update availability
+                            await this.fetchProviders();
+                        } else {
+                            this.showError('Failed to save API key');
+                        }
+                    } catch (err) {
+                        console.error('Error saving Anthropic key:', err);
+                        this.showError('Error saving API key');
                     }
                 },
 

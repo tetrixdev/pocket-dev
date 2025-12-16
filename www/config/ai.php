@@ -37,6 +37,17 @@ return [
             'default_model' => env('OPENAI_MODEL', 'gpt-5'),
             'max_tokens' => (int) env('OPENAI_MAX_TOKENS', 16384),
         ],
+
+        'claude_code' => [
+            // No API key needed - uses Claude Code CLI authentication (setup via `claude setup-token`)
+            'default_model' => 'opus',
+            // Available tools that can be enabled/disabled via UI
+            // Empty array = all tools allowed (default behavior)
+            'available_tools' => [
+                'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'LS',
+                'Bash', 'Task', 'WebFetch', 'WebSearch', 'NotebookRead', 'NotebookEdit',
+            ],
+        ],
     ],
 
     /*
@@ -78,6 +89,18 @@ return [
                 ['value' => 'low', 'name' => 'Light', 'description' => 'Quick reasoning'],
                 ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
                 ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
+            ],
+        ],
+
+        // Claude Code: uses MAX_THINKING_TOKENS environment variable internally
+        // We expose similar levels to Anthropic for consistency
+        'claude_code' => [
+            'levels' => [
+                ['name' => 'Off', 'thinking_tokens' => 0],
+                ['name' => 'Light', 'thinking_tokens' => 4000],
+                ['name' => 'Standard', 'thinking_tokens' => 10000],
+                ['name' => 'Deep', 'thinking_tokens' => 20000],
+                ['name' => 'Maximum', 'thinking_tokens' => 32000],
             ],
         ],
     ],
@@ -189,6 +212,41 @@ return [
                 'output_price_per_million' => 2.00,
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million' => 0.025,
+            ],
+        ],
+
+        // Claude Code models (aliases supported by CLI)
+        // Pricing is null since Claude Code uses subscription credits
+        'claude_code' => [
+            [
+                'model_id' => 'opus',
+                'display_name' => 'Claude Opus (via CLI)',
+                'context_window' => 200000,
+                'max_output_tokens' => 64000,
+                'input_price_per_million' => null,
+                'output_price_per_million' => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => null,
+            ],
+            [
+                'model_id' => 'sonnet',
+                'display_name' => 'Claude Sonnet (via CLI)',
+                'context_window' => 200000,
+                'max_output_tokens' => 64000,
+                'input_price_per_million' => null,
+                'output_price_per_million' => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => null,
+            ],
+            [
+                'model_id' => 'haiku',
+                'display_name' => 'Claude Haiku (via CLI)',
+                'context_window' => 200000,
+                'max_output_tokens' => 64000,
+                'input_price_per_million' => null,
+                'output_price_per_million' => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => null,
             ],
         ],
     ],

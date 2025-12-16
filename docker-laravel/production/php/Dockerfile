@@ -57,6 +57,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Claude Code CLI for AI-powered development
+RUN npm install -g @anthropic-ai/claude-code
+
 # Install Composer
 RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
     && php composer-setup.php --install-dir=/usr/local/bin --filename=composer \
@@ -66,6 +69,14 @@ RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
 RUN mkdir -p /var/www/storage/framework/{sessions,views,cache} \
     && mkdir -p /var/www/storage/logs \
     && mkdir -p /var/www/bootstrap/cache
+
+# Create home directory for appuser with proper ownership
+# When the user-data volume is first mounted empty, Docker initializes it with these permissions
+# This enables Claude Code CLI and other tools that need a writable home directory
+# Use group 1000 with group-writable permissions so any UID in that group can write
+RUN mkdir -p /home/appuser/.claude \
+    && chown -R 1000:1000 /home/appuser \
+    && chmod 775 /home/appuser /home/appuser/.claude
 
 # Set working directory
 WORKDIR /var/www

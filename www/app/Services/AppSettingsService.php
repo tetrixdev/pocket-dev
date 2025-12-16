@@ -101,4 +101,39 @@ class AppSettingsService
         Log::info('OpenAI API key deleted');
         return $this->delete('openai_api_key');
     }
+
+    /**
+     * Get Anthropic API key (for Claude Code CLI)
+     */
+    public function getAnthropicApiKey(): ?string
+    {
+        return $this->get('anthropic_api_key');
+    }
+
+    /**
+     * Set Anthropic API key
+     */
+    public function setAnthropicApiKey(string $apiKey): AppSetting
+    {
+        Log::info('Anthropic API key updated');
+        return $this->set('anthropic_api_key', $apiKey);
+    }
+
+    /**
+     * Check if Anthropic API key is configured
+     */
+    public function hasAnthropicApiKey(): bool
+    {
+        $key = $this->getAnthropicApiKey();
+        return !empty($key);
+    }
+
+    /**
+     * Delete Anthropic API key
+     */
+    public function deleteAnthropicApiKey(): bool
+    {
+        Log::info('Anthropic API key deleted');
+        return $this->delete('anthropic_api_key');
+    }
 }

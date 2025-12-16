@@ -16,11 +16,13 @@ Multi-provider conversation storage with full message history.
 | uuid | uuid | No | - | URL-safe identifier (unique) |
 | title | varchar | Yes | null | Display name |
 | working_directory | varchar | No | '/var/www' | Context directory |
-| provider_type | varchar | No | 'anthropic' | Provider: anthropic, openai |
+| provider_type | varchar | No | 'anthropic' | Provider: anthropic, openai, claude_code |
 | model | varchar | No | - | Model identifier |
 | status | varchar | No | 'active' | active/archived |
 | anthropic_thinking_budget | int | Yes | null | Thinking tokens (Anthropic) |
 | openai_reasoning_effort | varchar | Yes | null | Reasoning level (OpenAI) |
+| claude_code_thinking_tokens | int | Yes | null | Thinking tokens (Claude Code) |
+| claude_session_id | varchar | Yes | null | Session ID for Claude Code CLI continuity |
 | response_level | int | No | 1 | Response verbosity (0-3) |
 | total_input_tokens | bigint | No | 0 | Cumulative input tokens |
 | total_output_tokens | bigint | No | 0 | Cumulative output tokens |

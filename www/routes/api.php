@@ -21,6 +21,11 @@ Route::prefix('claude')->group(function () {
     Route::get('openai-key/check', [TranscriptionController::class, 'checkOpenAiKey']);
     Route::post('openai-key', [TranscriptionController::class, 'setOpenAiKey']);
     Route::delete('openai-key', [TranscriptionController::class, 'deleteOpenAiKey']);
+
+    // Anthropic API key for Claude Code CLI
+    Route::get('anthropic-key/check', [TranscriptionController::class, 'checkAnthropicKey']);
+    Route::post('anthropic-key', [TranscriptionController::class, 'setAnthropicKey']);
+    Route::delete('anthropic-key', [TranscriptionController::class, 'deleteAnthropicKey']);
 });
 
 /*
