@@ -229,6 +229,14 @@
                     </div>
                 </div>
 
+                <!-- Credentials -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.credentials') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.credentials' ? 'active' : '' }}">
+                        🔑 Credentials
+                    </a>
+                </div>
+
             </div>
 
             <!-- Content Area -->
@@ -457,6 +465,15 @@
                         @endforeach
                     @endif
                 </div>
+            </div>
+
+            <!-- Credentials -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.credentials') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.credentials' ? 'active' : '' }}">
+                    🔑 Credentials
+                </a>
             </div>
 
             <!-- Footer with Back to Chat -->

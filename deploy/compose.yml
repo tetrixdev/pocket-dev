@@ -1,5 +1,5 @@
 services:
-  # Production nginx reverse proxy with security
+  # Nginx reverse proxy
   pocket-dev-proxy:
     image: ghcr.io/tetrixdev/pocket-dev-proxy:${IMAGE_TAG:-latest}
     container_name: pocket-dev-proxy
@@ -7,9 +7,8 @@ services:
     ports:
       - "${NGINX_PORT:-80}:80"
     environment:
-      - BASIC_AUTH_USER=${BASIC_AUTH_USER}
-      - BASIC_AUTH_PASS=${BASIC_AUTH_PASS}
-      - IP_WHITELIST=${IP_WHITELIST:-}
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
+      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
     depends_on:
       - pocket-dev-nginx
     networks:
@@ -26,11 +25,6 @@ services:
     container_name: pocket-dev-php
     restart: unless-stopped
     working_dir: /var/www
-    environment:
-      - GIT_TOKEN=${GIT_TOKEN:-}
-      - GIT_USER_NAME=${GIT_USER_NAME:-}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
-      - GH_TOKEN=${GIT_TOKEN:-}
     volumes:
       - .env:/var/www/.env
       - user-data:/home/www-data
@@ -75,8 +69,6 @@ services:
       POSTGRES_PASSWORD: "${DB_PASSWORD}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    ports:
-      - "${DB_PORT:-5432}:5432"
     networks:
       - pocket-dev
     healthcheck:
@@ -101,6 +93,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+
+  pocket-dev-queue:
+    image: ghcr.io/tetrixdev/pocket-dev-php:${IMAGE_TAG:-latest}
+    container_name: pocket-dev-queue
+    restart: unless-stopped
+    working_dir: /var/www
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=1", "--timeout=600"]
+    volumes:
+      - .env:/var/www/.env
+      - user-data:/home/www-data
+      - workspace-data:/workspace
+    networks:
+      - pocket-dev
+    depends_on:
+      pocket-dev-redis:
+        condition: service_healthy
+      pocket-dev-postgres:
+        condition: service_healthy
 
 networks:
   pocket-dev:

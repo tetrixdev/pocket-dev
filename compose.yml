@@ -1,5 +1,5 @@
 services:
-  # Main nginx reverse proxy - handles Laravel with security
+  # Main nginx reverse proxy
   pocket-dev-proxy:
     build:
       context: .
@@ -11,9 +11,6 @@ services:
     environment:
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
       - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
-      - BASIC_AUTH_USER=${BASIC_AUTH_USER}
-      - BASIC_AUTH_PASS=${BASIC_AUTH_PASS}
-      - IP_WHITELIST=${IP_WHITELIST:-}
     volumes:
       - proxy-config-data:/etc/nginx-proxy-config
     depends_on:

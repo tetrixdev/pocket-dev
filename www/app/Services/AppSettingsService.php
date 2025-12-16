@@ -136,4 +136,109 @@ class AppSettingsService
         Log::info('Anthropic API key deleted');
         return $this->delete('anthropic_api_key');
     }
+
+    /**
+     * Get Git credentials
+     */
+    public function getGitCredentials(): array
+    {
+        return [
+            'token' => $this->get('git_token'),
+            'name' => $this->get('git_user_name'),
+            'email' => $this->get('git_user_email'),
+        ];
+    }
+
+    /**
+     * Set Git credentials and configure git
+     */
+    public function setGitCredentials(string $token, string $name, string $email): void
+    {
+        $this->set('git_token', $token);
+        $this->set('git_user_name', $name);
+        $this->set('git_user_email', $email);
+
+        // Write to git configuration files
+        $this->writeGitConfig($token, $name, $email);
+
+        Log::info('Git credentials updated');
+    }
+
+    /**
+     * Check if Git credentials are configured
+     */
+    public function hasGitCredentials(): bool
+    {
+        $creds = $this->getGitCredentials();
+        return !empty($creds['token']) && !empty($creds['name']) && !empty($creds['email']);
+    }
+
+    /**
+     * Delete Git credentials
+     */
+    public function deleteGitCredentials(): void
+    {
+        $this->delete('git_token');
+        $this->delete('git_user_name');
+        $this->delete('git_user_email');
+
+        // Remove git configuration
+        $home = getenv('HOME') ?: '/home/appuser';
+        @unlink($home . '/.git-credentials');
+
+        Log::info('Git credentials deleted');
+    }
+
+    /**
+     * Write git configuration files
+     */
+    protected function writeGitConfig(string $token, string $name, string $email): void
+    {
+        $home = getenv('HOME') ?: '/home/appuser';
+
+        // Configure git user
+        exec("git config --global user.name " . escapeshellarg($name) . " 2>&1");
+        exec("git config --global user.email " . escapeshellarg($email) . " 2>&1");
+        exec("git config --global credential.helper store 2>&1");
+
+        // Write credentials file
+        $credentialsContent = "https://token:{$token}@github.com\n";
+        $credentialsPath = $home . '/.git-credentials';
+        file_put_contents($credentialsPath, $credentialsContent);
+        chmod($credentialsPath, 0600);
+    }
+
+    /**
+     * Check if setup wizard has been completed
+     */
+    public function isSetupComplete(): bool
+    {
+        return (bool) $this->get('setup_complete', false);
+    }
+
+    /**
+     * Mark setup wizard as complete
+     */
+    public function markSetupComplete(): void
+    {
+        $this->set('setup_complete', true);
+    }
+
+    /**
+     * Check if any AI provider is configured
+     */
+    public function hasAnyAiProvider(): bool
+    {
+        return $this->hasAnthropicApiKey() || $this->hasOpenAiApiKey() || $this->isClaudeCodeAuthenticated();
+    }
+
+    /**
+     * Check if Claude Code CLI is authenticated
+     */
+    public function isClaudeCodeAuthenticated(): bool
+    {
+        $home = getenv('HOME') ?: '/home/appuser';
+        $credentialsFile = $home . '/.claude/.credentials.json';
+        return file_exists($credentialsFile);
+    }
 }
