@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Set HOME for Claude Code CLI and other tools that expect a writable home directory
+# www-data is in group 1000 (appgroup) which owns /home/appuser with 775 permissions
+export HOME=/home/appuser
+
 # Ensure Claude Code CLI config directory exists
 mkdir -p "$HOME/.claude" 2>/dev/null || true
 
