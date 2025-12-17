@@ -50,7 +50,7 @@ class CredentialsController extends Controller
             return redirect()->back()->with('success', 'API keys saved successfully');
         } catch (\Exception $e) {
             Log::error('Failed to save API keys', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to save API keys: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to save API keys. Please check your input and try again.');
         }
     }
 
@@ -69,7 +69,7 @@ class CredentialsController extends Controller
             return redirect()->back()->with('success', ucfirst($provider) . ' API key deleted');
         } catch (\Exception $e) {
             Log::error("Failed to delete {$provider} API key", ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to delete API key: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to delete API key. Please try again.');
         }
     }
 
@@ -94,7 +94,7 @@ class CredentialsController extends Controller
             return redirect()->back()->with('success', 'Git credentials saved successfully');
         } catch (\Exception $e) {
             Log::error('Failed to save Git credentials', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to save Git credentials: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to save Git credentials. Please check your input and try again.');
         }
     }
 
@@ -108,7 +108,7 @@ class CredentialsController extends Controller
             return redirect()->back()->with('success', 'Git credentials deleted');
         } catch (\Exception $e) {
             Log::error('Failed to delete Git credentials', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to delete Git credentials: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Failed to delete Git credentials. Please try again.');
         }
     }
 
@@ -168,8 +168,8 @@ class CredentialsController extends Controller
         } catch (\Exception $e) {
             Log::error('Setup wizard failed', ['error' => $e->getMessage()]);
             return redirect()->back()
-                ->withInput()
-                ->with('error', 'Setup failed: ' . $e->getMessage());
+                ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'git_token']))
+                ->with('error', 'Setup failed. Please check your input and try again.');
         }
     }
 

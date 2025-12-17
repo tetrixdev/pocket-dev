@@ -6,6 +6,15 @@ echo "  PocketDev Setup"
 echo "========================================"
 echo ""
 
+# Cross-platform sed -i (works on both GNU and BSD/macOS)
+sedi() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
 # Check if .env already exists
 if [ -f ".env" ]; then
     read -p ".env file already exists. Overwrite? [y/N]: " overwrite
@@ -21,19 +30,26 @@ echo "Created .env from template"
 
 # Generate APP_KEY
 APP_KEY="base64:$(openssl rand -base64 32)"
-sed -i "s/APP_KEY=/APP_KEY=$APP_KEY/" .env
+sedi "s/APP_KEY=/APP_KEY=$APP_KEY/" .env
 echo "Generated APP_KEY"
 
 # Generate DB_PASSWORD
 DB_PASSWORD=$(openssl rand -hex 16)
-sed -i "s/DB_PASSWORD=/DB_PASSWORD=$DB_PASSWORD/" .env
+sedi "s/DB_PASSWORD=/DB_PASSWORD=$DB_PASSWORD/" .env
 echo "Generated DB_PASSWORD"
 
 # Ask for NGINX_PORT
 echo ""
 read -p "HTTP port for PocketDev [80]: " NGINX_PORT
 NGINX_PORT=${NGINX_PORT:-80}
-sed -i "s/NGINX_PORT=80/NGINX_PORT=$NGINX_PORT/" .env
+
+# Validate port
+if ! [[ "$NGINX_PORT" =~ ^[0-9]+$ ]] || [ "$NGINX_PORT" -lt 1 ] || [ "$NGINX_PORT" -gt 65535 ]; then
+    echo "Invalid port number. Using default 80."
+    NGINX_PORT=80
+fi
+
+sedi "s/NGINX_PORT=80/NGINX_PORT=$NGINX_PORT/" .env
 echo "Set NGINX_PORT=$NGINX_PORT"
 
 echo ""
@@ -57,3 +73,6 @@ if [[ ! "$start_now" =~ ^[Nn]$ ]]; then
     echo "PocketDev is starting! Open http://localhost:$NGINX_PORT"
     echo "First startup may take a few minutes to pull images."
 fi
+
+# Clean up setup script (no longer needed)
+rm -f setup.sh

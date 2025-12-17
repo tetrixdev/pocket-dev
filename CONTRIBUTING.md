@@ -18,7 +18,7 @@ docker compose up -d
 
 The root `compose.yml` is configured for development with:
 - Source code mounted from `./www`
-- Vite dev server on port 5173
+- Vite dev server on port 5173 (hot reload)
 - Docker socket access for dogfooding
 
 ## Directory Structure
@@ -57,20 +57,11 @@ After changing Dockerfiles or entrypoints:
 # Quick rebuild
 docker compose up -d --build
 
-# Full rebuild (clears volumes)
-docker compose down -v && docker compose up -d --build
-```
+# Clean rebuild (no cache)
+docker compose build --no-cache && docker compose up -d
 
-### Frontend Changes
-
-After changing JS, CSS, or Blade templates with Alpine.js:
-
-```bash
-# Rebuild assets
-docker compose exec pocket-dev-php npm run build
-
-# Or run dev server for hot reload
-docker compose exec pocket-dev-php npm run dev
+# Full rebuild (clears volumes - WARNING: loses data)
+docker compose down -v && docker compose build --no-cache && docker compose up -d
 ```
 
 ### Viewing Logs
@@ -110,14 +101,8 @@ docker run --rm -d \
 
 - PHP: Follow PSR-12 (but don't run automated formatters)
 - Use public properties over getter/setter methods
-- Use Laravel anonymous components (`<x-*>`) for UI
+- Use Blade components (`<x-*>`) for reusable UI
 - Keep it simple - avoid over-engineering
-
-## Testing
-
-```bash
-docker compose exec pocket-dev-php php artisan test
-```
 
 ## Pull Request Guidelines
 
@@ -126,8 +111,22 @@ docker compose exec pocket-dev-php php artisan test
 3. Update documentation if needed
 4. Use conventional commit messages
 
-## Release Process
+## Troubleshooting
 
-1. Create a release on GitHub (e.g., `v1.0.0`)
-2. GitHub Actions builds and pushes Docker images
-3. Users can update via `docker compose pull && docker compose up -d`
+**Container won't start?**
+```bash
+docker compose logs -f
+```
+
+**Database issues?**
+```bash
+docker compose exec pocket-dev-php php artisan migrate:fresh
+```
+
+**Need a clean restart?**
+```bash
+docker compose down -v && docker compose up -d
+```
+
+**Permission issues?**
+Check that USER_ID and GROUP_ID in `.env` match your host user (`id -u` and `id -g`).

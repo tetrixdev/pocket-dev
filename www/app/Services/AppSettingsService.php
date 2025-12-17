@@ -191,21 +191,47 @@ class AppSettingsService
 
     /**
      * Write git configuration files
+     *
+     * @throws \RuntimeException if git commands fail
      */
     protected function writeGitConfig(string $token, string $name, string $email): void
     {
         $home = getenv('HOME') ?: '/home/appuser';
 
         // Configure git user
-        exec("git config --global user.name " . escapeshellarg($name) . " 2>&1");
-        exec("git config --global user.email " . escapeshellarg($email) . " 2>&1");
-        exec("git config --global credential.helper store 2>&1");
+        $output = [];
+        $returnCode = 0;
+
+        exec("git config --global user.name " . escapeshellarg($name) . " 2>&1", $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::error('Failed to set git user.name', ['output' => implode("\n", $output)]);
+            throw new \RuntimeException('Failed to configure git user name');
+        }
+
+        exec("git config --global user.email " . escapeshellarg($email) . " 2>&1", $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::error('Failed to set git user.email', ['output' => implode("\n", $output)]);
+            throw new \RuntimeException('Failed to configure git user email');
+        }
+
+        exec("git config --global credential.helper store 2>&1", $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::error('Failed to set git credential.helper', ['output' => implode("\n", $output)]);
+            throw new \RuntimeException('Failed to configure git credential helper');
+        }
 
         // Write credentials file
         $credentialsContent = "https://token:{$token}@github.com\n";
         $credentialsPath = $home . '/.git-credentials';
-        file_put_contents($credentialsPath, $credentialsContent);
-        chmod($credentialsPath, 0600);
+
+        if (file_put_contents($credentialsPath, $credentialsContent) === false) {
+            Log::error('Failed to write git credentials file', ['path' => $credentialsPath]);
+            throw new \RuntimeException('Failed to write git credentials file');
+        }
+
+        if (!chmod($credentialsPath, 0600)) {
+            Log::warning('Failed to set permissions on git credentials file', ['path' => $credentialsPath]);
+        }
     }
 
     /**

@@ -6,6 +6,24 @@ echo "  PocketDev Setup (Development)"
 echo "========================================"
 echo ""
 
+# Cross-platform sed -i (works on both GNU and BSD/macOS)
+sedi() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        sed -i '' "$@"
+    else
+        sed -i "$@"
+    fi
+}
+
+# Cross-platform stat for group ID
+get_gid() {
+    if stat -c '%g' "$1" >/dev/null 2>&1; then
+        stat -c '%g' "$1"
+    else
+        stat -f '%g' "$1" 2>/dev/null
+    fi
+}
+
 # Check if .env already exists
 if [ -f ".env" ]; then
     read -p ".env file already exists. Overwrite? [y/N]: " overwrite
@@ -22,15 +40,15 @@ echo "Created .env from template"
 # Detect USER_ID and GROUP_ID
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
-sed -i "s/USER_ID=1000/USER_ID=$USER_ID/" .env
-sed -i "s/GROUP_ID=1000/GROUP_ID=$GROUP_ID/" .env
+sedi "s/USER_ID=1000/USER_ID=$USER_ID/" .env
+sedi "s/GROUP_ID=1000/GROUP_ID=$GROUP_ID/" .env
 echo "Detected USER_ID=$USER_ID, GROUP_ID=$GROUP_ID"
 
 # Detect DOCKER_GID
 if [ -S /var/run/docker.sock ]; then
-    DOCKER_GID=$(stat -c '%g' /var/run/docker.sock 2>/dev/null)
+    DOCKER_GID=$(get_gid /var/run/docker.sock)
     if [ -n "$DOCKER_GID" ]; then
-        sed -i "s/# DOCKER_GID=/DOCKER_GID=$DOCKER_GID/" .env
+        sedi "s/# DOCKER_GID=/DOCKER_GID=$DOCKER_GID/" .env
         echo "Detected DOCKER_GID=$DOCKER_GID"
     fi
 else
@@ -39,19 +57,26 @@ fi
 
 # Generate APP_KEY
 APP_KEY="base64:$(openssl rand -base64 32)"
-sed -i "s/APP_KEY=/APP_KEY=$APP_KEY/" .env
+sedi "s/APP_KEY=/APP_KEY=$APP_KEY/" .env
 echo "Generated APP_KEY"
 
 # Generate DB_PASSWORD
 DB_PASSWORD=$(openssl rand -hex 16)
-sed -i "s/DB_PASSWORD=/DB_PASSWORD=$DB_PASSWORD/" .env
+sedi "s/DB_PASSWORD=/DB_PASSWORD=$DB_PASSWORD/" .env
 echo "Generated DB_PASSWORD"
 
 # Ask for NGINX_PORT
 echo ""
 read -p "HTTP port for PocketDev [80]: " NGINX_PORT
 NGINX_PORT=${NGINX_PORT:-80}
-sed -i "s/NGINX_PORT=80/NGINX_PORT=$NGINX_PORT/" .env
+
+# Validate port
+if ! [[ "$NGINX_PORT" =~ ^[0-9]+$ ]] || [ "$NGINX_PORT" -lt 1 ] || [ "$NGINX_PORT" -gt 65535 ]; then
+    echo "Invalid port number. Using default 80."
+    NGINX_PORT=80
+fi
+
+sedi "s/NGINX_PORT=80/NGINX_PORT=$NGINX_PORT/" .env
 echo "Set NGINX_PORT=$NGINX_PORT"
 
 echo ""
