@@ -40,20 +40,29 @@ else
     DEFAULT_SERVER=" default_server"  # Main server IS default_server
 fi
 
-# Initialize proxy config from default template if it doesn't exist
-if [ ! -f "/etc/nginx-proxy-config/nginx.conf.template" ]; then
-    echo "Initializing nginx config from default template..."
-    cp /etc/nginx/nginx.conf.template /etc/nginx-proxy-config/nginx.conf.template
-    echo "Default template copied to proxy config volume"
+# Determine template source:
+# - Use volume-mounted custom template if available
+# - Otherwise use the built-in default template
+if [ -d "/etc/nginx-proxy-config" ] && [ -w "/etc/nginx-proxy-config" ]; then
+    # Volume is mounted and writable - use it for customization
+    if [ ! -f "/etc/nginx-proxy-config/nginx.conf.template" ]; then
+        echo "Initializing nginx config from default template..."
+        cp /etc/nginx/nginx.conf.template /etc/nginx-proxy-config/nginx.conf.template
+        echo "Default template copied to proxy config volume"
+    fi
+    TEMPLATE_FILE="/etc/nginx-proxy-config/nginx.conf.template"
+else
+    # No volume mounted - use built-in template directly
+    TEMPLATE_FILE="/etc/nginx/nginx.conf.template"
 fi
 
-# Process nginx configuration template from proxy config volume
+# Process nginx configuration template
 export AUTH_ENABLED
 export IP_ALLOWED
 export DOMAIN_NAME
 export DEFAULT_SERVER
 
-envsubst '${AUTH_ENABLED} ${IP_ALLOWED} ${DOMAIN_NAME} ${DEFAULT_SERVER}' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst '${AUTH_ENABLED} ${IP_ALLOWED} ${DOMAIN_NAME} ${DEFAULT_SERVER}' < "$TEMPLATE_FILE" > /etc/nginx/nginx.conf
 
 echo "Proxy configuration complete"
 
