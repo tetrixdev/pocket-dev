@@ -40,29 +40,29 @@ echo "Created .env from template"
 # Detect USER_ID and GROUP_ID
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
-sedi "s/USER_ID=1000/USER_ID=$USER_ID/" .env
-sedi "s/GROUP_ID=1000/GROUP_ID=$GROUP_ID/" .env
+sedi "s|USER_ID=1000|USER_ID=$USER_ID|" .env
+sedi "s|GROUP_ID=1000|GROUP_ID=$GROUP_ID|" .env
 echo "Detected USER_ID=$USER_ID, GROUP_ID=$GROUP_ID"
 
 # Detect DOCKER_GID
 if [ -S /var/run/docker.sock ]; then
     DOCKER_GID=$(get_gid /var/run/docker.sock)
     if [ -n "$DOCKER_GID" ]; then
-        sedi "s/# DOCKER_GID=/DOCKER_GID=$DOCKER_GID/" .env
+        sedi "s|# DOCKER_GID=|DOCKER_GID=$DOCKER_GID|" .env
         echo "Detected DOCKER_GID=$DOCKER_GID"
     fi
 else
     echo "Warning: Docker socket not found - DOCKER_GID not set"
 fi
 
-# Generate APP_KEY
+# Generate APP_KEY (use | delimiter since base64 can contain /)
 APP_KEY="base64:$(openssl rand -base64 32)"
-sedi "s/APP_KEY=/APP_KEY=$APP_KEY/" .env
+sedi "s|APP_KEY=|APP_KEY=$APP_KEY|" .env
 echo "Generated APP_KEY"
 
 # Generate DB_PASSWORD
 DB_PASSWORD=$(openssl rand -hex 16)
-sedi "s/DB_PASSWORD=/DB_PASSWORD=$DB_PASSWORD/" .env
+sedi "s|DB_PASSWORD=|DB_PASSWORD=$DB_PASSWORD|" .env
 echo "Generated DB_PASSWORD"
 
 # Ask for NGINX_PORT
@@ -76,7 +76,7 @@ if ! [[ "$NGINX_PORT" =~ ^[0-9]+$ ]] || [ "$NGINX_PORT" -lt 1 ] || [ "$NGINX_POR
     NGINX_PORT=80
 fi
 
-sedi "s/NGINX_PORT=80/NGINX_PORT=$NGINX_PORT/" .env
+sedi "s|NGINX_PORT=80|NGINX_PORT=$NGINX_PORT|" .env
 echo "Set NGINX_PORT=$NGINX_PORT"
 
 echo ""

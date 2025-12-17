@@ -28,14 +28,14 @@ fi
 cp .env.example .env
 echo "Created .env from template"
 
-# Generate APP_KEY
+# Generate APP_KEY (use | delimiter since base64 can contain /)
 APP_KEY="base64:$(openssl rand -base64 32)"
-sedi "s/APP_KEY=/APP_KEY=$APP_KEY/" .env
+sedi "s|APP_KEY=|APP_KEY=$APP_KEY|" .env
 echo "Generated APP_KEY"
 
 # Generate DB_PASSWORD
 DB_PASSWORD=$(openssl rand -hex 16)
-sedi "s/DB_PASSWORD=/DB_PASSWORD=$DB_PASSWORD/" .env
+sedi "s|DB_PASSWORD=|DB_PASSWORD=$DB_PASSWORD|" .env
 echo "Generated DB_PASSWORD"
 
 # Ask for NGINX_PORT
@@ -49,7 +49,7 @@ if ! [[ "$NGINX_PORT" =~ ^[0-9]+$ ]] || [ "$NGINX_PORT" -lt 1 ] || [ "$NGINX_POR
     NGINX_PORT=80
 fi
 
-sedi "s/NGINX_PORT=80/NGINX_PORT=$NGINX_PORT/" .env
+sedi "s|NGINX_PORT=80|NGINX_PORT=$NGINX_PORT|" .env
 echo "Set NGINX_PORT=$NGINX_PORT"
 
 echo ""
