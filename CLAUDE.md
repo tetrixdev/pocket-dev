@@ -57,6 +57,32 @@ docker restart pocket-dev-nginx
 docker logs pocket-dev-php --tail 50
 ```
 
+## Traefik Reverse Proxy
+
+PocketDev uses Traefik for routing. It auto-discovers containers via Docker labels.
+
+### Hosting a Project via Traefik
+```yaml
+# In project's docker-compose.yml
+networks:
+  pocket-dev:
+    external: true
+
+services:
+  app:
+    networks:
+      - pocket-dev
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.myproject.rule=Host(`myproject.localhost`)"
+      - "traefik.http.services.myproject.loadbalancer.server.port=80"
+```
+
+### Key Points
+- Containers must join `pocket-dev` network (external: true)
+- No config reload needed - Traefik watches Docker socket
+- Dashboard: http://localhost:8080 (dev only)
+
 ## Critical Pitfalls
 
 1. **File permissions**: PHP runs as `www-data`. Files in `/var/www/.claude/` must be owned by `www-data:www-data`.

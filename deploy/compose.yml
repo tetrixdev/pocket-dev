@@ -1,24 +1,32 @@
 services:
-  # Nginx reverse proxy
-  pocket-dev-proxy:
-    image: ghcr.io/tetrixdev/pocket-dev-proxy:${IMAGE_TAG:-latest}
-    container_name: pocket-dev-proxy
+  # Traefik reverse proxy - auto-discovers containers via Docker labels
+  traefik:
+    image: traefik:v3.3
+    container_name: pocket-dev-traefik
     restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=pocket-dev"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL:-}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
     ports:
       - "${NGINX_PORT:-80}:80"
-    environment:
-      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
-      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
-    depends_on:
-      - pocket-dev-nginx
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
     networks:
       - pocket-dev
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      test: ["CMD", "traefik", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 10s
 
   pocket-dev-php:
     image: ghcr.io/tetrixdev/pocket-dev-php:${IMAGE_TAG:-latest}
@@ -52,6 +60,19 @@ services:
     depends_on:
       pocket-dev-php:
         condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      # HTTP routing
+      - "traefik.http.routers.pocketdev.rule=Host(`${DOMAIN_NAME:-localhost}`)"
+      - "traefik.http.routers.pocketdev.entrypoints=web"
+      - "traefik.http.services.pocketdev.loadbalancer.server.port=80"
+      # HTTPS routing (requires LETSENCRYPT_EMAIL to be set)
+      - "traefik.http.routers.pocketdev-secure.rule=Host(`${DOMAIN_NAME:-localhost}`)"
+      - "traefik.http.routers.pocketdev-secure.entrypoints=websecure"
+      - "traefik.http.routers.pocketdev-secure.tls.certresolver=letsencrypt"
+      # Redirect HTTP to HTTPS
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.pocketdev.middlewares=redirect-to-https"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
       interval: 10s
@@ -129,4 +150,7 @@ volumes:
     driver: local
   user-data:
     name: pocket-dev-user
+    driver: local
+  traefik-certs:
+    name: pocket-dev-traefik-certs
     driver: local
