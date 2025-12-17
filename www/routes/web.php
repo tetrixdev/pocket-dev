@@ -2,8 +2,14 @@
 
 use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\ConfigController;
+use App\Http\Controllers\CredentialsController;
 use App\Http\Controllers\SystemPromptController;
 use Illuminate\Support\Facades\Route;
+
+// Setup wizard (first-run)
+Route::get("/setup", [CredentialsController::class, "showSetup"])->name("setup");
+Route::post("/setup", [CredentialsController::class, "processSetup"])->name("setup.process");
+Route::post("/setup/skip", [CredentialsController::class, "skipSetup"])->name("setup.skip");
 
 // Claude authentication routes - MUST be before wildcard routes
 Route::get("/claude/auth", [ClaudeAuthController::class, "index"])->name("claude.auth");
@@ -61,6 +67,13 @@ Route::delete("/config/commands/{filename}", [ConfigController::class, "deleteCo
 // Hooks editor
 Route::get("/config/hooks", [ConfigController::class, "showHooks"])->name("config.hooks");
 Route::post("/config/hooks", [ConfigController::class, "saveHooks"])->name("config.hooks.save");
+
+// Credentials management
+Route::get("/config/credentials", [CredentialsController::class, "show"])->name("config.credentials");
+Route::post("/config/credentials/api-keys", [CredentialsController::class, "saveApiKeys"])->name("config.credentials.api-keys");
+Route::delete("/config/credentials/api-keys/{provider}", [CredentialsController::class, "deleteApiKey"])->name("config.credentials.api-keys.delete");
+Route::post("/config/credentials/git", [CredentialsController::class, "saveGitCredentials"])->name("config.credentials.git");
+Route::delete("/config/credentials/git", [CredentialsController::class, "deleteGitCredentials"])->name("config.credentials.git.delete");
 
 // Skills management
 Route::get("/config/skills", [ConfigController::class, "listSkills"])->name("config.skills");

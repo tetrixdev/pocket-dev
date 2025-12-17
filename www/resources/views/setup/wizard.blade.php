@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Welcome to PocketDev</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-lg" x-data="setupWizard()">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold mb-2">Welcome to PocketDev</h1>
+            <p class="text-gray-400">Let's get you set up with an AI provider</p>
+        </div>
+
+        @if(session('error'))
+            <div class="mb-6 p-4 bg-red-900 border-l-4 border-red-500 text-red-200 rounded">
+                {{ session('error') }}
+            </div>
+        @endif
+
+        <form method="POST" action="{{ route('setup.process') }}" class="space-y-6">
+            @csrf
+
+            {{-- Provider Selection --}}
+            <div class="bg-gray-800 rounded-lg p-6">
+                <h2 class="text-lg font-semibold mb-4">Choose an AI Provider</h2>
+                <p class="text-sm text-gray-400 mb-4">Select at least one provider to get started.</p>
+
+                <div class="space-y-3">
+                    {{-- Claude Code --}}
+                    <label class="flex items-start gap-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
+                           :class="{ 'ring-2 ring-blue-500': provider === 'claude_code' }">
+                        <input type="radio" name="provider" value="claude_code" x-model="provider" class="mt-1">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium">Claude Code (CLI)</span>
+                                <span class="text-xs bg-blue-600 px-2 py-0.5 rounded">Recommended</span>
+                            </div>
+                            <p class="text-sm text-gray-400 mt-1">Uses your Claude Pro/Team subscription. No API key needed.</p>
+                            @if($hasClaudeCode)
+                                <p class="text-sm text-green-400 mt-1">Already authenticated</p>
+                            @else
+                                <p class="text-sm text-yellow-400 mt-1">Requires CLI authentication after setup</p>
+                            @endif
+                        </div>
+                    </label>
+
+                    {{-- Anthropic API --}}
+                    <label class="flex items-start gap-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
+                           :class="{ 'ring-2 ring-blue-500': provider === 'anthropic' }">
+                        <input type="radio" name="provider" value="anthropic" x-model="provider" class="mt-1">
+                        <div class="flex-1">
+                            <span class="font-medium">Anthropic API</span>
+                            <p class="text-sm text-gray-400 mt-1">Direct API access. Pay-per-use pricing.</p>
+                            @if($hasAnthropicKey)
+                                <p class="text-sm text-green-400 mt-1">Already configured</p>
+                            @endif
+                        </div>
+                    </label>
+
+                    {{-- OpenAI API --}}
+                    <label class="flex items-start gap-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
+                           :class="{ 'ring-2 ring-blue-500': provider === 'openai' }">
+                        <input type="radio" name="provider" value="openai" x-model="provider" class="mt-1">
+                        <div class="flex-1">
+                            <span class="font-medium">OpenAI API</span>
+                            <p class="text-sm text-gray-400 mt-1">GPT models. Pay-per-use pricing.</p>
+                            @if($hasOpenAiKey)
+                                <p class="text-sm text-green-400 mt-1">Already configured</p>
+                            @endif
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            {{-- API Key Input (conditional) --}}
+            <div x-show="provider === 'anthropic'" x-cloak class="bg-gray-800 rounded-lg p-6">
+                <label class="block text-sm font-medium mb-2">Anthropic API Key</label>
+                <input
+                    type="password"
+                    name="anthropic_api_key"
+                    placeholder="sk-ant-..."
+                    class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-3 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                    :required="provider === 'anthropic'"
+                >
+                <p class="text-xs text-gray-500 mt-2">
+                    Get your key from <a href="https://console.anthropic.com/settings/keys" target="_blank" class="text-blue-400 hover:underline">console.anthropic.com</a>
+                </p>
+            </div>
+
+            <div x-show="provider === 'openai'" x-cloak class="bg-gray-800 rounded-lg p-6">
+                <label class="block text-sm font-medium mb-2">OpenAI API Key</label>
+                <input
+                    type="password"
+                    name="openai_api_key"
+                    placeholder="sk-..."
+                    class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-3 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                    :required="provider === 'openai'"
+                >
+                <p class="text-xs text-gray-500 mt-2">
+                    Get your key from <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-400 hover:underline">platform.openai.com</a>
+                </p>
+            </div>
+
+            {{-- Git Credentials (optional) --}}
+            <div class="bg-gray-800 rounded-lg p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-semibold">Git Credentials</h2>
+                    <span class="text-sm text-gray-500">Optional</span>
+                </div>
+                <p class="text-sm text-gray-400 mb-4">Required for git operations. You can configure this later.</p>
+
+                <div x-show="showGitCredentials" class="space-y-3">
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">GitHub Token</label>
+                        <input
+                            type="password"
+                            name="git_token"
+                            placeholder="ghp_..."
+                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Name</label>
+                        <input
+                            type="text"
+                            name="git_user_name"
+                            placeholder="Your Name"
+                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                        >
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-400 mb-1">Email</label>
+                        <input
+                            type="email"
+                            name="git_user_email"
+                            placeholder="you@example.com"
+                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                        >
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    @click="showGitCredentials = !showGitCredentials"
+                    class="text-blue-400 hover:text-blue-300 text-sm mt-2"
+                    x-text="showGitCredentials ? 'Hide Git credentials' : 'Add Git credentials'"
+                ></button>
+            </div>
+
+            {{-- Actions --}}
+            <div class="flex flex-col gap-3">
+                <button
+                    type="submit"
+                    class="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                    :disabled="!provider"
+                    :class="{ 'opacity-50 cursor-not-allowed': !provider }"
+                >
+                    Continue
+                </button>
+            </div>
+        </form>
+
+        <form method="POST" action="{{ route('setup.skip') }}" class="mt-4 text-center">
+            @csrf
+            <button type="submit" class="text-gray-500 hover:text-gray-400 text-sm">
+                Skip for now
+            </button>
+        </form>
+    </div>
+
+    <script>
+        function setupWizard() {
+            return {
+                provider: '{{ $hasClaudeCode ? "claude_code" : ($hasAnthropicKey ? "anthropic" : ($hasOpenAiKey ? "openai" : "claude_code")) }}',
+                showGitCredentials: false
+            }
+        }
+    </script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+    </style>
+</body>
+</html>
