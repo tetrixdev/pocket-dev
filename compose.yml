@@ -1,29 +1,35 @@
 services:
-  # Main nginx reverse proxy
-  pocket-dev-proxy:
-    build:
-      context: .
-      dockerfile: docker-proxy/shared/Dockerfile
-    container_name: pocket-dev-proxy
+  # Traefik reverse proxy - auto-discovers containers via Docker labels
+  traefik:
+    image: traefik:v3.3
+    container_name: pocket-dev-traefik
     restart: unless-stopped
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=pocket-dev"
+      - "--entrypoints.web.address=:80"
+      # Uncomment for HTTPS with Let's Encrypt:
+      # - "--entrypoints.websecure.address=:443"
+      # - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL:-}"
+      # - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
     ports:
       - "${NGINX_PORT:-80}:80"
-    environment:
-      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
-      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+      # - "443:443"  # Uncomment for HTTPS
+      - "8080:8080"  # Traefik dashboard (dev only)
     volumes:
-      - proxy-config-data:/etc/nginx-proxy-config
-    depends_on:
-      - pocket-dev-nginx
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
     networks:
       - pocket-dev
-      - pocket-dev-public
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+      test: ["CMD", "traefik", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 10s
 
   pocket-dev-php:
     build:
@@ -54,7 +60,6 @@ services:
       - ./docker-laravel/shared/php/local.ini:/usr/local/etc/php/conf.d/local.ini
       - ./docker-laravel/local/php/entrypoint.sh:/entrypoint.sh
       - /var/run/docker.sock:/var/run/docker.sock
-      - proxy-config-data:/etc/nginx-proxy-config
       - user-data:/home/appuser
       - workspace-data:/workspace
       - pocketdev-storage:/var/www/storage/pocketdev
@@ -85,6 +90,15 @@ services:
     depends_on:
       pocket-dev-php:
         condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pocketdev.rule=Host(`${DOMAIN_NAME:-localhost}`)"
+      - "traefik.http.routers.pocketdev.entrypoints=web"
+      - "traefik.http.services.pocketdev.loadbalancer.server.port=80"
+      # Uncomment for HTTPS:
+      # - "traefik.http.routers.pocketdev-secure.rule=Host(`${DOMAIN_NAME:-localhost}`)"
+      # - "traefik.http.routers.pocketdev-secure.entrypoints=websecure"
+      # - "traefik.http.routers.pocketdev-secure.tls.certresolver=letsencrypt"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
       interval: 10s
@@ -171,9 +185,6 @@ networks:
   pocket-dev:
     name: pocket-dev
     driver: bridge
-  pocket-dev-public:
-    name: pocket-dev-public
-    driver: bridge
 
 volumes:
   postgres-data:
@@ -188,8 +199,8 @@ volumes:
   user-data:
     name: pocket-dev-user
     driver: local
-  proxy-config-data:
-    name: pocket-dev-proxy-config
+  traefik-certs:
+    name: pocket-dev-traefik-certs
     driver: local
   pocketdev-storage:
     name: pocket-dev-storage

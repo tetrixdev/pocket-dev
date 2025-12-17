@@ -63,25 +63,12 @@ jobs:
             --push \
             .
 
-      # Build and push Proxy image
-      - name: Build and push pocket-dev-proxy image
-        run: |
-          docker buildx build \
-            --file docker-proxy/shared/Dockerfile \
-            --progress plain \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache,mode=max \
-            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }} \
-            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:latest \
-            --push \
-            .
-
       # Output image information
       - name: Image build complete
         run: |
           echo "✅ Images built and pushed:"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }}"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }}"
-          echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }}"
           echo ""
+          echo "ℹ️  Traefik is used as reverse proxy (official image, no custom build needed)"
           echo "🚀 Deploy with: cd deploy && docker-compose up -d"
