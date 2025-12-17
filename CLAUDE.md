@@ -135,6 +135,7 @@ Components live in `resources/views/components/`:
 
 ## Git Workflow
 
+- **Never commit directly to main** - always use feature branches and pull requests
 - Create feature branches for changes
 - **Do not create PRs automatically** - only when explicitly requested
 - Never commit `.env` or credential files
