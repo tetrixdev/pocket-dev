@@ -57,7 +57,7 @@ class CredentialsController extends Controller
     /**
      * Delete an API key
      */
-    public function deleteApiKey(Request $request, string $provider)
+    public function deleteApiKey(string $provider)
     {
         try {
             match ($provider) {

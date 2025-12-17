@@ -182,9 +182,17 @@ class AppSettingsService
         $this->delete('git_user_name');
         $this->delete('git_user_email');
 
-        // Remove git configuration
+        // Remove git configuration files
         $home = getenv('HOME') ?: '/home/appuser';
-        @unlink($home . '/.git-credentials');
+        $credentialsPath = $home . '/.git-credentials';
+        if (file_exists($credentialsPath) && !unlink($credentialsPath)) {
+            Log::warning('Failed to delete .git-credentials file', ['path' => $credentialsPath]);
+        }
+
+        // Unset git config settings
+        exec("git config --global --unset user.name 2>&1");
+        exec("git config --global --unset user.email 2>&1");
+        exec("git config --global --unset credential.helper 2>&1");
 
         Log::info('Git credentials deleted');
     }

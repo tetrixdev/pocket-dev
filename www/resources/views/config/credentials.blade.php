@@ -146,10 +146,12 @@
                             type="password"
                             name="git_token"
                             placeholder="ghp_..."
-                            value="{{ $hasGitCredentials ? '' : '' }}"
                             class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                            {{ $hasGitCredentials ? '' : 'required' }}
+                            required
                         >
+                        @if($hasGitCredentials)
+                        <p class="text-xs text-gray-400 mt-1">Re-enter your token to update credentials</p>
+                        @endif
                     </div>
                     <div>
                         <label class="block text-sm text-gray-400 mb-1">Name</label>
