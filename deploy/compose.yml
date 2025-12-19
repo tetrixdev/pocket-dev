@@ -9,6 +9,8 @@ services:
     environment:
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
       - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+    volumes:
+      - proxy-config-data:/etc/nginx-proxy-config
     depends_on:
       - pocket-dev-nginx
     networks:
@@ -29,6 +31,7 @@ services:
       - .env:/var/www/.env
       - user-data:/home/www-data
       - workspace-data:/workspace
+      - proxy-config-data:/etc/nginx-proxy-config
     networks:
       - pocket-dev
     depends_on:
@@ -129,4 +132,7 @@ volumes:
     driver: local
   user-data:
     name: pocket-dev-user
+    driver: local
+  proxy-config-data:
+    name: pocket-dev-proxy-config
     driver: local

@@ -52,6 +52,15 @@ fi
 sedi "s|NGINX_PORT=80|NGINX_PORT=$NGINX_PORT|" .env
 echo "Set NGINX_PORT=$NGINX_PORT"
 
+# Set APP_URL based on port (include port only if not 80)
+if [ "$NGINX_PORT" = "80" ]; then
+    APP_URL="http://localhost"
+else
+    APP_URL="http://localhost:$NGINX_PORT"
+fi
+sedi "s|APP_URL=http://localhost|APP_URL=$APP_URL|" .env
+echo "Set APP_URL=$APP_URL"
+
 echo ""
 echo "========================================"
 echo "  Setup Complete!"
