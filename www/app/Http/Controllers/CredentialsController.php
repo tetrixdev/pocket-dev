@@ -144,13 +144,19 @@ class CredentialsController extends Controller
                 'git_user_email' => 'nullable|email',
             ]);
 
-            // Save API key based on provider
-            if ($validated['provider'] === 'anthropic' && !empty($validated['anthropic_api_key'])) {
+            // Handle provider-specific setup
+            if ($validated['provider'] === 'claude_code') {
+                // Verify Claude Code authentication
+                if (!$this->settings->isClaudeCodeAuthenticated()) {
+                    return redirect()->back()
+                        ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'git_token']))
+                        ->with('error', 'Claude Code is not authenticated. Please run the command shown above in your terminal, complete the OAuth flow, then click "Verify & Continue".');
+                }
+            } elseif ($validated['provider'] === 'anthropic' && !empty($validated['anthropic_api_key'])) {
                 $this->settings->setAnthropicApiKey($validated['anthropic_api_key']);
             } elseif ($validated['provider'] === 'openai' && !empty($validated['openai_api_key'])) {
                 $this->settings->setOpenAiApiKey($validated['openai_api_key']);
             }
-            // For claude_code, authentication happens via CLI
 
             // Save Git credentials if provided
             if (!empty($validated['git_token']) && !empty($validated['git_user_name']) && !empty($validated['git_user_email'])) {
@@ -173,12 +179,4 @@ class CredentialsController extends Controller
         }
     }
 
-    /**
-     * Skip setup wizard
-     */
-    public function skipSetup()
-    {
-        $this->settings->markSetupComplete();
-        return redirect('/')->with('info', 'Setup skipped. You can configure credentials later in Settings > Credentials.');
-    }
 }
