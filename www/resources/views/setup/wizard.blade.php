@@ -41,8 +41,6 @@
                             <p class="text-sm text-gray-400 mt-1">Uses your Claude Pro/Team subscription. No API key needed.</p>
                             @if($hasClaudeCode)
                                 <p class="text-sm text-green-400 mt-1">Already authenticated</p>
-                            @else
-                                <p class="text-sm text-yellow-400 mt-1">Requires CLI authentication after setup</p>
                             @endif
                         </div>
                     </label>
@@ -74,6 +72,25 @@
                     </label>
                 </div>
             </div>
+
+            {{-- Claude Code Setup (conditional) --}}
+            @if(!$hasClaudeCode)
+            <div x-show="provider === 'claude_code'" x-cloak class="bg-gray-800 rounded-lg p-6">
+                <h3 class="text-lg font-semibold mb-3">Claude Code Setup</h3>
+                <p class="text-sm text-gray-400 mb-4">
+                    Run this command in your terminal to authenticate with your Claude Pro/Team subscription:
+                </p>
+                <div class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 select-all mb-3">
+                    docker exec -it pocket-dev-queue claude
+                </div>
+                <p class="text-sm text-gray-400 mb-2">
+                    This opens an interactive login. Complete the OAuth flow in your browser, then return here and click <strong class="text-white">Verify & Continue</strong>.
+                </p>
+                <p class="text-xs text-gray-500">
+                    If you prefer to use an API key instead, select "Anthropic API" above.
+                </p>
+            </div>
+            @endif
 
             {{-- API Key Input (conditional) --}}
             <div x-show="provider === 'anthropic'" x-cloak class="bg-gray-800 rounded-lg p-6">
@@ -157,18 +174,13 @@
                     class="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
                     :disabled="!provider"
                     :class="{ 'opacity-50 cursor-not-allowed': !provider }"
+                    x-text="provider === 'claude_code' && !{{ $hasClaudeCode ? 'true' : 'false' }} ? 'Verify & Continue' : 'Continue'"
                 >
                     Continue
                 </button>
             </div>
         </form>
 
-        <form method="POST" action="{{ route('setup.skip') }}" class="mt-4 text-center">
-            @csrf
-            <button type="submit" class="text-gray-500 hover:text-gray-400 text-sm">
-                Skip for now
-            </button>
-        </form>
     </div>
 
     <script>

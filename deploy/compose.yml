@@ -2,6 +2,7 @@ services:
   # Nginx reverse proxy
   pocket-dev-proxy:
     image: ghcr.io/tetrixdev/pocket-dev-proxy:${IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: pocket-dev-proxy
     restart: unless-stopped
     ports:
@@ -24,12 +25,13 @@ services:
 
   pocket-dev-php:
     image: ghcr.io/tetrixdev/pocket-dev-php:${IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: pocket-dev-php
     restart: unless-stopped
     working_dir: /var/www
     volumes:
       - .env:/var/www/.env
-      - user-data:/home/www-data
+      - user-data:/home/appuser
       - workspace-data:/workspace
       - proxy-config-data:/etc/nginx-proxy-config
     networks:
@@ -48,6 +50,7 @@ services:
 
   pocket-dev-nginx:
     image: ghcr.io/tetrixdev/pocket-dev-nginx:${IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: pocket-dev-nginx
     restart: unless-stopped
     networks:
@@ -99,13 +102,14 @@ services:
 
   pocket-dev-queue:
     image: ghcr.io/tetrixdev/pocket-dev-php:${IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: pocket-dev-queue
     restart: unless-stopped
     working_dir: /var/www
     command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=1", "--timeout=600"]
     volumes:
       - .env:/var/www/.env
-      - user-data:/home/www-data
+      - user-data:/home/appuser
       - workspace-data:/workspace
     networks:
       - pocket-dev
