@@ -1485,8 +1485,8 @@
                             return;
                         }
 
-                        if (audioBlob.size > 10 * 1024 * 1024) {
-                            this.showError('Recording too large. Please keep it under 10MB.');
+                        if (audioBlob.size > 25 * 1024 * 1024) {
+                            this.showError('Recording too large. Please keep it under 25MB.');
                             return;
                         }
 

@@ -28,7 +28,7 @@ class TranscriptionService
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
             ])
-            ->timeout(30) // 30 second timeout for audio processing
+            ->timeout(1800) // 30 minute timeout for longer audio recordings
             ->attach('file', file_get_contents($audioFile->getRealPath()), $audioFile->getClientOriginalName())
             ->post($this->baseUrl . '/audio/transcriptions', [
                 'model' => 'gpt-4o-transcribe',
