@@ -28,7 +28,7 @@ class TranscriptionController extends Controller
     {
         try {
             $request->validate([
-                'audio' => 'required|file|mimes:webm,wav,mp3,m4a,ogg|max:10240', // 10MB max
+                'audio' => 'required|file|mimes:webm,wav,mp3,m4a,ogg|max:25600', // 25MB max (OpenAI Whisper limit)
             ]);
 
             // Check if API key is configured
