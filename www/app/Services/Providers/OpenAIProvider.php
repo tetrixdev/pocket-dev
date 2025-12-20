@@ -21,8 +21,10 @@ class OpenAIProvider implements AIProviderInterface
 
     public function __construct(ModelRepository $models)
     {
-        $this->apiKey = config('ai.providers.openai.api_key', '');
-        $this->baseUrl = config('ai.providers.openai.base_url', 'https://api.openai.com');
+        // Use ?? instead of config default - config() returns null when env var is not set,
+        // not the default value, because the key exists in config with null value
+        $this->apiKey = config('ai.providers.openai.api_key') ?? '';
+        $this->baseUrl = config('ai.providers.openai.base_url') ?? 'https://api.openai.com';
         $this->models = $models;
     }
 
