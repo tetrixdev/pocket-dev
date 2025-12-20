@@ -67,6 +67,23 @@
             </div>
         </template>
 
+        {{-- OpenAI Compatible Reasoning Effort (shown only for OpenAI Compatible) --}}
+        <template x-if="provider === 'openai_compatible'">
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-2">Reasoning Effort</label>
+                <p class="text-xs text-gray-500 mb-2">Most local LLMs ignore this setting, but it's available for compatible servers.</p>
+                <div class="space-y-2">
+                    <template x-for="level in openaiCompatibleEffortLevels" :key="level.value">
+                        <label class="flex items-center text-gray-300 cursor-pointer">
+                            <input type="radio" x-model="openaiCompatibleReasoningEffort" :value="level.value" @change="saveDefaultSettings()" class="mr-2">
+                            <span x-text="level.name"></span>
+                            <span x-show="level.description" class="ml-2 text-xs text-gray-500" x-text="'(' + level.description + ')'"></span>
+                        </label>
+                    </template>
+                </div>
+            </div>
+        </template>
+
         {{-- Claude Code Thinking Tokens (shown only for Claude Code) --}}
         <template x-if="provider === 'claude_code'">
             <div>
