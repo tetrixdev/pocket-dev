@@ -18,6 +18,7 @@ class PocketTool extends Model
     public const SOURCE_USER = 'user';
 
     // Category constants
+    // TODO: Consider making categories configurable (database or config) instead of hardcoded
     public const CATEGORY_MEMORY = 'memory';
     public const CATEGORY_TOOLS = 'tools';
     public const CATEGORY_FILE_OPS = 'file_ops';

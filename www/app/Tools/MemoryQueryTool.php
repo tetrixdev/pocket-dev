@@ -129,8 +129,9 @@ INSTRUCTIONS;
                 $sql .= " LIMIT {$limit}";
             }
 
-            // Execute query
-            $results = DB::select($sql, $bindings);
+            // Execute query using read-only connection for security
+            // The memory_readonly user can only SELECT from memory_* tables
+            $results = DB::connection('pgsql_readonly')->select($sql, $bindings);
 
             if (empty($results)) {
                 return ToolResult::success("No results found.\n\nQuery: {$sql}");

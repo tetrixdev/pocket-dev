@@ -14,6 +14,16 @@ The Memory System provides persistent, semantically-searchable structured storag
 
 ---
 
+## Requirements
+
+- **PostgreSQL 17** with **pgvector 0.5+** (for HNSW index support)
+  - PocketDev uses `pgvector/pgvector:pg17` Docker image which includes pgvector 0.8+
+- **OpenAI API key** (or compatible embedding API) for generating embeddings
+  - Model: `text-embedding-3-small` (1536 dimensions by default)
+  - Configure via Settings UI
+
+---
+
 ## Overview
 
 The Memory System is a vector-based knowledge store that allows PocketDev's AI to persistently store, retrieve, and semantically search structured information. It combines PostgreSQL's relational database with pgvector's vector similarity search.

@@ -98,6 +98,22 @@ return [
             'sslmode' => 'prefer',
         ],
 
+        // Read-only connection for MemoryQueryTool
+        // This user can only SELECT from memory_* tables
+        'pgsql_readonly' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => env('DB_READONLY_USERNAME', 'memory_readonly'),
+            'password' => env('DB_READONLY_PASSWORD', 'readonly_password'),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),
