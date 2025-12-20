@@ -5,6 +5,9 @@ namespace App\Providers;
 use App\Contracts\AIProviderInterface;
 use App\Services\EmbeddingService;
 use App\Services\Providers\AnthropicProvider;
+use App\Services\Providers\ClaudeCodeProvider;
+use App\Services\Providers\OpenAICompatibleProvider;
+use App\Services\Providers\OpenAIProvider;
 use App\Services\SystemPromptBuilder;
 use App\Services\SystemPromptService;
 use App\Services\ToolRegistry;
@@ -67,8 +70,11 @@ class AIServiceProvider extends ServiceProvider
         // Register EmbeddingService
         $this->app->singleton(EmbeddingService::class);
 
-        // Register providers
+        // Register providers as singletons
         $this->app->singleton(AnthropicProvider::class);
+        $this->app->singleton(OpenAIProvider::class);
+        $this->app->singleton(ClaudeCodeProvider::class);
+        $this->app->singleton(OpenAICompatibleProvider::class);
 
         // Register default provider based on config
         $this->app->bind(AIProviderInterface::class, function ($app) {
@@ -76,8 +82,9 @@ class AIServiceProvider extends ServiceProvider
 
             return match ($defaultProvider) {
                 'anthropic' => $app->make(AnthropicProvider::class),
-                // Add other providers here as they're implemented
-                // 'openai' => $app->make(OpenAIProvider::class),
+                'openai' => $app->make(OpenAIProvider::class),
+                'claude_code' => $app->make(ClaudeCodeProvider::class),
+                'openai_compatible' => $app->make(OpenAICompatibleProvider::class),
                 default => $app->make(AnthropicProvider::class),
             };
         });

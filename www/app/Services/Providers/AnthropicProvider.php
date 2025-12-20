@@ -25,8 +25,8 @@ class AnthropicProvider implements AIProviderInterface
     {
         // API key from database (set via UI)
         $this->apiKey = $settings->getAnthropicApiKey() ?? '';
-        $this->baseUrl = config('ai.providers.anthropic.base_url', 'https://api.anthropic.com');
-        $this->apiVersion = config('ai.providers.anthropic.api_version', '2023-06-01');
+        $this->baseUrl = config('ai.providers.anthropic.base_url') ?? 'https://api.anthropic.com';
+        $this->apiVersion = config('ai.providers.anthropic.api_version') ?? '2023-06-01';
         $this->models = $models;
     }
 

@@ -137,6 +137,118 @@ class AppSettingsService
         return $this->delete('anthropic_api_key');
     }
 
+    // =========================================================================
+    // OpenAI Compatible (Local LLM) Settings
+    // =========================================================================
+
+    /**
+     * Get OpenAI Compatible base URL
+     */
+    public function getOpenAiCompatibleBaseUrl(): ?string
+    {
+        return $this->get('openai_compatible_base_url');
+    }
+
+    /**
+     * Set OpenAI Compatible base URL
+     */
+    public function setOpenAiCompatibleBaseUrl(string $url): AppSetting
+    {
+        Log::info('OpenAI Compatible base URL updated', ['url' => $url]);
+        return $this->set('openai_compatible_base_url', $url);
+    }
+
+    /**
+     * Check if OpenAI Compatible base URL is configured
+     */
+    public function hasOpenAiCompatibleBaseUrl(): bool
+    {
+        $url = $this->getOpenAiCompatibleBaseUrl();
+        return !empty($url);
+    }
+
+    /**
+     * Delete OpenAI Compatible base URL
+     */
+    public function deleteOpenAiCompatibleBaseUrl(): bool
+    {
+        Log::info('OpenAI Compatible base URL deleted');
+        return $this->delete('openai_compatible_base_url');
+    }
+
+    /**
+     * Get OpenAI Compatible API key (optional)
+     */
+    public function getOpenAiCompatibleApiKey(): ?string
+    {
+        return $this->get('openai_compatible_api_key');
+    }
+
+    /**
+     * Set OpenAI Compatible API key
+     */
+    public function setOpenAiCompatibleApiKey(?string $apiKey): AppSetting
+    {
+        Log::info('OpenAI Compatible API key updated');
+        return $this->set('openai_compatible_api_key', $apiKey);
+    }
+
+    /**
+     * Delete OpenAI Compatible API key
+     */
+    public function deleteOpenAiCompatibleApiKey(): bool
+    {
+        Log::info('OpenAI Compatible API key deleted');
+        return $this->delete('openai_compatible_api_key');
+    }
+
+    /**
+     * Get OpenAI Compatible model name
+     */
+    public function getOpenAiCompatibleModel(): ?string
+    {
+        return $this->get('openai_compatible_model');
+    }
+
+    /**
+     * Set OpenAI Compatible model name
+     */
+    public function setOpenAiCompatibleModel(?string $model): AppSetting
+    {
+        Log::info('OpenAI Compatible model updated', ['model' => $model]);
+        return $this->set('openai_compatible_model', $model);
+    }
+
+    /**
+     * Get OpenAI Compatible context window
+     */
+    public function getOpenAiCompatibleContextWindow(): ?int
+    {
+        $value = $this->get('openai_compatible_context_window');
+        return $value !== null ? (int) $value : null;
+    }
+
+    /**
+     * Set OpenAI Compatible context window
+     */
+    public function setOpenAiCompatibleContextWindow(?int $contextWindow): AppSetting
+    {
+        Log::info('OpenAI Compatible context window updated', ['context_window' => $contextWindow]);
+        return $this->set('openai_compatible_context_window', $contextWindow);
+    }
+
+    /**
+     * Delete all OpenAI Compatible settings
+     */
+    public function deleteOpenAiCompatibleSettings(): void
+    {
+        $this->deleteOpenAiCompatibleBaseUrl();
+        $this->deleteOpenAiCompatibleApiKey();
+        $this->delete('openai_compatible_model');
+        $this->delete('openai_compatible_context_window');
+        Log::info('OpenAI Compatible settings deleted');
+    }
+
     /**
      * Get Git credentials
      */
@@ -263,7 +375,10 @@ class AppSettingsService
      */
     public function hasAnyAiProvider(): bool
     {
-        return $this->hasAnthropicApiKey() || $this->hasOpenAiApiKey() || $this->isClaudeCodeAuthenticated();
+        return $this->hasAnthropicApiKey()
+            || $this->hasOpenAiApiKey()
+            || $this->isClaudeCodeAuthenticated()
+            || $this->hasOpenAiCompatibleBaseUrl();
     }
 
     /**

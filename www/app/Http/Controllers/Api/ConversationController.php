@@ -37,10 +37,11 @@ class ConversationController extends Controller
             'working_directory' => 'required|string|max:500',
             'agent_id' => 'nullable|uuid|exists:agents,id',
             // Legacy fields (used when no agent_id provided)
-            'provider_type' => 'nullable|string|in:anthropic,openai,claude_code',
+            'provider_type' => 'nullable|string|in:anthropic,openai,claude_code,openai_compatible',
             'model' => 'nullable|string|max:100',
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+            'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
             'response_level' => 'nullable|integer|min:0|max:5',
         ]);
@@ -64,6 +65,7 @@ class ConversationController extends Controller
                 'response_level' => $agent->response_level,
                 'anthropic_thinking_budget' => $agent->anthropic_thinking_budget,
                 'openai_reasoning_effort' => $agent->openai_reasoning_effort,
+                'openai_compatible_reasoning_effort' => $agent->openai_compatible_reasoning_effort ?? 'none',
                 'claude_code_thinking_tokens' => $agent->claude_code_thinking_tokens,
             ];
 
@@ -90,6 +92,9 @@ class ConversationController extends Controller
             }
             if ($providerType === 'openai' && isset($validated['openai_reasoning_effort'])) {
                 $conversationData['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
+            }
+            if ($providerType === 'openai_compatible' && isset($validated['openai_compatible_reasoning_effort'])) {
+                $conversationData['openai_compatible_reasoning_effort'] = $validated['openai_compatible_reasoning_effort'];
             }
             if ($providerType === 'claude_code' && isset($validated['claude_code_thinking_tokens'])) {
                 $conversationData['claude_code_thinking_tokens'] = $validated['claude_code_thinking_tokens'];
@@ -152,6 +157,7 @@ class ConversationController extends Controller
             // Provider-specific reasoning settings
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+            'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
             'response_level' => 'nullable|integer|min:0|max:3',
             // Legacy support - will be converted to provider-specific
@@ -188,6 +194,11 @@ class ConversationController extends Controller
             // OpenAI: use native effort setting
             if (isset($validated['openai_reasoning_effort'])) {
                 $updates['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
+            }
+        } elseif ($conversation->provider_type === 'openai_compatible') {
+            // OpenAI Compatible: use native effort setting (may be ignored by some servers)
+            if (isset($validated['openai_compatible_reasoning_effort'])) {
+                $updates['openai_compatible_reasoning_effort'] = $validated['openai_compatible_reasoning_effort'];
             }
         } elseif ($conversation->provider_type === 'claude_code') {
             // Claude Code: use thinking_tokens (via MAX_THINKING_TOKENS env var)

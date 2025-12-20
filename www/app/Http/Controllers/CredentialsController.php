@@ -26,6 +26,10 @@ class CredentialsController extends Controller
             'hasAnthropicKey' => $this->settings->hasAnthropicApiKey(),
             'hasOpenAiKey' => $this->settings->hasOpenAiApiKey(),
             'hasClaudeCode' => $this->settings->isClaudeCodeAuthenticated(),
+            'hasOpenAiCompatible' => $this->settings->hasOpenAiCompatibleBaseUrl(),
+            'openAiCompatibleBaseUrl' => $this->settings->getOpenAiCompatibleBaseUrl(),
+            'openAiCompatibleModel' => $this->settings->getOpenAiCompatibleModel(),
+            'openAiCompatibleContextWindow' => $this->settings->getOpenAiCompatibleContextWindow(),
             'hasGitCredentials' => $this->settings->hasGitCredentials(),
             'gitCredentials' => $this->settings->getGitCredentials(),
         ]);
@@ -40,6 +44,10 @@ class CredentialsController extends Controller
             $validated = $request->validate([
                 'anthropic_api_key' => 'nullable|string',
                 'openai_api_key' => 'nullable|string',
+                'openai_compatible_base_url' => 'nullable|url',
+                'openai_compatible_api_key' => 'nullable|string',
+                'openai_compatible_model' => 'nullable|string',
+                'openai_compatible_context_window' => 'nullable|integer|min:1024|max:2000000',
             ]);
 
             if (!empty($validated['anthropic_api_key'])) {
@@ -48,6 +56,23 @@ class CredentialsController extends Controller
 
             if (!empty($validated['openai_api_key'])) {
                 $this->settings->setOpenAiApiKey($validated['openai_api_key']);
+            }
+
+            // Handle OpenAI Compatible settings
+            if (!empty($validated['openai_compatible_base_url'])) {
+                $this->settings->setOpenAiCompatibleBaseUrl($validated['openai_compatible_base_url']);
+
+                if (!empty($validated['openai_compatible_api_key'])) {
+                    $this->settings->setOpenAiCompatibleApiKey($validated['openai_compatible_api_key']);
+                }
+
+                if (!empty($validated['openai_compatible_model'])) {
+                    $this->settings->setOpenAiCompatibleModel($validated['openai_compatible_model']);
+                }
+
+                if (!empty($validated['openai_compatible_context_window'])) {
+                    $this->settings->setOpenAiCompatibleContextWindow((int) $validated['openai_compatible_context_window']);
+                }
             }
 
             return redirect()->back()->with('success', 'API keys saved successfully');
@@ -63,16 +88,24 @@ class CredentialsController extends Controller
     public function deleteApiKey(string $provider)
     {
         try {
+            $displayName = match ($provider) {
+                'anthropic' => 'Anthropic',
+                'openai' => 'OpenAI',
+                'openai_compatible' => 'OpenAI Compatible',
+                default => ucfirst($provider),
+            };
+
             match ($provider) {
                 'anthropic' => $this->settings->deleteAnthropicApiKey(),
                 'openai' => $this->settings->deleteOpenAiApiKey(),
+                'openai_compatible' => $this->settings->deleteOpenAiCompatibleSettings(),
                 default => throw new \InvalidArgumentException("Unknown provider: {$provider}"),
             };
 
-            return redirect()->back()->with('success', ucfirst($provider) . ' API key deleted');
+            return redirect()->back()->with('success', $displayName . ' configuration deleted');
         } catch (\Exception $e) {
             Log::error("Failed to delete {$provider} API key", ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to delete API key. Please try again.');
+            return redirect()->back()->with('error', 'Failed to delete configuration. Please try again.');
         }
     }
 
@@ -129,6 +162,7 @@ class CredentialsController extends Controller
             'hasAnthropicKey' => $this->settings->hasAnthropicApiKey(),
             'hasOpenAiKey' => $this->settings->hasOpenAiApiKey(),
             'hasClaudeCode' => $this->settings->isClaudeCodeAuthenticated(),
+            'hasOpenAiCompatible' => $this->settings->hasOpenAiCompatibleBaseUrl(),
         ]);
     }
 
@@ -139,9 +173,13 @@ class CredentialsController extends Controller
     {
         try {
             $validated = $request->validate([
-                'provider' => 'required|in:claude_code,anthropic,openai',
+                'provider' => 'required|in:claude_code,anthropic,openai,openai_compatible',
                 'anthropic_api_key' => 'required_if:provider,anthropic|nullable|string',
                 'openai_api_key' => 'required_if:provider,openai|nullable|string',
+                'openai_compatible_base_url' => 'required_if:provider,openai_compatible|nullable|url',
+                'openai_compatible_api_key' => 'nullable|string',
+                'openai_compatible_model' => 'nullable|string',
+                'openai_compatible_context_window' => 'nullable|integer|min:1024|max:2000000',
                 'git_token' => 'nullable|string',
                 'git_user_name' => 'nullable|string',
                 'git_user_email' => 'nullable|email',
@@ -152,13 +190,27 @@ class CredentialsController extends Controller
                 // Verify Claude Code authentication
                 if (!$this->settings->isClaudeCodeAuthenticated()) {
                     return redirect()->back()
-                        ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'git_token']))
+                        ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'openai_compatible_api_key', 'git_token']))
                         ->with('error', 'Claude Code is not authenticated. Please run the command shown above in your terminal, complete the OAuth flow, then click "Verify & Continue".');
                 }
             } elseif ($validated['provider'] === 'anthropic' && !empty($validated['anthropic_api_key'])) {
                 $this->settings->setAnthropicApiKey($validated['anthropic_api_key']);
             } elseif ($validated['provider'] === 'openai' && !empty($validated['openai_api_key'])) {
                 $this->settings->setOpenAiApiKey($validated['openai_api_key']);
+            } elseif ($validated['provider'] === 'openai_compatible' && !empty($validated['openai_compatible_base_url'])) {
+                $this->settings->setOpenAiCompatibleBaseUrl($validated['openai_compatible_base_url']);
+
+                if (!empty($validated['openai_compatible_api_key'])) {
+                    $this->settings->setOpenAiCompatibleApiKey($validated['openai_compatible_api_key']);
+                }
+
+                if (!empty($validated['openai_compatible_model'])) {
+                    $this->settings->setOpenAiCompatibleModel($validated['openai_compatible_model']);
+                }
+
+                if (!empty($validated['openai_compatible_context_window'])) {
+                    $this->settings->setOpenAiCompatibleContextWindow((int) $validated['openai_compatible_context_window']);
+                }
             }
 
             // Save Git credentials if provided
@@ -180,7 +232,7 @@ class CredentialsController extends Controller
         } catch (\Exception $e) {
             Log::error('Setup wizard failed', ['error' => $e->getMessage()]);
             return redirect()->back()
-                ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'git_token']))
+                ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'openai_compatible_api_key', 'git_token']))
                 ->with('error', 'Setup failed. Please check your input and try again.');
         }
     }

@@ -146,6 +146,7 @@
                 // Provider-specific reasoning settings
                 anthropicThinkingBudget: 0,
                 openaiReasoningEffort: 'none',
+                openaiCompatibleReasoningEffort: 'none',
                 claudeCodeThinkingTokens: 0,
                 claudeCodeAllowedTools: [], // Empty = all tools allowed
 
@@ -272,7 +273,22 @@
                         const response = await fetch('/api/providers');
                         const data = await response.json();
                         this.providers = data.providers;
-                        this.provider = data.default || 'anthropic';
+
+                        // Find available providers
+                        const availableProviders = Object.entries(data.providers)
+                            .filter(([key, p]) => p.available)
+                            .map(([key]) => key);
+
+                        // Select default provider, falling back to first available
+                        const defaultProvider = data.default || 'anthropic';
+                        if (availableProviders.includes(defaultProvider)) {
+                            this.provider = defaultProvider;
+                        } else if (availableProviders.length > 0) {
+                            this.provider = availableProviders[0];
+                        } else {
+                            this.provider = defaultProvider; // Keep default even if unavailable
+                        }
+
                         // Store response levels from API
                         if (data.response_levels) {
                             this.responseLevels = Object.values(data.response_levels);
@@ -358,8 +374,8 @@
                         const response = await fetch('/api/settings/chat-defaults');
                         const data = await response.json();
 
-                        // Apply saved defaults
-                        if (data.provider && this.providers[data.provider]) {
+                        // Apply saved defaults (only if provider is available)
+                        if (data.provider && this.providers[data.provider]?.available) {
                             this.provider = data.provider;
                             this.updateModels();
                         }
@@ -375,6 +391,9 @@
                         }
                         if (data.openai_reasoning_effort !== undefined) {
                             this.openaiReasoningEffort = data.openai_reasoning_effort;
+                        }
+                        if (data.openai_compatible_reasoning_effort !== undefined) {
+                            this.openaiCompatibleReasoningEffort = data.openai_compatible_reasoning_effort;
                         }
                         if (data.claude_code_thinking_tokens !== undefined) {
                             this.claudeCodeThinkingTokens = data.claude_code_thinking_tokens;
@@ -406,6 +425,7 @@
                                 // Provider-specific reasoning settings
                                 anthropic_thinking_budget: this.anthropicThinkingBudget,
                                 openai_reasoning_effort: this.openaiReasoningEffort,
+                                openai_compatible_reasoning_effort: this.openaiCompatibleReasoningEffort,
                                 claude_code_thinking_tokens: this.claudeCodeThinkingTokens,
                                 claude_code_allowed_tools: this.claudeCodeAllowedTools,
                             })
@@ -584,6 +604,7 @@
                         this.responseLevel = data.conversation?.response_level ?? 1;
                         this.anthropicThinkingBudget = data.conversation?.anthropic_thinking_budget ?? 0;
                         this.openaiReasoningEffort = data.conversation?.openai_reasoning_effort ?? 'none';
+                        this.openaiCompatibleReasoningEffort = data.conversation?.openai_compatible_reasoning_effort ?? 'none';
                         this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
 
                         this.scrollToBottom();
@@ -760,6 +781,8 @@
                                 agent_id: this.currentAgentId,
                                 title: userPrompt.substring(0, 50),
                             };
+                            // Note: When using agent_id, the server uses agent settings for reasoning.
+                            // The explicit provider-specific settings below are only for legacy/fallback mode.
 
                             const response = await fetch('/api/conversations', {
                                 method: 'POST',
@@ -819,6 +842,8 @@
                             streamBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
                         } else if (this.provider === 'openai') {
                             streamBody.openai_reasoning_effort = this.openaiReasoningEffort;
+                        } else if (this.provider === 'openai_compatible') {
+                            streamBody.openai_compatible_reasoning_effort = this.openaiCompatibleReasoningEffort;
                         } else if (this.provider === 'claude_code') {
                             streamBody.claude_code_thinking_tokens = this.claudeCodeThinkingTokens;
                         }
@@ -1208,6 +1233,18 @@
                     ];
                 },
 
+                // Get OpenAI Compatible effort levels from config
+                get openaiCompatibleEffortLevels() {
+                    // Get from provider-specific config, fallback to standard effort levels
+                    const providerConfig = this.providers?.openai_compatible?.reasoning_config;
+                    return providerConfig?.effort_levels || [
+                        { value: 'none', name: 'Off', description: 'No reasoning' },
+                        { value: 'low', name: 'Light', description: 'Basic reasoning' },
+                        { value: 'medium', name: 'Standard', description: 'Balanced reasoning' },
+                        { value: 'high', name: 'Deep', description: 'Maximum reasoning' },
+                    ];
+                },
+
                 // Get Claude Code thinking levels from config
                 get claudeCodeThinkingLevels() {
                     return this.currentReasoningConfig.levels || [
@@ -1235,6 +1272,9 @@
                     } else if (this.provider === 'openai') {
                         const level = this.openaiEffortLevels.find(l => l.value === this.openaiReasoningEffort);
                         return level?.name || 'Off';
+                    } else if (this.provider === 'openai_compatible') {
+                        const level = this.openaiCompatibleEffortLevels.find(l => l.value === this.openaiCompatibleReasoningEffort);
+                        return level?.name || 'Off';
                     } else if (this.provider === 'claude_code') {
                         const level = this.claudeCodeThinkingLevels.find(l => l.thinking_tokens === this.claudeCodeThinkingTokens);
                         return level?.name || 'Off';
@@ -1254,6 +1294,11 @@
                         const currentIndex = levels.findIndex(l => l.value === this.openaiReasoningEffort);
                         const nextIndex = (currentIndex + 1) % levels.length;
                         this.openaiReasoningEffort = levels[nextIndex].value;
+                    } else if (this.provider === 'openai_compatible') {
+                        const levels = this.openaiCompatibleEffortLevels;
+                        const currentIndex = levels.findIndex(l => l.value === this.openaiCompatibleReasoningEffort);
+                        const nextIndex = (currentIndex + 1) % levels.length;
+                        this.openaiCompatibleReasoningEffort = levels[nextIndex].value;
                     } else if (this.provider === 'claude_code') {
                         const levels = this.claudeCodeThinkingLevels;
                         const currentIndex = levels.findIndex(l => l.thinking_tokens === this.claudeCodeThinkingTokens);

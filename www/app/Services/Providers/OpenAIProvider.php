@@ -24,7 +24,7 @@ class OpenAIProvider implements AIProviderInterface
     {
         // API key from database (set via UI)
         $this->apiKey = $settings->getOpenAiApiKey() ?? '';
-        $this->baseUrl = config('ai.providers.openai.base_url', 'https://api.openai.com');
+        $this->baseUrl = config('ai.providers.openai.base_url') ?? 'https://api.openai.com';
         $this->models = $models;
     }
 

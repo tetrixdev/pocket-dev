@@ -40,39 +40,48 @@ jobs:
       # Build and push Laravel PHP application image
       - name: Build and push pocket-dev-php image
         run: |
+          TAGS="--tag ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }}"
+          if [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            TAGS="$TAGS --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-php:latest"
+          fi
           docker buildx build \
             --file docker-laravel/production/php/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-php:cache,mode=max \
-            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }} \
-            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-php:latest \
+            $TAGS \
             --push \
             .
 
       # Build and push Laravel Nginx image
       - name: Build and push pocket-dev-nginx image
         run: |
+          TAGS="--tag ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }}"
+          if [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            TAGS="$TAGS --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:latest"
+          fi
           docker buildx build \
             --file docker-laravel/production/nginx/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:cache,mode=max \
-            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }} \
-            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:latest \
+            $TAGS \
             --push \
             .
 
       # Build and push Proxy image
       - name: Build and push pocket-dev-proxy image
         run: |
+          TAGS="--tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }}"
+          if [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            TAGS="$TAGS --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:latest"
+          fi
           docker buildx build \
             --file docker-proxy/shared/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache,mode=max \
-            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }} \
-            --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:latest \
+            $TAGS \
             --push \
             .
 
@@ -83,5 +92,11 @@ jobs:
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }}"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }}"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }}"
+          echo ""
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "⚠️  Pre-release: 'latest' tag NOT updated"
+          else
+            echo "✅ 'latest' tag updated"
+          fi
           echo ""
           echo "🚀 Deploy with: cd deploy && docker-compose up -d"
