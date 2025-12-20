@@ -7,7 +7,9 @@
     showCoreSection: false,
     showCoreEditWarning: false,
     showCoreResetWarning: false,
-    showAdditionalResetWarning: false
+    showAdditionalResetWarning: false,
+    showPreviewSection: false,
+    previewTab: 'claude_code'
 }">
     <div class="mb-6">
         <h2 class="text-xl font-semibold mb-2">System Prompt</h2>
@@ -99,6 +101,123 @@
                     <x-button variant="danger" size="sm" @click="showCoreResetWarning = true">
                         Reset to Default
                     </x-button>
+                @endif
+            </div>
+        </div>
+    </div>
+
+    {{-- Full Prompt Preview (Collapsible) --}}
+    <div class="border-t border-gray-700 pt-6 mt-6">
+        <button
+            @click="showPreviewSection = !showPreviewSection"
+            class="flex items-center justify-between w-full text-left mb-3 hover:text-gray-300 transition-colors"
+        >
+            <div>
+                <h3 class="text-lg font-medium">Full System Prompt Preview</h3>
+                <p class="text-gray-400 text-sm">
+                    See the complete prompt including dynamically generated content.
+                </p>
+            </div>
+            <svg
+                class="w-5 h-5 text-gray-400 transition-transform"
+                :class="{ 'rotate-180': showPreviewSection }"
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+        </button>
+
+        <div x-show="showPreviewSection" x-collapse>
+            {{-- Info bar explaining dynamic content --}}
+            <div class="flex items-start gap-3 p-3 bg-blue-900/20 border border-blue-800 rounded-lg mb-4">
+                <svg class="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div class="text-blue-200 text-sm">
+                    <p class="mb-2">
+                        <strong>This preview shows the complete prompt</strong> sent to the AI, which includes:
+                    </p>
+                    <ul class="list-disc ml-4 space-y-1">
+                        <li><strong>Core Prompt</strong> - Base AI instructions (editable above)</li>
+                        <li><strong>Additional Instructions</strong> - Your project-specific customizations (editable above)</li>
+                        <li><strong>PocketDev Tools</strong> - Dynamically generated from enabled tools and memory structures</li>
+                    </ul>
+                    <p class="mt-2 text-blue-300/80">
+                        The "PocketDev Tools" section is auto-generated and updates when you add/remove tools or memory structures.
+                    </p>
+                </div>
+            </div>
+
+            {{-- Provider tabs --}}
+            <div class="flex border-b border-gray-700 mb-4">
+                <button
+                    @click="previewTab = 'claude_code'"
+                    :class="previewTab === 'claude_code' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300'"
+                    class="px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px"
+                >
+                    Claude Code
+                </button>
+                <button
+                    @click="previewTab = 'other'"
+                    :class="previewTab === 'other' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-gray-300'"
+                    class="px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px"
+                >
+                    Anthropic / OpenAI
+                </button>
+            </div>
+
+            {{-- Tab content --}}
+            <div x-show="previewTab === 'claude_code'" class="space-y-4">
+                <div class="text-xs text-gray-500 mb-2">
+                    For Claude Code, tools are injected via <code class="bg-gray-800 px-1 rounded">--append-system-prompt</code> as artisan commands.
+                </div>
+
+                {{-- Core + Additional --}}
+                <div class="config-editor w-full" style="white-space: pre-wrap; max-height: 300px; overflow-y: auto; cursor: default;">{{ $coreContent }}</div>
+
+                @if(!empty($additionalContent))
+                    <div class="config-editor w-full" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto; cursor: default;">{{ $additionalContent }}</div>
+                @endif
+
+                {{-- Dynamic PocketDev Tools section --}}
+                @if(!empty($claudeCodeDynamicContent))
+                    <div class="relative">
+                        <div class="absolute -top-2 left-3 px-2 bg-gray-900 text-xs text-blue-400 font-medium">
+                            Dynamically Generated
+                        </div>
+                        <div class="config-editor w-full border-blue-800 border-2" style="white-space: pre-wrap; max-height: 400px; overflow-y: auto; cursor: default;">{{ $claudeCodeDynamicContent }}</div>
+                    </div>
+                @else
+                    <div class="config-editor w-full text-gray-500 italic" style="cursor: default;">
+                        No PocketDev tools or memory structures configured.
+                    </div>
+                @endif
+            </div>
+
+            <div x-show="previewTab === 'other'" class="space-y-4">
+                <div class="text-xs text-gray-500 mb-2">
+                    For Anthropic/OpenAI, tools are registered as native API tools. Tool names are used instead of artisan commands.
+                </div>
+
+                {{-- Core + Additional --}}
+                <div class="config-editor w-full" style="white-space: pre-wrap; max-height: 300px; overflow-y: auto; cursor: default;">{{ $coreContent }}</div>
+
+                @if(!empty($additionalContent))
+                    <div class="config-editor w-full" style="white-space: pre-wrap; max-height: 200px; overflow-y: auto; cursor: default;">{{ $additionalContent }}</div>
+                @endif
+
+                {{-- Dynamic PocketDev Tools section --}}
+                @if(!empty($otherProviderDynamicContent))
+                    <div class="relative">
+                        <div class="absolute -top-2 left-3 px-2 bg-gray-900 text-xs text-blue-400 font-medium">
+                            Dynamically Generated
+                        </div>
+                        <div class="config-editor w-full border-blue-800 border-2" style="white-space: pre-wrap; max-height: 400px; overflow-y: auto; cursor: default;">{{ $otherProviderDynamicContent }}</div>
+                    </div>
+                @else
+                    <div class="config-editor w-full text-gray-500 italic" style="cursor: default;">
+                        No PocketDev tools or memory structures configured.
+                    </div>
                 @endif
             </div>
         </div>

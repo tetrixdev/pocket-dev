@@ -35,22 +35,22 @@ These tests can be run entirely through the terminal.
 
 | Test ID | Description | Command | Expected Result |
 |---------|-------------|---------|-----------------|
-| SEED-001 | Verify PocketDev tools seeded | `php artisan tinker --execute="App\Models\PocketTool::where('source', 'pocketdev')->count()"` | `18` (6 file_ops + 6 memory + 6 tools) |
-| SEED-002 | Verify memory tools exist | `php artisan tinker --execute="App\Models\PocketTool::where('category', 'memory')->pluck('slug')->toArray()"` | `['memory-create', 'memory-query', 'memory-update', 'memory-delete', 'memory-link', 'memory-unlink']` |
+| SEED-001 | Verify PocketDev tools seeded | `php artisan tinker --execute="App\Models\PocketTool::where('source', 'pocketdev')->count()"` | `20` (6 file_ops + 8 memory + 6 tools) |
+| SEED-002 | Verify memory tools exist | `php artisan tinker --execute="App\Models\PocketTool::where('category', 'memory')->pluck('slug')->toArray()"` | `['memory-structure-create', 'memory-structure-get', 'memory-structure-update', 'memory-structure-delete', 'memory-create', 'memory-query', 'memory-update', 'memory-delete']` |
 | SEED-003 | Verify file_ops excluded from claude_code | `php artisan tinker --execute="App\Models\PocketTool::where('category', 'file_ops')->whereJsonContains('excluded_providers', 'claude_code')->count()"` | `6` |
-| SEED-004 | Verify memory tools NOT excluded | `php artisan tinker --execute="App\Models\PocketTool::where('category', 'memory')->whereNull('excluded_providers')->count()"` | `6` |
+| SEED-004 | Verify memory tools NOT excluded | `php artisan tinker --execute="App\Models\PocketTool::where('category', 'memory')->whereNull('excluded_providers')->count()"` | `8` |
 | SEED-005 | Verify tool conflicts seeded | `php artisan tinker --execute="App\Models\ToolConflict::count()"` | `6` |
 
 ### 1.3 Tool List Command Tests
 
 | Test ID | Description | Command | Expected Result |
 |---------|-------------|---------|-----------------|
-| LIST-001 | List all tools | `php artisan tool:list --json` | JSON with 18 tools |
-| LIST-002 | List only memory tools | `php artisan tool:list --category=memory --json` | JSON with 6 memory tools |
-| LIST-003 | List PocketDev tools only | `php artisan tool:list --pocketdev --json` | JSON with 18 tools |
+| LIST-001 | List all tools | `php artisan tool:list --json` | JSON with 20 tools |
+| LIST-002 | List only memory tools | `php artisan tool:list --category=memory --json` | JSON with 8 memory tools |
+| LIST-003 | List PocketDev tools only | `php artisan tool:list --pocketdev --json` | JSON with 20 tools |
 | LIST-004 | List user tools (should be empty) | `php artisan tool:list --user --json` | JSON with 0 tools |
-| LIST-005 | Filter by provider (claude_code) | `php artisan tool:list --provider=claude_code --json` | Should exclude file_ops tools (12 tools) |
-| LIST-006 | Filter by provider (anthropic) | `php artisan tool:list --provider=anthropic --json` | Should include all 18 tools |
+| LIST-005 | Filter by provider (claude_code) | `php artisan tool:list --provider=claude_code --json` | Should exclude file_ops tools (14 tools) |
+| LIST-006 | Filter by provider (anthropic) | `php artisan tool:list --provider=anthropic --json` | Should include all 20 tools |
 
 ### 1.4 Tool Show Command Tests
 
@@ -79,7 +79,18 @@ These tests can be run entirely through the terminal.
 | PROT-002 | Cannot delete PocketDev tool | `php artisan tool:delete memory-create` | Error: Cannot delete PocketDev tool |
 | PROT-003 | Cannot run PocketDev tool directly | `php artisan tool:run memory-create` | Error: Use php artisan memory:create instead |
 
-### 1.7 Memory Tool Command Tests
+### 1.7 Memory Structure Command Tests
+
+| Test ID | Description | Command | Expected Result |
+|---------|-------------|---------|-----------------|
+| STRUCT-001 | Create structure | `php artisan memory:structure:create --name="Test Structure" --description="For testing" --schema='{"type":"object","properties":{"title":{"type":"string"},"notes":{"type":"string","x-embed":true}}}'` | Success, returns structure ID |
+| STRUCT-002 | Get structure | `php artisan memory:structure:get test-structure` | JSON with structure details |
+| STRUCT-003 | Update structure name | `php artisan memory:structure:update test-structure --name="Updated Name"` | Success, updated_fields includes name |
+| STRUCT-004 | Update structure schema | `php artisan memory:structure:update test-structure --schema='{"type":"object","properties":{"title":{"type":"string"},"notes":{"type":"string","x-embed":true},"priority":{"type":"integer"}}}'` | Success, warnings about existing objects if any |
+| STRUCT-005 | Delete structure | `php artisan memory:structure:delete test-structure` | Success (only if no objects exist) |
+| STRUCT-006 | Delete non-empty structure fails | Create object first, then try delete | Error: Cannot delete, X objects exist |
+
+### 1.8 Memory Object Command Tests
 
 | Test ID | Description | Command | Expected Result |
 |---------|-------------|---------|-----------------|
@@ -87,22 +98,12 @@ These tests can be run entirely through the terminal.
 | MEM-002 | Create without structure fails | `php artisan memory:create --structure=nonexistent --name="Test"` | Error: Structure not found |
 | MEM-003 | Query with invalid SQL fails | `php artisan memory:query --sql="DROP TABLE users"` | Error: Only SELECT allowed |
 
-### 1.8 Tool Enable/Disable Tests
-
-| Test ID | Description | Command | Expected Result |
-|---------|-------------|---------|-----------------|
-| EN-001 | Disable a tool | `php artisan tool:disable memory-create` | Success message |
-| EN-002 | Verify disabled | `php artisan tool:show memory-create` | enabled=false |
-| EN-003 | List disabled tools | `php artisan tool:list --disabled --json` | Should include memory-create |
-| EN-004 | Re-enable tool | `php artisan tool:enable memory-create` | Success message |
-| EN-005 | Verify enabled | `php artisan tool:show memory-create` | enabled=true |
-
 ### 1.9 ToolSelector Service Tests
 
 | Test ID | Description | Command | Expected Result |
 |---------|-------------|---------|-----------------|
-| SEL-001 | Get tools for claude_code | `php artisan tinker --execute="app(App\Services\ToolSelector::class)->getAvailableTools('claude_code')->pluck('slug')->toArray()"` | Should NOT include pocketdev-bash, pocketdev-read, etc. |
-| SEL-002 | Get tools for anthropic | `php artisan tinker --execute="app(App\Services\ToolSelector::class)->getAvailableTools('anthropic')->pluck('slug')->toArray()"` | Should include ALL tools |
+| SEL-001 | Get tools for claude_code | `php artisan tinker --execute="app(App\Services\ToolSelector::class)->getAvailableTools('claude_code')->pluck('slug')->toArray()"` | Should NOT include pocketdev-bash, pocketdev-read, etc. (14 tools) |
+| SEL-002 | Get tools for anthropic | `php artisan tinker --execute="app(App\Services\ToolSelector::class)->getAvailableTools('anthropic')->pluck('slug')->toArray()"` | Should include ALL tools (20 tools) |
 | SEL-003 | Get default tools for claude_code | `php artisan tinker --execute="app(App\Services\ToolSelector::class)->getDefaultTools('claude_code')->pluck('slug')->toArray()"` | Should exclude tools with native_equivalent |
 | SEL-004 | Build system prompt for claude_code | `php artisan tinker --execute="app(App\Services\ToolSelector::class)->buildSystemPrompt('claude_code')"` | Should contain memory and tool instructions, NOT bash/read/edit |
 
@@ -181,8 +182,8 @@ php artisan tinker --execute="echo Schema::hasTable('pocket_tools') ? 'PASS' : '
 php artisan tinker --execute="echo Schema::hasTable('tool_conflicts') ? 'PASS' : 'FAIL'"
 
 # Seeder Tests
-php artisan tinker --execute="echo App\Models\PocketTool::where('source', 'pocketdev')->count() == 18 ? 'PASS' : 'FAIL'"
-php artisan tinker --execute="echo App\Models\PocketTool::where('category', 'memory')->count() == 6 ? 'PASS' : 'FAIL'"
+php artisan tinker --execute="echo App\Models\PocketTool::where('source', 'pocketdev')->count() == 20 ? 'PASS' : 'FAIL'"
+php artisan tinker --execute="echo App\Models\PocketTool::where('category', 'memory')->count() == 8 ? 'PASS' : 'FAIL'"
 php artisan tinker --execute="echo App\Models\ToolConflict::count() == 6 ? 'PASS' : 'FAIL'"
 
 # List Tests
@@ -205,14 +206,9 @@ php artisan tool:delete test-tool
 php artisan tool:update memory-create --name="Hacked" 2>&1 || echo "PASS: Update blocked"
 php artisan tool:delete memory-create 2>&1 || echo "PASS: Delete blocked"
 
-# Enable/Disable Tests
-php artisan tool:disable memory-create
-php artisan tool:show memory-create | grep enabled
-php artisan tool:enable memory-create
-
 # ToolSelector Tests
-php artisan tinker --execute="echo count(app(App\Services\ToolSelector::class)->getAvailableTools('claude_code')) == 12 ? 'PASS' : 'FAIL'"
-php artisan tinker --execute="echo count(app(App\Services\ToolSelector::class)->getAvailableTools('anthropic')) == 18 ? 'PASS' : 'FAIL'"
+php artisan tinker --execute="echo count(app(App\Services\ToolSelector::class)->getAvailableTools('claude_code')) == 14 ? 'PASS' : 'FAIL'"
+php artisan tinker --execute="echo count(app(App\Services\ToolSelector::class)->getAvailableTools('anthropic')) == 20 ? 'PASS' : 'FAIL'"
 ```
 
 ### Phase 2: Manual Tests (User must execute)
@@ -246,7 +242,7 @@ php artisan tinker --execute="echo count(app(App\Services\ToolSelector::class)->
 - [ ] CRUD-001 through CRUD-006:
 - [ ] PROT-001 through PROT-003:
 - [ ] MEM-001 through MEM-003:
-- [ ] EN-001 through EN-005:
+- [ ] STRUCT-001 through STRUCT-006:
 - [ ] SEL-001 through SEL-004:
 - [ ] CONF-001 through CONF-003:
 

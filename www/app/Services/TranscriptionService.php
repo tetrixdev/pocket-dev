@@ -13,12 +13,12 @@ class TranscriptionService
 
     public function __construct(AppSettingsService $appSettings)
     {
-        // Try environment variable first, then fall back to database
-        $this->apiKey = config('services.openai.api_key') ?: $appSettings->getOpenAiApiKey();
-        $this->baseUrl = config('services.openai.base_url', 'https://api.openai.com/v1');
+        // API key from database (set via UI)
+        $this->apiKey = $appSettings->getOpenAiApiKey() ?? '';
+        $this->baseUrl = 'https://api.openai.com/v1';
 
         if (empty($this->apiKey)) {
-            throw new \Exception('OpenAI API key is not configured');
+            throw new \Exception('OpenAI API key is not configured. Set it in Config → Credentials.');
         }
     }
 

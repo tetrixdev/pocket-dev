@@ -34,9 +34,29 @@ class MemoryUpdateTool extends Tool
                 'type' => 'boolean',
                 'description' => 'If true, replace all data instead of merging. Default: false.',
             ],
-            'parent_id' => [
-                'type' => 'string',
-                'description' => 'New parent object ID. Use null to remove parent.',
+            'text_operation' => [
+                'type' => 'object',
+                'description' => 'Text operation on a specific field (for long text fields).',
+                'properties' => [
+                    'field' => [
+                        'type' => 'string',
+                        'description' => 'The field name to operate on.',
+                    ],
+                    'operation' => [
+                        'type' => 'string',
+                        'enum' => ['append', 'prepend', 'replace', 'insert_after'],
+                        'description' => 'The type of text operation.',
+                    ],
+                    'text' => [
+                        'type' => 'string',
+                        'description' => 'The text to append/prepend/insert.',
+                    ],
+                    'find' => [
+                        'type' => 'string',
+                        'description' => 'For replace: text to find. For insert_after: marker text.',
+                    ],
+                ],
+                'required' => ['field', 'operation'],
             ],
         ],
         'required' => ['id'],
@@ -51,10 +71,7 @@ Update specific fields (merge):
 ```json
 {
   "id": "object-uuid",
-  "data": {
-    "level": 6,
-    "new_ability": "Rage"
-  }
+  "data": {"level": 6, "new_ability": "Rage"}
 }
 ```
 
@@ -63,24 +80,39 @@ Replace all data:
 {
   "id": "object-uuid",
   "replace_data": true,
-  "data": {
-    "completely": "new data"
-  }
+  "data": {"completely": "new data"}
 }
 ```
 
-Update name and parent:
+## Text Operations (for long text fields)
+
+Append to a field:
 ```json
 {
   "id": "object-uuid",
-  "name": "New Name",
-  "parent_id": "new-parent-uuid"
+  "text_operation": {"field": "backstory", "operation": "append", "text": "\n\n## New Chapter\nMore story here..."}
+}
+```
+
+Replace text within a field:
+```json
+{
+  "id": "object-uuid",
+  "text_operation": {"field": "description", "operation": "replace", "find": "old text", "text": "new text"}
+}
+```
+
+Insert after a marker:
+```json
+{
+  "id": "object-uuid",
+  "text_operation": {"field": "notes", "operation": "insert_after", "find": "## Section A", "text": "\nInserted content here"}
 }
 ```
 
 ## Notes
 - By default, data is merged (existing fields preserved, new fields added/updated)
-- Use replace_data: true to completely replace data
+- Use text_operation for surgical edits to long text fields without rewriting everything
 - Embeddings are automatically regenerated for changed embeddable fields
 INSTRUCTIONS;
 
@@ -90,7 +122,7 @@ INSTRUCTIONS;
         $name = $input['name'] ?? null;
         $data = $input['data'] ?? null;
         $replaceData = $input['replace_data'] ?? false;
-        $parentId = array_key_exists('parent_id', $input) ? $input['parent_id'] : 'NOT_SET';
+        $textOp = $input['text_operation'] ?? null;
 
         if (empty($id)) {
             return ToolResult::error('id is required');
@@ -101,25 +133,23 @@ INSTRUCTIONS;
             return ToolResult::error("Object '{$id}' not found.");
         }
 
-        // Validate parent if provided
-        if ($parentId !== 'NOT_SET' && $parentId !== null) {
-            $parent = MemoryObject::find($parentId);
-            if (!$parent) {
-                return ToolResult::error("Parent object '{$parentId}' not found.");
-            }
-            // Prevent circular reference
-            if ($parentId === $id) {
-                return ToolResult::error("Object cannot be its own parent.");
-            }
-        }
-
         try {
             $changes = [];
 
-            DB::transaction(function () use ($object, $name, $data, $replaceData, $parentId, &$changes) {
+            DB::transaction(function () use ($object, $name, $data, $replaceData, $textOp, &$changes) {
                 if ($name !== null && $name !== $object->name) {
                     $changes[] = "name: {$object->name} -> {$name}";
                     $object->name = $name;
+                }
+
+                // Handle text operations
+                if ($textOp !== null) {
+                    $result = $this->applyTextOperation($object, $textOp);
+                    if ($result['success']) {
+                        $changes[] = $result['change'];
+                    } else {
+                        throw new \RuntimeException($result['error']);
+                    }
                 }
 
                 if ($data !== null) {
@@ -131,15 +161,6 @@ INSTRUCTIONS;
                         $changedKeys = array_keys($data);
                         $changes[] = "data: updated fields [" . implode(', ', $changedKeys) . "]";
                         $object->data = $merged;
-                    }
-                }
-
-                if ($parentId !== 'NOT_SET') {
-                    $oldParent = $object->parent_id ?? 'none';
-                    $newParent = $parentId ?? 'none';
-                    if ($oldParent !== $newParent) {
-                        $changes[] = "parent: {$oldParent} -> {$newParent}";
-                        $object->parent_id = $parentId;
                     }
                 }
 
@@ -172,6 +193,70 @@ INSTRUCTIONS;
         } catch (\Exception $e) {
             return ToolResult::error('Failed to update object: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Apply a text operation to a field.
+     */
+    private function applyTextOperation(MemoryObject $object, array $op): array
+    {
+        $field = $op['field'] ?? null;
+        $operation = $op['operation'] ?? null;
+        $text = $op['text'] ?? '';
+        $find = $op['find'] ?? '';
+
+        if (!$field || !$operation) {
+            return ['success' => false, 'error' => 'text_operation requires field and operation'];
+        }
+
+        $data = $object->data ?? [];
+        $currentValue = $data[$field] ?? '';
+
+        if (!is_string($currentValue)) {
+            return ['success' => false, 'error' => "Field '{$field}' is not a string"];
+        }
+
+        switch ($operation) {
+            case 'append':
+                $data[$field] = $currentValue . $text;
+                $change = "text: appended to '{$field}'";
+                break;
+
+            case 'prepend':
+                $data[$field] = $text . $currentValue;
+                $change = "text: prepended to '{$field}'";
+                break;
+
+            case 'replace':
+                if (empty($find)) {
+                    return ['success' => false, 'error' => 'replace operation requires find parameter'];
+                }
+                if (strpos($currentValue, $find) === false) {
+                    return ['success' => false, 'error' => "Text '{$find}' not found in field '{$field}'"];
+                }
+                $data[$field] = str_replace($find, $text, $currentValue);
+                $change = "text: replaced in '{$field}'";
+                break;
+
+            case 'insert_after':
+                if (empty($find)) {
+                    return ['success' => false, 'error' => 'insert_after operation requires find parameter'];
+                }
+                $pos = strpos($currentValue, $find);
+                if ($pos === false) {
+                    return ['success' => false, 'error' => "Marker '{$find}' not found in field '{$field}'"];
+                }
+                $insertPos = $pos + strlen($find);
+                $data[$field] = substr($currentValue, 0, $insertPos) . $text . substr($currentValue, $insertPos);
+                $change = "text: inserted after marker in '{$field}'";
+                break;
+
+            default:
+                return ['success' => false, 'error' => "Unknown operation: {$operation}"];
+        }
+
+        $object->data = $data;
+        return ['success' => true, 'change' => $change];
     }
 
     private function regenerateEmbeddings(MemoryObject $object): void

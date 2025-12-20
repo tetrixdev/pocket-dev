@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessConversationStream;
+use App\Models\Agent;
 use App\Models\Conversation;
 use App\Services\ProviderFactory;
 use App\Services\StreamManager;
@@ -25,44 +26,74 @@ class ConversationController extends Controller
 
     /**
      * Create a new conversation.
+     *
+     * When agent_id is provided, the conversation is linked to the agent
+     * and inherits its settings (provider, model, reasoning, etc.).
      */
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'title' => 'nullable|string|max:255',
             'working_directory' => 'required|string|max:500',
+            'agent_id' => 'nullable|uuid|exists:agents,id',
+            // Legacy fields (used when no agent_id provided)
             'provider_type' => 'nullable|string|in:anthropic,openai,claude_code',
             'model' => 'nullable|string|max:100',
-            // Provider-specific reasoning settings
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
-            'response_level' => 'nullable|integer|min:0|max:3',
+            'response_level' => 'nullable|integer|min:0|max:5',
         ]);
 
-        $providerType = $validated['provider_type'] ?? config('ai.default_provider', 'anthropic');
-        if (!in_array($providerType, $this->providerFactory->availableTypes(), true)) {
-            $providerType = 'anthropic';
-        }
-        $provider = $this->providerFactory->make($providerType);
+        // If agent_id provided, use agent settings
+        if (!empty($validated['agent_id'])) {
+            $agent = Agent::find($validated['agent_id']);
 
-        $conversationData = [
-            'provider_type' => $providerType,
-            'model' => $validated['model'] ?? config("ai.providers.{$providerType}.default_model"),
-            'title' => $validated['title'] ?? null,
-            'working_directory' => $validated['working_directory'],
-            'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
-        ];
+            if (!$agent || !$agent->enabled) {
+                return response()->json([
+                    'error' => 'Agent not found or disabled',
+                ], 400);
+            }
 
-        // Add provider-specific reasoning settings
-        if ($providerType === 'anthropic' && isset($validated['anthropic_thinking_budget'])) {
-            $conversationData['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
-        }
-        if ($providerType === 'openai' && isset($validated['openai_reasoning_effort'])) {
-            $conversationData['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
-        }
-        if ($providerType === 'claude_code' && isset($validated['claude_code_thinking_tokens'])) {
-            $conversationData['claude_code_thinking_tokens'] = $validated['claude_code_thinking_tokens'];
+            $conversationData = [
+                'agent_id' => $agent->id,
+                'provider_type' => $agent->provider,
+                'model' => $agent->model,
+                'title' => $validated['title'] ?? null,
+                'working_directory' => $validated['working_directory'],
+                'response_level' => $agent->response_level,
+                'anthropic_thinking_budget' => $agent->anthropic_thinking_budget,
+                'openai_reasoning_effort' => $agent->openai_reasoning_effort,
+                'claude_code_thinking_tokens' => $agent->claude_code_thinking_tokens,
+            ];
+
+            $provider = $this->providerFactory->make($agent->provider);
+        } else {
+            // Legacy: use individual settings
+            $providerType = $validated['provider_type'] ?? config('ai.default_provider', 'anthropic');
+            if (!in_array($providerType, $this->providerFactory->availableTypes(), true)) {
+                $providerType = 'anthropic';
+            }
+            $provider = $this->providerFactory->make($providerType);
+
+            $conversationData = [
+                'provider_type' => $providerType,
+                'model' => $validated['model'] ?? config("ai.providers.{$providerType}.default_model"),
+                'title' => $validated['title'] ?? null,
+                'working_directory' => $validated['working_directory'],
+                'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
+            ];
+
+            // Add provider-specific reasoning settings
+            if ($providerType === 'anthropic' && isset($validated['anthropic_thinking_budget'])) {
+                $conversationData['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
+            }
+            if ($providerType === 'openai' && isset($validated['openai_reasoning_effort'])) {
+                $conversationData['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
+            }
+            if ($providerType === 'claude_code' && isset($validated['claude_code_thinking_tokens'])) {
+                $conversationData['claude_code_thinking_tokens'] = $validated['claude_code_thinking_tokens'];
+            }
         }
 
         $conversation = Conversation::create($conversationData);
@@ -82,7 +113,7 @@ class ConversationController extends Controller
      */
     public function show(Conversation $conversation): JsonResponse
     {
-        $conversation->load('messages');
+        $conversation->load(['messages', 'agent']);
 
         return response()->json([
             'conversation' => $conversation,

@@ -126,7 +126,12 @@ class ProcessConversationStream implements ShouldQueue
         $conversation->load('messages');
 
         // Build system prompt with tool instructions
-        $systemPrompt = $systemPromptBuilder->build($conversation, $toolRegistry);
+        // Claude Code uses a different method that injects artisan commands instead of native tools
+        if ($provider->getProviderType() === 'claude_code') {
+            $systemPrompt = $systemPromptBuilder->buildForClaudeCode($conversation);
+        } else {
+            $systemPrompt = $systemPromptBuilder->build($conversation, $toolRegistry);
+        }
 
         // Prepare provider options
         $providerOptions = array_merge($options, [

@@ -101,12 +101,15 @@ These work with ALL providers including Claude Code:
 
 | Tool | Artisan Command | Capability |
 |------|-----------------|------------|
+| Memory Structure Create | `memory:structure:create` | `memory` |
+| Memory Structure Get | `memory:structure:get` | `memory` |
+| Memory Structure Delete | `memory:structure:delete` | `memory` |
 | Memory Create | `memory:create` | `memory` |
 | Memory Query | `memory:query` | `memory` |
 | Memory Update | `memory:update` | `memory` |
 | Memory Delete | `memory:delete` | `memory` |
-| Memory Link | `memory:link` | `memory` |
-| Memory Unlink | `memory:unlink` | `memory` |
+
+**Note:** Relationships are stored as IDs in the data object (e.g., `owner_id`, `location_id`), not in a separate relationships table.
 
 #### 4. PocketDev Universal Tools (Tool Management)
 
@@ -119,8 +122,6 @@ These work with ALL providers including Claude Code:
 | Tool Delete | `tool:delete` | `tool_mgmt` |
 | Tool List | `tool:list` | `tool_mgmt` |
 | Tool Show | `tool:show` | `tool_mgmt` |
-| Tool Enable | `tool:enable` | `tool_mgmt` |
-| Tool Disable | `tool:disable` | `tool_mgmt` |
 | Tool Run | `tool:run` | `tool_mgmt` |
 
 #### 5. User Tools

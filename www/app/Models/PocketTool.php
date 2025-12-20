@@ -199,19 +199,19 @@ class PocketTool extends Model
 
         // Map PocketDev tool slugs to artisan commands
         $commandMap = [
+            'memory-structure-create' => 'memory:structure:create',
+            'memory-structure-get' => 'memory:structure:get',
+            'memory-structure-update' => 'memory:structure:update',
+            'memory-structure-delete' => 'memory:structure:delete',
             'memory-create' => 'memory:create',
             'memory-query' => 'memory:query',
             'memory-update' => 'memory:update',
             'memory-delete' => 'memory:delete',
-            'memory-link' => 'memory:link',
-            'memory-unlink' => 'memory:unlink',
             'tool-create' => 'tool:create',
             'tool-update' => 'tool:update',
             'tool-delete' => 'tool:delete',
             'tool-list' => 'tool:list',
             'tool-show' => 'tool:show',
-            'tool-enable' => 'tool:enable',
-            'tool-disable' => 'tool:disable',
             'tool-run' => 'tool:run',
         ];
 

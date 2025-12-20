@@ -70,13 +70,22 @@
     <div class="p-4 border-t border-gray-700 text-xs text-gray-400">
         <div class="mb-2">Cost: <span class="text-green-400 font-mono" x-text="'$' + sessionCost.toFixed(4)">$0.00</span></div>
         <div class="mb-2"><span x-text="totalTokens.toLocaleString() + ' tokens'">0 tokens</span></div>
-        <div class="mb-2 text-gray-300">
-            <span class="text-gray-500">Model:</span> <span x-text="availableModels[model]?.name || model"></span>
+        <div class="mb-2">
+            <button @click="showAgentSelector = true; showMobileDrawer = false" class="text-left w-full">
+                <div class="text-gray-300 font-medium flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full shrink-0"
+                          :class="{
+                              'bg-orange-500': currentAgent?.provider === 'anthropic',
+                              'bg-green-500': currentAgent?.provider === 'openai',
+                              'bg-purple-500': currentAgent?.provider === 'claude_code',
+                              'bg-gray-500': !currentAgent
+                          }"></span>
+                    <span x-text="currentAgent?.name || 'Select Agent'"></span>
+                </div>
+                <div class="text-gray-500 text-xs mt-0.5" x-text="currentAgent?.model || 'No agent'"></div>
+            </button>
         </div>
         <div class="flex flex-wrap gap-3">
-            <x-button @click="showQuickSettings = true; showMobileDrawer = false" variant="ghost" size="sm">
-                Quick Settings
-            </x-button>
             <x-button @click="showShortcutsModal = true; showMobileDrawer = false" variant="ghost" size="sm">
                 Shortcuts
             </x-button>

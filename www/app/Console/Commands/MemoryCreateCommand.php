@@ -11,8 +11,7 @@ class MemoryCreateCommand extends Command
     protected $signature = 'memory:create
         {--structure= : The structure slug (e.g., "character", "location")}
         {--name= : Name of the object}
-        {--data= : Object data as JSON}
-        {--parent-id= : Optional parent object ID}';
+        {--data= : Object data as JSON}';
 
     protected $description = 'Create a new memory object';
 
@@ -21,7 +20,6 @@ class MemoryCreateCommand extends Command
         $structure = $this->option('structure');
         $name = $this->option('name');
         $data = $this->option('data');
-        $parentId = $this->option('parent-id');
 
         if (empty($structure)) {
             return $this->outputError('The --structure option is required');
@@ -42,10 +40,6 @@ class MemoryCreateCommand extends Command
                 return $this->outputError('Invalid JSON in --data: ' . json_last_error_msg());
             }
             $input['data'] = $decodedData;
-        }
-
-        if ($parentId) {
-            $input['parent_id'] = $parentId;
         }
 
         $tool = new MemoryCreateTool();

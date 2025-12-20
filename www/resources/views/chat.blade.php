@@ -127,12 +127,17 @@
                 messages: [],
                 conversations: [],
                 currentConversationUuid: null,
+                conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
                 _justCompletedStream: false,
                 sessionCost: 0,
                 totalTokens: 0,
 
-                // Provider/Model
+                // Agents
+                agents: [],
+                currentAgentId: null,
+
+                // Provider/Model (legacy, computed from agent)
                 provider: 'anthropic',
                 model: 'claude-sonnet-4-5-20250929',
                 providers: {},
@@ -151,7 +156,7 @@
                 // Modals
                 showMobileDrawer: false,
                 showShortcutsModal: false,
-                showQuickSettings: false,
+                showAgentSelector: false,
                 showPricingSettings: false,
                 showCostBreakdown: false,
                 showOpenAiModal: false,
@@ -210,8 +215,8 @@
                     // Fetch providers
                     await this.fetchProviders();
 
-                    // Load saved default settings from database
-                    await this.fetchSettings();
+                    // Fetch available agents
+                    await this.fetchAgents();
 
                     // Load conversations list
                     await this.fetchConversations();
@@ -276,6 +281,75 @@
                     } catch (err) {
                         console.error('Failed to fetch providers:', err);
                         this.showError('Failed to load providers');
+                    }
+                },
+
+                async fetchAgents() {
+                    try {
+                        const response = await fetch('/api/agents');
+                        const data = await response.json();
+                        this.agents = data.data || [];
+
+                        // Auto-select default agent if none selected
+                        if (!this.currentAgentId && this.agents.length > 0) {
+                            // Find default agent, or first available
+                            const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+                            this.selectAgent(defaultAgent, false);
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch agents:', err);
+                    }
+                },
+
+                // Agent helper methods
+                get currentAgent() {
+                    return this.agents.find(a => a.id === this.currentAgentId);
+                },
+
+                get availableAgents() {
+                    // If in conversation, filter to same provider
+                    if (this.conversationProvider) {
+                        return this.agents.filter(a => a.provider === this.conversationProvider);
+                    }
+                    return this.agents;
+                },
+
+                get availableProviderKeys() {
+                    const providers = new Set(this.availableAgents.map(a => a.provider));
+                    return ['anthropic', 'openai', 'claude_code'].filter(p => providers.has(p));
+                },
+
+                agentsForProvider(providerKey) {
+                    return this.availableAgents.filter(a => a.provider === providerKey);
+                },
+
+                getProviderDisplayName(providerKey) {
+                    const names = {
+                        'anthropic': 'Anthropic',
+                        'openai': 'OpenAI',
+                        'claude_code': 'Claude Code'
+                    };
+                    return names[providerKey] || providerKey;
+                },
+
+                selectAgent(agent, closeModal = true) {
+                    if (!agent) return;
+
+                    this.currentAgentId = agent.id;
+                    this.provider = agent.provider;
+                    this.model = agent.model;
+
+                    // Load agent's reasoning settings
+                    this.anthropicThinkingBudget = agent.anthropic_thinking_budget || 0;
+                    this.openaiReasoningEffort = agent.openai_reasoning_effort || 'none';
+                    this.claudeCodeThinkingTokens = agent.claude_code_thinking_tokens || 0;
+                    this.responseLevel = agent.response_level || 1;
+
+                    // Load allowed tools
+                    this.claudeCodeAllowedTools = agent.allowed_tools || [];
+
+                    if (closeModal) {
+                        this.showAgentSelector = false;
                     }
                 },
 
@@ -397,6 +471,7 @@
                     this.disconnectFromStream();
 
                     this.currentConversationUuid = null;
+                    this.conversationProvider = null; // Reset for new conversation
                     this.messages = [];
                     this.sessionCost = 0;
                     this.totalTokens = 0;
@@ -410,8 +485,8 @@
                     // Clear URL to base path
                     this.updateUrl(null);
 
-                    // Restore saved default settings for new conversations
-                    await this.fetchSettings();
+                    // Re-fetch agents and select default
+                    await this.fetchAgents();
                 },
 
                 async loadConversation(uuid) {
@@ -490,10 +565,19 @@
                         // Update provider/model from conversation
                         if (data.conversation?.provider_type) {
                             this.provider = data.conversation.provider_type;
+                            this.conversationProvider = data.conversation.provider_type; // Store for agent filtering
                             this.updateModels(); // Refresh available models for this provider
                         }
                         if (data.conversation?.model) {
                             this.model = data.conversation.model;
+                        }
+
+                        // If conversation has an agent, select it
+                        if (data.conversation?.agent_id) {
+                            const agent = this.agents.find(a => a.id === data.conversation.agent_id);
+                            if (agent) {
+                                this.selectAgent(agent, false);
+                            }
                         }
 
                         // Load provider-specific reasoning settings from conversation
@@ -663,22 +747,19 @@
 
                     // Create conversation if needed
                     if (!this.currentConversationUuid) {
+                        // Require agent selection
+                        if (!this.currentAgentId) {
+                            this.showAgentSelector = true;
+                            this.prompt = userPrompt; // Restore prompt
+                            return;
+                        }
+
                         try {
                             const createBody = {
                                 working_directory: '/var/www',
-                                provider_type: this.provider,
-                                model: this.model,
+                                agent_id: this.currentAgentId,
                                 title: userPrompt.substring(0, 50),
-                                response_level: this.responseLevel,
                             };
-                            // Add provider-specific reasoning settings
-                            if (this.provider === 'anthropic') {
-                                createBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
-                            } else if (this.provider === 'openai') {
-                                createBody.openai_reasoning_effort = this.openaiReasoningEffort;
-                            } else if (this.provider === 'claude_code') {
-                                createBody.claude_code_thinking_tokens = this.claudeCodeThinkingTokens;
-                            }
 
                             const response = await fetch('/api/conversations', {
                                 method: 'POST',
@@ -687,6 +768,7 @@
                             });
                             const data = await response.json();
                             this.currentConversationUuid = data.conversation.uuid;
+                            this.conversationProvider = this.provider; // Lock provider for this conversation
 
                             // Update URL with new conversation UUID
                             this.updateUrl(this.currentConversationUuid);

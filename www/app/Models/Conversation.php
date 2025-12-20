@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -16,6 +17,7 @@ class Conversation extends Model
 
     protected $fillable = [
         'uuid',
+        'agent_id',
         'provider_type',
         'model',
         'title',
@@ -56,6 +58,11 @@ class Conversation extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class)->orderBy('sequence');
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
     }
 
     public function getRouteKeyName(): string
@@ -158,13 +165,19 @@ class Conversation extends Model
     /**
      * Get provider-specific reasoning configuration.
      *
-     * Returns the appropriate reasoning settings based on the conversation's provider type.
+     * Prefers agent settings if available, falls back to conversation-level settings.
      * - Anthropic: uses budget_tokens (explicit token allocation)
      * - OpenAI: uses effort (none/low/medium/high)
      * - Claude Code: uses thinking_tokens (via MAX_THINKING_TOKENS env var)
      */
     public function getReasoningConfig(): array
     {
+        // If we have an agent, use its reasoning config
+        if ($this->agent_id && $this->relationLoaded('agent') && $this->agent) {
+            return $this->agent->getReasoningConfig();
+        }
+
+        // Fall back to conversation-level settings (for backward compatibility)
         return match ($this->provider_type) {
             'anthropic' => [
                 'budget_tokens' => $this->anthropic_thinking_budget ?? 0,
@@ -177,5 +190,29 @@ class Conversation extends Model
             ],
             default => [],
         };
+    }
+
+    /**
+     * Get the response level, preferring agent setting if available.
+     */
+    public function getResponseLevel(): int
+    {
+        if ($this->agent_id && $this->relationLoaded('agent') && $this->agent) {
+            return $this->agent->response_level;
+        }
+
+        return $this->response_level ?? 1;
+    }
+
+    /**
+     * Get the model, preferring agent setting if available.
+     */
+    public function getModel(): string
+    {
+        if ($this->agent_id && $this->relationLoaded('agent') && $this->agent) {
+            return $this->agent->model;
+        }
+
+        return $this->model;
     }
 }

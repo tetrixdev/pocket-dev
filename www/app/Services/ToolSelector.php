@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\MemoryStructure;
 use App\Models\PocketTool;
 use App\Models\ToolConflict;
 use Illuminate\Support\Collection;
@@ -135,6 +136,7 @@ class ToolSelector
 
     /**
      * Build system prompt section for PocketDev tools.
+     * For Claude Code, these are artisan commands to run via Bash.
      */
     public function buildSystemPrompt(string $provider): string
     {
@@ -144,7 +146,21 @@ class ToolSelector
             return '';
         }
 
-        $sections = ["# PocketDev Tools\n"];
+        $sections = [];
+
+        // Add preamble for Claude Code explaining these are CLI commands
+        if ($provider === PocketTool::PROVIDER_CLAUDE_CODE) {
+            $sections[] = "# PocketDev Tools\n";
+            $sections[] = "The following tools are available as artisan commands. Use your Bash tool to execute them.\n";
+        } else {
+            $sections[] = "# PocketDev Tools\n";
+        }
+
+        // Add available memory structures
+        $structuresSection = $this->buildStructuresSection();
+        if ($structuresSection) {
+            $sections[] = $structuresSection;
+        }
 
         // Group by category
         $grouped = $tools->groupBy('category');
@@ -154,13 +170,64 @@ class ToolSelector
             $sections[] = "## {$categoryTitle}\n";
 
             foreach ($categoryTools as $tool) {
-                $sections[] = "### {$tool->name}\n";
+                // Use artisan command format for Claude Code, tool name for others
+                if ($provider === PocketTool::PROVIDER_CLAUDE_CODE) {
+                    $artisanCommand = $tool->getArtisanCommand();
+                    $sections[] = "### {$artisanCommand}\n";
+                } else {
+                    $sections[] = "### {$tool->name}\n";
+                }
                 $sections[] = $tool->system_prompt;
                 $sections[] = "";
             }
         }
 
         return implode("\n", $sections);
+    }
+
+    /**
+     * Build the memory structures section for the system prompt.
+     */
+    private function buildStructuresSection(): ?string
+    {
+        $structures = MemoryStructure::orderBy('name')->get();
+
+        if ($structures->isEmpty()) {
+            return null;
+        }
+
+        $lines = [];
+        $lines[] = "## Available Memory Structures\n";
+        $lines[] = "The following memory structures are defined. Use `memory:query` to list objects or `memory:create` to create new ones.\n";
+        $lines[] = "Store relationships between objects as UUID fields in the data (e.g., `owner_id`, `location_id`).\n";
+
+        foreach ($structures as $structure) {
+            $lines[] = "### {$structure->name} (`{$structure->slug}`)";
+            if ($structure->description) {
+                $lines[] = $structure->description;
+            }
+
+            // Extract field descriptions from schema
+            $schema = $structure->schema;
+            if (isset($schema['properties']) && is_array($schema['properties'])) {
+                $lines[] = "\n**Fields:**";
+                foreach ($schema['properties'] as $fieldName => $fieldDef) {
+                    $type = $fieldDef['type'] ?? 'any';
+                    $description = $fieldDef['description'] ?? '';
+                    $embed = isset($fieldDef['x-embed']) && $fieldDef['x-embed'] ? ' [embeddable]' : '';
+                    $format = isset($fieldDef['format']) ? " ({$fieldDef['format']})" : '';
+
+                    if ($description) {
+                        $lines[] = "- `{$fieldName}` ({$type}{$format}){$embed}: {$description}";
+                    } else {
+                        $lines[] = "- `{$fieldName}` ({$type}{$format}){$embed}";
+                    }
+                }
+            }
+            $lines[] = "";
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

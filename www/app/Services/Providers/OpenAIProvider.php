@@ -4,6 +4,7 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
 use App\Streaming\StreamEvent;
 use Generator;
@@ -19,9 +20,10 @@ class OpenAIProvider implements AIProviderInterface
     private string $baseUrl;
     private ModelRepository $models;
 
-    public function __construct(ModelRepository $models)
+    public function __construct(ModelRepository $models, AppSettingsService $settings)
     {
-        $this->apiKey = config('ai.providers.openai.api_key', '');
+        // API key from database (set via UI)
+        $this->apiKey = $settings->getOpenAiApiKey() ?? '';
         $this->baseUrl = config('ai.providers.openai.base_url', 'https://api.openai.com');
         $this->models = $models;
     }

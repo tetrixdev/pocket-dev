@@ -105,6 +105,54 @@ class PocketToolSeeder extends Seeder
     {
         return [
             [
+                'slug' => 'memory-structure-create',
+                'name' => 'Memory Structure Create',
+                'description' => 'Create a new memory structure (schema/template for memory objects).',
+                'source' => PocketTool::SOURCE_POCKETDEV,
+                'category' => PocketTool::CATEGORY_MEMORY,
+                'capability' => PocketTool::CAPABILITY_MEMORY,
+                'excluded_providers' => null,
+                'native_equivalent' => null,
+                'system_prompt' => $this->getMemoryStructureCreatePrompt(),
+                'enabled' => true,
+            ],
+            [
+                'slug' => 'memory-structure-get',
+                'name' => 'Memory Structure Get',
+                'description' => 'Get a memory structure schema by slug.',
+                'source' => PocketTool::SOURCE_POCKETDEV,
+                'category' => PocketTool::CATEGORY_MEMORY,
+                'capability' => PocketTool::CAPABILITY_MEMORY,
+                'excluded_providers' => null,
+                'native_equivalent' => null,
+                'system_prompt' => $this->getMemoryStructureGetPrompt(),
+                'enabled' => true,
+            ],
+            [
+                'slug' => 'memory-structure-update',
+                'name' => 'Memory Structure Update',
+                'description' => 'Update an existing memory structure (name, description, schema, icon, color).',
+                'source' => PocketTool::SOURCE_POCKETDEV,
+                'category' => PocketTool::CATEGORY_MEMORY,
+                'capability' => PocketTool::CAPABILITY_MEMORY,
+                'excluded_providers' => null,
+                'native_equivalent' => null,
+                'system_prompt' => $this->getMemoryStructureUpdatePrompt(),
+                'enabled' => true,
+            ],
+            [
+                'slug' => 'memory-structure-delete',
+                'name' => 'Memory Structure Delete',
+                'description' => 'Delete a memory structure (only if no objects exist).',
+                'source' => PocketTool::SOURCE_POCKETDEV,
+                'category' => PocketTool::CATEGORY_MEMORY,
+                'capability' => PocketTool::CAPABILITY_MEMORY,
+                'excluded_providers' => null,
+                'native_equivalent' => null,
+                'system_prompt' => $this->getMemoryStructureDeletePrompt(),
+                'enabled' => true,
+            ],
+            [
                 'slug' => 'memory-create',
                 'name' => 'Memory Create',
                 'description' => 'Create a new memory object of a specified structure type.',
@@ -150,30 +198,6 @@ class PocketToolSeeder extends Seeder
                 'excluded_providers' => null,
                 'native_equivalent' => null,
                 'system_prompt' => $this->getMemoryDeletePrompt(),
-                'enabled' => true,
-            ],
-            [
-                'slug' => 'memory-link',
-                'name' => 'Memory Link',
-                'description' => 'Create a relationship between two memory objects.',
-                'source' => PocketTool::SOURCE_POCKETDEV,
-                'category' => PocketTool::CATEGORY_MEMORY,
-                'capability' => PocketTool::CAPABILITY_MEMORY,
-                'excluded_providers' => null,
-                'native_equivalent' => null,
-                'system_prompt' => $this->getMemoryLinkPrompt(),
-                'enabled' => true,
-            ],
-            [
-                'slug' => 'memory-unlink',
-                'name' => 'Memory Unlink',
-                'description' => 'Remove a relationship between two memory objects.',
-                'source' => PocketTool::SOURCE_POCKETDEV,
-                'category' => PocketTool::CATEGORY_MEMORY,
-                'capability' => PocketTool::CAPABILITY_MEMORY,
-                'excluded_providers' => null,
-                'native_equivalent' => null,
-                'system_prompt' => $this->getMemoryUnlinkPrompt(),
                 'enabled' => true,
             ],
         ];
@@ -289,6 +313,116 @@ class PocketToolSeeder extends Seeder
     }
 
     // Memory tool prompts
+    private function getMemoryStructureCreatePrompt(): string
+    {
+        return <<<'PROMPT'
+Use `php artisan memory:structure:create` to create new memory structures (schemas/templates).
+
+## Usage
+```bash
+php artisan memory:structure:create --name="<name>" --description="<desc>" --schema='<json-schema>'
+```
+
+## Schema Format (JSON Schema)
+- **type**: string, integer, boolean, object, array
+- **properties**: Object defining each field
+- **x-embed**: true on string fields enables vector embeddings for semantic search
+- **required**: Array of required field names
+
+## Example
+```bash
+php artisan memory:structure:create --name="Character" --description="A person or creature" --schema='{"type":"object","properties":{"class":{"type":"string"},"level":{"type":"integer"},"backstory":{"type":"string","x-embed":true}},"required":["class"]}'
+```
+
+## Notes
+- Slug is auto-generated from name if not provided
+- Use --icon and --color for UI customization
+- Fields with x-embed:true enable semantic/vector search
+PROMPT;
+    }
+
+    private function getMemoryStructureGetPrompt(): string
+    {
+        return <<<'PROMPT'
+Use `php artisan memory:structure:get` to retrieve a structure's schema.
+
+## Usage
+```bash
+php artisan memory:structure:get <slug>
+```
+
+## Example
+```bash
+php artisan memory:structure:get character
+```
+
+Returns the structure's name, slug, description, schema, icon, and color.
+PROMPT;
+    }
+
+    private function getMemoryStructureUpdatePrompt(): string
+    {
+        return <<<'PROMPT'
+Use `php artisan memory:structure:update` to modify an existing memory structure.
+
+## Usage
+```bash
+php artisan memory:structure:update <slug> [--name="<name>"] [--description="<desc>"] [--schema='<json>'] [--icon="<icon>"] [--color="<color>"]
+```
+
+## Safe Updates
+These changes are always safe and have no impact on existing objects:
+- `--name` - Change the display name
+- `--description` - Change the description
+- `--icon` - Change the icon
+- `--color` - Change the color
+
+## Schema Updates (Use with Caution)
+Changing the schema can affect existing objects:
+- **Adding fields**: Safe. Existing objects will have null values.
+- **Removing fields**: Data in existing objects is orphaned but preserved.
+- **Changing types**: May cause validation issues when updating existing objects.
+- **Changing x-embed**: Use `--regenerate-embeddings` to update vectors.
+
+## Examples
+
+Update name and description:
+```bash
+php artisan memory:structure:update character --name="Player Character" --description="A playable character"
+```
+
+Update schema and regenerate embeddings:
+```bash
+php artisan memory:structure:update character --schema='{"type":"object","properties":{"class":{"type":"string"},"backstory":{"type":"string","x-embed":true}}}' --regenerate-embeddings
+```
+
+## Notes
+- Warnings are displayed when schema changes may impact existing objects
+- Use `--regenerate-embeddings` after changing x-embed markers
+PROMPT;
+    }
+
+    private function getMemoryStructureDeletePrompt(): string
+    {
+        return <<<'PROMPT'
+Use `php artisan memory:structure:delete` to remove a memory structure.
+
+## Usage
+```bash
+php artisan memory:structure:delete <slug>
+```
+
+## Example
+```bash
+php artisan memory:structure:delete character
+```
+
+## Notes
+- Will fail if any objects exist for this structure
+- Delete all objects of this structure type first
+PROMPT;
+    }
+
     private function getMemoryCreatePrompt(): string
     {
         return <<<'PROMPT'
@@ -296,7 +430,7 @@ Use `php artisan memory:create` to create new memory objects.
 
 ## Usage
 ```bash
-php artisan memory:create --structure=<slug> --name="<name>" [--data='<json>'] [--parent-id=<uuid>]
+php artisan memory:create --structure=<slug> --name="<name>" [--data='<json>']
 ```
 
 ## Examples
@@ -306,14 +440,15 @@ Create a character:
 php artisan memory:create --structure=character --name="Thorin Ironforge" --data='{"class":"fighter","level":5}'
 ```
 
-Create a location with parent:
+Create a location:
 ```bash
-php artisan memory:create --structure=location --name="The Sunken Library" --data='{"terrain":"swamp"}' --parent-id=<parent-uuid>
+php artisan memory:create --structure=location --name="The Sunken Library" --data='{"terrain":"swamp","description":"A forgotten library..."}'
 ```
 
 ## Notes
 - Query available structures first: `php artisan memory:query --sql="SELECT slug, name FROM memory_structures"`
 - Embeddings are automatically generated for fields marked with x-embed
+- Store relationships as IDs in the data object (e.g., {"owner_id": "uuid", "location_id": "uuid"})
 - Returns the created object's ID
 PROMPT;
     }
@@ -330,15 +465,14 @@ php artisan memory:query --sql="<SELECT query>" [--search-text="<text>"] [--limi
 
 ## Available Tables
 - **memory_structures**: id, name, slug, description, schema
-- **memory_objects**: id, structure_id, structure_slug, name, data, searchable_text, parent_id
-- **memory_embeddings**: id, object_id, field_path, embedding
-- **memory_relationships**: id, source_id, target_id, relationship_type
+- **memory_objects**: id, structure_id, structure_slug, name, data (JSONB), searchable_text
+- **memory_embeddings**: id, object_id, field_path, embedding (vector)
 
 ## Examples
 
 List structures:
 ```bash
-php artisan memory:query --sql="SELECT slug, name FROM memory_structures"
+php artisan memory:query --sql="SELECT slug, name, description FROM memory_structures"
 ```
 
 List objects:
@@ -346,10 +480,20 @@ List objects:
 php artisan memory:query --sql="SELECT id, name, data FROM memory_objects WHERE structure_slug = 'character'"
 ```
 
+Query JSONB data:
+```bash
+php artisan memory:query --sql="SELECT id, name, data->>'class' as class FROM memory_objects WHERE data->>'level' = '5'"
+```
+
 Semantic search:
 ```bash
-php artisan memory:query --sql="SELECT mo.id, mo.name FROM memory_objects mo JOIN memory_embeddings me ON mo.id = me.object_id ORDER BY me.embedding <=> :search_embedding LIMIT 10" --search-text="ancient library"
+php artisan memory:query --sql="SELECT mo.id, mo.name, 1 - (me.embedding <=> :search_embedding) as similarity FROM memory_objects mo JOIN memory_embeddings me ON mo.id = me.object_id ORDER BY similarity DESC LIMIT 10" --search-text="ancient library"
 ```
+
+## Notes
+- Use JSONB operators to query data fields: ->> for text, -> for JSON
+- Use :search_embedding placeholder with --search-text for vector similarity
+- Relationships are stored as IDs in the data object (e.g., data->>'owner_id')
 PROMPT;
     }
 
@@ -360,7 +504,22 @@ Use `php artisan memory:update` to modify existing memory objects.
 
 ## Usage
 ```bash
-php artisan memory:update --id=<uuid> [--name="<name>"] [--data='<json>'] [--replace-data] [--parent-id=<uuid>]
+php artisan memory:update --id=<uuid> [--name="<name>"] [--data='<json>'] [--replace-data]
+```
+
+## Text Operations (for long text fields)
+```bash
+# Append to a field
+php artisan memory:update --id=<uuid> --field=backstory --append="\n\nNew chapter..."
+
+# Prepend to a field
+php artisan memory:update --id=<uuid> --field=notes --prepend="Important: "
+
+# Replace text in a field
+php artisan memory:update --id=<uuid> --field=description --replace-text="old text" --with="new text"
+
+# Insert after a marker
+php artisan memory:update --id=<uuid> --field=notes --insert-after="## Section A" --insert-text="\nNew content"
 ```
 
 ## Examples
@@ -374,6 +533,11 @@ Replace all data:
 ```bash
 php artisan memory:update --id=<uuid> --replace-data --data='{"new":"data"}'
 ```
+
+## Notes
+- Data updates are merged by default (use --replace-data for full replacement)
+- Text operations allow surgical edits to long text fields
+- Embeddings are regenerated automatically for changed fields
 PROMPT;
     }
 
@@ -388,40 +552,6 @@ php artisan memory:delete --id=<uuid> [--cascade]
 ```
 
 Use --cascade to also delete child objects.
-PROMPT;
-    }
-
-    private function getMemoryLinkPrompt(): string
-    {
-        return <<<'PROMPT'
-Use `php artisan memory:link` to create relationships between objects.
-
-## Usage
-```bash
-php artisan memory:link --source-id=<uuid> --target-id=<uuid> --type=<relationship> [--bidirectional]
-```
-
-## Common Types
-- owns / owned_by
-- contains / contained_in
-- knows / known_by
-- located_in / location_of
-
-Use --bidirectional for symmetric relationships.
-PROMPT;
-    }
-
-    private function getMemoryUnlinkPrompt(): string
-    {
-        return <<<'PROMPT'
-Use `php artisan memory:unlink` to remove relationships.
-
-## Usage
-```bash
-php artisan memory:unlink --source-id=<uuid> --target-id=<uuid> [--type=<relationship>] [--bidirectional]
-```
-
-Omit --type to remove all relationships between the objects.
 PROMPT;
     }
 

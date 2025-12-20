@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Agent;
 use App\Services\AppSettingsService;
+use App\Services\ModelRepository;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class CredentialsController extends Controller
 {
     public function __construct(
-        protected AppSettingsService $settings
+        protected AppSettingsService $settings,
+        protected ModelRepository $models
     ) {}
 
     /**
@@ -167,6 +170,9 @@ class CredentialsController extends Controller
                 );
             }
 
+            // Create default agent for the selected provider (if none exists)
+            $this->createDefaultAgentForProvider($validated['provider']);
+
             // Mark setup as complete
             $this->settings->markSetupComplete();
 
@@ -179,4 +185,44 @@ class CredentialsController extends Controller
         }
     }
 
+    /**
+     * Create a default agent for the given provider.
+     */
+    protected function createDefaultAgentForProvider(string $provider): void
+    {
+        // Skip if a default agent already exists for this provider
+        if (Agent::enabled()->defaultFor($provider)->exists()) {
+            return;
+        }
+
+        // Get default model from ModelRepository (first = most capable)
+        $defaultModel = $this->models->getDefaultModel($provider);
+        if (!$defaultModel) {
+            Log::warning("Cannot create default agent for {$provider}: no models configured");
+            return;
+        }
+
+        $defaultNames = [
+            Agent::PROVIDER_ANTHROPIC => 'Claude Assistant',
+            Agent::PROVIDER_OPENAI => 'GPT Assistant',
+            Agent::PROVIDER_CLAUDE_CODE => 'Claude Code',
+        ];
+
+        $defaultDescriptions = [
+            Agent::PROVIDER_ANTHROPIC => 'Default Anthropic Claude agent for general conversations.',
+            Agent::PROVIDER_OPENAI => 'Default OpenAI GPT agent for general conversations.',
+            Agent::PROVIDER_CLAUDE_CODE => 'Claude Code agent with full tool access for development tasks.',
+        ];
+
+        Agent::create([
+            'name' => $defaultNames[$provider] ?? 'Default Agent',
+            'description' => $defaultDescriptions[$provider] ?? 'Default agent for this provider.',
+            'provider' => $provider,
+            'model' => $defaultModel['model_id'],
+            'is_default' => true,
+            'enabled' => true,
+            'response_level' => 1,
+            'allowed_tools' => null, // All tools allowed
+        ]);
+    }
 }

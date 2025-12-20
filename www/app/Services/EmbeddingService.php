@@ -14,9 +14,10 @@ class EmbeddingService
     private string $model;
     private int $dimensions;
 
-    public function __construct()
+    public function __construct(AppSettingsService $settings)
     {
-        $this->apiKey = config('ai.embeddings.api_key', '');
+        // API key from database (set via UI, uses OpenAI key)
+        $this->apiKey = $settings->getOpenAiApiKey() ?? '';
         $this->baseUrl = config('ai.embeddings.base_url', 'https://api.openai.com');
         $this->model = config('ai.embeddings.model', 'text-embedding-3-small');
         $this->dimensions = config('ai.embeddings.dimensions', 1536);

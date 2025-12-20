@@ -13,7 +13,13 @@ class MemoryUpdateCommand extends Command
         {--name= : New name for the object}
         {--data= : Fields to update as JSON (merged with existing)}
         {--replace-data : Replace all data instead of merging}
-        {--parent-id= : New parent object ID (use "null" to remove)}';
+        {--field= : Field name for text operation}
+        {--append= : Text to append to field}
+        {--prepend= : Text to prepend to field}
+        {--replace-text= : Text to find for replacement}
+        {--with= : Replacement text (used with --replace-text)}
+        {--insert-after= : Marker text to insert after}
+        {--insert-text= : Text to insert (used with --insert-after)}';
 
     protected $description = 'Update an existing memory object';
 
@@ -23,7 +29,15 @@ class MemoryUpdateCommand extends Command
         $name = $this->option('name');
         $data = $this->option('data');
         $replaceData = $this->option('replace-data');
-        $parentId = $this->option('parent-id');
+
+        // Text operation options
+        $field = $this->option('field');
+        $append = $this->option('append');
+        $prepend = $this->option('prepend');
+        $replaceText = $this->option('replace-text');
+        $withText = $this->option('with');
+        $insertAfter = $this->option('insert-after');
+        $insertText = $this->option('insert-text');
 
         if (empty($id)) {
             return $this->outputError('The --id option is required');
@@ -47,8 +61,29 @@ class MemoryUpdateCommand extends Command
             $input['replace_data'] = true;
         }
 
-        if ($parentId !== null) {
-            $input['parent_id'] = $parentId === 'null' ? null : $parentId;
+        // Build text operation if specified
+        if ($field) {
+            $textOp = ['field' => $field];
+
+            if ($append !== null) {
+                $textOp['operation'] = 'append';
+                $textOp['text'] = $append;
+            } elseif ($prepend !== null) {
+                $textOp['operation'] = 'prepend';
+                $textOp['text'] = $prepend;
+            } elseif ($replaceText !== null) {
+                $textOp['operation'] = 'replace';
+                $textOp['find'] = $replaceText;
+                $textOp['text'] = $withText ?? '';
+            } elseif ($insertAfter !== null) {
+                $textOp['operation'] = 'insert_after';
+                $textOp['find'] = $insertAfter;
+                $textOp['text'] = $insertText ?? '';
+            } else {
+                return $this->outputError('--field requires one of: --append, --prepend, --replace-text, --insert-after');
+            }
+
+            $input['text_operation'] = $textOp;
         }
 
         $tool = new MemoryUpdateTool();
