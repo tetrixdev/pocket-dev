@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Contracts\AIProviderInterface;
+use App\Services\EmbeddingService;
 use App\Services\Providers\AnthropicProvider;
 use App\Services\SystemPromptBuilder;
 use App\Services\SystemPromptService;
@@ -11,6 +12,12 @@ use App\Tools\BashTool;
 use App\Tools\EditTool;
 use App\Tools\GlobTool;
 use App\Tools\GrepTool;
+use App\Tools\MemoryCreateTool;
+use App\Tools\MemoryDeleteTool;
+use App\Tools\MemoryLinkTool;
+use App\Tools\MemoryQueryTool;
+use App\Tools\MemoryUnlinkTool;
+use App\Tools\MemoryUpdateTool;
 use App\Tools\ReadTool;
 use App\Tools\WriteTool;
 use Illuminate\Support\ServiceProvider;
@@ -36,6 +43,12 @@ class AIServiceProvider extends ServiceProvider
                 'Bash' => BashTool::class,
                 'Grep' => GrepTool::class,
                 'Glob' => GlobTool::class,
+                'MemoryQuery' => MemoryQueryTool::class,
+                'MemoryCreate' => MemoryCreateTool::class,
+                'MemoryUpdate' => MemoryUpdateTool::class,
+                'MemoryDelete' => MemoryDeleteTool::class,
+                'MemoryLink' => MemoryLinkTool::class,
+                'MemoryUnlink' => MemoryUnlinkTool::class,
             ];
 
             foreach ($enabledTools as $toolName) {
@@ -50,6 +63,9 @@ class AIServiceProvider extends ServiceProvider
         // Register SystemPromptService and SystemPromptBuilder
         $this->app->singleton(SystemPromptService::class);
         $this->app->singleton(SystemPromptBuilder::class);
+
+        // Register EmbeddingService
+        $this->app->singleton(EmbeddingService::class);
 
         // Register providers
         $this->app->singleton(AnthropicProvider::class);

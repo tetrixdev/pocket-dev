@@ -93,7 +93,7 @@ services:
       start_period: 15s
 
   pocket-dev-postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     container_name: pocket-dev-postgres
     restart: unless-stopped
     environment:

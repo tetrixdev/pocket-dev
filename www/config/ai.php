@@ -136,9 +136,29 @@ return [
     */
 
     'tools' => [
-        'enabled' => ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
+        'enabled' => [
+            'Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob',
+            'MemoryQuery', 'MemoryCreate', 'MemoryUpdate', 'MemoryDelete', 'MemoryLink', 'MemoryUnlink',
+        ],
         'timeout' => (int) env('TOOL_TIMEOUT', 120),
         'max_output_length' => (int) env('TOOL_MAX_OUTPUT', 30000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Embeddings Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for generating vector embeddings.
+    | Uses OpenAI's embedding API by default.
+    |
+    */
+
+    'embeddings' => [
+        'api_key' => env('OPENAI_API_KEY'),
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
+        'model' => env('EMBEDDING_MODEL', 'text-embedding-3-small'),
+        'dimensions' => (int) env('EMBEDDING_DIMENSIONS', 1536),
     ],
 
     /*
