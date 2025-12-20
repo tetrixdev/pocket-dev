@@ -8,7 +8,7 @@ The Memory System provides persistent, semantically-searchable structured storag
 - **Structures** = Schemas/templates (like classes)
 - **Objects** = Instances (like objects)
 - **Embeddings** = Vectors for semantic search
-- **Relationships** = Stored as IDs in the data object (not a separate table)
+- **Relationships** = Stored in `memory_relationships` table (typed, bidirectional links between objects)
 
 **Read level:** 📖 Full read recommended for implementation
 
@@ -160,13 +160,16 @@ WHERE structure_slug = 'item'
 
 A location might have both a `description` and a `history`. Searching for "ancient magical library" should match the description, while "destroyed by the Cataclysm" should match the history. Separate embeddings allow targeted semantic search.
 
-#### Why Store Relationships in Data (Not a Separate Table)?
+#### Relationships Table
 
-1. **Simpler Queries** - No JOINs needed for basic relationship queries
-2. **Flexible Schema** - Relationship fields are just like any other field
-3. **Self-Documenting** - Schema describes what relationships exist with descriptions
-4. **Type Safety** - Can use `format: "uuid"` for validation
-5. **Reduced Complexity** - Fewer tables, simpler mental model
+Relationships between objects are stored in the `memory_relationships` table:
+
+1. **Typed Links** - Each relationship has a `relationship_type` (e.g., "owns", "knows", "located_in")
+2. **Bidirectional** - Source and target objects can be queried in either direction
+3. **Metadata** - Optional JSON metadata for relationship-specific data
+4. **AI-Managed** - Created via `memory:link` tool, queryable via `memory:query`
+
+> **Note:** You can also store relationship UUIDs directly in object data fields for simple cases, but the relationships table is preferred for queryability.
 
 ---
 

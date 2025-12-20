@@ -210,6 +210,8 @@ class ClaudeCodeProvider implements AIProviderInterface
         // --include-partial-messages enables real streaming with content_block_delta events
         // User message is provided via stdin (not as argument) because --tools breaks argument parsing
         // --dangerously-skip-permissions allows all tool calls without approval prompts
+        // TODO: Consider making --dangerously-skip-permissions configurable via Setting::get()
+        //       for deployments requiring approval prompts before tool execution
         $parts = [
             'claude',
             '--print',

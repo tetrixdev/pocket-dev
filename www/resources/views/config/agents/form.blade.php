@@ -278,11 +278,9 @@
                 <p class="text-xs text-gray-400" x-text="allToolsSelected ? 'All tools are enabled. Uncheck \"Allow all tools\" to select specific tools.' : 'Select specific tools or enable \"Allow all tools\" to grant access to everything.'"></p>
             </div>
 
-            <!-- Hidden inputs for selected tools -->
-            <template x-if="!allToolsSelected">
-                <template x-for="tool in selectedTools" :key="tool">
-                    <input type="hidden" name="allowed_tools[]" :value="tool">
-                </template>
+            <!-- Hidden inputs for selected tools (only when not all tools selected) -->
+            <template x-for="tool in selectedTools" :key="tool">
+                <input x-show="!allToolsSelected" type="hidden" name="allowed_tools[]" :value="tool">
             </template>
         </div>
 
@@ -442,12 +440,18 @@
                 this.toolsLoading = true;
                 try {
                     const response = await fetch(`/api/tools/for-provider/${this.provider}`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
                     const data = await response.json();
                     this.nativeTools = data.native || [];
                     this.pocketdevTools = data.pocketdev || [];
                     this.userTools = data.user || [];
                 } catch (error) {
                     console.error('Failed to fetch tools:', error);
+                    this.nativeTools = [];
+                    this.pocketdevTools = [];
+                    this.userTools = [];
                 } finally {
                     this.toolsLoading = false;
                 }
@@ -469,11 +473,16 @@
                             allowed_tools: this.allToolsSelected ? null : this.selectedTools,
                         }),
                     });
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
                     const data = await response.json();
                     this.promptSections = data.sections || [];
                     this.estimatedTokens = data.estimated_tokens || 0;
                 } catch (error) {
                     console.error('Failed to fetch prompt preview:', error);
+                    this.promptSections = [];
+                    this.estimatedTokens = 0;
                 } finally {
                     this.promptLoading = false;
                 }

@@ -15,7 +15,7 @@ class TranscriptionService
     {
         // API key from database (set via UI)
         $this->apiKey = $appSettings->getOpenAiApiKey() ?? '';
-        $this->baseUrl = 'https://api.openai.com/v1';
+        $this->baseUrl = config('ai.transcription.base_url') ?? config('ai.providers.openai.base_url') ?? 'https://api.openai.com/v1';
 
         if (empty($this->apiKey)) {
             throw new \Exception('OpenAI API key is not configured. Set it in Config → Credentials.');

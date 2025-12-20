@@ -166,7 +166,7 @@ class Conversation extends Model
     /**
      * Get provider-specific reasoning configuration.
      *
-     * Prefers agent settings if available, falls back to conversation-level settings.
+     * Settings are stored directly on the conversation (copied from agent at creation time).
      * - Anthropic: uses budget_tokens (explicit token allocation)
      * - OpenAI: uses effort (none/low/medium/high)
      * - OpenAI Compatible: uses effort (none/low/medium/high) - may be ignored by some servers
@@ -174,12 +174,6 @@ class Conversation extends Model
      */
     public function getReasoningConfig(): array
     {
-        // If we have an agent, use its reasoning config
-        if ($this->agent_id && $this->relationLoaded('agent') && $this->agent) {
-            return $this->agent->getReasoningConfig();
-        }
-
-        // Fall back to conversation-level settings (for backward compatibility)
         return match ($this->provider_type) {
             'anthropic' => [
                 'budget_tokens' => $this->anthropic_thinking_budget ?? 0,
@@ -198,26 +192,18 @@ class Conversation extends Model
     }
 
     /**
-     * Get the response level, preferring agent setting if available.
+     * Get the response level.
      */
     public function getResponseLevel(): int
     {
-        if ($this->agent_id && $this->relationLoaded('agent') && $this->agent) {
-            return $this->agent->response_level;
-        }
-
         return $this->response_level ?? 1;
     }
 
     /**
-     * Get the model, preferring agent setting if available.
+     * Get the model.
      */
     public function getModel(): string
     {
-        if ($this->agent_id && $this->relationLoaded('agent') && $this->agent) {
-            return $this->agent->model;
-        }
-
         return $this->model;
     }
 }
