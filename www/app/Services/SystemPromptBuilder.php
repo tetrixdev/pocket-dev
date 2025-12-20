@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Conversation;
+use App\Models\PocketTool;
 
 /**
  * Builds the system prompt for AI providers.
@@ -11,7 +12,8 @@ use App\Models\Conversation;
 class SystemPromptBuilder
 {
     public function __construct(
-        private SystemPromptService $systemPromptService
+        private SystemPromptService $systemPromptService,
+        private ToolSelector $toolSelector
     ) {}
 
     /**
@@ -28,6 +30,30 @@ class SystemPromptBuilder
         $toolInstructions = $toolRegistry->getInstructions();
         if (!empty($toolInstructions)) {
             $sections[] = $this->buildToolSection($toolInstructions);
+        }
+
+        // Working directory context
+        $sections[] = $this->buildContextSection($conversation);
+
+        return implode("\n\n", array_filter($sections));
+    }
+
+    /**
+     * Build the system prompt specifically for Claude Code provider.
+     * Injects PocketDev-exclusive tools (memory, tool management, user tools).
+     */
+    public function buildForClaudeCode(Conversation $conversation): string
+    {
+        $sections = [];
+
+        // System prompt (core + additional, customizable via settings)
+        $sections[] = $this->systemPromptService->get();
+
+        // PocketDev tools (memory, tool management, user tools)
+        // These are tools that don't have native Claude Code equivalents
+        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt(PocketTool::PROVIDER_CLAUDE_CODE);
+        if (!empty($pocketDevToolPrompt)) {
+            $sections[] = $pocketDevToolPrompt;
         }
 
         // Working directory context

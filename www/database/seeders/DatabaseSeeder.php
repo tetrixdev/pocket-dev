@@ -19,5 +19,11 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+
+        // Seed PocketDev tools and conflicts
+        $this->call([
+            PocketToolSeeder::class,
+            ToolConflictSeeder::class,
+        ]);
     }
 }
