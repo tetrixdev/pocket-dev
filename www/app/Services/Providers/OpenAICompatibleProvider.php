@@ -29,6 +29,7 @@ class OpenAICompatibleProvider implements AIProviderInterface
     private string $baseUrl;
     private string $defaultModel;
     private int $maxTokens;
+    private int $contextWindow;
     private AppSettingsService $settings;
 
     public function __construct(AppSettingsService $settings)
@@ -39,6 +40,8 @@ class OpenAICompatibleProvider implements AIProviderInterface
         $this->apiKey = $this->settings->getOpenAiCompatibleApiKey();
         $this->defaultModel = $this->settings->getOpenAiCompatibleModel() ?? '';
         $this->maxTokens = (int) config('ai.providers.openai_compatible.max_tokens', 8192);
+        $this->contextWindow = $this->settings->getOpenAiCompatibleContextWindow()
+            ?? (int) config('ai.providers.openai_compatible.context_window', 32768);
     }
 
     public function getProviderType(): string
@@ -61,7 +64,7 @@ class OpenAICompatibleProvider implements AIProviderInterface
         return [
             $modelId => [
                 'name' => $modelName,
-                'context_window' => 32768, // Default assumption for local LLMs
+                'context_window' => $this->contextWindow,
                 'max_output_tokens' => $this->maxTokens,
             ],
         ];
@@ -70,10 +73,10 @@ class OpenAICompatibleProvider implements AIProviderInterface
     public function getContextWindow(string $model): int
     {
         // $model is unused - local LLMs don't expose per-model context windows via API.
-        // Most local LLMs have ~32k context, but this varies by model.
+        // Context window is configured globally via UI settings.
         unset($model);
 
-        return 32768;
+        return $this->contextWindow;
     }
 
     /**
@@ -416,10 +419,12 @@ class OpenAICompatibleProvider implements AIProviderInterface
                         $state['blockIndex']++;
                     }
 
+                    // Store blockIndex with the tool call for correct stop pairing
                     $state['pendingToolCalls'][$index] = [
                         'id' => $toolCall['id'],
                         'name' => $toolCall['function']['name'] ?? '',
                         'arguments' => '',
+                        'blockIndex' => $state['blockIndex'],
                     ];
 
                     yield StreamEvent::toolUseStart(
@@ -427,6 +432,9 @@ class OpenAICompatibleProvider implements AIProviderInterface
                         $toolCall['id'],
                         $toolCall['function']['name'] ?? ''
                     );
+
+                    // Increment after each tool start to ensure unique indices
+                    $state['blockIndex']++;
                 }
 
                 // Tool call arguments streaming
@@ -434,18 +442,18 @@ class OpenAICompatibleProvider implements AIProviderInterface
                     $args = $toolCall['function']['arguments'];
                     if (isset($state['pendingToolCalls'][$index])) {
                         $state['pendingToolCalls'][$index]['arguments'] .= $args;
+                        // Use the stored blockIndex for this tool call
+                        yield StreamEvent::toolUseDelta($state['pendingToolCalls'][$index]['blockIndex'], $args);
                     }
-                    yield StreamEvent::toolUseDelta($state['blockIndex'], $args);
                 }
             }
         }
 
         // Handle finish reason
         if ($finishReason !== null) {
-            // Close any open tool calls
+            // Close any open tool calls using their stored blockIndex
             foreach ($state['pendingToolCalls'] as $index => $toolCall) {
-                yield StreamEvent::toolUseStop($state['blockIndex']);
-                $state['blockIndex']++;
+                yield StreamEvent::toolUseStop($toolCall['blockIndex']);
             }
             $state['pendingToolCalls'] = [];
 

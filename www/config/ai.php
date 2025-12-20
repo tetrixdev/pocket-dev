@@ -56,6 +56,7 @@ return [
             'api_key' => null, // Optional - many local servers don't require auth
             'default_model' => '', // Empty = use server default
             'max_tokens' => 8192,
+            'context_window' => 32768, // Default context window for local LLMs
         ],
     ],
 

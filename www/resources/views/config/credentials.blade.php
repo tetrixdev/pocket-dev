@@ -175,6 +175,19 @@
                                 class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
                             >
                         </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Context Window <span class="text-gray-600">(optional)</span></label>
+                            <input
+                                type="number"
+                                name="openai_compatible_context_window"
+                                placeholder="32768"
+                                value="{{ $openAiCompatibleContextWindow ?? '' }}"
+                                min="1024"
+                                max="2000000"
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                            >
+                            <p class="text-xs text-gray-600 mt-1">Max tokens the model can process. Default: 32768</p>
+                        </div>
                         <div class="pt-2">
                             <x-button type="submit" variant="primary">
                                 {{ $hasOpenAiCompatible ? 'Update' : 'Save' }}

@@ -220,6 +220,24 @@ class AppSettingsService
     }
 
     /**
+     * Get OpenAI Compatible context window
+     */
+    public function getOpenAiCompatibleContextWindow(): ?int
+    {
+        $value = $this->get('openai_compatible_context_window');
+        return $value !== null ? (int) $value : null;
+    }
+
+    /**
+     * Set OpenAI Compatible context window
+     */
+    public function setOpenAiCompatibleContextWindow(?int $contextWindow): AppSetting
+    {
+        Log::info('OpenAI Compatible context window updated', ['context_window' => $contextWindow]);
+        return $this->set('openai_compatible_context_window', $contextWindow);
+    }
+
+    /**
      * Delete all OpenAI Compatible settings
      */
     public function deleteOpenAiCompatibleSettings(): void
@@ -227,6 +245,7 @@ class AppSettingsService
         $this->deleteOpenAiCompatibleBaseUrl();
         $this->deleteOpenAiCompatibleApiKey();
         $this->delete('openai_compatible_model');
+        $this->delete('openai_compatible_context_window');
         Log::info('OpenAI Compatible settings deleted');
     }
 

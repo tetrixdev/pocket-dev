@@ -26,6 +26,7 @@ class CredentialsController extends Controller
             'hasOpenAiCompatible' => $this->settings->hasOpenAiCompatibleBaseUrl(),
             'openAiCompatibleBaseUrl' => $this->settings->getOpenAiCompatibleBaseUrl(),
             'openAiCompatibleModel' => $this->settings->getOpenAiCompatibleModel(),
+            'openAiCompatibleContextWindow' => $this->settings->getOpenAiCompatibleContextWindow(),
             'hasGitCredentials' => $this->settings->hasGitCredentials(),
             'gitCredentials' => $this->settings->getGitCredentials(),
         ]);
@@ -43,6 +44,7 @@ class CredentialsController extends Controller
                 'openai_compatible_base_url' => 'nullable|url',
                 'openai_compatible_api_key' => 'nullable|string',
                 'openai_compatible_model' => 'nullable|string',
+                'openai_compatible_context_window' => 'nullable|integer|min:1024|max:2000000',
             ]);
 
             if (!empty($validated['anthropic_api_key'])) {
@@ -63,6 +65,10 @@ class CredentialsController extends Controller
 
                 if (!empty($validated['openai_compatible_model'])) {
                     $this->settings->setOpenAiCompatibleModel($validated['openai_compatible_model']);
+                }
+
+                if (!empty($validated['openai_compatible_context_window'])) {
+                    $this->settings->setOpenAiCompatibleContextWindow((int) $validated['openai_compatible_context_window']);
                 }
             }
 
@@ -170,6 +176,7 @@ class CredentialsController extends Controller
                 'openai_compatible_base_url' => 'required_if:provider,openai_compatible|nullable|url',
                 'openai_compatible_api_key' => 'nullable|string',
                 'openai_compatible_model' => 'nullable|string',
+                'openai_compatible_context_window' => 'nullable|integer|min:1024|max:2000000',
                 'git_token' => 'nullable|string',
                 'git_user_name' => 'nullable|string',
                 'git_user_email' => 'nullable|email',
@@ -196,6 +203,10 @@ class CredentialsController extends Controller
 
                 if (!empty($validated['openai_compatible_model'])) {
                     $this->settings->setOpenAiCompatibleModel($validated['openai_compatible_model']);
+                }
+
+                if (!empty($validated['openai_compatible_context_window'])) {
+                    $this->settings->setOpenAiCompatibleContextWindow((int) $validated['openai_compatible_context_window']);
                 }
             }
 

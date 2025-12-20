@@ -176,6 +176,21 @@
                     </p>
                 </div>
 
+                <div>
+                    <label class="block text-sm font-medium mb-2">Context Window <span class="text-gray-500">(optional)</span></label>
+                    <input
+                        type="number"
+                        name="openai_compatible_context_window"
+                        placeholder="32768"
+                        min="1024"
+                        max="2000000"
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-3 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                    >
+                    <p class="text-xs text-gray-500 mt-2">
+                        Max tokens the model can process. Default: 32768
+                    </p>
+                </div>
+
                 <div class="text-xs text-gray-500 pt-2 border-t border-gray-700">
                     <p class="font-medium text-gray-400 mb-1">Supported servers:</p>
                     <ul class="list-disc list-inside space-y-0.5">
