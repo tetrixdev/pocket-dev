@@ -111,6 +111,81 @@
                 </form>
                 @endunless
             </div>
+
+            {{-- OpenAI Compatible (Local LLM) --}}
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 class="font-medium text-white">Local LLM (OpenAI Compatible)</h3>
+                        <p class="text-sm text-gray-400">KoboldCpp, Ollama, LM Studio, or any OpenAI-compatible server</p>
+                    </div>
+                    @if($hasOpenAiCompatible)
+                        <div class="flex items-center gap-3">
+                            <span class="text-green-400 text-sm">Configured</span>
+                            <form method="POST" action="{{ route('config.credentials.api-keys.delete', 'openai_compatible') }}" class="inline">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="text-red-400 hover:text-red-300 text-sm" onclick="return confirm('Delete Local LLM configuration?')">
+                                    Delete
+                                </button>
+                            </form>
+                        </div>
+                    @endif
+                </div>
+
+                @if($hasOpenAiCompatible)
+                    <div class="text-sm text-gray-400 mb-3 space-y-1">
+                        <p><span class="text-gray-500">URL:</span> {{ $openAiCompatibleBaseUrl }}</p>
+                        @if($openAiCompatibleModel)
+                            <p><span class="text-gray-500">Model:</span> {{ $openAiCompatibleModel }}</p>
+                        @endif
+                    </div>
+                @endif
+
+                <form method="POST" action="{{ route('config.credentials.api-keys') }}">
+                    @csrf
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Server URL</label>
+                            <input
+                                type="url"
+                                name="openai_compatible_base_url"
+                                placeholder="http://localhost:5001"
+                                value="{{ $openAiCompatibleBaseUrl ?? '' }}"
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                                required
+                            >
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">API Key <span class="text-gray-600">(optional)</span></label>
+                            <input
+                                type="password"
+                                name="openai_compatible_api_key"
+                                placeholder="Leave empty if not required"
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                            >
+                        </div>
+                        <div>
+                            <label class="block text-sm text-gray-400 mb-1">Model Name <span class="text-gray-600">(optional)</span></label>
+                            <input
+                                type="text"
+                                name="openai_compatible_model"
+                                placeholder="Leave empty for server default"
+                                value="{{ $openAiCompatibleModel ?? '' }}"
+                                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                            >
+                        </div>
+                        <div class="pt-2">
+                            <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">
+                                {{ $hasOpenAiCompatible ? 'Update' : 'Save' }}
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-3">
+                        Common ports: KoboldCpp (5001), Ollama (11434), LM Studio (1234), LocalAI (8080)
+                    </p>
+                </form>
+            </div>
         </div>
     </section>
 

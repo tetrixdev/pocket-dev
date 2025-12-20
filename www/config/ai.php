@@ -7,7 +7,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | This option controls the default AI provider used for conversations.
-    | Supported: "anthropic", "openai"
+    | Supported: "anthropic", "openai", "openai_compatible", "claude_code"
     |
     */
 
@@ -47,6 +47,15 @@ return [
                 'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'LS',
                 'Bash', 'Task', 'WebFetch', 'WebSearch', 'NotebookRead', 'NotebookEdit',
             ],
+        ],
+
+        'openai_compatible' => [
+            // OpenAI-compatible API for local LLMs (KoboldCpp, Ollama, LM Studio, etc.)
+            // Settings configured via UI and stored in database (AppSettingsService)
+            'base_url' => null,
+            'api_key' => null, // Optional - many local servers don't require auth
+            'default_model' => '', // Empty = use server default
+            'max_tokens' => 8192,
         ],
     ],
 
@@ -101,6 +110,17 @@ return [
                 ['name' => 'Standard', 'thinking_tokens' => 10000],
                 ['name' => 'Deep', 'thinking_tokens' => 20000],
                 ['name' => 'Maximum', 'thinking_tokens' => 32000],
+            ],
+        ],
+
+        // OpenAI Compatible: Uses same effort levels as OpenAI
+        // Most local LLMs will ignore this, but it's available for servers that support it
+        'openai_compatible' => [
+            'effort_levels' => [
+                ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning'],
+                ['value' => 'low', 'name' => 'Light', 'description' => 'Quick reasoning'],
+                ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
+                ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
             ],
         ],
     ],

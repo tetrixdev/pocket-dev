@@ -70,6 +70,19 @@
                             @endif
                         </div>
                     </label>
+
+                    {{-- OpenAI Compatible (Local LLM) --}}
+                    <label class="flex items-start gap-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
+                           :class="{ 'ring-2 ring-blue-500': provider === 'openai_compatible' }">
+                        <input type="radio" name="provider" value="openai_compatible" x-model="provider" class="mt-1">
+                        <div class="flex-1">
+                            <span class="font-medium">Local LLM (OpenAI Compatible)</span>
+                            <p class="text-sm text-gray-400 mt-1">KoboldCpp, Ollama, LM Studio, or any OpenAI-compatible server.</p>
+                            @if($hasOpenAiCompatible)
+                                <p class="text-sm text-green-400 mt-1">Already configured</p>
+                            @endif
+                        </div>
+                    </label>
                 </div>
             </div>
 
@@ -119,6 +132,59 @@
                 <p class="text-xs text-gray-500 mt-2">
                     Get your key from <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-400 hover:underline">platform.openai.com</a>
                 </p>
+            </div>
+
+            {{-- OpenAI Compatible Setup --}}
+            <div x-show="provider === 'openai_compatible'" x-cloak class="bg-gray-800 rounded-lg p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Server URL <span class="text-red-400">*</span></label>
+                    <input
+                        type="url"
+                        name="openai_compatible_base_url"
+                        placeholder="http://localhost:5001"
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-3 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                        :required="provider === 'openai_compatible'"
+                    >
+                    <p class="text-xs text-gray-500 mt-2">
+                        The base URL of your local LLM server (e.g., http://localhost:5001 for KoboldCpp)
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">API Key <span class="text-gray-500">(optional)</span></label>
+                    <input
+                        type="password"
+                        name="openai_compatible_api_key"
+                        placeholder="Leave empty if not required"
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-3 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                    >
+                    <p class="text-xs text-gray-500 mt-2">
+                        Only needed if your server requires authentication
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium mb-2">Model Name <span class="text-gray-500">(optional)</span></label>
+                    <input
+                        type="text"
+                        name="openai_compatible_model"
+                        placeholder="Leave empty for server default"
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-3 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                    >
+                    <p class="text-xs text-gray-500 mt-2">
+                        Most local LLM servers use whatever model is loaded. Only specify if your server supports multiple models.
+                    </p>
+                </div>
+
+                <div class="text-xs text-gray-500 pt-2 border-t border-gray-700">
+                    <p class="font-medium text-gray-400 mb-1">Supported servers:</p>
+                    <ul class="list-disc list-inside space-y-0.5">
+                        <li>KoboldCpp - http://localhost:5001</li>
+                        <li>Ollama - http://localhost:11434</li>
+                        <li>LM Studio - http://localhost:1234</li>
+                        <li>LocalAI - http://localhost:8080</li>
+                    </ul>
+                </div>
             </div>
 
             {{-- Git Credentials (optional) --}}
@@ -186,7 +252,7 @@
     <script>
         function setupWizard() {
             return {
-                provider: '{{ $hasClaudeCode ? "claude_code" : ($hasAnthropicKey ? "anthropic" : ($hasOpenAiKey ? "openai" : "claude_code")) }}',
+                provider: '{{ $hasClaudeCode ? "claude_code" : ($hasAnthropicKey ? "anthropic" : ($hasOpenAiKey ? "openai" : ($hasOpenAiCompatible ? "openai_compatible" : "claude_code"))) }}',
                 showGitCredentials: false
             }
         }
