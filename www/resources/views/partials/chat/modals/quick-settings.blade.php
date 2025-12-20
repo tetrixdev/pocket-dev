@@ -1,25 +1,22 @@
 {{-- Quick Settings Modal --}}
 <x-modal show="showQuickSettings" title="Quick Settings">
     <div class="space-y-4">
-        {{-- Provider Selection --}}
+        {{-- Provider Selection (only shows configured providers) --}}
         <div>
             <label class="block text-sm font-medium text-gray-300 mb-2">Provider</label>
             <div class="space-y-2">
                 <template x-for="(p, key) in providers" :key="key">
-                    <div class="flex items-center text-gray-300" :class="{'opacity-50': !p.available}">
+                    <div x-show="p.available" class="flex items-center text-gray-300">
                         <label class="flex items-center cursor-pointer flex-1">
-                            <input type="radio" x-model="provider" :value="key" @change="updateModels(); saveDefaultSettings()" :disabled="!p.available" class="mr-2">
+                            <input type="radio" x-model="provider" :value="key" @change="updateModels(); saveDefaultSettings()" class="mr-2">
                             <span x-text="key.replace('_', ' ')" class="capitalize"></span>
-                            <span x-show="!p.available && key !== 'claude_code'" class="ml-2 text-xs text-red-400">(not configured)</span>
                         </label>
-                        <button
-                            x-show="key === 'claude_code' && !p.available"
-                            @click="showQuickSettings = false; showClaudeCodeAuthModal = true"
-                            class="text-xs text-blue-400 hover:underline"
-                        >Setup</button>
                     </div>
                 </template>
             </div>
+            <p x-show="Object.values(providers).filter(p => p.available).length === 0" class="text-sm text-gray-500 italic">
+                No providers configured. Visit <a href="/config/credentials" class="text-blue-400 hover:underline">Settings</a> to add one.
+            </p>
         </div>
 
         {{-- Model Selection --}}

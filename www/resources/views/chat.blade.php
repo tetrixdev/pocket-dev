@@ -268,7 +268,22 @@
                         const response = await fetch('/api/providers');
                         const data = await response.json();
                         this.providers = data.providers;
-                        this.provider = data.default || 'anthropic';
+
+                        // Find available providers
+                        const availableProviders = Object.entries(data.providers)
+                            .filter(([key, p]) => p.available)
+                            .map(([key]) => key);
+
+                        // Select default provider, falling back to first available
+                        const defaultProvider = data.default || 'anthropic';
+                        if (availableProviders.includes(defaultProvider)) {
+                            this.provider = defaultProvider;
+                        } else if (availableProviders.length > 0) {
+                            this.provider = availableProviders[0];
+                        } else {
+                            this.provider = defaultProvider; // Keep default even if unavailable
+                        }
+
                         // Store response levels from API
                         if (data.response_levels) {
                             this.responseLevels = Object.values(data.response_levels);
@@ -285,8 +300,8 @@
                         const response = await fetch('/api/settings/chat-defaults');
                         const data = await response.json();
 
-                        // Apply saved defaults
-                        if (data.provider && this.providers[data.provider]) {
+                        // Apply saved defaults (only if provider is available)
+                        if (data.provider && this.providers[data.provider]?.available) {
                             this.provider = data.provider;
                             this.updateModels();
                         }

@@ -22,9 +22,11 @@ class AnthropicProvider implements AIProviderInterface
 
     public function __construct(ModelRepository $models)
     {
-        $this->apiKey = config('ai.providers.anthropic.api_key', '');
-        $this->baseUrl = config('ai.providers.anthropic.base_url', 'https://api.anthropic.com');
-        $this->apiVersion = config('ai.providers.anthropic.api_version', '2023-06-01');
+        // Use ?? instead of config default - config() returns null when env var is not set,
+        // not the default value, because the key exists in config with null value
+        $this->apiKey = config('ai.providers.anthropic.api_key') ?? '';
+        $this->baseUrl = config('ai.providers.anthropic.base_url') ?? 'https://api.anthropic.com';
+        $this->apiVersion = config('ai.providers.anthropic.api_version') ?? '2023-06-01';
         $this->models = $models;
     }
 
