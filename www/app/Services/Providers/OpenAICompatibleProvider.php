@@ -69,7 +69,10 @@ class OpenAICompatibleProvider implements AIProviderInterface
 
     public function getContextWindow(string $model): int
     {
-        // Most local LLMs have ~32k context, but this varies
+        // $model is unused - local LLMs don't expose per-model context windows via API.
+        // Most local LLMs have ~32k context, but this varies by model.
+        unset($model);
+
         return 32768;
     }
 

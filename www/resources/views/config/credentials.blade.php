@@ -125,9 +125,9 @@
                             <form method="POST" action="{{ route('config.credentials.api-keys.delete', 'openai_compatible') }}" class="inline">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="text-red-400 hover:text-red-300 text-sm" onclick="return confirm('Delete Local LLM configuration?')">
+                                <x-button type="submit" variant="ghost" size="sm" class="!p-0 !bg-transparent text-red-400 hover:text-red-300" onclick="return confirm('Delete Local LLM configuration?')">
                                     Delete
-                                </button>
+                                </x-button>
                             </form>
                         </div>
                     @endif
@@ -176,9 +176,9 @@
                             >
                         </div>
                         <div class="pt-2">
-                            <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">
+                            <x-button type="submit" variant="primary">
                                 {{ $hasOpenAiCompatible ? 'Update' : 'Save' }}
-                            </button>
+                            </x-button>
                         </div>
                     </div>
                     <p class="text-xs text-gray-500 mt-3">
