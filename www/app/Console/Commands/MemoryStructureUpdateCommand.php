@@ -207,6 +207,10 @@ class MemoryStructureUpdateCommand extends Command
 
     /**
      * Regenerate embeddings for all objects of this structure.
+     *
+     * Embeddings are generated outside the transaction to avoid holding
+     * DB locks during API calls. Only the delete + insert operations
+     * are wrapped in a transaction.
      */
     private function regenerateEmbeddings(MemoryStructure $structure): int
     {
@@ -216,35 +220,47 @@ class MemoryStructureUpdateCommand extends Command
         MemoryObject::where('structure_id', $structure->id)
             ->chunk(100, function ($objects) use ($embeddableFields, &$count) {
                 foreach ($objects as $object) {
-                    DB::transaction(function () use ($object, $embeddableFields, &$count) {
-                        // Delete existing embeddings
-                        MemoryEmbedding::where('object_id', $object->id)->delete();
+                    // 1. Generate embeddings OUTSIDE transaction (API calls)
+                    $newEmbeddings = [];
+                    foreach ($embeddableFields as $fieldPath) {
+                        $content = $object->getField($fieldPath);
 
-                        // Generate new embeddings
-                        foreach ($embeddableFields as $fieldPath) {
-                            $content = $object->getField($fieldPath);
+                        if (!empty($content) && is_string($content)) {
+                            $contentHash = MemoryEmbedding::hashContent($content);
+                            $embedding = $this->embeddingService->embed($content);
 
-                            if (!empty($content) && is_string($content)) {
-                                $contentHash = MemoryEmbedding::hashContent($content);
-                                $embedding = $this->embeddingService->embed($content);
+                            if ($embedding === null) {
+                                $this->warn("Failed to generate embedding for field '{$fieldPath}' in object {$object->id}. Skipping.");
+                                continue;
+                            }
 
-                                // Skip if embedding failed
-                                if ($embedding === null) {
-                                    $this->warn("Failed to generate embedding for field '{$fieldPath}' in object {$object->id}. Skipping.");
-                                    continue;
-                                }
+                            $newEmbeddings[] = [
+                                'field_path' => $fieldPath,
+                                'content_hash' => $contentHash,
+                                'embedding' => $embedding,
+                            ];
+                        }
+                    }
 
+                    // 2. Database operations INSIDE transaction (quick)
+                    if (!empty($newEmbeddings)) {
+                        DB::transaction(function () use ($object, $newEmbeddings) {
+                            // Delete existing embeddings
+                            MemoryEmbedding::where('object_id', $object->id)->delete();
+
+                            // Insert new embeddings
+                            foreach ($newEmbeddings as $embeddingData) {
                                 MemoryEmbedding::create([
                                     'object_id' => $object->id,
-                                    'field_path' => $fieldPath,
-                                    'content_hash' => $contentHash,
-                                    'embedding' => $embedding,
+                                    'field_path' => $embeddingData['field_path'],
+                                    'content_hash' => $embeddingData['content_hash'],
+                                    'embedding' => $embeddingData['embedding'],
                                 ]);
                             }
-                        }
+                        });
+                    }
 
-                        $count++;
-                    });
+                    $count++;
                 }
             });
 

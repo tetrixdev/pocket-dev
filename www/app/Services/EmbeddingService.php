@@ -11,8 +11,8 @@ class EmbeddingService
 {
     private string $apiKey;
     private string $baseUrl;
-    private string $model;
-    private int $dimensions;
+    public string $model;
+    public int $dimensions;
 
     public function __construct(AppSettingsService $settings)
     {
@@ -45,14 +45,20 @@ class EmbeddingService
         }
 
         try {
+            $payload = [
+                'model' => $this->model,
+                'input' => $text,
+            ];
+
+            // dimensions parameter only works with text-embedding-3-* models
+            if ($this->supportsDimensions()) {
+                $payload['dimensions'] = $this->dimensions;
+            }
+
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
-            ])->post($this->baseUrl . '/v1/embeddings', [
-                'model' => $this->model,
-                'input' => $text,
-                'dimensions' => $this->dimensions,
-            ]);
+            ])->post($this->baseUrl . '/v1/embeddings', $payload);
 
             if (!$response->successful()) {
                 Log::error('EmbeddingService: API error', [
@@ -92,14 +98,20 @@ class EmbeddingService
         }
 
         try {
+            $payload = [
+                'model' => $this->model,
+                'input' => array_values($nonEmptyTexts),
+            ];
+
+            // dimensions parameter only works with text-embedding-3-* models
+            if ($this->supportsDimensions()) {
+                $payload['dimensions'] = $this->dimensions;
+            }
+
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
-            ])->post($this->baseUrl . '/v1/embeddings', [
-                'model' => $this->model,
-                'input' => array_values($nonEmptyTexts),
-                'dimensions' => $this->dimensions,
-            ]);
+            ])->post($this->baseUrl . '/v1/embeddings', $payload);
 
             if (!$response->successful()) {
                 Log::error('EmbeddingService: API error', [
@@ -234,10 +246,11 @@ class EmbeddingService
     }
 
     /**
-     * Get the configured embedding dimensions.
+     * Check if the configured model supports the dimensions parameter.
+     * Only text-embedding-3-small and text-embedding-3-large support it.
      */
-    public function getDimensions(): int
+    private function supportsDimensions(): bool
     {
-        return $this->dimensions;
+        return str_starts_with($this->model, 'text-embedding-3-');
     }
 }
