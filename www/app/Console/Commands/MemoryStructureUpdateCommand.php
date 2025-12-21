@@ -22,10 +22,11 @@ class MemoryStructureUpdateCommand extends Command
 
     protected $description = 'Update an existing memory structure';
 
-    public function __construct(
-        private EmbeddingService $embeddingService
-    ) {
-        parent::__construct();
+    private ?EmbeddingService $embeddingService = null;
+
+    private function embeddingService(): EmbeddingService
+    {
+        return $this->embeddingService ??= app(EmbeddingService::class);
     }
 
     public function handle(): int
@@ -240,7 +241,7 @@ class MemoryStructureUpdateCommand extends Command
 
                         if (!empty($content) && is_string($content)) {
                             $contentHash = MemoryEmbedding::hashContent($content);
-                            $embedding = $this->embeddingService->embed($content);
+                            $embedding = $this->embeddingService()->embed($content);
 
                             if ($embedding === null) {
                                 $this->warn("Failed to generate embedding for field '{$fieldPath}' in object {$object->id}. Skipping.");

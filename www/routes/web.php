@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ClaudeAuthController;
+use App\Http\Controllers\CodexAuthController;
 use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\CredentialsController;
 use App\Http\Controllers\SystemPromptController;
@@ -16,6 +17,12 @@ Route::get("/claude/auth/status", [ClaudeAuthController::class, "status"])->name
 Route::post("/claude/auth/upload", [ClaudeAuthController::class, "upload"])->name("claude.auth.upload");
 Route::post("/claude/auth/upload-json", [ClaudeAuthController::class, "uploadJson"])->name("claude.auth.uploadJson");
 Route::delete("/claude/auth/logout", [ClaudeAuthController::class, "logout"])->name("claude.auth.logout");
+
+// Codex authentication routes
+Route::get("/codex/auth", [CodexAuthController::class, "index"])->name("codex.auth");
+Route::get("/codex/auth/status", [CodexAuthController::class, "status"])->name("codex.auth.status");
+Route::post("/codex/auth/upload-json", [CodexAuthController::class, "uploadJson"])->name("codex.auth.uploadJson");
+Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->name("codex.auth.logout");
 
 // Chat - Multi-provider conversation interface
 Route::view("/", "chat")->name("chat.index");

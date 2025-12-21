@@ -7,7 +7,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | This option controls the default AI provider used for conversations.
-    | Supported: "anthropic", "openai", "openai_compatible", "claude_code"
+    | Supported: "anthropic", "openai", "openai_compatible", "claude_code", "codex"
     |
     */
 
@@ -47,6 +47,11 @@ return [
                 'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'LS',
                 'Bash', 'Task', 'WebFetch', 'WebSearch', 'NotebookRead', 'NotebookEdit',
             ],
+        ],
+
+        'codex' => [
+            // No API key needed - uses Codex CLI authentication (setup via `codex login`)
+            'default_model' => 'gpt-5.2-codex',
         ],
 
         'openai_compatible' => [
@@ -111,6 +116,16 @@ return [
                 ['name' => 'Standard', 'thinking_tokens' => 10000],
                 ['name' => 'Deep', 'thinking_tokens' => 20000],
                 ['name' => 'Maximum', 'thinking_tokens' => 32000],
+            ],
+        ],
+
+        // Codex: uses OpenAI-style effort levels
+        'codex' => [
+            'effort_levels' => [
+                ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
+                ['value' => 'low', 'name' => 'Light', 'description' => 'Quick reasoning'],
+                ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
+                ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
             ],
         ],
 
@@ -284,6 +299,42 @@ return [
                 'display_name' => 'Claude Haiku (via CLI)',
                 'context_window' => 200000,
                 'max_output_tokens' => 64000,
+                'input_price_per_million' => null,
+                'output_price_per_million' => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => null,
+            ],
+        ],
+
+        // Codex models (via CLI)
+        // Pricing is null since Codex CLI uses subscription credits
+        // Source: https://developers.openai.com/codex/models/
+        'codex' => [
+            [
+                'model_id' => 'gpt-5.2-codex',
+                'display_name' => 'GPT-5.2 Codex',
+                'context_window' => 400000,
+                'max_output_tokens' => 32768,
+                'input_price_per_million' => null,
+                'output_price_per_million' => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => null,
+            ],
+            [
+                'model_id' => 'gpt-5.1-codex-max',
+                'display_name' => 'GPT-5.1 Codex Max',
+                'context_window' => 400000,
+                'max_output_tokens' => 32768,
+                'input_price_per_million' => null,
+                'output_price_per_million' => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => null,
+            ],
+            [
+                'model_id' => 'gpt-5.1-codex-mini',
+                'display_name' => 'GPT-5.1 Codex Mini',
+                'context_window' => 200000,
+                'max_output_tokens' => 32768,
                 'input_price_per_million' => null,
                 'output_price_per_million' => null,
                 'cache_write_price_per_million' => null,

@@ -31,9 +31,12 @@ class Conversation extends Model
         'openai_reasoning_effort',
         'openai_compatible_reasoning_effort',
         'claude_code_thinking_tokens',
+        'codex_reasoning_effort',
         'response_level',
         // Claude Code session management
         'claude_session_id',
+        // Codex session management
+        'codex_session_id',
     ];
 
     protected $casts = [
@@ -179,6 +182,7 @@ class Conversation extends Model
      * - OpenAI: effort (none/low/medium/high)
      * - OpenAI Compatible: effort (none/low/medium/high) - may be ignored by some servers
      * - Claude Code: thinking_tokens (via MAX_THINKING_TOKENS env var)
+     * - Codex: effort (none/low/medium/high) - for o-series model reasoning
      */
     public function getReasoningConfig(): array
     {
@@ -194,6 +198,9 @@ class Conversation extends Model
             ],
             'claude_code' => [
                 'thinking_tokens' => $this->claude_code_thinking_tokens ?? 0,
+            ],
+            'codex' => [
+                'effort' => $this->codex_reasoning_effort ?? 'none',
             ],
             default => [],
         };

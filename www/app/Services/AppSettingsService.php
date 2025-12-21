@@ -378,6 +378,7 @@ class AppSettingsService
         return $this->hasAnthropicApiKey()
             || $this->hasOpenAiApiKey()
             || $this->isClaudeCodeAuthenticated()
+            || $this->isCodexAuthenticated()
             || $this->hasOpenAiCompatibleBaseUrl();
     }
 
@@ -388,6 +389,16 @@ class AppSettingsService
     {
         $home = getenv('HOME') ?: '/home/appuser';
         $credentialsFile = $home . '/.claude/.credentials.json';
+        return file_exists($credentialsFile);
+    }
+
+    /**
+     * Check if Codex CLI is authenticated
+     */
+    public function isCodexAuthenticated(): bool
+    {
+        $home = getenv('HOME') ?: '/home/appuser';
+        $credentialsFile = $home . '/.codex/auth.json';
         return file_exists($credentialsFile);
     }
 }

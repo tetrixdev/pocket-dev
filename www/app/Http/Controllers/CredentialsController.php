@@ -26,6 +26,7 @@ class CredentialsController extends Controller
             'hasAnthropicKey' => $this->settings->hasAnthropicApiKey(),
             'hasOpenAiKey' => $this->settings->hasOpenAiApiKey(),
             'hasClaudeCode' => $this->settings->isClaudeCodeAuthenticated(),
+            'hasCodex' => $this->settings->isCodexAuthenticated(),
             'hasOpenAiCompatible' => $this->settings->hasOpenAiCompatibleBaseUrl(),
             'openAiCompatibleBaseUrl' => $this->settings->getOpenAiCompatibleBaseUrl(),
             'openAiCompatibleModel' => $this->settings->getOpenAiCompatibleModel(),
@@ -162,6 +163,7 @@ class CredentialsController extends Controller
             'hasAnthropicKey' => $this->settings->hasAnthropicApiKey(),
             'hasOpenAiKey' => $this->settings->hasOpenAiApiKey(),
             'hasClaudeCode' => $this->settings->isClaudeCodeAuthenticated(),
+            'hasCodex' => $this->settings->isCodexAuthenticated(),
             'hasOpenAiCompatible' => $this->settings->hasOpenAiCompatibleBaseUrl(),
         ]);
     }
@@ -173,7 +175,7 @@ class CredentialsController extends Controller
     {
         try {
             $validated = $request->validate([
-                'provider' => 'required|in:claude_code,anthropic,openai,openai_compatible',
+                'provider' => 'required|in:claude_code,codex,anthropic,openai,openai_compatible',
                 'anthropic_api_key' => 'required_if:provider,anthropic|nullable|string',
                 'openai_api_key' => 'required_if:provider,openai|nullable|string',
                 'openai_compatible_base_url' => 'required_if:provider,openai_compatible|nullable|url',
@@ -192,6 +194,13 @@ class CredentialsController extends Controller
                     return redirect()->back()
                         ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'openai_compatible_api_key', 'git_token']))
                         ->with('error', 'Claude Code is not authenticated. Please run the command shown above in your terminal, complete the OAuth flow, then click "Verify & Continue".');
+                }
+            } elseif ($validated['provider'] === 'codex') {
+                // Verify Codex authentication
+                if (!$this->settings->isCodexAuthenticated()) {
+                    return redirect()->back()
+                        ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'openai_compatible_api_key', 'git_token']))
+                        ->with('error', 'Codex is not authenticated. Please run the command shown above in your terminal, complete the device auth flow, then click "Verify & Continue".');
                 }
             } elseif ($validated['provider'] === 'anthropic' && !empty($validated['anthropic_api_key'])) {
                 $this->settings->setAnthropicApiKey($validated['anthropic_api_key']);
@@ -269,6 +278,7 @@ class CredentialsController extends Controller
             Agent::PROVIDER_ANTHROPIC => 'Claude Assistant',
             Agent::PROVIDER_OPENAI => 'GPT Assistant',
             Agent::PROVIDER_CLAUDE_CODE => 'Claude Code',
+            'codex' => 'Codex',
             'openai_compatible' => 'Custom AI Assistant',
         ];
 
@@ -276,6 +286,7 @@ class CredentialsController extends Controller
             Agent::PROVIDER_ANTHROPIC => 'Default Anthropic Claude agent for general conversations.',
             Agent::PROVIDER_OPENAI => 'Default OpenAI GPT agent for general conversations.',
             Agent::PROVIDER_CLAUDE_CODE => 'Claude Code agent with full tool access for development tasks.',
+            'codex' => 'Codex agent with full tool access for development tasks.',
             'openai_compatible' => 'Default agent using OpenAI-compatible API endpoint.',
         ];
 

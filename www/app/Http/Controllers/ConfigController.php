@@ -269,36 +269,16 @@ class ConfigController extends Controller
     /**
      * Get available models for each provider.
      * Models are ordered from smartest/most capable to fastest/cheapest.
+     *
+     * No hardcoded fallbacks - if config is missing, we return an empty array
+     * to surface the configuration issue rather than silently hiding it.
+     * Models should always be defined in config/ai.php.
      */
     protected function getModelsForProvider(string $provider): array
     {
-        // Get models from config, falling back to hardcoded defaults
-        $configModels = collect(config("ai.models.{$provider}", []))
+        return collect(config("ai.models.{$provider}", []))
             ->pluck('model_id')
             ->toArray();
-
-        if (!empty($configModels)) {
-            return $configModels;
-        }
-
-        // Fallback defaults (smartest first)
-        return match ($provider) {
-            Agent::PROVIDER_ANTHROPIC => [
-                'claude-opus-4-5-20251101',
-                'claude-sonnet-4-5-20250929',
-                'claude-haiku-4-5-20251001',
-            ],
-            Agent::PROVIDER_OPENAI => [
-                'gpt-5.1-codex-max',
-                'gpt-5.1-codex-mini',
-            ],
-            Agent::PROVIDER_CLAUDE_CODE => [
-                'opus',
-                'sonnet',
-                'haiku',
-            ],
-            default => [],
-        };
     }
 
     /**
@@ -338,6 +318,7 @@ class ConfigController extends Controller
                 Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
                 Agent::PROVIDER_OPENAI => $this->getModelsForProvider(Agent::PROVIDER_OPENAI),
                 Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
+                Agent::PROVIDER_CODEX => $this->getModelsForProvider(Agent::PROVIDER_CODEX),
             ],
         ]);
     }
@@ -356,6 +337,7 @@ class ConfigController extends Controller
                 'anthropic_thinking_budget' => 'nullable|integer|min:0',
                 'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'claude_code_thinking_tokens' => 'nullable|integer|min:0',
+                'codex_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'allowed_tools' => 'nullable|array',
                 'system_prompt' => 'nullable|string',
@@ -379,6 +361,7 @@ class ConfigController extends Controller
                 'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
                 'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
                 'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
+                'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
                 'response_level' => $validated['response_level'] ?? 1,
                 'allowed_tools' => $validated['allowed_tools'] ?? null,
                 'system_prompt' => $validated['system_prompt'] ?? null,
@@ -410,6 +393,7 @@ class ConfigController extends Controller
                 Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
                 Agent::PROVIDER_OPENAI => $this->getModelsForProvider(Agent::PROVIDER_OPENAI),
                 Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
+                Agent::PROVIDER_CODEX => $this->getModelsForProvider(Agent::PROVIDER_CODEX),
             ],
         ]);
     }
@@ -428,6 +412,7 @@ class ConfigController extends Controller
                 'anthropic_thinking_budget' => 'nullable|integer|min:0',
                 'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'claude_code_thinking_tokens' => 'nullable|integer|min:0',
+                'codex_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'allowed_tools' => 'nullable|array',
                 'system_prompt' => 'nullable|string',
@@ -452,6 +437,7 @@ class ConfigController extends Controller
                 'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
                 'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
                 'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
+                'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
                 'response_level' => $validated['response_level'] ?? 1,
                 'allowed_tools' => $validated['allowed_tools'] ?? null,
                 'system_prompt' => $validated['system_prompt'] ?? null,

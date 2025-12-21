@@ -61,8 +61,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Claude Code CLI for AI-powered development
-RUN npm install -g @anthropic-ai/claude-code
+# Install Claude Code CLI and Codex CLI for AI-powered development
+RUN npm install -g @anthropic-ai/claude-code @openai/codex
 
 # Install Composer
 RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
@@ -74,14 +74,14 @@ RUN mkdir -p /var/www/storage/framework/{sessions,views,cache} \
     && mkdir -p /var/www/storage/logs \
     && mkdir -p /var/www/bootstrap/cache
 
-# Create home directory for Claude Code CLI and other tools that need $HOME
+# Create home directory for Claude Code CLI, Codex CLI, and other tools that need $HOME
 # - Owned by UID 1000, GID 1000 (appgroup) with group-writable permissions (775)
 # - www-data is in group 1000 (appgroup), so it can write here
 # - In local dev: volume mount may override this, group_add handles permissions
 # - In production: www-data writes directly via group membership
-RUN mkdir -p /home/appuser/.claude \
+RUN mkdir -p /home/appuser/.claude /home/appuser/.codex \
     && chown -R 1000:1000 /home/appuser \
-    && chmod 775 /home/appuser /home/appuser/.claude
+    && chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex
 
 # Set working directory
 WORKDIR /var/www
