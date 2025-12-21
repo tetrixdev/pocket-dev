@@ -58,7 +58,9 @@ class EmbeddingService
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
-            ])->post($this->baseUrl . '/v1/embeddings', $payload);
+            ])
+                ->timeout(30)
+                ->post($this->baseUrl . '/v1/embeddings', $payload);
 
             if (!$response->successful()) {
                 Log::error('EmbeddingService: API error', [
@@ -111,7 +113,9 @@ class EmbeddingService
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
-            ])->post($this->baseUrl . '/v1/embeddings', $payload);
+            ])
+                ->timeout(60) // Longer timeout for batch requests
+                ->post($this->baseUrl . '/v1/embeddings', $payload);
 
             if (!$response->successful()) {
                 Log::error('EmbeddingService: API error', [

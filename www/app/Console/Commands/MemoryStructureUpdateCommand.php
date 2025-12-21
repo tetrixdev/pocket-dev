@@ -102,6 +102,10 @@ class MemoryStructureUpdateCommand extends Command
                     $warnings[] = "x-embed changes detected. Use --regenerate-embeddings to update vectors.";
                 }
 
+                if (!empty($analysis['has_nested_schemas'])) {
+                    $warnings[] = "Nested object schemas detected. Changes to nested properties are not fully tracked - consider using --regenerate-embeddings if nested x-embed fields were modified.";
+                }
+
                 $warnings[] = "{$objectCount} existing object(s) may need to be updated to match the new schema.";
             }
 
@@ -162,10 +166,19 @@ class MemoryStructureUpdateCommand extends Command
             'added_fields' => [],
             'type_changes' => [],
             'embed_changes' => false,
+            'has_nested_schemas' => false,
         ];
 
         $oldProperties = $oldSchema['properties'] ?? [];
         $newProperties = $newSchema['properties'] ?? [];
+
+        // Check for nested object schemas (properties with type: "object" and their own properties)
+        foreach (array_merge($oldProperties, $newProperties) as $field => $def) {
+            if (($def['type'] ?? null) === 'object' && isset($def['properties'])) {
+                $analysis['has_nested_schemas'] = true;
+                break;
+            }
+        }
 
         // Find removed fields
         foreach ($oldProperties as $field => $def) {
