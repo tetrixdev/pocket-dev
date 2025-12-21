@@ -166,7 +166,7 @@ class PocketToolSeeder extends Seeder
                 'source' => PocketTool::SOURCE_POCKETDEV,
                 'category' => PocketTool::CATEGORY_MEMORY,
                 'capability' => PocketTool::CAPABILITY_MEMORY,
-                'excluded_providers' => null, // Available for all providers
+                'excluded_providers' => null,
                 'native_equivalent' => null,
                 'system_prompt' => $this->getMemoryCreatePrompt(),
                 'enabled' => true,

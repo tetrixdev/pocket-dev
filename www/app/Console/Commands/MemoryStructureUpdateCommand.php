@@ -75,6 +75,15 @@ class MemoryStructureUpdateCommand extends Command
                 return Command::FAILURE;
             }
 
+            // Validate it's a proper JSON Schema structure
+            if (!isset($newSchema['type']) || !isset($newSchema['properties'])) {
+                $this->outputJson([
+                    'output' => 'Invalid JSON Schema: must include "type" and "properties"',
+                    'is_error' => true,
+                ]);
+                return Command::FAILURE;
+            }
+
             $objectCount = MemoryObject::where('structure_id', $structure->id)->count();
 
             if ($objectCount > 0) {
@@ -201,42 +210,43 @@ class MemoryStructureUpdateCommand extends Command
      */
     private function regenerateEmbeddings(MemoryStructure $structure): int
     {
-        $objects = MemoryObject::where('structure_id', $structure->id)->get();
         $count = 0;
-
         $embeddableFields = $structure->getEmbeddableFields();
 
-        foreach ($objects as $object) {
-            DB::transaction(function () use ($object, $embeddableFields, &$count) {
-                // Delete existing embeddings
-                MemoryEmbedding::where('object_id', $object->id)->delete();
+        MemoryObject::where('structure_id', $structure->id)
+            ->chunk(100, function ($objects) use ($embeddableFields, &$count) {
+                foreach ($objects as $object) {
+                    DB::transaction(function () use ($object, $embeddableFields, &$count) {
+                        // Delete existing embeddings
+                        MemoryEmbedding::where('object_id', $object->id)->delete();
 
-                // Generate new embeddings
-                foreach ($embeddableFields as $fieldPath) {
-                    $content = $object->getField($fieldPath);
+                        // Generate new embeddings
+                        foreach ($embeddableFields as $fieldPath) {
+                            $content = $object->getField($fieldPath);
 
-                    if (!empty($content) && is_string($content)) {
-                        $contentHash = MemoryEmbedding::hashContent($content);
-                        $embedding = $this->embeddingService->embed($content);
+                            if (!empty($content) && is_string($content)) {
+                                $contentHash = MemoryEmbedding::hashContent($content);
+                                $embedding = $this->embeddingService->embed($content);
 
-                        // Skip if embedding failed
-                        if ($embedding === null) {
-                            $this->warn("Failed to generate embedding for field '{$fieldPath}' in object {$object->id}. Skipping.");
-                            continue;
+                                // Skip if embedding failed
+                                if ($embedding === null) {
+                                    $this->warn("Failed to generate embedding for field '{$fieldPath}' in object {$object->id}. Skipping.");
+                                    continue;
+                                }
+
+                                MemoryEmbedding::create([
+                                    'object_id' => $object->id,
+                                    'field_path' => $fieldPath,
+                                    'content_hash' => $contentHash,
+                                    'embedding' => $embedding,
+                                ]);
+                            }
                         }
 
-                        MemoryEmbedding::create([
-                            'object_id' => $object->id,
-                            'field_path' => $fieldPath,
-                            'content_hash' => $contentHash,
-                            'embedding' => $embedding,
-                        ]);
-                    }
+                        $count++;
+                    });
                 }
-
-                $count++;
             });
-        }
 
         return $count;
     }

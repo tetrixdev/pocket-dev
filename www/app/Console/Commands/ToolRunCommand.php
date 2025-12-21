@@ -133,7 +133,12 @@ class ToolRunCommand extends Command
                     // --name value format
                     $key = substr($arg, 2);
                     $i++;
-                    $named[$key] = $arguments[$i] ?? '';
+                    if (!isset($arguments[$i])) {
+                        // Trailing --param without value treated as boolean flag
+                        $named[$key] = 'true';
+                    } else {
+                        $named[$key] = $arguments[$i];
+                    }
                 }
             } else {
                 // Positional argument

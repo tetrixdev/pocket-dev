@@ -24,7 +24,7 @@ return new class extends Migration
         if (!$userExists) {
             // User doesn't exist - likely running outside Docker or fresh setup
             // Create the user here as fallback
-            $password = env('DB_READONLY_PASSWORD');
+            $password = config('database.connections.pgsql_readonly.password');
 
             if (empty($password)) {
                 throw new \RuntimeException('DB_READONLY_PASSWORD environment variable must be set for memory_readonly user');
