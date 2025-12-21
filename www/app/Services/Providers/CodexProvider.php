@@ -185,21 +185,20 @@ class CodexProvider implements AIProviderInterface
         $parts[] = '--model';
         $parts[] = escapeshellarg($model);
 
+        // Working directory
+        $workingDir = $conversation->working_directory ?? base_path();
+        $parts[] = '-C';
+        $parts[] = escapeshellarg($workingDir);
+
         // Add system prompt via POCKETDEV-SYSTEM.md in the working directory
         // Codex reads this file via project_doc_fallback_filenames and appends to context
         // Using a unique filename avoids overwriting user's AGENTS.md
-        $workingDir = $conversation->working_directory ?? base_path();
         if (!empty($options['system'])) {
             $this->writePocketDevInstructionsFile($workingDir, $options['system']);
             // TOML array syntax needs careful escaping - use single quotes for outer, double for inner
             $parts[] = '-c';
             $parts[] = '\'project_doc_fallback_filenames=["POCKETDEV-SYSTEM.md"]\'';
         }
-
-        // Working directory
-        $workingDir = $conversation->working_directory ?? base_path();
-        $parts[] = '-C';
-        $parts[] = escapeshellarg($workingDir);
 
         // Resume existing session (must come AFTER options, BEFORE prompt)
         if (!empty($conversation->codex_session_id)) {
@@ -226,6 +225,18 @@ class CodexProvider implements AIProviderInterface
             Log::channel('api')->warning('CodexProvider: Failed to write POCKETDEV-SYSTEM.md', [
                 'file' => $file,
             ]);
+        }
+    }
+
+    /**
+     * Remove the temporary system prompt file after Codex has read it.
+     */
+    private function cleanupPocketDevInstructionsFile(string $workingDir): void
+    {
+        $file = rtrim($workingDir, '/') . '/POCKETDEV-SYSTEM.md';
+
+        if (file_exists($file)) {
+            @unlink($file);
         }
     }
 
@@ -340,6 +351,10 @@ class CodexProvider implements AIProviderInterface
 
             $exitCode = proc_close($process);
 
+            // Clean up system prompt file after process completes
+            // Codex reads this at startup, so it's safe to remove after proc_close
+            $this->cleanupPocketDevInstructionsFile($conversation->working_directory ?? base_path());
+
             if ($exitCode !== 0) {
                 Log::channel('api')->warning('CodexProvider: CLI exited with non-zero code', [
                     'exit_code' => $exitCode,
@@ -366,6 +381,9 @@ class CodexProvider implements AIProviderInterface
             if (is_resource($process)) {
                 proc_terminate($process);
             }
+
+            // Clean up system prompt file on error too
+            $this->cleanupPocketDevInstructionsFile($conversation->working_directory ?? base_path());
         }
     }
 

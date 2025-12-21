@@ -158,7 +158,7 @@ class CodexAuthController extends Controller
                 return [
                     "authenticated" => true,
                     "auth_type" => "api_key",
-                    "key_preview" => substr($key, 0, 10) . "..." . substr($key, -4),
+                    "key_preview" => substr($key, 0, 6) . "..." . substr($key, -4),
                 ];
             }
 

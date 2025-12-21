@@ -7,7 +7,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | This option controls the default AI provider used for conversations.
-    | Supported: "anthropic", "openai", "openai_compatible", "claude_code"
+    | Supported: "anthropic", "openai", "openai_compatible", "claude_code", "codex"
     |
     */
 

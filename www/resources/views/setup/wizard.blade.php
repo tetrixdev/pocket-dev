@@ -336,8 +336,23 @@
 
     <script>
         function setupWizard() {
+            // Pre-select based on what's already configured
+            // Priority: Claude Code CLI > Codex CLI > Anthropic API > OpenAI API > Local LLM
+            let initialProvider = 'claude_code';
+            @if($hasClaudeCode)
+                initialProvider = 'claude_code';
+            @elseif($hasCodex)
+                initialProvider = 'codex';
+            @elseif($hasAnthropicKey)
+                initialProvider = 'anthropic';
+            @elseif($hasOpenAiKey)
+                initialProvider = 'openai';
+            @elseif($hasOpenAiCompatible)
+                initialProvider = 'openai_compatible';
+            @endif
+
             return {
-                provider: '{{ $hasClaudeCode ? "claude_code" : ($hasAnthropicKey ? "anthropic" : ($hasOpenAiKey ? "openai" : ($hasCodex ? "codex" : ($hasOpenAiCompatible ? "openai_compatible" : "claude_code")))) }}',
+                provider: initialProvider,
                 showGitCredentials: false,
                 copiedCommand: null,
                 copyCommand(text, id) {
