@@ -13,12 +13,17 @@ class TranscriptionService
 
     public function __construct(AppSettingsService $appSettings)
     {
-        // Try environment variable first, then fall back to database
-        $this->apiKey = config('services.openai.api_key') ?: $appSettings->getOpenAiApiKey();
-        $this->baseUrl = config('services.openai.base_url', 'https://api.openai.com/v1');
+        // API key from database (set via UI)
+        $this->apiKey = $appSettings->getOpenAiApiKey() ?? '';
+        $baseUrl = config('ai.transcription.base_url') ?? config('ai.providers.openai.base_url') ?? 'https://api.openai.com';
+        $this->baseUrl = rtrim($baseUrl, '/');
+        // Normalize: remove /v1 suffix if present (will be added in request path)
+        if (str_ends_with($this->baseUrl, '/v1')) {
+            $this->baseUrl = substr($this->baseUrl, 0, -3);
+        }
 
         if (empty($this->apiKey)) {
-            throw new \Exception('OpenAI API key is not configured');
+            throw new \Exception('OpenAI API key is not configured. Set it in Config → Credentials.');
         }
     }
 
@@ -30,7 +35,7 @@ class TranscriptionService
             ])
             ->timeout(1800) // 30 minute timeout for longer audio recordings
             ->attach('file', file_get_contents($audioFile->getRealPath()), $audioFile->getClientOriginalName())
-            ->post($this->baseUrl . '/audio/transcriptions', [
+            ->post($this->baseUrl . '/v1/audio/transcriptions', [
                 'model' => 'gpt-4o-transcribe',
                 'response_format' => 'text',
                 'language' => 'en', // Optimize for English, but Whisper can auto-detect

@@ -4,6 +4,7 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
 use App\Streaming\StreamEvent;
 use Generator;
@@ -20,11 +21,10 @@ class AnthropicProvider implements AIProviderInterface
     private string $apiVersion;
     private ModelRepository $models;
 
-    public function __construct(ModelRepository $models)
+    public function __construct(ModelRepository $models, AppSettingsService $settings)
     {
-        // Use ?? instead of config default - config() returns null when env var is not set,
-        // not the default value, because the key exists in config with null value
-        $this->apiKey = config('ai.providers.anthropic.api_key') ?? '';
+        // API key from database (set via UI)
+        $this->apiKey = $settings->getAnthropicApiKey() ?? '';
         $this->baseUrl = config('ai.providers.anthropic.base_url') ?? 'https://api.anthropic.com';
         $this->apiVersion = config('ai.providers.anthropic.api_version') ?? '2023-06-01';
         $this->models = $models;

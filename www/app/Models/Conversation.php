@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -16,6 +17,7 @@ class Conversation extends Model
 
     protected $fillable = [
         'uuid',
+        'agent_id',
         'provider_type',
         'model',
         'title',
@@ -57,6 +59,11 @@ class Conversation extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class)->orderBy('sequence');
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
     }
 
     public function getRouteKeyName(): string
@@ -159,11 +166,19 @@ class Conversation extends Model
     /**
      * Get provider-specific reasoning configuration.
      *
-     * Returns the appropriate reasoning settings based on the conversation's provider type.
-     * - Anthropic: uses budget_tokens (explicit token allocation)
-     * - OpenAI: uses effort (none/low/medium/high)
-     * - OpenAI Compatible: uses effort (none/low/medium/high) - may be ignored by some servers
-     * - Claude Code: uses thinking_tokens (via MAX_THINKING_TOKENS env var)
+     * Returns reasoning settings stored directly on this conversation instance.
+     * These settings are copied from the agent at conversation creation time
+     * (see ConversationController::store) and remain fixed for the conversation's lifetime.
+     *
+     * This method does NOT check the agent relationship - it only reads the conversation's
+     * own fields. This is intentional as conversations can exist without agents (legacy mode)
+     * and conversation settings should not change if the agent is modified later.
+     *
+     * Provider-specific settings:
+     * - Anthropic: budget_tokens (explicit token allocation)
+     * - OpenAI: effort (none/low/medium/high)
+     * - OpenAI Compatible: effort (none/low/medium/high) - may be ignored by some servers
+     * - Claude Code: thinking_tokens (via MAX_THINKING_TOKENS env var)
      */
     public function getReasoningConfig(): array
     {

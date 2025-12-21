@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\PricingController;
 use App\Http\Controllers\Api\SettingsController;
@@ -87,3 +88,20 @@ Route::prefix('settings')->group(function () {
     Route::get('chat-defaults', [SettingsController::class, 'chatDefaults']);
     Route::post('chat-defaults', [SettingsController::class, 'updateChatDefaults']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Agent Routes
+|--------------------------------------------------------------------------
+|
+| Agent configuration and selection.
+|
+*/
+
+Route::get('agents', [AgentController::class, 'index']);
+Route::get('agents/providers', [AgentController::class, 'providers']);
+Route::get('agents/for-provider/{provider}', [AgentController::class, 'forProvider']);
+Route::get('agents/default/{provider}', [AgentController::class, 'defaultForProvider']);
+Route::get('agents/{agent}', [AgentController::class, 'show']);
+Route::get('tools/for-provider/{provider}', [AgentController::class, 'availableTools']);
+Route::post('agents/preview-system-prompt', [AgentController::class, 'previewSystemPrompt']);

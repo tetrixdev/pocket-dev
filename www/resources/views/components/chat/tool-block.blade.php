@@ -31,6 +31,13 @@
             {{-- Content --}}
             <div x-show="!msg.collapsed" class="px-3 md:px-4 py-2 md:py-3 text-xs text-blue-200 md:space-y-2">
                 <div x-html="DOMPurify.sanitize(formatToolContent(msg))"></div>
+                {{-- Show full/less toggle --}}
+                <template x-if="isToolContentTruncated(msg)">
+                    <button @click.stop="msg.showFullContent = !msg.showFullContent"
+                            class="text-blue-400 hover:text-blue-300 text-xs mt-2 underline underline-offset-2">
+                        <span x-text="msg.showFullContent ? 'Show less' : 'Show full'"></span>
+                    </button>
+                </template>
             </div>
         </div>
     </div>

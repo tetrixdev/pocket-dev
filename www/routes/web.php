@@ -47,13 +47,15 @@ Route::post("/config/settings", [ConfigController::class, "saveSettings"])->name
 Route::get("/config/nginx", [ConfigController::class, "showNginx"])->name("config.nginx");
 Route::post("/config/nginx", [ConfigController::class, "saveNginx"])->name("config.nginx.save");
 
-// Agents management
+// Agents management (database-backed)
 Route::get("/config/agents", [ConfigController::class, "listAgents"])->name("config.agents");
 Route::get("/config/agents/create", [ConfigController::class, "createAgentForm"])->name("config.agents.create");
 Route::post("/config/agents", [ConfigController::class, "storeAgent"])->name("config.agents.store");
-Route::get("/config/agents/{filename}/edit", [ConfigController::class, "editAgentForm"])->name("config.agents.edit");
-Route::put("/config/agents/{filename}", [ConfigController::class, "updateAgent"])->name("config.agents.update");
-Route::delete("/config/agents/{filename}", [ConfigController::class, "deleteAgent"])->name("config.agents.delete");
+Route::get("/config/agents/{agent}/edit", [ConfigController::class, "editAgentForm"])->name("config.agents.edit");
+Route::put("/config/agents/{agent}", [ConfigController::class, "updateAgent"])->name("config.agents.update");
+Route::delete("/config/agents/{agent}", [ConfigController::class, "deleteAgent"])->name("config.agents.delete");
+Route::post("/config/agents/{agent}/toggle-default", [ConfigController::class, "toggleAgentDefault"])->name("config.agents.toggle-default");
+Route::post("/config/agents/{agent}/toggle-enabled", [ConfigController::class, "toggleAgentEnabled"])->name("config.agents.toggle-enabled");
 
 // Commands management
 Route::get("/config/commands", [ConfigController::class, "listCommands"])->name("config.commands");

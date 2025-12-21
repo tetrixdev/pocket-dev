@@ -24,18 +24,18 @@ return [
 
     'providers' => [
         'anthropic' => [
-            'api_key' => env('ANTHROPIC_API_KEY'),
+            // API key managed via UI (stored in database)
             'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
-            'default_model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-5-20250929'),
-            'max_tokens' => (int) env('ANTHROPIC_MAX_TOKENS', 8192),
+            'default_model' => 'claude-sonnet-4-5-20250929',
+            'max_tokens' => 8192,
             'api_version' => '2023-06-01',
         ],
 
         'openai' => [
-            'api_key' => env('OPENAI_API_KEY'),
+            // API key managed via UI (stored in database)
             'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
-            'default_model' => env('OPENAI_MODEL', 'gpt-5'),
-            'max_tokens' => (int) env('OPENAI_MAX_TOKENS', 16384),
+            'default_model' => 'gpt-5',
+            'max_tokens' => 16384,
         ],
 
         'claude_code' => [
@@ -157,9 +157,29 @@ return [
     */
 
     'tools' => [
-        'enabled' => ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'],
+        'enabled' => [
+            'Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob',
+            'MemoryQuery', 'MemoryCreate', 'MemoryUpdate', 'MemoryDelete', 'MemoryLink', 'MemoryUnlink',
+        ],
         'timeout' => (int) env('TOOL_TIMEOUT', 120),
         'max_output_length' => (int) env('TOOL_MAX_OUTPUT', 30000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Embeddings Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for generating vector embeddings.
+    | Uses OpenAI's embedding API by default.
+    |
+    */
+
+    'embeddings' => [
+        // API key managed via UI (uses OpenAI key from database)
+        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
+        'model' => 'text-embedding-3-small',
+        'dimensions' => 1536,
     ],
 
     /*

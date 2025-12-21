@@ -66,7 +66,7 @@ class SettingsController extends Controller
         $validated = $request->validate([
             'provider' => 'nullable|string|in:anthropic,openai,claude_code',
             'model' => 'nullable|string|max:100',
-            'response_level' => 'nullable|integer|min:0|max:3',
+            'response_level' => 'nullable|integer|min:0|max:5',
             // Provider-specific reasoning settings
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',

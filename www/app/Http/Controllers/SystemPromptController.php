@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PocketTool;
 use App\Services\SystemPromptService;
+use App\Services\ToolSelector;
 use Illuminate\Http\Request;
 
 class SystemPromptController extends Controller
 {
     public function __construct(
-        private SystemPromptService $systemPromptService
+        private SystemPromptService $systemPromptService,
+        private ToolSelector $toolSelector
     ) {}
 
     /**
@@ -18,12 +21,19 @@ class SystemPromptController extends Controller
     {
         $request->session()->put('config_last_section', 'system-prompt');
 
+        // Get dynamic content for both provider types
+        $claudeCodeDynamic = $this->toolSelector->buildSystemPrompt(PocketTool::PROVIDER_CLAUDE_CODE);
+        // ANTHROPIC is used as representative for both Anthropic and OpenAI since they share the same tool format
+        $otherProviderDynamic = $this->toolSelector->buildSystemPrompt(PocketTool::PROVIDER_ANTHROPIC);
+
         return view('config.system-prompt.show', [
             'coreContent' => $this->systemPromptService->getCore(),
             'additionalContent' => $this->systemPromptService->getAdditional(),
             'isCoreOverridden' => $this->systemPromptService->isCoreOverridden(),
             'isAdditionalOverridden' => $this->systemPromptService->isAdditionalOverridden(),
             'hasAdditionalDefault' => !empty($this->systemPromptService->getAdditionalDefault()),
+            'claudeCodeDynamicContent' => $claudeCodeDynamic,
+            'otherProviderDynamicContent' => $otherProviderDynamic,
         ]);
     }
 

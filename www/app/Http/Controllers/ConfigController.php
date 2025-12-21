@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Agent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -262,12 +263,42 @@ class ConfigController extends Controller
     }
 
     // =========================================================================
-    // AGENTS CRUD
+    // AGENTS CRUD (Database-backed)
     // =========================================================================
 
-    protected function getAgentsPath(): string
+    /**
+     * Get available models for each provider.
+     * Models are ordered from smartest/most capable to fastest/cheapest.
+     */
+    protected function getModelsForProvider(string $provider): array
     {
-        return '/home/appuser/.claude/agents';
+        // Get models from config, falling back to hardcoded defaults
+        $configModels = collect(config("ai.models.{$provider}", []))
+            ->pluck('model_id')
+            ->toArray();
+
+        if (!empty($configModels)) {
+            return $configModels;
+        }
+
+        // Fallback defaults (smartest first)
+        return match ($provider) {
+            Agent::PROVIDER_ANTHROPIC => [
+                'claude-opus-4-5-20251101',
+                'claude-sonnet-4-5-20250929',
+                'claude-haiku-4-5-20251001',
+            ],
+            Agent::PROVIDER_OPENAI => [
+                'gpt-5.1-codex-max',
+                'gpt-5.1-codex-mini',
+            ],
+            Agent::PROVIDER_CLAUDE_CODE => [
+                'opus',
+                'sonnet',
+                'haiku',
+            ],
+            default => [],
+        };
     }
 
     /**
@@ -278,31 +309,11 @@ class ConfigController extends Controller
         $request->session()->put('config_last_section', 'agents');
 
         try {
-            $agentsPath = $this->getAgentsPath();
-            $agents = [];
-
-            if (is_dir($agentsPath)) {
-                $files = scandir($agentsPath);
-
-                foreach ($files as $file) {
-                    if (pathinfo($file, PATHINFO_EXTENSION) === 'md') {
-                        $filePath = $agentsPath . '/' . $file;
-                        $parsed = $this->parseAgentFile($filePath);
-
-                        $agents[] = [
-                            'filename' => $file,
-                            'name' => $parsed['frontmatter']['name'] ?? pathinfo($file, PATHINFO_FILENAME),
-                            'description' => $parsed['frontmatter']['description'] ?? '',
-                            'tools' => $parsed['frontmatter']['tools'] ?? '',
-                            'model' => $parsed['frontmatter']['model'] ?? 'inherit',
-                            'modified' => filemtime($filePath),
-                        ];
-                    }
-                }
-
-                // Sort by modified time, newest first
-                usort($agents, fn($a, $b) => $b['modified'] - $a['modified']);
-            }
+            $agents = Agent::query()
+                ->orderBy('provider')
+                ->orderBy('is_default', 'desc')
+                ->orderBy('name')
+                ->get();
 
             return view('config.agents.index', [
                 'agents' => $agents,
@@ -320,7 +331,15 @@ class ConfigController extends Controller
     public function createAgentForm(Request $request)
     {
         $request->session()->put('config_last_section', 'agents');
-        return view('config.agents.form');
+
+        return view('config.agents.form', [
+            'providers' => Agent::getProviders(),
+            'modelsPerProvider' => [
+                Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
+                Agent::PROVIDER_OPENAI => $this->getModelsForProvider(Agent::PROVIDER_OPENAI),
+                Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
+            ],
+        ]);
     }
 
     /**
@@ -330,46 +349,42 @@ class ConfigController extends Controller
     {
         try {
             $validated = $request->validate([
-                'name' => 'required|string|regex:/^[a-z0-9-]+$/',
-                'description' => 'required|string|max:1024',
-                'tools' => 'nullable|string',
-                'model' => 'nullable|string',
-                'systemPrompt' => 'nullable|string',
+                'name' => 'required|string|max:255',
+                'description' => 'nullable|string|max:1024',
+                'provider' => 'required|string|in:' . implode(',', Agent::getProviders()),
+                'model' => 'required|string|max:100',
+                'anthropic_thinking_budget' => 'nullable|integer|min:0',
+                'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+                'claude_code_thinking_tokens' => 'nullable|integer|min:0',
+                'response_level' => 'nullable|integer|min:1|max:5',
+                'allowed_tools' => 'nullable|array',
+                'system_prompt' => 'nullable|string',
+                'is_default' => 'nullable|boolean',
+                'enabled' => 'nullable|boolean',
             ]);
 
-            $agentsPath = $this->getAgentsPath();
-
-            // Ensure agents directory exists
-            if (!is_dir($agentsPath)) {
-                mkdir($agentsPath, 0775, true);
-            }
-
-            $filename = $validated['name'] . '.md';
-            $filePath = $agentsPath . '/' . $filename;
-
-            // Check if file already exists
-            if (file_exists($filePath)) {
+            // Check for duplicate slug
+            $slug = \Illuminate\Support\Str::slug($validated['name']);
+            if (Agent::where('slug', $slug)->exists()) {
                 return redirect()->back()
                     ->withInput()
                     ->with('error', 'An agent with this name already exists');
             }
 
-            // Build frontmatter
-            $frontmatter = [
+            Agent::create([
                 'name' => $validated['name'],
-                'description' => $validated['description'],
-            ];
-
-            if (!empty($validated['tools'])) {
-                $frontmatter['tools'] = $validated['tools'];
-            }
-
-            $frontmatter['model'] = $validated['model'] ?? 'inherit';
-
-            $systemPrompt = $validated['systemPrompt'] ?? "System prompt for {$validated['name']} agent.\n\nAdd your instructions here.";
-
-            $content = $this->buildAgentFile($frontmatter, $systemPrompt);
-            file_put_contents($filePath, $content);
+                'description' => $validated['description'] ?? null,
+                'provider' => $validated['provider'],
+                'model' => $validated['model'],
+                'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
+                'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
+                'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
+                'response_level' => $validated['response_level'] ?? 1,
+                'allowed_tools' => $validated['allowed_tools'] ?? null,
+                'system_prompt' => $validated['system_prompt'] ?? null,
+                'is_default' => $validated['is_default'] ?? false,
+                'enabled' => $validated['enabled'] ?? true,
+            ]);
 
             return redirect()->route('config.agents')
                 ->with('success', 'Agent created successfully');
@@ -384,83 +399,70 @@ class ConfigController extends Controller
     /**
      * Show edit agent form
      */
-    public function editAgentForm(Request $request, string $filename)
+    public function editAgentForm(Request $request, Agent $agent)
     {
         $request->session()->put('config_last_section', 'agents');
 
-        try {
-            $agentsPath = $this->getAgentsPath();
-            $filePath = $agentsPath . '/' . $filename;
-
-            if (!file_exists($filePath)) {
-                return redirect()->route('config.agents')
-                    ->with('error', 'Agent not found');
-            }
-
-            $parsed = $this->parseAgentFile($filePath);
-
-            // Combine into single agent array for view
-            $agent = [
-                'filename' => $filename,
-                'name' => $parsed['frontmatter']['name'] ?? '',
-                'description' => $parsed['frontmatter']['description'] ?? '',
-                'tools' => $parsed['frontmatter']['tools'] ?? '',
-                'model' => $parsed['frontmatter']['model'] ?? 'inherit',
-                'systemPrompt' => $parsed['content'],
-            ];
-
-            return view('config.agents.form', [
-                'agent' => $agent,
-                'activeAgent' => $filename,
-            ]);
-        } catch (\Exception $e) {
-            Log::error("Failed to load agent {$filename}", ['error' => $e->getMessage()]);
-            return redirect()->route('config.agents')
-                ->with('error', 'Failed to load agent: ' . $e->getMessage());
-        }
+        return view('config.agents.form', [
+            'agent' => $agent,
+            'providers' => Agent::getProviders(),
+            'modelsPerProvider' => [
+                Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
+                Agent::PROVIDER_OPENAI => $this->getModelsForProvider(Agent::PROVIDER_OPENAI),
+                Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
+            ],
+        ]);
     }
 
     /**
      * Update agent
      */
-    public function updateAgent(Request $request, string $filename)
+    public function updateAgent(Request $request, Agent $agent)
     {
         try {
             $validated = $request->validate([
-                'name' => 'required|string|regex:/^[a-z0-9-]+$/',
-                'description' => 'required|string|max:1024',
-                'tools' => 'nullable|string',
-                'model' => 'nullable|string',
-                'systemPrompt' => 'required|string',
+                'name' => 'required|string|max:255',
+                'description' => 'nullable|string|max:1024',
+                'provider' => 'required|string|in:' . implode(',', Agent::getProviders()),
+                'model' => 'required|string|max:100',
+                'anthropic_thinking_budget' => 'nullable|integer|min:0',
+                'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+                'claude_code_thinking_tokens' => 'nullable|integer|min:0',
+                'response_level' => 'nullable|integer|min:1|max:5',
+                'allowed_tools' => 'nullable|array',
+                'system_prompt' => 'nullable|string',
+                'is_default' => 'nullable|boolean',
+                'enabled' => 'nullable|boolean',
             ]);
 
-            $agentsPath = $this->getAgentsPath();
-            $filePath = $agentsPath . '/' . $filename;
-
-            if (!file_exists($filePath)) {
-                return redirect()->route('config.agents')
-                    ->with('error', 'Agent not found');
+            // Check for duplicate slug (excluding current agent)
+            $slug = \Illuminate\Support\Str::slug($validated['name']);
+            if (Agent::where('slug', $slug)->where('id', '!=', $agent->id)->exists()) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'An agent with this name already exists');
             }
 
-            // Build frontmatter
-            $frontmatter = [
+            $agent->update([
                 'name' => $validated['name'],
-                'description' => $validated['description'],
-            ];
-
-            if (!empty($validated['tools'])) {
-                $frontmatter['tools'] = $validated['tools'];
-            }
-
-            $frontmatter['model'] = $validated['model'] ?? 'inherit';
-
-            $content = $this->buildAgentFile($frontmatter, $validated['systemPrompt']);
-            file_put_contents($filePath, $content);
+                'slug' => $slug,
+                'description' => $validated['description'] ?? null,
+                'provider' => $validated['provider'],
+                'model' => $validated['model'],
+                'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
+                'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
+                'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
+                'response_level' => $validated['response_level'] ?? 1,
+                'allowed_tools' => $validated['allowed_tools'] ?? null,
+                'system_prompt' => $validated['system_prompt'] ?? null,
+                'is_default' => $validated['is_default'] ?? false,
+                'enabled' => $validated['enabled'] ?? true,
+            ]);
 
             return redirect()->route('config.agents')
                 ->with('success', 'Agent saved successfully');
         } catch (\Exception $e) {
-            Log::error("Failed to save agent {$filename}", ['error' => $e->getMessage()]);
+            Log::error("Failed to save agent {$agent->id}", ['error' => $e->getMessage()]);
             return redirect()->back()
                 ->withInput()
                 ->with('error', 'Failed to save agent: ' . $e->getMessage());
@@ -470,75 +472,56 @@ class ConfigController extends Controller
     /**
      * Delete agent
      */
-    public function deleteAgent(string $filename)
+    public function deleteAgent(Agent $agent)
     {
         try {
-            $agentsPath = $this->getAgentsPath();
-            $filePath = $agentsPath . '/' . $filename;
-
-            if (!file_exists($filePath)) {
-                return redirect()->route('config.agents')
-                    ->with('error', 'Agent not found');
-            }
-
-            unlink($filePath);
+            $agent->delete();
 
             return redirect()->route('config.agents')
                 ->with('success', 'Agent deleted successfully');
         } catch (\Exception $e) {
-            Log::error("Failed to delete agent {$filename}", ['error' => $e->getMessage()]);
+            Log::error("Failed to delete agent {$agent->id}", ['error' => $e->getMessage()]);
             return redirect()->route('config.agents')
                 ->with('error', 'Failed to delete agent: ' . $e->getMessage());
         }
     }
 
     /**
-     * Parse agent file (YAML frontmatter + markdown content)
+     * Toggle agent default status
      */
-    protected function parseAgentFile(string $filePath): array
+    public function toggleAgentDefault(Agent $agent)
     {
-        $content = file_get_contents($filePath);
+        try {
+            $agent->update(['is_default' => !$agent->is_default]);
 
-        // Check for frontmatter
-        if (!preg_match('/^---\s*\n(.*?)\n---\s*\n(.*)$/s', $content, $matches)) {
-            // No frontmatter, entire content is system prompt
-            return [
-                'frontmatter' => [],
-                'content' => $content
-            ];
+            return redirect()->route('config.agents')
+                ->with('success', $agent->is_default
+                    ? "'{$agent->name}' is now the default for {$agent->getProviderDisplayName()}"
+                    : "'{$agent->name}' is no longer a default agent");
+        } catch (\Exception $e) {
+            Log::error("Failed to toggle default for agent {$agent->id}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.agents')
+                ->with('error', 'Failed to update agent: ' . $e->getMessage());
         }
-
-        $frontmatterYaml = $matches[1];
-        $systemPrompt = $matches[2];
-
-        // Parse YAML frontmatter
-        $frontmatter = [];
-        $lines = explode("\n", $frontmatterYaml);
-        foreach ($lines as $line) {
-            if (strpos($line, ':') !== false) {
-                [$key, $value] = explode(':', $line, 2);
-                $frontmatter[trim($key)] = trim($value);
-            }
-        }
-
-        return [
-            'frontmatter' => $frontmatter,
-            'content' => trim($systemPrompt)
-        ];
     }
 
     /**
-     * Build agent file content (YAML frontmatter + markdown)
+     * Toggle agent enabled status
      */
-    protected function buildAgentFile(array $frontmatter, string $systemPrompt): string
+    public function toggleAgentEnabled(Agent $agent)
     {
-        $yaml = "---\n";
-        foreach ($frontmatter as $key => $value) {
-            $yaml .= "{$key}: {$value}\n";
-        }
-        $yaml .= "---\n\n";
+        try {
+            $agent->update(['enabled' => !$agent->enabled]);
 
-        return $yaml . $systemPrompt;
+            return redirect()->route('config.agents')
+                ->with('success', $agent->enabled
+                    ? "'{$agent->name}' is now enabled"
+                    : "'{$agent->name}' is now disabled");
+        } catch (\Exception $e) {
+            Log::error("Failed to toggle enabled for agent {$agent->id}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.agents')
+                ->with('error', 'Failed to update agent: ' . $e->getMessage());
+        }
     }
 
     // =========================================================================

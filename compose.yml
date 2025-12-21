@@ -93,15 +93,19 @@ services:
       start_period: 15s
 
   pocket-dev-postgres:
-    image: postgres:17-alpine
+    # pgvector/pgvector:pg17 includes pgvector 0.8+ with HNSW index support
+    # Required for semantic search in the memory system
+    image: pgvector/pgvector:pg17
     container_name: pocket-dev-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: pocket-dev
       POSTGRES_USER: pocket-dev
       POSTGRES_PASSWORD: "${DB_PASSWORD:-laravel}"
+      DB_READONLY_PASSWORD: "${DB_READONLY_PASSWORD:-readonly_password}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./docker-postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "${DB_PORT:-5432}:5432"
     networks:

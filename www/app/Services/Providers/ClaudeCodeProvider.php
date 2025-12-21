@@ -209,12 +209,16 @@ class ClaudeCodeProvider implements AIProviderInterface
         // Note: --verbose is required when using --print with stream-json
         // --include-partial-messages enables real streaming with content_block_delta events
         // User message is provided via stdin (not as argument) because --tools breaks argument parsing
+        // --dangerously-skip-permissions allows all tool calls without approval prompts
+        // TODO: Consider making --dangerously-skip-permissions configurable via Setting::get()
+        //       for deployments requiring approval prompts before tool execution
         $parts = [
             'claude',
             '--print',
             '--verbose',
             '--output-format', 'stream-json',
             '--include-partial-messages',
+            '--dangerously-skip-permissions',
             '--model', escapeshellarg($model),
         ];
 

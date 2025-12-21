@@ -65,6 +65,11 @@ DB_PASSWORD=$(openssl rand -hex 16)
 sedi "s|DB_PASSWORD=|DB_PASSWORD=$DB_PASSWORD|" .env
 echo "Generated DB_PASSWORD"
 
+# Generate DB_READONLY_PASSWORD (for read-only database user)
+DB_READONLY_PASSWORD=$(openssl rand -hex 16)
+sedi "s|DB_READONLY_PASSWORD=|DB_READONLY_PASSWORD=$DB_READONLY_PASSWORD|" .env
+echo "Generated DB_READONLY_PASSWORD"
+
 # Ask for NGINX_PORT
 echo ""
 read -p "HTTP port for PocketDev [80]: " NGINX_PORT

@@ -127,12 +127,18 @@
                 messages: [],
                 conversations: [],
                 currentConversationUuid: null,
+                conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
                 _justCompletedStream: false,
                 sessionCost: 0,
                 totalTokens: 0,
 
-                // Provider/Model
+                // Agents
+                agents: [],
+                currentAgentId: null,
+
+                // Provider/Model - Dual architecture: agent-based (new) + direct provider/model (legacy)
+                // This supports backwards compatibility while transitioning to full agent-based system
                 provider: 'anthropic',
                 model: 'claude-sonnet-4-5-20250929',
                 providers: {},
@@ -152,7 +158,7 @@
                 // Modals
                 showMobileDrawer: false,
                 showShortcutsModal: false,
-                showQuickSettings: false,
+                showAgentSelector: false,
                 showPricingSettings: false,
                 showCostBreakdown: false,
                 showOpenAiModal: false,
@@ -211,8 +217,8 @@
                     // Fetch providers
                     await this.fetchProviders();
 
-                    // Load saved default settings from database
-                    await this.fetchSettings();
+                    // Fetch available agents
+                    await this.fetchAgents();
 
                     // Load conversations list
                     await this.fetchConversations();
@@ -292,6 +298,75 @@
                     } catch (err) {
                         console.error('Failed to fetch providers:', err);
                         this.showError('Failed to load providers');
+                    }
+                },
+
+                async fetchAgents() {
+                    try {
+                        const response = await fetch('/api/agents');
+                        const data = await response.json();
+                        this.agents = data.data || [];
+
+                        // Auto-select default agent if none selected
+                        if (!this.currentAgentId && this.agents.length > 0) {
+                            // Find default agent, or first available
+                            const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+                            this.selectAgent(defaultAgent, false);
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch agents:', err);
+                    }
+                },
+
+                // Agent helper methods
+                get currentAgent() {
+                    return this.agents.find(a => a.id === this.currentAgentId);
+                },
+
+                get availableAgents() {
+                    // If in conversation, filter to same provider
+                    if (this.conversationProvider) {
+                        return this.agents.filter(a => a.provider === this.conversationProvider);
+                    }
+                    return this.agents;
+                },
+
+                get availableProviderKeys() {
+                    const providers = new Set(this.availableAgents.map(a => a.provider));
+                    return ['anthropic', 'openai', 'claude_code'].filter(p => providers.has(p));
+                },
+
+                agentsForProvider(providerKey) {
+                    return this.availableAgents.filter(a => a.provider === providerKey);
+                },
+
+                getProviderDisplayName(providerKey) {
+                    const names = {
+                        'anthropic': 'Anthropic',
+                        'openai': 'OpenAI',
+                        'claude_code': 'Claude Code'
+                    };
+                    return names[providerKey] || providerKey;
+                },
+
+                selectAgent(agent, closeModal = true) {
+                    if (!agent) return;
+
+                    this.currentAgentId = agent.id;
+                    this.provider = agent.provider;
+                    this.model = agent.model;
+
+                    // Load agent's reasoning settings
+                    this.anthropicThinkingBudget = agent.anthropic_thinking_budget || 0;
+                    this.openaiReasoningEffort = agent.openai_reasoning_effort || 'none';
+                    this.claudeCodeThinkingTokens = agent.claude_code_thinking_tokens || 0;
+                    this.responseLevel = agent.response_level || 1;
+
+                    // Load allowed tools
+                    this.claudeCodeAllowedTools = agent.allowed_tools || [];
+
+                    if (closeModal) {
+                        this.showAgentSelector = false;
                     }
                 },
 
@@ -417,6 +492,7 @@
                     this.disconnectFromStream();
 
                     this.currentConversationUuid = null;
+                    this.conversationProvider = null; // Reset for new conversation
                     this.messages = [];
                     this.sessionCost = 0;
                     this.totalTokens = 0;
@@ -430,8 +506,8 @@
                     // Clear URL to base path
                     this.updateUrl(null);
 
-                    // Restore saved default settings for new conversations
-                    await this.fetchSettings();
+                    // Re-fetch agents and select default
+                    await this.fetchAgents();
                 },
 
                 async loadConversation(uuid) {
@@ -510,10 +586,27 @@
                         // Update provider/model from conversation
                         if (data.conversation?.provider_type) {
                             this.provider = data.conversation.provider_type;
+                            this.conversationProvider = data.conversation.provider_type; // Store for agent filtering
                             this.updateModels(); // Refresh available models for this provider
                         }
                         if (data.conversation?.model) {
                             this.model = data.conversation.model;
+                        }
+
+                        // If conversation has an agent, select it
+                        // Defensive check: ensure agents are loaded before looking up
+                        if (data.conversation?.agent_id) {
+                            // If agents not yet loaded, fetch them first
+                            if (this.agents.length === 0) {
+                                await this.fetchAgents();
+                            }
+
+                            const agent = this.agents.find(a => a.id === data.conversation.agent_id);
+                            if (agent) {
+                                this.selectAgent(agent, false);
+                            } else {
+                                console.warn(`Agent ${data.conversation.agent_id} not found in available agents`);
+                            }
                         }
 
                         // Load provider-specific reasoning settings from conversation
@@ -684,24 +777,21 @@
 
                     // Create conversation if needed
                     if (!this.currentConversationUuid) {
+                        // Require agent selection
+                        if (!this.currentAgentId) {
+                            this.showAgentSelector = true;
+                            this.prompt = userPrompt; // Restore prompt
+                            return;
+                        }
+
                         try {
                             const createBody = {
                                 working_directory: '/var/www',
-                                provider_type: this.provider,
-                                model: this.model,
+                                agent_id: this.currentAgentId,
                                 title: userPrompt.substring(0, 50),
-                                response_level: this.responseLevel,
                             };
-                            // Add provider-specific reasoning settings
-                            if (this.provider === 'anthropic') {
-                                createBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
-                            } else if (this.provider === 'openai') {
-                                createBody.openai_reasoning_effort = this.openaiReasoningEffort;
-                            } else if (this.provider === 'openai_compatible') {
-                                createBody.openai_compatible_reasoning_effort = this.openaiCompatibleReasoningEffort;
-                            } else if (this.provider === 'claude_code') {
-                                createBody.claude_code_thinking_tokens = this.claudeCodeThinkingTokens;
-                            }
+                            // Note: When using agent_id, the server uses agent settings for reasoning.
+                            // The explicit provider-specific settings below are only for legacy/fallback mode.
 
                             const response = await fetch('/api/conversations', {
                                 method: 'POST',
@@ -710,6 +800,7 @@
                             });
                             const data = await response.json();
                             this.currentConversationUuid = data.conversation.uuid;
+                            this.conversationProvider = this.provider; // Lock provider for this conversation
 
                             // Update URL with new conversation UUID
                             this.updateUrl(this.currentConversationUuid);
@@ -1270,6 +1361,10 @@
 
                 formatToolContent(msg) {
                     if (!msg.toolInput) return '';
+                    const showFull = msg.showFullContent || false;
+                    const inputLimit = showFull ? Infinity : 100;
+                    const resultLimit = showFull ? Infinity : 500;
+
                     try {
                         const input = typeof msg.toolInput === 'string' ? JSON.parse(msg.toolInput) : msg.toolInput;
                         let html = '';
@@ -1284,19 +1379,23 @@
                         } else if (msg.toolName === 'Edit' || msg.toolName === 'edit') {
                             html += `<div><span class="text-blue-300 font-semibold">File:</span> ${this.escapeHtml(input.file_path || '')}</div>`;
                             if (input.old_string) {
-                                const preview = input.old_string.substring(0, 100);
-                                html += `<div><span class="text-blue-300 font-semibold">Find:</span> <pre class="mt-1 text-red-200 bg-red-950/30 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(preview)}${input.old_string.length > 100 ? '...' : ''}</pre></div>`;
+                                const preview = input.old_string.length > inputLimit ? input.old_string.substring(0, inputLimit) + '...' : input.old_string;
+                                html += `<div><span class="text-blue-300 font-semibold">Find:</span> <pre class="mt-1 text-red-200 bg-red-950/30 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(preview)}</pre></div>`;
                             }
                             if (input.new_string) {
-                                const preview = input.new_string.substring(0, 100);
-                                html += `<div><span class="text-blue-300 font-semibold">Replace:</span> <pre class="mt-1 text-green-200 bg-green-950/30 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(preview)}${input.new_string.length > 100 ? '...' : ''}</pre></div>`;
+                                const preview = input.new_string.length > inputLimit ? input.new_string.substring(0, inputLimit) + '...' : input.new_string;
+                                html += `<div><span class="text-blue-300 font-semibold">Replace:</span> <pre class="mt-1 text-green-200 bg-green-950/30 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(preview)}</pre></div>`;
                             }
                         } else {
                             // Generic: show all params
                             for (const [key, value] of Object.entries(input)) {
-                                const displayValue = typeof value === 'string' && value.length > 100
-                                    ? value.substring(0, 100) + '...'
-                                    : JSON.stringify(value);
+                                let displayValue;
+                                if (typeof value === 'string') {
+                                    displayValue = value.length > inputLimit ? value.substring(0, inputLimit) + '...' : value;
+                                } else {
+                                    const jsonStr = JSON.stringify(value);
+                                    displayValue = jsonStr.length > inputLimit ? jsonStr.substring(0, inputLimit) + '...' : jsonStr;
+                                }
                                 html += `<div><span class="text-blue-300 font-semibold">${this.escapeHtml(key)}:</span> ${this.escapeHtml(displayValue)}</div>`;
                             }
                         }
@@ -1304,7 +1403,7 @@
                         // Add result section if available
                         if (msg.toolResult) {
                             const resultText = typeof msg.toolResult === 'string' ? msg.toolResult : JSON.stringify(msg.toolResult, null, 2);
-                            const resultPreview = resultText.length > 500 ? resultText.substring(0, 500) + '...' : resultText;
+                            const resultPreview = resultText.length > resultLimit ? resultText.substring(0, resultLimit) + '...' : resultText;
                             html += `<div class="mt-3 pt-3 border-t border-blue-500/20">
                                 <div class="text-blue-300 font-semibold mb-1">Result:</div>
                                 <pre class="text-green-200 bg-blue-950/50 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(resultPreview)}</pre>
@@ -1314,6 +1413,34 @@
                         return html;
                     } catch (e) {
                         return `<pre class="text-xs">${this.escapeHtml(msg.content || '')}</pre>`;
+                    }
+                },
+
+                isToolContentTruncated(msg) {
+                    if (!msg.toolInput) return false;
+                    try {
+                        const input = typeof msg.toolInput === 'string' ? JSON.parse(msg.toolInput) : msg.toolInput;
+
+                        // Check input fields
+                        if (msg.toolName === 'Edit' || msg.toolName === 'edit') {
+                            if (input.old_string && input.old_string.length > 100) return true;
+                            if (input.new_string && input.new_string.length > 100) return true;
+                        } else if (msg.toolName !== 'Bash' && msg.toolName !== 'bash' && msg.toolName !== 'Read' && msg.toolName !== 'read') {
+                            for (const value of Object.values(input)) {
+                                if (typeof value === 'string' && value.length > 100) return true;
+                                if (typeof value !== 'string' && JSON.stringify(value).length > 100) return true;
+                            }
+                        }
+
+                        // Check result
+                        if (msg.toolResult) {
+                            const resultText = typeof msg.toolResult === 'string' ? msg.toolResult : JSON.stringify(msg.toolResult, null, 2);
+                            if (resultText.length > 500) return true;
+                        }
+
+                        return false;
+                    } catch (e) {
+                        return false;
                     }
                 },
 
