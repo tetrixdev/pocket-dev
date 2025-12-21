@@ -6,6 +6,7 @@ use App\Contracts\AIProviderInterface;
 use App\Services\EmbeddingService;
 use App\Services\Providers\AnthropicProvider;
 use App\Services\Providers\ClaudeCodeProvider;
+use App\Services\Providers\CodexProvider;
 use App\Services\Providers\OpenAICompatibleProvider;
 use App\Services\Providers\OpenAIProvider;
 use App\Services\SystemPromptBuilder;
@@ -70,6 +71,7 @@ class AIServiceProvider extends ServiceProvider
         $this->app->singleton(AnthropicProvider::class);
         $this->app->singleton(OpenAIProvider::class);
         $this->app->singleton(ClaudeCodeProvider::class);
+        $this->app->singleton(CodexProvider::class);
         $this->app->singleton(OpenAICompatibleProvider::class);
 
         // Register default provider based on config
@@ -80,6 +82,7 @@ class AIServiceProvider extends ServiceProvider
                 'anthropic' => $app->make(AnthropicProvider::class),
                 'openai' => $app->make(OpenAIProvider::class),
                 'claude_code' => $app->make(ClaudeCodeProvider::class),
+                'codex' => $app->make(CodexProvider::class),
                 'openai_compatible' => $app->make(OpenAICompatibleProvider::class),
                 default => $app->make(AnthropicProvider::class),
             };

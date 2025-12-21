@@ -34,6 +34,8 @@ class Conversation extends Model
         'response_level',
         // Claude Code session management
         'claude_session_id',
+        // Codex session management
+        'codex_session_id',
     ];
 
     protected $casts = [

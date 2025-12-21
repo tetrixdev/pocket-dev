@@ -338,6 +338,7 @@ class ConfigController extends Controller
                 Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
                 Agent::PROVIDER_OPENAI => $this->getModelsForProvider(Agent::PROVIDER_OPENAI),
                 Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
+                Agent::PROVIDER_CODEX => $this->getModelsForProvider(Agent::PROVIDER_CODEX),
             ],
         ]);
     }
@@ -410,6 +411,7 @@ class ConfigController extends Controller
                 Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
                 Agent::PROVIDER_OPENAI => $this->getModelsForProvider(Agent::PROVIDER_OPENAI),
                 Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
+                Agent::PROVIDER_CODEX => $this->getModelsForProvider(Agent::PROVIDER_CODEX),
             ],
         ]);
     }

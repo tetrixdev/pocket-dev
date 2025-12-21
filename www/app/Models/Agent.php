@@ -19,6 +19,7 @@ class Agent extends Model
     public const PROVIDER_ANTHROPIC = 'anthropic';
     public const PROVIDER_OPENAI = 'openai';
     public const PROVIDER_CLAUDE_CODE = 'claude_code';
+    public const PROVIDER_CODEX = 'codex';
 
     protected $fillable = [
         'name',
@@ -29,6 +30,7 @@ class Agent extends Model
         'anthropic_thinking_budget',
         'openai_reasoning_effort',
         'claude_code_thinking_tokens',
+        'codex_reasoning_effort',
         'response_level',
         'allowed_tools',
         'system_prompt',
@@ -106,6 +108,7 @@ class Agent extends Model
             self::PROVIDER_ANTHROPIC => $this->anthropic_thinking_budget ?? 0,
             self::PROVIDER_OPENAI => $this->openai_reasoning_effort ?? 'none',
             self::PROVIDER_CLAUDE_CODE => $this->claude_code_thinking_tokens ?? 0,
+            self::PROVIDER_CODEX => $this->codex_reasoning_effort ?? 'none',
             default => null,
         };
     }
@@ -127,6 +130,10 @@ class Agent extends Model
             self::PROVIDER_CLAUDE_CODE => [
                 'type' => 'claude_code',
                 'thinking_tokens' => $this->claude_code_thinking_tokens ?? 0,
+            ],
+            self::PROVIDER_CODEX => [
+                'type' => 'codex',
+                'effort' => $this->codex_reasoning_effort ?? 'none',
             ],
             default => ['type' => 'none'],
         };
@@ -161,6 +168,7 @@ class Agent extends Model
             self::PROVIDER_ANTHROPIC => 'Anthropic',
             self::PROVIDER_OPENAI => 'OpenAI',
             self::PROVIDER_CLAUDE_CODE => 'Claude Code',
+            self::PROVIDER_CODEX => 'Codex',
             default => ucfirst($this->provider),
         };
     }
@@ -174,6 +182,7 @@ class Agent extends Model
             self::PROVIDER_ANTHROPIC,
             self::PROVIDER_OPENAI,
             self::PROVIDER_CLAUDE_CODE,
+            self::PROVIDER_CODEX,
         ];
     }
 }

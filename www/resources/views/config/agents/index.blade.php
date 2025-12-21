@@ -17,8 +17,9 @@
         'anthropic' => 'Anthropic',
         'openai' => 'OpenAI',
         'claude_code' => 'Claude Code',
+        'codex' => 'Codex',
     ];
-    $providerOrder = ['anthropic', 'openai', 'claude_code'];
+    $providerOrder = ['anthropic', 'openai', 'claude_code', 'codex'];
 @endphp
 
 @if($agents->isEmpty())
@@ -36,6 +37,7 @@
                             'anthropic' => 'bg-orange-500',
                             'openai' => 'bg-green-500',
                             'claude_code' => 'bg-purple-500',
+                            'codex' => 'bg-teal-500',
                             default => 'bg-gray-500'
                         } }}"></span>
                         {{ $providerNames[$providerKey] ?? ucfirst($providerKey) }}

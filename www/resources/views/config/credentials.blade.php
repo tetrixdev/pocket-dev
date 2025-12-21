@@ -30,6 +30,26 @@
                 </div>
             </div>
 
+            {{-- Codex (CLI) --}}
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="font-medium text-white">Codex (CLI)</h3>
+                        <p class="text-sm text-gray-400">Uses your ChatGPT Plus/Pro subscription via CLI authentication</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        @if($hasCodex)
+                            <span class="text-green-400 text-sm">Authenticated</span>
+                        @else
+                            <span class="text-gray-500 text-sm">Not configured</span>
+                        @endif
+                        <a href="{{ route('codex.auth') }}" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">
+                            {{ $hasCodex ? 'Manage' : 'Set up' }}
+                        </a>
+                    </div>
+                </div>
+            </div>
+
             {{-- Anthropic API --}}
             <div class="bg-gray-800 rounded-lg p-4">
                 <div class="flex items-center justify-between mb-3">

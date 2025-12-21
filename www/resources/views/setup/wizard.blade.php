@@ -45,6 +45,21 @@
                         </div>
                     </label>
 
+                    {{-- Codex CLI --}}
+                    <label class="flex items-start gap-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
+                           :class="{ 'ring-2 ring-blue-500': provider === 'codex' }">
+                        <input type="radio" name="provider" value="codex" x-model="provider" class="mt-1">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2">
+                                <span class="font-medium">Codex (CLI)</span>
+                            </div>
+                            <p class="text-sm text-gray-400 mt-1">Uses your ChatGPT Plus/Pro subscription. No API key needed.</p>
+                            @if($hasCodex)
+                                <p class="text-sm text-green-400 mt-1">Already authenticated</p>
+                            @endif
+                        </div>
+                    </label>
+
                     {{-- Anthropic API --}}
                     <label class="flex items-start gap-3 p-4 bg-gray-700 rounded-lg cursor-pointer hover:bg-gray-600 transition-colors"
                            :class="{ 'ring-2 ring-blue-500': provider === 'anthropic' }">
@@ -93,14 +108,69 @@
                 <p class="text-sm text-gray-400 mb-4">
                     Run this command in your terminal to authenticate with your Claude Pro/Team subscription:
                 </p>
-                <div class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 select-all mb-3">
-                    docker exec -it pocket-dev-queue claude
+                <div class="relative">
+                    <div
+                        @click="copyCommand('docker exec -it pocket-dev-queue claude', 'claude')"
+                        class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3"
+                        title="Click to copy"
+                    >
+                        docker exec -it pocket-dev-queue claude
+                    </div>
+                    <div
+                        x-show="copiedCommand === 'claude'"
+                        x-transition:enter="transition ease-out duration-200"
+                        x-transition:enter-start="opacity-0 translate-y-1"
+                        x-transition:enter-end="opacity-100 translate-y-0"
+                        x-transition:leave="transition ease-in duration-150"
+                        x-transition:leave-start="opacity-100 translate-y-0"
+                        x-transition:leave-end="opacity-0 translate-y-1"
+                        class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-green-600 text-white text-xs rounded shadow-lg"
+                    >
+                        Copied!
+                    </div>
                 </div>
                 <p class="text-sm text-gray-400 mb-2">
                     This opens an interactive login. Complete the OAuth flow in your browser, then return here and click <strong class="text-white">Verify & Continue</strong>.
                 </p>
                 <p class="text-xs text-gray-500">
                     If you prefer to use an API key instead, select "Anthropic API" above.
+                </p>
+            </div>
+            @endif
+
+            {{-- Codex Setup (conditional) --}}
+            @if(!$hasCodex)
+            <div x-show="provider === 'codex'" x-cloak class="bg-gray-800 rounded-lg p-6">
+                <h3 class="text-lg font-semibold mb-3">Codex Setup</h3>
+                <p class="text-sm text-gray-400 mb-4">
+                    Run this command on your <strong class="text-white">host machine</strong> (not in Docker) to authenticate:
+                </p>
+                <div class="relative">
+                    <div
+                        @click="copyCommand('sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json', 'codex')"
+                        class="bg-gray-900 rounded p-3 font-mono text-xs text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3 overflow-x-auto"
+                        title="Click to copy"
+                    >
+                        sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json
+                    </div>
+                    <div
+                        x-show="copiedCommand === 'codex'"
+                        x-transition:enter="transition ease-out duration-200"
+                        x-transition:enter-start="opacity-0 translate-y-1"
+                        x-transition:enter-end="opacity-100 translate-y-0"
+                        x-transition:leave="transition ease-in duration-150"
+                        x-transition:leave-start="opacity-100 translate-y-0"
+                        x-transition:leave-end="opacity-0 translate-y-1"
+                        class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-green-600 text-white text-xs rounded shadow-lg"
+                    >
+                        Copied!
+                    </div>
+                </div>
+                <p class="text-sm text-gray-400 mb-2">
+                    This installs Codex locally, opens a browser login, then copies credentials to the container. After completion, click <strong class="text-white">Verify & Continue</strong>.
+                </p>
+                <p class="text-xs text-gray-500">
+                    If you prefer to use an API key instead, select "OpenAI API" above.
                 </p>
             </div>
             @endif
@@ -255,7 +325,7 @@
                     class="w-full px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
                     :disabled="!provider"
                     :class="{ 'opacity-50 cursor-not-allowed': !provider }"
-                    x-text="provider === 'claude_code' && !{{ $hasClaudeCode ? 'true' : 'false' }} ? 'Verify & Continue' : 'Continue'"
+                    x-text="(provider === 'claude_code' && !{{ $hasClaudeCode ? 'true' : 'false' }}) || (provider === 'codex' && !{{ $hasCodex ? 'true' : 'false' }}) ? 'Verify & Continue' : 'Continue'"
                 >
                     Continue
                 </button>
@@ -267,8 +337,17 @@
     <script>
         function setupWizard() {
             return {
-                provider: '{{ $hasClaudeCode ? "claude_code" : ($hasAnthropicKey ? "anthropic" : ($hasOpenAiKey ? "openai" : ($hasOpenAiCompatible ? "openai_compatible" : "claude_code"))) }}',
-                showGitCredentials: false
+                provider: '{{ $hasClaudeCode ? "claude_code" : ($hasAnthropicKey ? "anthropic" : ($hasOpenAiKey ? "openai" : ($hasCodex ? "codex" : ($hasOpenAiCompatible ? "openai_compatible" : "claude_code")))) }}',
+                showGitCredentials: false,
+                copiedCommand: null,
+                copyCommand(text, id) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        this.copiedCommand = id;
+                        setTimeout(() => {
+                            this.copiedCommand = null;
+                        }, 1500);
+                    });
+                }
             }
         }
     </script>
