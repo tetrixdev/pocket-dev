@@ -398,9 +398,7 @@ app/
     └── AIServiceProvider.php  # Tool registration
 
 database/migrations/
-├── 2025_12_19_000001_create_memory_structures_table.php
-├── 2025_12_19_000002_create_memory_objects_table.php
-└── 2025_12_19_000003_create_memory_embeddings_table.php
+└── See database/migrations/ for complete list of memory-related migrations
 
 config/
 └── ai.php                     # Embeddings configuration
@@ -501,6 +499,6 @@ Name relationship fields clearly with `_id` suffix:
 1. Ensure PostgreSQL is running with pgvector extension
 2. Run migrations: `php artisan migrate`
 3. Run seeders: `php artisan db:seed`
-4. Add your OpenAI API key to `.env`
+4. Add your OpenAI API key via **Config → Credentials** in the UI
 5. Create a structure using the AI or artisan command
 6. Start creating objects and searching semantically

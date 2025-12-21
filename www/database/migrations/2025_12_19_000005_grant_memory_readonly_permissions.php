@@ -25,6 +25,11 @@ return new class extends Migration
             // User doesn't exist - likely running outside Docker or fresh setup
             // Create the user here as fallback
             $password = env('DB_READONLY_PASSWORD');
+
+            if (empty($password)) {
+                throw new \RuntimeException('DB_READONLY_PASSWORD environment variable must be set for memory_readonly user');
+            }
+
             $database = config('database.connections.pgsql.database');
             DB::statement("CREATE USER memory_readonly WITH PASSWORD " . DB::connection()->getPdo()->quote($password));
             DB::statement("GRANT CONNECT ON DATABASE " . DB::connection()->getPdo()->quote($database) . " TO memory_readonly");
@@ -32,7 +37,7 @@ return new class extends Migration
         }
 
         // Grant SELECT on all memory tables
-        $memoryTables = ['memory_structures', 'memory_objects', 'memory_embeddings', 'memory_relationships'];
+        $memoryTables = ['memory_structures', 'memory_objects', 'memory_embeddings'];
 
         foreach ($memoryTables as $table) {
             DB::statement("GRANT SELECT ON {$table} TO memory_readonly");
@@ -56,7 +61,7 @@ return new class extends Migration
             return;
         }
 
-        $memoryTables = ['memory_structures', 'memory_objects', 'memory_embeddings', 'memory_relationships'];
+        $memoryTables = ['memory_structures', 'memory_objects', 'memory_embeddings'];
 
         foreach ($memoryTables as $table) {
             DB::statement("REVOKE SELECT ON {$table} FROM memory_readonly");

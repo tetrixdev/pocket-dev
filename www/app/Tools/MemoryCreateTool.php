@@ -124,7 +124,7 @@ INSTRUCTIONS;
                 return $object;
             });
 
-            // Generate embeddings asynchronously (or sync if queue not available)
+            // Generate embeddings (failures are logged but don't abort the operation)
             $this->generateEmbeddings($object);
 
             $output = [

@@ -594,10 +594,18 @@
                         }
 
                         // If conversation has an agent, select it
+                        // Defensive check: ensure agents are loaded before looking up
                         if (data.conversation?.agent_id) {
+                            // If agents not yet loaded, fetch them first
+                            if (this.agents.length === 0) {
+                                await this.fetchAgents();
+                            }
+
                             const agent = this.agents.find(a => a.id === data.conversation.agent_id);
                             if (agent) {
                                 this.selectAgent(agent, false);
+                            } else {
+                                console.warn(`Agent ${data.conversation.agent_id} not found in available agents`);
                             }
                         }
 
@@ -1353,6 +1361,10 @@
 
                 formatToolContent(msg) {
                     if (!msg.toolInput) return '';
+                    const showFull = msg.showFullContent || false;
+                    const inputLimit = showFull ? Infinity : 100;
+                    const resultLimit = showFull ? Infinity : 500;
+
                     try {
                         const input = typeof msg.toolInput === 'string' ? JSON.parse(msg.toolInput) : msg.toolInput;
                         let html = '';
@@ -1367,19 +1379,23 @@
                         } else if (msg.toolName === 'Edit' || msg.toolName === 'edit') {
                             html += `<div><span class="text-blue-300 font-semibold">File:</span> ${this.escapeHtml(input.file_path || '')}</div>`;
                             if (input.old_string) {
-                                const preview = input.old_string.substring(0, 100);
-                                html += `<div><span class="text-blue-300 font-semibold">Find:</span> <pre class="mt-1 text-red-200 bg-red-950/30 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(preview)}${input.old_string.length > 100 ? '...' : ''}</pre></div>`;
+                                const preview = input.old_string.length > inputLimit ? input.old_string.substring(0, inputLimit) + '...' : input.old_string;
+                                html += `<div><span class="text-blue-300 font-semibold">Find:</span> <pre class="mt-1 text-red-200 bg-red-950/30 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(preview)}</pre></div>`;
                             }
                             if (input.new_string) {
-                                const preview = input.new_string.substring(0, 100);
-                                html += `<div><span class="text-blue-300 font-semibold">Replace:</span> <pre class="mt-1 text-green-200 bg-green-950/30 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(preview)}${input.new_string.length > 100 ? '...' : ''}</pre></div>`;
+                                const preview = input.new_string.length > inputLimit ? input.new_string.substring(0, inputLimit) + '...' : input.new_string;
+                                html += `<div><span class="text-blue-300 font-semibold">Replace:</span> <pre class="mt-1 text-green-200 bg-green-950/30 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(preview)}</pre></div>`;
                             }
                         } else {
                             // Generic: show all params
                             for (const [key, value] of Object.entries(input)) {
-                                const displayValue = typeof value === 'string' && value.length > 100
-                                    ? value.substring(0, 100) + '...'
-                                    : JSON.stringify(value);
+                                let displayValue;
+                                if (typeof value === 'string') {
+                                    displayValue = value.length > inputLimit ? value.substring(0, inputLimit) + '...' : value;
+                                } else {
+                                    const jsonStr = JSON.stringify(value);
+                                    displayValue = jsonStr.length > inputLimit ? jsonStr.substring(0, inputLimit) + '...' : jsonStr;
+                                }
                                 html += `<div><span class="text-blue-300 font-semibold">${this.escapeHtml(key)}:</span> ${this.escapeHtml(displayValue)}</div>`;
                             }
                         }
@@ -1387,7 +1403,7 @@
                         // Add result section if available
                         if (msg.toolResult) {
                             const resultText = typeof msg.toolResult === 'string' ? msg.toolResult : JSON.stringify(msg.toolResult, null, 2);
-                            const resultPreview = resultText.length > 500 ? resultText.substring(0, 500) + '...' : resultText;
+                            const resultPreview = resultText.length > resultLimit ? resultText.substring(0, resultLimit) + '...' : resultText;
                             html += `<div class="mt-3 pt-3 border-t border-blue-500/20">
                                 <div class="text-blue-300 font-semibold mb-1">Result:</div>
                                 <pre class="text-green-200 bg-blue-950/50 px-2 py-1 rounded whitespace-pre-wrap text-xs">${this.escapeHtml(resultPreview)}</pre>
@@ -1397,6 +1413,34 @@
                         return html;
                     } catch (e) {
                         return `<pre class="text-xs">${this.escapeHtml(msg.content || '')}</pre>`;
+                    }
+                },
+
+                isToolContentTruncated(msg) {
+                    if (!msg.toolInput) return false;
+                    try {
+                        const input = typeof msg.toolInput === 'string' ? JSON.parse(msg.toolInput) : msg.toolInput;
+
+                        // Check input fields
+                        if (msg.toolName === 'Edit' || msg.toolName === 'edit') {
+                            if (input.old_string && input.old_string.length > 100) return true;
+                            if (input.new_string && input.new_string.length > 100) return true;
+                        } else if (msg.toolName !== 'Bash' && msg.toolName !== 'bash' && msg.toolName !== 'Read' && msg.toolName !== 'read') {
+                            for (const value of Object.values(input)) {
+                                if (typeof value === 'string' && value.length > 100) return true;
+                                if (typeof value !== 'string' && JSON.stringify(value).length > 100) return true;
+                            }
+                        }
+
+                        // Check result
+                        if (msg.toolResult) {
+                            const resultText = typeof msg.toolResult === 'string' ? msg.toolResult : JSON.stringify(msg.toolResult, null, 2);
+                            if (resultText.length > 500) return true;
+                        }
+
+                        return false;
+                    } catch (e) {
+                        return false;
                     }
                 },
 

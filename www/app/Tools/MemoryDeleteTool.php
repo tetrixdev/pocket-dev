@@ -73,6 +73,12 @@ INSTRUCTIONS;
         $name = $object->name;
         $structureSlug = $object->structure_slug;
 
+        // Check for orphaned children BEFORE deletion (FK constraint will nullify parent_id)
+        $orphanedChildren = 0;
+        if (!$cascade) {
+            $orphanedChildren = $object->children()->count();
+        }
+
         try {
             $childCount = 0;
 
@@ -92,13 +98,10 @@ INSTRUCTIONS;
                 $output[] = "Also deleted {$childCount} child object(s)";
             }
 
-            // Check for orphaned children
-            if (!$cascade) {
-                $orphanedChildren = MemoryObject::where('parent_id', $id)->count();
-                if ($orphanedChildren > 0) {
-                    $output[] = "";
-                    $output[] = "Note: {$orphanedChildren} child object(s) are now orphaned (parent_id set to null)";
-                }
+            // Report orphaned children using pre-deletion count
+            if (!$cascade && $orphanedChildren > 0) {
+                $output[] = "";
+                $output[] = "Note: {$orphanedChildren} child object(s) are now orphaned (parent_id set to null)";
             }
 
             return ToolResult::success(implode("\n", $output));

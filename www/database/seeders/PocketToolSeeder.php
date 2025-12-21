@@ -570,16 +570,45 @@ Use `php artisan tool:create` to create custom tools.
 
 ## Usage
 ```bash
-php artisan tool:create --slug=<slug> --name="<name>" --description="<desc>" --system-prompt="<instructions>" --script='<bash script>'
+php artisan tool:create --slug=<slug> --name="<name>" --description="<desc>" --system-prompt="<instructions>" --script='<bash script>' [--input-schema='<json>']
 ```
 
-## Example
+## Named Parameters with input-schema
+Define named parameters using JSON Schema. Parameters are passed to the script as environment variables with `TOOL_` prefix (uppercase, hyphens become underscores).
+
 ```bash
-php artisan tool:create --slug=git-status --name="Git Status" --description="Check git status" --system-prompt="Returns git branch and status" --script='#!/bin/bash
+php artisan tool:create --slug=my-tool --name="My Tool" \
+  --description="Does something useful" \
+  --system-prompt="..." \
+  --input-schema='{
+    "type": "object",
+    "properties": {
+      "name": {"type": "string", "description": "The name to use"},
+      "count": {"type": "integer", "description": "How many times"}
+    },
+    "required": ["name"]
+  }' \
+  --script='#!/bin/bash
+echo "Name: $TOOL_NAME, Count: ${TOOL_COUNT:-1}"'
+```
+
+When the tool is invoked with `tool:run my-tool --name=foo --count=5`, the script receives:
+- `TOOL_NAME=foo`
+- `TOOL_COUNT=5`
+
+## Simple Example (positional args)
+```bash
+php artisan tool:create --slug=git-status --name="Git Status" \
+  --description="Check git status" \
+  --system-prompt="Returns git branch and status" \
+  --script='#!/bin/bash
 echo "{\"branch\": \"$(git branch --show-current)\"}"'
 ```
 
-Scripts should output JSON for structured responses.
+## Notes
+- Scripts should output JSON for structured responses
+- Use `$TOOL_*` env vars for named parameters, `$1`, `$2` for positional (backward compat)
+- The system-prompt is added to the AI's context when the tool is enabled
 PROMPT;
     }
 
@@ -649,10 +678,23 @@ Use `php artisan tool:run` to execute custom tools.
 
 ## Usage
 ```bash
-php artisan tool:run <slug> [-- <arguments>]
+# With named parameters (if tool has input_schema)
+php artisan tool:run <slug> -- --param=value --other=value
+
+# With positional arguments (legacy)
+php artisan tool:run <slug> -- arg1 arg2
 ```
 
-Arguments after -- are passed to the script.
+## Examples
+```bash
+# Named parameters (preferred)
+tool:run github-pr-reviews -- --pr=37 --repo=owner/repo
+
+# Positional arguments
+tool:run my-tool -- arg1 arg2
+```
+
+Named parameters are passed to the script as `TOOL_*` environment variables.
 PROMPT;
     }
 }

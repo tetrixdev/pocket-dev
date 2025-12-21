@@ -213,11 +213,17 @@ class MemoryStructureUpdateCommand extends Command
 
                 // Generate new embeddings
                 foreach ($embeddableFields as $fieldPath) {
-                    $content = $object->data[$fieldPath] ?? null;
+                    $content = $object->getField($fieldPath);
 
                     if (!empty($content) && is_string($content)) {
                         $contentHash = MemoryEmbedding::hashContent($content);
                         $embedding = $this->embeddingService->embed($content);
+
+                        // Skip if embedding failed
+                        if ($embedding === null) {
+                            $this->warn("Failed to generate embedding for field '{$fieldPath}' in object {$object->id}. Skipping.");
+                            continue;
+                        }
 
                         MemoryEmbedding::create([
                             'object_id' => $object->id,

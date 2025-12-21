@@ -247,11 +247,22 @@ class CredentialsController extends Controller
             return;
         }
 
-        // Get default model from ModelRepository (first = most capable)
-        $defaultModel = $this->models->getDefaultModel($provider);
-        if (!$defaultModel) {
-            Log::warning("Cannot create default agent for {$provider}: no models configured");
-            return;
+        // Get model ID for the provider
+        // Special case: openai_compatible stores model in AppSettingsService, not config
+        if ($provider === 'openai_compatible') {
+            $modelId = $this->settings->getOpenAiCompatibleModel();
+            if (!$modelId) {
+                Log::warning("Cannot create default agent for {$provider}: no model configured");
+                return;
+            }
+        } else {
+            // Get default model from ModelRepository (first = most capable)
+            $defaultModel = $this->models->getDefaultModel($provider);
+            if (!$defaultModel) {
+                Log::warning("Cannot create default agent for {$provider}: no models configured");
+                return;
+            }
+            $modelId = $defaultModel['model_id'];
         }
 
         $defaultNames = [
@@ -272,7 +283,7 @@ class CredentialsController extends Controller
             'name' => $defaultNames[$provider] ?? 'Default Agent',
             'description' => $defaultDescriptions[$provider] ?? 'Default agent for this provider.',
             'provider' => $provider,
-            'model' => $defaultModel['model_id'],
+            'model' => $modelId,
             'is_default' => true,
             'enabled' => true,
             'response_level' => 1,

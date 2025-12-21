@@ -258,6 +258,12 @@ php artisan tinker --execute="echo count(app(App\Services\ToolSelector::class)->
 - [ ] STRUCT-001 through STRUCT-006:
 - [ ] SEL-001 through SEL-004:
 - [ ] CONF-001 through CONF-003:
+- [ ] SEC-001:
+- [ ] SEC-002:
+- [ ] SEC-003:
+- [ ] SEC-004:
+- [ ] SEC-005:
+- [ ] SEC-006:
 
 ### Manual Tests
 - [ ] CC-001 through CC-004:

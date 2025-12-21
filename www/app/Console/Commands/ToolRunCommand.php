@@ -10,7 +10,7 @@ class ToolRunCommand extends Command
 {
     protected $signature = 'tool:run
         {slug : The slug of the tool to run}
-        {arguments?* : Arguments to pass to the tool script}';
+        {arguments?* : Arguments to pass to the tool script (positional or --name=value)}';
 
     protected $description = 'Run a user tool';
 
@@ -38,19 +38,45 @@ class ToolRunCommand extends Command
             return $this->outputError("Tool '{$slug}' has no script defined");
         }
 
+        // Parse named and positional arguments
+        [$namedArgs, $positionalArgs] = $this->parseArguments($arguments);
+
+        // If tool has input_schema, validate and use named args
+        $envVars = [];
+        if ($tool->input_schema && !empty($tool->input_schema['properties'])) {
+            $schema = $tool->input_schema;
+            $required = $schema['required'] ?? [];
+
+            // Check required parameters
+            foreach ($required as $param) {
+                if (!isset($namedArgs[$param])) {
+                    return $this->outputError("Missing required parameter: --{$param}");
+                }
+            }
+
+            // Build environment variables from named args (uppercase with TOOL_ prefix)
+            foreach ($namedArgs as $name => $value) {
+                $envName = 'TOOL_' . strtoupper(str_replace('-', '_', $name));
+                $envVars[$envName] = $value;
+            }
+        }
+
         $tempFile = null;
         try {
             // Create temp script file
             $tempFile = tempnam(sys_get_temp_dir(), 'pocket_tool_');
+            if ($tempFile === false) {
+                return $this->outputError('Failed to create temporary script file');
+            }
             file_put_contents($tempFile, $tool->script);
             chmod($tempFile, 0755);
 
-            // Build command with arguments
-            $escapedArgs = array_map('escapeshellarg', $arguments);
+            // Build command with positional arguments (for backward compatibility)
+            $escapedArgs = array_map('escapeshellarg', $positionalArgs);
             $command = $tempFile . ' ' . implode(' ', $escapedArgs);
 
-            // Execute the script
-            $result = Process::timeout(300)->run($command);
+            // Execute the script with environment variables
+            $result = Process::timeout(300)->env($envVars)->run($command);
 
             $output = $result->output();
             $errorOutput = $result->errorOutput();
@@ -81,6 +107,42 @@ class ToolRunCommand extends Command
                 unlink($tempFile);
             }
         }
+    }
+
+    /**
+     * Parse arguments into named (--key=value) and positional args.
+     *
+     * @return array{0: array<string, string>, 1: array<string>}
+     */
+    private function parseArguments(array $arguments): array
+    {
+        $named = [];
+        $positional = [];
+
+        $i = 0;
+        while ($i < count($arguments)) {
+            $arg = $arguments[$i];
+
+            if (str_starts_with($arg, '--')) {
+                // Named argument
+                if (str_contains($arg, '=')) {
+                    // --name=value format
+                    [$key, $value] = explode('=', substr($arg, 2), 2);
+                    $named[$key] = $value;
+                } else {
+                    // --name value format
+                    $key = substr($arg, 2);
+                    $i++;
+                    $named[$key] = $arguments[$i] ?? '';
+                }
+            } else {
+                // Positional argument
+                $positional[] = $arg;
+            }
+            $i++;
+        }
+
+        return [$named, $positional];
     }
 
     private function outputError(string $message): int

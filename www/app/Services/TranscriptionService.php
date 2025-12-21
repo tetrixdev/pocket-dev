@@ -15,7 +15,7 @@ class TranscriptionService
     {
         // API key from database (set via UI)
         $this->apiKey = $appSettings->getOpenAiApiKey() ?? '';
-        $this->baseUrl = config('ai.transcription.base_url') ?? config('ai.providers.openai.base_url') ?? 'https://api.openai.com/v1';
+        $this->baseUrl = config('ai.transcription.base_url') ?? config('ai.providers.openai.base_url') ?? 'https://api.openai.com';
 
         if (empty($this->apiKey)) {
             throw new \Exception('OpenAI API key is not configured. Set it in Config → Credentials.');
@@ -30,7 +30,7 @@ class TranscriptionService
             ])
             ->timeout(1800) // 30 minute timeout for longer audio recordings
             ->attach('file', file_get_contents($audioFile->getRealPath()), $audioFile->getClientOriginalName())
-            ->post($this->baseUrl . '/audio/transcriptions', [
+            ->post($this->baseUrl . '/v1/audio/transcriptions', [
                 'model' => 'gpt-4o-transcribe',
                 'response_format' => 'text',
                 'language' => 'en', // Optimize for English, but Whisper can auto-detect
