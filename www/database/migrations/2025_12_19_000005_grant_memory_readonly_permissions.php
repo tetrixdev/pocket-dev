@@ -24,8 +24,10 @@ return new class extends Migration
         if (!$userExists) {
             // User doesn't exist - likely running outside Docker or fresh setup
             // Create the user here as fallback
-            DB::statement("CREATE USER memory_readonly WITH PASSWORD 'readonly_password'");
-            DB::statement("GRANT CONNECT ON DATABASE \"pocket-dev\" TO memory_readonly");
+            $password = env('DB_READONLY_PASSWORD');
+            $database = config('database.connections.pgsql.database');
+            DB::statement("CREATE USER memory_readonly WITH PASSWORD " . DB::connection()->getPdo()->quote($password));
+            DB::statement("GRANT CONNECT ON DATABASE " . DB::connection()->getPdo()->quote($database) . " TO memory_readonly");
             DB::statement("GRANT USAGE ON SCHEMA public TO memory_readonly");
         }
 

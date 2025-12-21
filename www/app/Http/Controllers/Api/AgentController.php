@@ -217,7 +217,7 @@ class AgentController extends Controller
         if (!empty($toolPrompt)) {
             // If specific tools are selected, filter the prompt
             if ($allowedTools !== null && is_array($allowedTools)) {
-                $filteredToolPrompt = $this->filterToolPrompt($toolPrompt, $allowedTools, $provider);
+                $filteredToolPrompt = $this->filterToolPrompt($allowedTools, $provider);
                 if (!empty($filteredToolPrompt)) {
                     $sections[] = [
                         'title' => 'PocketDev Tools',
@@ -260,7 +260,7 @@ class AgentController extends Controller
     /**
      * Filter tool prompt to only include selected tools.
      */
-    private function filterToolPrompt(string $fullPrompt, array $allowedTools, string $provider): string
+    private function filterToolPrompt(array $allowedTools, string $provider): string
     {
         // Get the tool slugs that are allowed
         $allowedSlugs = collect($allowedTools)->map(fn($t) => strtolower($t))->toArray();
@@ -279,9 +279,6 @@ class AgentController extends Controller
         if ($filteredTools->isEmpty()) {
             return '';
         }
-
-        // Rebuild the prompt with only allowed tools
-        $toolSelector = app(ToolSelector::class);
 
         // We need to temporarily modify what buildSystemPrompt returns
         // For now, just note which tools are included

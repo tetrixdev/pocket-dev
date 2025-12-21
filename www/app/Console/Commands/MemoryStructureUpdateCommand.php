@@ -216,8 +216,8 @@ class MemoryStructureUpdateCommand extends Command
                     $content = $object->data[$fieldPath] ?? null;
 
                     if (!empty($content) && is_string($content)) {
-                        $contentHash = md5($content);
-                        $embedding = $this->embeddingService->generateEmbedding($content);
+                        $contentHash = MemoryEmbedding::hashContent($content);
+                        $embedding = $this->embeddingService->embed($content);
 
                         MemoryEmbedding::create([
                             'object_id' => $object->id,

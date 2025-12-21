@@ -8,15 +8,13 @@ use Illuminate\Console\Command;
 class ToolDeleteCommand extends Command
 {
     protected $signature = 'tool:delete
-        {slug : The slug of the tool to delete}
-        {--force : Skip confirmation}';
+        {slug : The slug of the tool to delete}';
 
     protected $description = 'Delete a user tool';
 
     public function handle(): int
     {
         $slug = $this->argument('slug');
-        $force = $this->option('force');
 
         $tool = PocketTool::where('slug', $slug)->first();
 

@@ -71,7 +71,8 @@ class ToolShowCommand extends Command
         if ($tool->input_schema) {
             $lines[] = "";
             $lines[] = "Input Schema:";
-            $lines[] = "  " . json_encode($tool->input_schema, JSON_PRETTY_PRINT);
+            $schemaJson = json_encode($tool->input_schema, JSON_PRETTY_PRINT);
+            $lines[] = "  " . str_replace("\n", "\n  ", $schemaJson);
         }
 
         if ($tool->isPocketdev()) {

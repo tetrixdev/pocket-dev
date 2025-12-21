@@ -40,6 +40,7 @@
             </div>
         </div>
         {{-- Current Agent Display --}}
+        {{-- TODO: Refactor to use <x-button variant="ghost"> for consistency with coding guidelines --}}
         <div class="mb-2">
             <button @click="showAgentSelector = true" class="text-left w-full group">
                 <div class="text-gray-300 font-medium flex items-center gap-1.5">

@@ -72,13 +72,19 @@ class MemoryUpdateCommand extends Command
                 $textOp['operation'] = 'prepend';
                 $textOp['text'] = $prepend;
             } elseif ($replaceText !== null) {
+                if ($withText === null) {
+                    return $this->outputError('--replace-text requires --with to specify the replacement text');
+                }
                 $textOp['operation'] = 'replace';
                 $textOp['find'] = $replaceText;
-                $textOp['text'] = $withText ?? '';
+                $textOp['text'] = $withText;
             } elseif ($insertAfter !== null) {
+                if ($insertText === null) {
+                    return $this->outputError('--insert-after requires --insert-text to specify the text to insert');
+                }
                 $textOp['operation'] = 'insert_after';
                 $textOp['find'] = $insertAfter;
-                $textOp['text'] = $insertText ?? '';
+                $textOp['text'] = $insertText;
             } else {
                 return $this->outputError('--field requires one of: --append, --prepend, --replace-text, --insert-after');
             }

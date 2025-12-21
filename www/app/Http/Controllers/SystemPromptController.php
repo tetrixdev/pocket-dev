@@ -23,6 +23,7 @@ class SystemPromptController extends Controller
 
         // Get dynamic content for both provider types
         $claudeCodeDynamic = $this->toolSelector->buildSystemPrompt(PocketTool::PROVIDER_CLAUDE_CODE);
+        // ANTHROPIC is used as representative for both Anthropic and OpenAI since they share the same tool format
         $otherProviderDynamic = $this->toolSelector->buildSystemPrompt(PocketTool::PROVIDER_ANTHROPIC);
 
         return view('config.system-prompt.show', [

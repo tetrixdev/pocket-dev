@@ -8,7 +8,7 @@ The Memory System provides persistent, semantically-searchable structured storag
 - **Structures** = Schemas/templates (like classes)
 - **Objects** = Instances (like objects)
 - **Embeddings** = Vectors for semantic search
-- **Relationships** = Stored in `memory_relationships` table (typed, bidirectional links between objects)
+- **Relationships** = UUID references stored in object's JSONB `data` field
 
 **Read level:** 📖 Full read recommended for implementation
 
@@ -63,7 +63,7 @@ AI assistants typically operate statelessly - each conversation starts fresh wit
 
 ### Database Schema
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │  memory_structures                                           │
 │  ├── id (UUID, PK)                                          │
@@ -159,17 +159,6 @@ WHERE structure_slug = 'item'
 #### Why Multiple Embeddings Per Object?
 
 A location might have both a `description` and a `history`. Searching for "ancient magical library" should match the description, while "destroyed by the Cataclysm" should match the history. Separate embeddings allow targeted semantic search.
-
-#### Relationships Table
-
-Relationships between objects are stored in the `memory_relationships` table:
-
-1. **Typed Links** - Each relationship has a `relationship_type` (e.g., "owns", "knows", "located_in")
-2. **Bidirectional** - Source and target objects can be queried in either direction
-3. **Metadata** - Optional JSON metadata for relationship-specific data
-4. **AI-Managed** - Created via `memory:link` tool, queryable via `memory:query`
-
-> **Note:** You can also store relationship UUIDs directly in object data fields for simple cases, but the relationships table is preferred for queryability.
 
 ---
 
@@ -384,7 +373,7 @@ The OpenAI key is stored securely in the database and used by the EmbeddingServi
 
 ## File Structure
 
-```
+```text
 app/
 ├── Models/
 │   ├── MemoryStructure.php    # Schema definitions

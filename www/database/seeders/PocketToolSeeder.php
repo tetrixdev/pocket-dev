@@ -5,6 +5,13 @@ namespace Database\Seeders;
 use App\Models\PocketTool;
 use Illuminate\Database\Seeder;
 
+/**
+ * Seeds PocketDev's built-in tools with their system prompts.
+ *
+ * TODO: Consider extracting the large HEREDOC system prompts to separate files
+ *       in resources/prompts/ for better maintainability. The seeder would then
+ *       load prompts via file_get_contents() instead of inline HEREDOC blocks.
+ */
 class PocketToolSeeder extends Seeder
 {
     public function run(): void

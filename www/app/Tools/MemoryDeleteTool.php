@@ -3,7 +3,6 @@
 namespace App\Tools;
 
 use App\Models\MemoryObject;
-use App\Services\EmbeddingService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -75,7 +74,6 @@ INSTRUCTIONS;
         $structureSlug = $object->structure_slug;
 
         try {
-            $deletedCount = 1;
             $childCount = 0;
 
             DB::transaction(function () use ($object, $cascade, &$childCount) {

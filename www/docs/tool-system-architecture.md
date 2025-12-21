@@ -35,7 +35,7 @@ We need a system that:
 
 ### Three Dimensions
 
-```
+```text
 Tool
 ├── Source (where it comes from)
 │   ├── native      → Built into the provider (Claude Code's tools)
@@ -302,7 +302,7 @@ foreach ($tools as $tool) {
 
 When Claude Code is the provider, we inject tool instructions for PocketDev-exclusive tools:
 
-```
+```markdown
 # PocketDev Tools
 
 ## Memory System
@@ -411,7 +411,7 @@ When a user tries to enable a conflicting tool:
 
 ## Visual Summary
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         TOOL SELECTION FLOW                          │
 ├─────────────────────────────────────────────────────────────────────┤

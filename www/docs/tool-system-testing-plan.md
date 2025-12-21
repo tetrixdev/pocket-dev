@@ -115,6 +115,19 @@ These tests can be run entirely through the terminal.
 | CONF-002 | Check no conflict | `php artisan tinker --execute="App\Models\ToolConflict::findConflict('memory-create', 'memory-query')"` | `null` |
 | CONF-003 | Get conflicts for tool | `php artisan tinker --execute="App\Models\ToolConflict::getConflictsFor('pocketdev-bash')->count()"` | `1` |
 
+### 1.11 Memory Read-Only Database User Security Tests
+
+<!-- TODO: Implement these tests to verify the memory_readonly database user security controls -->
+
+| Test ID | Description | Command | Expected Result |
+|---------|-------------|---------|-----------------|
+| SEC-001 | Verify memory_readonly user exists | `php artisan tinker --execute="DB::connection('pgsql_readonly')->select('SELECT 1')"` | Success (connection works) |
+| SEC-002 | Verify SELECT via readonly connection | `php artisan tinker --execute="DB::connection('pgsql_readonly')->select('SELECT * FROM memory_structures LIMIT 1')"` | Returns data (SELECT allowed) |
+| SEC-003 | Verify INSERT fails via readonly user | `php artisan tinker --execute="DB::connection('pgsql_readonly')->insert('INSERT INTO memory_structures (name) VALUES (?)', ['test'])"` | Error: permission denied |
+| SEC-004 | Verify UPDATE fails via readonly user | `php artisan tinker --execute="DB::connection('pgsql_readonly')->update('UPDATE memory_structures SET name = ? WHERE id = 1', ['hacked'])"` | Error: permission denied |
+| SEC-005 | Verify DELETE fails via readonly user | `php artisan tinker --execute="DB::connection('pgsql_readonly')->delete('DELETE FROM memory_structures WHERE id = 1')"` | Error: permission denied |
+| SEC-006 | MemoryQueryTool uses pgsql_readonly | Review `app/Tools/MemoryQueryTool.php` | Confirm connection is set to 'pgsql_readonly' |
+
 ---
 
 ## Part 2: Manual Integration Tests

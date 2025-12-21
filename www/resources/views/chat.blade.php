@@ -137,7 +137,8 @@
                 agents: [],
                 currentAgentId: null,
 
-                // Provider/Model (legacy, computed from agent)
+                // Provider/Model - Dual architecture: agent-based (new) + direct provider/model (legacy)
+                // This supports backwards compatibility while transitioning to full agent-based system
                 provider: 'anthropic',
                 model: 'claude-sonnet-4-5-20250929',
                 providers: {},

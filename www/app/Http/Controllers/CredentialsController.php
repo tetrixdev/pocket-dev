@@ -258,12 +258,14 @@ class CredentialsController extends Controller
             Agent::PROVIDER_ANTHROPIC => 'Claude Assistant',
             Agent::PROVIDER_OPENAI => 'GPT Assistant',
             Agent::PROVIDER_CLAUDE_CODE => 'Claude Code',
+            'openai_compatible' => 'Custom AI Assistant',
         ];
 
         $defaultDescriptions = [
             Agent::PROVIDER_ANTHROPIC => 'Default Anthropic Claude agent for general conversations.',
             Agent::PROVIDER_OPENAI => 'Default OpenAI GPT agent for general conversations.',
             Agent::PROVIDER_CLAUDE_CODE => 'Claude Code agent with full tool access for development tasks.',
+            'openai_compatible' => 'Default agent using OpenAI-compatible API endpoint.',
         ];
 
         Agent::create([

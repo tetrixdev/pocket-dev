@@ -55,7 +55,11 @@ class ToolUpdateCommand extends Command
             if (!file_exists($scriptFile)) {
                 return $this->outputError("Script file not found: {$scriptFile}");
             }
-            $tool->script = file_get_contents($scriptFile);
+            $scriptContent = file_get_contents($scriptFile);
+            if ($scriptContent === false) {
+                return $this->outputError("Failed to read script file: {$scriptFile}");
+            }
+            $tool->script = $scriptContent;
             $changes[] = 'script';
         } elseif ($this->option('script') !== null) {
             $tool->script = $this->option('script');
@@ -63,7 +67,17 @@ class ToolUpdateCommand extends Command
         }
 
         if ($this->option('category') !== null) {
-            $tool->category = $this->option('category');
+            $category = $this->option('category');
+            $allowedCategories = [
+                PocketTool::CATEGORY_MEMORY,
+                PocketTool::CATEGORY_TOOLS,
+                PocketTool::CATEGORY_FILE_OPS,
+                PocketTool::CATEGORY_CUSTOM,
+            ];
+            if (!in_array($category, $allowedCategories, true)) {
+                return $this->outputError('Invalid category. Allowed values: ' . implode(', ', $allowedCategories));
+            }
+            $tool->category = $category;
             $changes[] = 'category';
         }
 

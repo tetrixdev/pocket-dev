@@ -6,6 +6,7 @@ use App\Models\MemoryObject;
 use App\Models\MemoryStructure;
 use App\Services\EmbeddingService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Create a new memory object.
@@ -164,7 +165,7 @@ INSTRUCTIONS;
             }
         } catch (\Exception $e) {
             // Log but don't fail - embeddings can be regenerated later
-            \Log::warning('Failed to generate embeddings for object', [
+            Log::warning('Failed to generate embeddings for object', [
                 'object_id' => $object->id,
                 'error' => $e->getMessage(),
             ]);

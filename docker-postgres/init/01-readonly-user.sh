@@ -8,17 +8,24 @@
 # TODO: Consider restricting SELECT to specific tables (memory_*, agents, tools)
 #       instead of ALL tables if multi-user or sensitive data concerns arise.
 #       Currently grants access to settings table which contains API keys.
+#       API keys in settings table are encrypted via Laravel's `encrypted` cast,
+#       so SQL access only yields encrypted values. Consider table-level
+#       restrictions in future if multi-user support is added.
 
 set -e
 
-READONLY_PASSWORD="${DB_READONLY_PASSWORD:-readonly_password}"
+if [ -z "$DB_READONLY_PASSWORD" ]; then
+    echo "ERROR: DB_READONLY_PASSWORD environment variable is required"
+    exit 1
+fi
+READONLY_PASSWORD="$DB_READONLY_PASSWORD"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     -- Create the readonly role
     CREATE USER memory_readonly WITH PASSWORD '${READONLY_PASSWORD}';
 
     -- Grant connect to the database
-    GRANT CONNECT ON DATABASE "pocket-dev" TO memory_readonly;
+    GRANT CONNECT ON DATABASE "$POSTGRES_DB" TO memory_readonly;
 
     -- Grant usage on public schema
     GRANT USAGE ON SCHEMA public TO memory_readonly;

@@ -207,7 +207,6 @@ class EmbeddingService
                     'field_path' => $fieldPath,
                     'content_hash' => $fieldData['hash'],
                     'embedding' => $embedding,
-                    'created_at' => now(),
                 ]);
             }
         }

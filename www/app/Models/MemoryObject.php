@@ -63,22 +63,6 @@ class MemoryObject extends Model
     }
 
     /**
-     * Get relationships where this object is the source.
-     */
-    public function outgoingRelationships(): HasMany
-    {
-        return $this->hasMany(MemoryRelationship::class, 'source_id');
-    }
-
-    /**
-     * Get relationships where this object is the target.
-     */
-    public function incomingRelationships(): HasMany
-    {
-        return $this->hasMany(MemoryRelationship::class, 'target_id');
-    }
-
-    /**
      * Get a specific field value from the data JSONB.
      */
     public function getField(string $fieldPath): mixed

@@ -17,9 +17,7 @@ use App\Tools\GlobTool;
 use App\Tools\GrepTool;
 use App\Tools\MemoryCreateTool;
 use App\Tools\MemoryDeleteTool;
-use App\Tools\MemoryLinkTool;
 use App\Tools\MemoryQueryTool;
-use App\Tools\MemoryUnlinkTool;
 use App\Tools\MemoryUpdateTool;
 use App\Tools\ReadTool;
 use App\Tools\WriteTool;
@@ -50,8 +48,6 @@ class AIServiceProvider extends ServiceProvider
                 'MemoryCreate' => MemoryCreateTool::class,
                 'MemoryUpdate' => MemoryUpdateTool::class,
                 'MemoryDelete' => MemoryDeleteTool::class,
-                'MemoryLink' => MemoryLinkTool::class,
-                'MemoryUnlink' => MemoryUnlinkTool::class,
             ];
 
             foreach ($enabledTools as $toolName) {

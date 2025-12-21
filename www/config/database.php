@@ -100,13 +100,14 @@ return [
 
         // Read-only connection for MemoryQueryTool
         // This user can only SELECT from memory_* tables
+        // Note: Password fallback is intentional for development environments
         'pgsql_readonly' => [
             'driver' => 'pgsql',
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '5432'),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_READONLY_USERNAME', 'memory_readonly'),
-            'password' => env('DB_READONLY_PASSWORD', 'readonly_password'),
+            'password' => env('DB_READONLY_PASSWORD', 'readonly_password'), // Fallback acceptable for dev convenience
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,

@@ -38,6 +38,7 @@ class ToolRunCommand extends Command
             return $this->outputError("Tool '{$slug}' has no script defined");
         }
 
+        $tempFile = null;
         try {
             // Create temp script file
             $tempFile = tempnam(sys_get_temp_dir(), 'pocket_tool_');
@@ -50,9 +51,6 @@ class ToolRunCommand extends Command
 
             // Execute the script
             $result = Process::timeout(300)->run($command);
-
-            // Clean up temp file
-            unlink($tempFile);
 
             $output = $result->output();
             $errorOutput = $result->errorOutput();
@@ -77,6 +75,11 @@ class ToolRunCommand extends Command
             return Command::SUCCESS;
         } catch (\Exception $e) {
             return $this->outputError('Failed to run tool: ' . $e->getMessage());
+        } finally {
+            // Clean up temp file
+            if ($tempFile && file_exists($tempFile)) {
+                unlink($tempFile);
+            }
         }
     }
 
