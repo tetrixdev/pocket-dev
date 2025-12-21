@@ -195,9 +195,8 @@ class CodexProvider implements AIProviderInterface
         // Using a unique filename avoids overwriting user's AGENTS.md
         if (!empty($options['system'])) {
             $this->writePocketDevInstructionsFile($workingDir, $options['system']);
-            // TOML array syntax needs careful escaping - use single quotes for outer, double for inner
             $parts[] = '-c';
-            $parts[] = '\'project_doc_fallback_filenames=["POCKETDEV-SYSTEM.md"]\'';
+            $parts[] = escapeshellarg('project_doc_fallback_filenames=["POCKETDEV-SYSTEM.md"]');
         }
 
         // Resume existing session (must come AFTER options, BEFORE prompt)
@@ -258,7 +257,7 @@ class CodexProvider implements AIProviderInterface
             2 => ['pipe', 'w'], // stderr
         ];
 
-        $process = proc_open($fullCommand, $descriptors, $pipes, base_path());
+        $process = proc_open($fullCommand, $descriptors, $pipes, $conversation->working_directory ?? base_path());
 
         if (!is_resource($process)) {
             yield StreamEvent::error('Failed to start Codex CLI process');
