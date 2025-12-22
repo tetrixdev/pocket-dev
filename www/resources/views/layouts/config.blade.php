@@ -113,9 +113,14 @@
     <div class="desktop-layout h-screen flex flex-col">
 
         <!-- Header -->
+        @php
+            $lastConversationUuid = session('last_conversation_uuid');
+            $backToChatUrl = $lastConversationUuid ? '/chat/' . $lastConversationUuid : '/';
+        @endphp
         <div class="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center">
             <h1 class="text-2xl font-bold">⚙️ Configuration</h1>
-            <a href="/" class="text-blue-400 hover:text-blue-300 text-sm">
+            <a href="{{ $backToChatUrl }}" class="text-blue-400 hover:text-blue-300 text-sm"
+               onclick="localStorage.setItem('pocketdev_returning_from_settings', 'true')">
                 ← Back to Chat
             </a>
         </div>
@@ -281,7 +286,8 @@
                 </svg>
             </button>
             <h2 class="text-lg font-semibold">⚙️ Configuration</h2>
-            <a href="/" class="text-gray-300 hover:text-white">
+            <a href="{{ $backToChatUrl }}" class="text-gray-300 hover:text-white"
+               onclick="localStorage.setItem('pocketdev_returning_from_settings', 'true')">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                 </svg>

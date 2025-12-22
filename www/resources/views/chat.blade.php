@@ -229,10 +229,21 @@
                     // Check Anthropic key for Claude Code
                     await this.checkAnthropicKey();
 
+                    // Check if returning from settings
+                    const returningFromSettings = localStorage.getItem('pocketdev_returning_from_settings');
+                    if (returningFromSettings) {
+                        localStorage.removeItem('pocketdev_returning_from_settings');
+                    }
+
                     // Check URL for conversation UUID and load if present
                     const urlConversationUuid = this.getConversationUuidFromUrl();
                     if (urlConversationUuid) {
                         await this.loadConversation(urlConversationUuid);
+
+                        // Scroll to bottom if returning from settings
+                        if (returningFromSettings) {
+                            this.$nextTick(() => this.scrollToBottom());
+                        }
                     }
 
                     // Handle browser back/forward navigation
@@ -266,6 +277,16 @@
                         } else {
                             window.history.pushState(state, '', newPath);
                         }
+                    }
+
+                    // Set session for "Back to Chat" in settings
+                    if (conversationUuid) {
+                        fetch(`/chat/${conversationUuid}/session`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        });
                     }
                 },
 
@@ -1325,16 +1346,7 @@
                 scrollToBottom() {
                     this.$nextTick(() => {
                         const container = document.getElementById('messages');
-                        if (!container) return;
-
-                        // Check if we're on mobile (below md breakpoint = 768px)
-                        const isMobile = window.innerWidth < 768;
-
-                        if (isMobile) {
-                            // Mobile: scroll the document/window
-                            window.scrollTo(0, document.body.scrollHeight);
-                        } else {
-                            // Desktop: scroll the container
+                        if (container) {
                             container.scrollTop = container.scrollHeight;
                         }
                     });

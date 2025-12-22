@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\CodexAuthController;
 use App\Http\Controllers\ConfigController;
@@ -25,10 +26,13 @@ Route::post("/codex/auth/upload-json", [CodexAuthController::class, "uploadJson"
 Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->name("codex.auth.logout");
 
 // Chat - Multi-provider conversation interface
-Route::view("/", "chat")->name("chat.index");
-Route::view("/chat/{conversationUuid?}", "chat")
+Route::get("/", [ChatController::class, "index"])->name("chat.index");
+Route::get("/chat/{conversationUuid}", [ChatController::class, "show"])
     ->whereUuid("conversationUuid")
     ->name("chat.conversation");
+Route::post("/chat/{conversationUuid}/session", [ChatController::class, "setSession"])
+    ->whereUuid("conversationUuid")
+    ->name("chat.session");
 
 // Config - Redirect to last visited section
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");
