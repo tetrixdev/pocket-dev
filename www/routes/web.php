@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\CodexAuthController;
 use App\Http\Controllers\ConfigController;
@@ -25,10 +26,13 @@ Route::post("/codex/auth/upload-json", [CodexAuthController::class, "uploadJson"
 Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->name("codex.auth.logout");
 
 // Chat - Multi-provider conversation interface
-Route::view("/", "chat")->name("chat.index");
-Route::view("/chat/{conversationUuid?}", "chat")
+Route::get("/", [ChatController::class, "index"])->name("chat.index");
+Route::get("/chat/{conversationUuid}", [ChatController::class, "show"])
     ->whereUuid("conversationUuid")
     ->name("chat.conversation");
+Route::post("/chat/{conversationUuid}/session", [ChatController::class, "setSession"])
+    ->whereUuid("conversationUuid")
+    ->name("chat.session");
 
 // Config - Redirect to last visited section
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");
@@ -83,15 +87,14 @@ Route::delete("/config/credentials/api-keys/{provider}", [CredentialsController:
 Route::post("/config/credentials/git", [CredentialsController::class, "saveGitCredentials"])->name("config.credentials.git");
 Route::delete("/config/credentials/git", [CredentialsController::class, "deleteGitCredentials"])->name("config.credentials.git.delete");
 
-// Skills management
-Route::get("/config/skills", [ConfigController::class, "listSkills"])->name("config.skills");
-Route::get("/config/skills/create", [ConfigController::class, "createSkillForm"])->name("config.skills.create");
-Route::post("/config/skills", [ConfigController::class, "storeSkill"])->name("config.skills.store");
-Route::get("/config/skills/{skillName}/edit", [ConfigController::class, "editSkillForm"])->name("config.skills.edit");
-Route::put("/config/skills/{skillName}", [ConfigController::class, "updateSkill"])->name("config.skills.update");
-Route::delete("/config/skills/{skillName}", [ConfigController::class, "deleteSkill"])->name("config.skills.delete");
+// Tools management
+Route::get("/config/tools", [ConfigController::class, "listTools"])->name("config.tools");
+Route::get("/config/tools/create", [ConfigController::class, "createToolForm"])->name("config.tools.create");
+Route::post("/config/tools", [ConfigController::class, "storeTool"])->name("config.tools.store");
+Route::get("/config/tools/{slug}", [ConfigController::class, "showTool"])->name("config.tools.show");
+Route::get("/config/tools/{slug}/edit", [ConfigController::class, "editToolForm"])->name("config.tools.edit");
+Route::put("/config/tools/{slug}", [ConfigController::class, "updateTool"])->name("config.tools.update");
+Route::delete("/config/tools/{slug}", [ConfigController::class, "deleteTool"])->name("config.tools.delete");
 
-// Skill file management (for file browser within skill edit page)
-Route::get("/config/skills/{skillName}/files/{path}", [ConfigController::class, "getSkillFile"])->name("config.skills.file")->where('path', '.*');
-Route::put("/config/skills/{skillName}/files/{path}", [ConfigController::class, "saveSkillFile"])->name("config.skills.file.save")->where('path', '.*');
-Route::delete("/config/skills/{skillName}/files/{path}", [ConfigController::class, "deleteSkillFile"])->name("config.skills.file.delete")->where('path', '.*');
+// Native tools toggle (AJAX)
+Route::post("/config/tools/native/toggle", [ConfigController::class, "toggleNativeTool"])->name("config.tools.native.toggle");

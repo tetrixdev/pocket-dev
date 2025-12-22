@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Agent;
+use App\Models\PocketTool;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ConfigController extends Controller
@@ -1212,5 +1214,366 @@ class ConfigController extends Controller
         }
 
         rmdir($dir);
+    }
+
+    // =========================================================================
+    // TOOLS MANAGEMENT
+    // =========================================================================
+
+    /**
+     * Read native tools configuration with database overrides.
+     *
+     * The static config defines all available tools with their default enabled state.
+     * Database records in tool_settings override these defaults at runtime.
+     */
+    protected function getNativeToolsConfig(): array
+    {
+        $config = config('native_tools', []);
+
+        // Load all overrides from database
+        $overrides = DB::table('tool_settings')
+            ->get()
+            ->keyBy(fn ($row) => "{$row->provider}.{$row->tool_name}");
+
+        // Apply overrides to each provider's tools
+        foreach ($config as $provider => &$providerConfig) {
+            if (!isset($providerConfig['tools'])) {
+                continue;
+            }
+
+            foreach ($providerConfig['tools'] as &$tool) {
+                $key = "{$provider}.{$tool['name']}";
+                if ($overrides->has($key)) {
+                    $tool['enabled'] = (bool) $overrides->get($key)->enabled;
+                }
+            }
+        }
+
+        return $config;
+    }
+
+    /**
+     * Update native tool enabled/disabled state in the database.
+     */
+    protected function updateNativeToolsConfig(string $provider, string $toolName, bool $enabled): void
+    {
+        // Validate provider and tool exist in static config
+        $config = config('native_tools', []);
+
+        if (!isset($config[$provider]['tools'])) {
+            throw new \RuntimeException("Provider '{$provider}' not found in native tools config");
+        }
+
+        $found = false;
+        foreach ($config[$provider]['tools'] as $tool) {
+            if ($tool['name'] === $toolName) {
+                $found = true;
+                break;
+            }
+        }
+
+        if (!$found) {
+            throw new \RuntimeException("Tool '{$toolName}' not found for provider '{$provider}'");
+        }
+
+        // Upsert the setting in the database
+        // Use closure pattern to set created_at only on insert
+        DB::table('tool_settings')->updateOrInsert(
+            ['provider' => $provider, 'tool_name' => $toolName],
+            fn ($exists) => $exists
+                ? ['enabled' => $enabled, 'updated_at' => now()]
+                : ['enabled' => $enabled, 'created_at' => now(), 'updated_at' => now()]
+        );
+    }
+
+    /**
+     * Get PocketDev tools configuration
+     */
+    protected function getPocketdevToolsConfig(): array
+    {
+        return config('pocketdev_tools', []);
+    }
+
+    /**
+     * List all tools (native, pocketdev, custom)
+     */
+    public function listTools(Request $request)
+    {
+        $request->session()->put('config_last_section', 'tools');
+
+        try {
+            // Get native tools from config (Claude Code, Codex)
+            $nativeConfig = $this->getNativeToolsConfig();
+
+            // Get PocketDev tools from config
+            $pocketdevConfig = $this->getPocketdevToolsConfig();
+            $nativePocketdevTools = collect($pocketdevConfig['native_equivalent'] ?? []);
+            $uniquePocketdevTools = collect($pocketdevConfig['unique'] ?? []);
+
+            // Group unique pocketdev tools by category
+            $pocketdevByCategory = $uniquePocketdevTools->groupBy('category');
+
+            // Get custom/user tools from database only
+            $customTools = PocketTool::user()
+                ->orderBy('category')
+                ->orderBy('name')
+                ->get();
+
+            // Group custom tools by category
+            $customByCategory = $customTools->groupBy('category');
+
+            return view('config.tools.index', [
+                'nativeConfig' => $nativeConfig,
+                'nativePocketdevTools' => $nativePocketdevTools,
+                'pocketdevByCategory' => $pocketdevByCategory,
+                'customByCategory' => $customByCategory,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to list tools', ['error' => $e->getMessage()]);
+            return redirect()->route('config.index')
+                ->with('error', 'Failed to list tools: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show tool details
+     */
+    public function showTool(Request $request, string $slug)
+    {
+        $request->session()->put('config_last_section', 'tools');
+
+        try {
+            // First check if it's a config-based PocketDev tool
+            $tool = $this->findPocketdevToolFromConfig($slug);
+
+            // If not found in config, check database
+            if (!$tool) {
+                $tool = PocketTool::where('slug', $slug)->firstOrFail();
+            }
+
+            return view('config.tools.show', [
+                'tool' => $tool,
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to show tool {$slug}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.tools')
+                ->with('error', 'Tool not found');
+        }
+    }
+
+    /**
+     * Find a PocketDev tool from config by slug.
+     * Returns a PocketTool instance (not saved) for view compatibility.
+     */
+    protected function findPocketdevToolFromConfig(string $slug): ?PocketTool
+    {
+        $config = $this->getPocketdevToolsConfig();
+
+        // Search in native_equivalent tools
+        foreach ($config['native_equivalent'] ?? [] as $toolData) {
+            if (($toolData['slug'] ?? '') === $slug) {
+                return $this->createPocketToolFromConfig($toolData);
+            }
+        }
+
+        // Search in unique tools
+        foreach ($config['unique'] ?? [] as $toolData) {
+            if (($toolData['slug'] ?? '') === $slug) {
+                return $this->createPocketToolFromConfig($toolData);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Create a PocketTool instance from config data (not saved to DB).
+     */
+    protected function createPocketToolFromConfig(array $toolData): PocketTool
+    {
+        $tool = new PocketTool();
+        $tool->slug = $toolData['slug'];
+        $tool->name = $toolData['name'];
+        $tool->description = $toolData['description'] ?? null;
+        $tool->source = PocketTool::SOURCE_POCKETDEV;
+        $tool->category = $toolData['category'] ?? null;
+        $tool->capability = $toolData['capability'] ?? null;
+        $tool->native_equivalent = $toolData['native_equivalent'] ?? null;
+        $tool->excluded_providers = $toolData['excluded_providers'] ?? null;
+
+        // For display purposes, include artisan_command if present
+        if (isset($toolData['artisan_command'])) {
+            $tool->artisan_command = $toolData['artisan_command'];
+        }
+
+        return $tool;
+    }
+
+    /**
+     * Show create custom tool form
+     */
+    public function createToolForm(Request $request)
+    {
+        $request->session()->put('config_last_section', 'tools');
+
+        return view('config.tools.form', [
+            'categories' => PocketTool::getCategories(),
+        ]);
+    }
+
+    /**
+     * Store new custom tool
+     */
+    public function storeTool(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'slug' => 'required|string|regex:/^[a-z0-9-]+$/|max:64|unique:pocket_tools,slug',
+                'name' => 'required|string|max:255',
+                'description' => 'required|string|max:1024',
+                'category' => 'nullable|string|max:64',
+                'input_schema' => 'nullable|json',
+            ]);
+
+            PocketTool::create([
+                'slug' => $validated['slug'],
+                'name' => $validated['name'],
+                'description' => $validated['description'],
+                'source' => PocketTool::SOURCE_USER,
+                'category' => $validated['category'] ?: PocketTool::CATEGORY_CUSTOM,
+                'capability' => PocketTool::CAPABILITY_CUSTOM,
+                'input_schema' => $validated['input_schema'] ? json_decode($validated['input_schema'], true) : null,
+                'enabled' => true,
+            ]);
+
+            return redirect()->route('config.tools')
+                ->with('success', 'Tool created successfully');
+        } catch (\Exception $e) {
+            Log::error('Failed to create tool', ['error' => $e->getMessage()]);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to create tool: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show edit custom tool form
+     */
+    public function editToolForm(Request $request, string $slug)
+    {
+        $request->session()->put('config_last_section', 'tools');
+
+        try {
+            $tool = PocketTool::where('slug', $slug)->firstOrFail();
+
+            // Only allow editing user tools
+            if (!$tool->isUserTool()) {
+                return redirect()->route('config.tools.show', $slug)
+                    ->with('error', 'Only custom tools can be edited');
+            }
+
+            return view('config.tools.form', [
+                'tool' => $tool,
+                'categories' => PocketTool::getCategories(),
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to load tool {$slug}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.tools')
+                ->with('error', 'Tool not found');
+        }
+    }
+
+    /**
+     * Update custom tool (metadata only - script changes via AI)
+     */
+    public function updateTool(Request $request, string $slug)
+    {
+        try {
+            $tool = PocketTool::where('slug', $slug)->firstOrFail();
+
+            // Only allow editing user tools
+            if (!$tool->isUserTool()) {
+                return redirect()->route('config.tools')
+                    ->with('error', 'Only custom tools can be edited');
+            }
+
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'description' => 'required|string|max:1024',
+                'category' => 'nullable|string|max:64',
+                'input_schema' => 'nullable|json',
+            ]);
+
+            $tool->update([
+                'name' => $validated['name'],
+                'description' => $validated['description'],
+                'category' => $validated['category'] ?: PocketTool::CATEGORY_CUSTOM,
+                'input_schema' => $validated['input_schema'] ? json_decode($validated['input_schema'], true) : null,
+            ]);
+
+            return redirect()->route('config.tools')
+                ->with('success', 'Tool updated successfully');
+        } catch (\Exception $e) {
+            Log::error("Failed to update tool {$slug}", ['error' => $e->getMessage()]);
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to update tool: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Delete custom tool
+     */
+    public function deleteTool(string $slug)
+    {
+        try {
+            $tool = PocketTool::where('slug', $slug)->firstOrFail();
+
+            // Only allow deleting user tools
+            if (!$tool->isUserTool()) {
+                return redirect()->route('config.tools')
+                    ->with('error', 'Only custom tools can be deleted');
+            }
+
+            $tool->delete();
+
+            return redirect()->route('config.tools')
+                ->with('success', 'Tool deleted successfully');
+        } catch (\Exception $e) {
+            Log::error("Failed to delete tool {$slug}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.tools')
+                ->with('error', 'Failed to delete tool: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Toggle native tool enabled/disabled (AJAX)
+     */
+    public function toggleNativeTool(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'provider' => 'required|string|in:claude_code,codex',
+                'tool' => 'required|string|max:64',
+                'enabled' => 'required|boolean',
+            ]);
+
+            $this->updateNativeToolsConfig(
+                $validated['provider'],
+                $validated['tool'],
+                $validated['enabled']
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => $validated['enabled'] ? 'Tool enabled' : 'Tool disabled',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to toggle native tool', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to toggle tool: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

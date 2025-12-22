@@ -113,9 +113,14 @@
     <div class="desktop-layout h-screen flex flex-col">
 
         <!-- Header -->
+        @php
+            $lastConversationUuid = session('last_conversation_uuid');
+            $backToChatUrl = $lastConversationUuid ? '/chat/' . $lastConversationUuid : '/';
+        @endphp
         <div class="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center">
             <h1 class="text-2xl font-bold">⚙️ Configuration</h1>
-            <a href="/" class="text-blue-400 hover:text-blue-300 text-sm">
+            <a href="{{ $backToChatUrl }}" class="text-blue-400 hover:text-blue-300 text-sm"
+               onclick="localStorage.setItem('pocketdev_returning_from_settings', 'true')">
                 ← Back to Chat
             </a>
         </div>
@@ -207,26 +212,12 @@
                     </a>
                 </div>
 
-                <!-- Skills Category -->
+                <!-- Tools Category -->
                 <div class="border-b border-gray-700">
-                    <a href="{{ route('config.skills') }}"
-                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.skills') ? 'active' : '' }}">
-                        🔧 Skills
+                    <a href="{{ route('config.tools') }}"
+                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.tools') ? 'active' : '' }}">
+                        🛠️ Tools
                     </a>
-                    <div class="bg-gray-900">
-                        <a href="{{ route('config.skills.create') }}"
-                           class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
-                            + New Skill
-                        </a>
-                        @if(isset($skills))
-                            @foreach($skills as $skill)
-                                <a href="{{ route('config.skills.edit', $skill['name']) }}"
-                                   class="file-item w-full text-sm block {{ isset($activeSkill) && $activeSkill == $skill['name'] ? 'active' : '' }}">
-                                    {{ $skill['name'] }}
-                                </a>
-                            @endforeach
-                        @endif
-                    </div>
                 </div>
 
                 <!-- Credentials -->
@@ -281,7 +272,8 @@
                 </svg>
             </button>
             <h2 class="text-lg font-semibold">⚙️ Configuration</h2>
-            <a href="/" class="text-gray-300 hover:text-white">
+            <a href="{{ $backToChatUrl }}" class="text-gray-300 hover:text-white"
+               onclick="localStorage.setItem('pocketdev_returning_from_settings', 'true')">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                 </svg>
@@ -442,29 +434,13 @@
                 </a>
             </div>
 
-            <!-- Skills Category -->
+            <!-- Tools Category -->
             <div class="border-b border-gray-700">
-                <a href="{{ route('config.skills') }}"
+                <a href="{{ route('config.tools') }}"
                    @click="showMobileDrawer = false"
-                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.skills') ? 'active' : '' }}">
-                    🔧 Skills
+                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.tools') ? 'active' : '' }}">
+                    🛠️ Tools
                 </a>
-                <div class="bg-gray-900">
-                    <a href="{{ route('config.skills.create') }}"
-                       @click="showMobileDrawer = false"
-                       class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
-                        + New Skill
-                    </a>
-                    @if(isset($skills))
-                        @foreach($skills as $skill)
-                            <a href="{{ route('config.skills.edit', $skill['name']) }}"
-                               @click="showMobileDrawer = false"
-                               class="file-item w-full text-sm block {{ isset($activeSkill) && $activeSkill == $skill['name'] ? 'active' : '' }}">
-                                {{ $skill['name'] }}
-                            </a>
-                        @endforeach
-                    @endif
-                </div>
             </div>
 
             <!-- Credentials -->
@@ -478,7 +454,8 @@
 
             <!-- Footer with Back to Chat -->
             <div class="p-4 border-t border-gray-700 mt-auto">
-                <a href="/" class="text-blue-400 hover:text-blue-300 text-sm">
+                <a href="{{ $backToChatUrl }}" class="text-blue-400 hover:text-blue-300 text-sm"
+                   onclick="localStorage.setItem('pocketdev_returning_from_settings', 'true')">
                     ← Back to Chat
                 </a>
             </div>

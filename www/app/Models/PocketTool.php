@@ -17,8 +17,8 @@ class PocketTool extends Model
     public const SOURCE_POCKETDEV = 'pocketdev';
     public const SOURCE_USER = 'user';
 
-    // Category constants
-    // TODO: Consider making categories configurable (database or config) instead of hardcoded
+    // Common category values (not enforced - categories are flexible labels)
+    // These are just convenience constants for common categories
     public const CATEGORY_MEMORY = 'memory';
     public const CATEGORY_TOOLS = 'tools';
     public const CATEGORY_FILE_OPS = 'file_ops';
@@ -190,15 +190,25 @@ class PocketTool extends Model
     }
 
     /**
+     * Dynamic artisan_command property (set from config).
+     */
+    public ?string $artisan_command = null;
+
+    /**
      * Get the artisan command for this tool.
      */
     public function getArtisanCommand(): ?string
     {
+        // Check for dynamically set artisan_command first (from config)
+        if ($this->artisan_command) {
+            return $this->artisan_command;
+        }
+
         if (!$this->isPocketdev()) {
             return "tool:run {$this->slug}";
         }
 
-        // Map PocketDev tool slugs to artisan commands
+        // Map PocketDev tool slugs to artisan commands (fallback)
         $commandMap = [
             'memory-structure-create' => 'memory:structure:create',
             'memory-structure-get' => 'memory:structure:get',
@@ -217,5 +227,29 @@ class PocketTool extends Model
         ];
 
         return $commandMap[$this->slug] ?? null;
+    }
+
+    /**
+     * Get all unique categories from the database.
+     *
+     * @return array<string>
+     */
+    public static function getCategories(): array
+    {
+        return static::query()
+            ->whereNotNull('category')
+            ->distinct()
+            ->pluck('category')
+            ->sort()
+            ->values()
+            ->toArray();
+    }
+
+    /**
+     * Check if this is a Native PocketDev tool (file ops with native equivalents).
+     */
+    public function isNativePocketdev(): bool
+    {
+        return $this->isPocketdev() && $this->hasNativeEquivalent();
     }
 }
