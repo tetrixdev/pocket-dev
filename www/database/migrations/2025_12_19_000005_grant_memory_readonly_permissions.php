@@ -25,7 +25,7 @@ return new class extends Migration
             $password = config('database.connections.pgsql_readonly.password');
 
             if (empty($password)) {
-                throw new \RuntimeException('DB_READONLY_PASSWORD environment variable must be set for memory_readonly user');
+                throw new \RuntimeException('DB_READONLY_PASSWORD must be set in .env file for memory_readonly user');
             }
 
             // Create user with password (PDO::quote handles string literal escaping)
