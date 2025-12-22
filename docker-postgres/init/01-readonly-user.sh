@@ -2,8 +2,7 @@
 # Create a read-only user for AI tool queries
 # This user has SELECT access to ALL tables via ALTER DEFAULT PRIVILEGES
 #
-# Password is read from environment variable DB_READONLY_PASSWORD
-# Falls back to 'readonly_password' for development convenience
+# Password is read from environment variable DB_READONLY_PASSWORD (required)
 #
 # TODO: Consider restricting SELECT to specific tables (memory_*, agents, tools)
 #       instead of ALL tables if multi-user or sensitive data concerns arise.
@@ -20,9 +19,9 @@ if [ -z "$DB_READONLY_PASSWORD" ]; then
 fi
 READONLY_PASSWORD="$DB_READONLY_PASSWORD"
 
-psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-    -- Create the readonly role
-    CREATE USER memory_readonly WITH PASSWORD '${READONLY_PASSWORD}';
+psql -v ON_ERROR_STOP=1 -v readonly_password="$READONLY_PASSWORD" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    -- Create the readonly role (using psql variable for safe password escaping)
+    CREATE USER memory_readonly WITH PASSWORD :'readonly_password';
 
     -- Grant connect to the database
     GRANT CONNECT ON DATABASE "$POSTGRES_DB" TO memory_readonly;
