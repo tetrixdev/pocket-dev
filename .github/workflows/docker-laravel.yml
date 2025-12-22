@@ -48,6 +48,11 @@ jobs:
             --file docker-laravel/production/php/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.description=PocketDev PHP application container" \
+            --label "org.opencontainers.image.licenses=LicenseRef-PocketDev" \
+            --label "org.opencontainers.image.url=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.version=${{ github.event.release.tag_name }}" \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-php:cache,mode=max \
             $TAGS \
             --push \
@@ -64,6 +69,11 @@ jobs:
             --file docker-laravel/production/nginx/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.description=PocketDev Nginx web server container" \
+            --label "org.opencontainers.image.licenses=LicenseRef-PocketDev" \
+            --label "org.opencontainers.image.url=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.version=${{ github.event.release.tag_name }}" \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:cache,mode=max \
             $TAGS \
             --push \
@@ -80,6 +90,11 @@ jobs:
             --file docker-proxy/shared/Dockerfile \
             --progress plain \
             --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.description=PocketDev reverse proxy container" \
+            --label "org.opencontainers.image.licenses=LicenseRef-PocketDev" \
+            --label "org.opencontainers.image.url=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.version=${{ github.event.release.tag_name }}" \
             --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache,mode=max \
             $TAGS \
             --push \
