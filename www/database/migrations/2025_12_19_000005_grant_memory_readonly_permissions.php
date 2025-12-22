@@ -6,8 +6,8 @@ use Illuminate\Support\Facades\DB;
 return new class extends Migration
 {
     /**
-     * Grant SELECT permissions to the memory_readonly user on all memory tables.
-     * This ensures the read-only database connection can only read from these tables.
+     * Create the memory_readonly user and grant SELECT permissions on memory tables.
+     * This user provides read-only database access for the MemoryQueryTool.
      */
     public function up(): void
     {
@@ -16,27 +16,30 @@ return new class extends Migration
             return;
         }
 
-        // Check if the readonly user exists (created by docker-postgres/init script)
+        // Create the readonly user if it doesn't exist (idempotent)
         $userExists = DB::selectOne(
             "SELECT 1 FROM pg_roles WHERE rolname = 'memory_readonly'"
         );
 
         if (!$userExists) {
-            // User doesn't exist - likely running outside Docker or fresh setup
-            // Create the user here as fallback
             $password = config('database.connections.pgsql_readonly.password');
 
             if (empty($password)) {
                 throw new \RuntimeException('DB_READONLY_PASSWORD environment variable must be set for memory_readonly user');
             }
 
-            $database = config('database.connections.pgsql.database');
+            // Create user with password (PDO::quote handles string literal escaping)
             DB::statement("CREATE USER memory_readonly WITH PASSWORD " . DB::connection()->getPdo()->quote($password));
-            DB::statement("GRANT CONNECT ON DATABASE " . DB::connection()->getPdo()->quote($database) . " TO memory_readonly");
+
+            // Grant database connection (use double quotes for identifier with special chars)
+            $database = config('database.connections.pgsql.database');
+            $quotedDatabase = '"' . str_replace('"', '""', $database) . '"';
+            DB::statement("GRANT CONNECT ON DATABASE {$quotedDatabase} TO memory_readonly");
+
             DB::statement("GRANT USAGE ON SCHEMA public TO memory_readonly");
         }
 
-        // Grant SELECT on all memory tables
+        // Grant SELECT on memory tables
         $memoryTables = ['memory_structures', 'memory_objects', 'memory_embeddings'];
 
         foreach ($memoryTables as $table) {

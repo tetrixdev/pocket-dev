@@ -74,10 +74,8 @@ services:
       POSTGRES_DB: pocket-dev
       POSTGRES_USER: pocket-dev
       POSTGRES_PASSWORD: "${DB_PASSWORD}"
-      DB_READONLY_PASSWORD: "${DB_READONLY_PASSWORD}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./01-readonly-user.sh:/docker-entrypoint-initdb.d/01-readonly-user.sh:ro
     networks:
       - pocket-dev
     healthcheck:
