@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Agent;
 use App\Models\PocketTool;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ConfigController extends Controller
@@ -1220,37 +1221,52 @@ class ConfigController extends Controller
     // =========================================================================
 
     /**
-     * Get native tools configuration path
-     */
-    protected function getNativeToolsConfigPath(): string
-    {
-        return config_path('native_tools.php');
-    }
-
-    /**
-     * Read native tools configuration
+     * Read native tools configuration with database overrides.
+     *
+     * The static config defines all available tools with their default enabled state.
+     * Database records in tool_settings override these defaults at runtime.
      */
     protected function getNativeToolsConfig(): array
     {
-        return config('native_tools', []);
+        $config = config('native_tools', []);
+
+        // Load all overrides from database
+        $overrides = DB::table('tool_settings')
+            ->get()
+            ->keyBy(fn ($row) => "{$row->provider}.{$row->tool_name}");
+
+        // Apply overrides to each provider's tools
+        foreach ($config as $provider => &$providerConfig) {
+            if (!isset($providerConfig['tools'])) {
+                continue;
+            }
+
+            foreach ($providerConfig['tools'] as &$tool) {
+                $key = "{$provider}.{$tool['name']}";
+                if ($overrides->has($key)) {
+                    $tool['enabled'] = (bool) $overrides->get($key)->enabled;
+                }
+            }
+        }
+
+        return $config;
     }
 
     /**
-     * Update native tools configuration (toggle enabled/disabled)
+     * Update native tool enabled/disabled state in the database.
      */
     protected function updateNativeToolsConfig(string $provider, string $toolName, bool $enabled): void
     {
-        $configPath = $this->getNativeToolsConfigPath();
-        $config = include $configPath;
+        // Validate provider and tool exist in static config
+        $config = config('native_tools', []);
 
         if (!isset($config[$provider]['tools'])) {
             throw new \RuntimeException("Provider '{$provider}' not found in native tools config");
         }
 
         $found = false;
-        foreach ($config[$provider]['tools'] as &$tool) {
+        foreach ($config[$provider]['tools'] as $tool) {
             if ($tool['name'] === $toolName) {
-                $tool['enabled'] = $enabled;
                 $found = true;
                 break;
             }
@@ -1260,9 +1276,11 @@ class ConfigController extends Controller
             throw new \RuntimeException("Tool '{$toolName}' not found for provider '{$provider}'");
         }
 
-        // Write the updated config back
-        $configContent = "<?php\n\nreturn " . var_export($config, true) . ";\n";
-        file_put_contents($configPath, $configContent);
+        // Upsert the setting in the database
+        DB::table('tool_settings')->updateOrInsert(
+            ['provider' => $provider, 'tool_name' => $toolName],
+            ['enabled' => $enabled, 'updated_at' => now()]
+        );
     }
 
     /**
