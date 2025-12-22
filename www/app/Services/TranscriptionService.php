@@ -21,14 +21,16 @@ class TranscriptionService
         if (str_ends_with($this->baseUrl, '/v1')) {
             $this->baseUrl = substr($this->baseUrl, 0, -3);
         }
-
-        if (empty($this->apiKey)) {
-            throw new \Exception('OpenAI API key is not configured. Set it in Config → Credentials.');
-        }
+        // Note: API key validation moved to transcribeAudio() to avoid chicken-and-egg
+        // problem where the controller can't be instantiated to save the key
     }
 
     public function transcribeAudio(UploadedFile $audioFile): string
     {
+        if (empty($this->apiKey)) {
+            throw new \Exception('OpenAI API key is not configured. Set it in Config → Credentials.');
+        }
+
         try {
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
