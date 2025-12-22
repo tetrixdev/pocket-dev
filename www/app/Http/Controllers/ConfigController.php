@@ -1277,9 +1277,12 @@ class ConfigController extends Controller
         }
 
         // Upsert the setting in the database
+        // Use closure pattern to set created_at only on insert
         DB::table('tool_settings')->updateOrInsert(
             ['provider' => $provider, 'tool_name' => $toolName],
-            ['enabled' => $enabled, 'updated_at' => now()]
+            fn ($exists) => $exists
+                ? ['enabled' => $enabled, 'updated_at' => now()]
+                : ['enabled' => $enabled, 'created_at' => now(), 'updated_at' => now()]
         );
     }
 
