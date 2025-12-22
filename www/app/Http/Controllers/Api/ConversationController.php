@@ -116,7 +116,7 @@ class ConversationController extends Controller
     /**
      * Get a conversation with its messages.
      */
-    public function show(Conversation $conversation): JsonResponse
+    public function show(Request $request, Conversation $conversation): JsonResponse
     {
         $conversation->load(['messages', 'agent']);
 
