@@ -13,6 +13,8 @@ class GrepTool extends Tool
 
     public string $description = 'Search for patterns in files using regex. Uses ripgrep for fast searching.';
 
+    public string $category = 'file_ops';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -44,6 +46,36 @@ class GrepTool extends Tool
         ],
         'required' => ['pattern'],
     ];
+
+    public ?string $instructions = <<<'INSTRUCTIONS'
+Search for patterns in files using regex (powered by ripgrep).
+
+## Examples
+
+```bash
+# Find files containing "TODO"
+php artisan grep -- --pattern="TODO"
+
+# Search in PHP files only, show matching lines
+php artisan grep -- --pattern="function.*execute" --glob="*.php" --output_mode=content
+
+# Case-insensitive search with context
+php artisan grep -- --pattern="error" --case_insensitive=true --output_mode=content --context_lines=2
+
+# Count matches per file
+php artisan grep -- --pattern="import" --glob="*.ts" --output_mode=count
+```
+
+## Output Modes
+- `files_with_matches` (default) - just file paths
+- `content` - matching lines with line numbers
+- `count` - number of matches per file
+
+## Notes
+- Uses ripgrep for fast searching
+- Pattern is a regex (e.g., `function\s+\w+` for function definitions)
+- Output is truncated if too long
+INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

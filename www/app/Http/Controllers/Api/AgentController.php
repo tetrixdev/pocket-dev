@@ -2,17 +2,24 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\Provider;
 use App\Http\Controllers\Controller;
 use App\Models\Agent;
 use App\Models\PocketTool;
 use App\Services\NativeToolService;
 use App\Services\SystemPromptService;
 use App\Services\ToolSelector;
+use App\Tools\Tool;
+use App\Tools\UserTool;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AgentController extends Controller
 {
+    public function __construct(
+        private ToolSelector $toolSelector
+    ) {}
+
     /**
      * List all agents, optionally filtered by provider.
      */
@@ -108,30 +115,25 @@ class AgentController extends Controller
             $nativeTools = $nativeToolService->getToolsForProvider('claude_code');
         }
 
-        // PocketDev tools available for this provider
-        $pocketdevTools = PocketTool::enabled()
-            ->forProvider($provider)
-            ->pocketdev()
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get()
-            ->map(fn($tool) => [
-                'slug' => $tool->slug,
+        // PocketDev tools (built-in Tool classes) available for this provider
+        $pocketdevTools = $this->toolSelector->getAvailableTools($provider)
+            ->filter(fn(Tool $tool) => !($tool instanceof UserTool))
+            ->map(fn(Tool $tool) => [
+                'slug' => $tool->getSlug(),
                 'name' => $tool->name,
                 'description' => $tool->description,
                 'category' => $tool->category,
-            ]);
+            ])
+            ->values();
 
-        // User-created tools (available for all providers)
-        $userTools = PocketTool::enabled()
-            ->user()
-            ->orderBy('name')
-            ->get()
-            ->map(fn($tool) => [
-                'slug' => $tool->slug,
+        // User-created tools
+        $userTools = $this->toolSelector->getUserTools()
+            ->map(fn(Tool $tool) => [
+                'slug' => $tool->getSlug(),
                 'name' => $tool->name,
                 'description' => $tool->description,
-            ]);
+            ])
+            ->values();
 
         return response()->json([
             'native' => $nativeTools,
@@ -177,7 +179,6 @@ class AgentController extends Controller
         $allowedTools = $request->input('allowed_tools'); // null = all tools
 
         $systemPromptService = app(SystemPromptService::class);
-        $toolSelector = app(ToolSelector::class);
 
         $sections = [];
 
@@ -212,7 +213,7 @@ class AgentController extends Controller
         }
 
         // 4. Tool instructions (for PocketDev tools)
-        $toolPrompt = $toolSelector->buildSystemPrompt($provider);
+        $toolPrompt = $this->toolSelector->buildSystemPrompt($provider);
         if (!empty($toolPrompt)) {
             // If specific tools are selected, filter the prompt
             if ($allowedTools !== null && is_array($allowedTools)) {
@@ -264,26 +265,23 @@ class AgentController extends Controller
         // Get the tool slugs that are allowed
         $allowedSlugs = collect($allowedTools)->map(fn($t) => strtolower($t))->toArray();
 
-        // Get enabled tools for the provider
-        $tools = PocketTool::enabled()
-            ->forProvider($provider)
-            ->noNativeEquivalent()
-            ->get();
+        // Get tools for the provider (excluding file_ops for Claude Code)
+        $tools = $this->toolSelector->getToolsForSystemPrompt($provider);
 
         // Filter to only allowed tools
-        $filteredTools = $tools->filter(function ($tool) use ($allowedSlugs) {
-            return in_array(strtolower($tool->slug), $allowedSlugs);
+        $filteredTools = $tools->filter(function (Tool $tool) use ($allowedSlugs) {
+            return in_array(strtolower($tool->getSlug()), $allowedSlugs);
         });
 
         if ($filteredTools->isEmpty()) {
             return '';
         }
 
-        // We need to temporarily modify what buildSystemPrompt returns
-        // For now, just note which tools are included
+        // Build filtered system prompt
         $lines = ["# PocketDev Tools\n"];
 
-        if ($provider === PocketTool::PROVIDER_CLAUDE_CODE) {
+        $providerEnum = Provider::tryFrom($provider);
+        if ($providerEnum?->isCliProvider()) {
             $lines[] = "The following tools are available as artisan commands. Use your Bash tool to execute them.\n";
         }
 
@@ -291,23 +289,23 @@ class AgentController extends Controller
 
         foreach ($grouped as $category => $categoryTools) {
             $categoryTitle = match ($category) {
-                PocketTool::CATEGORY_MEMORY => 'Memory System',
-                PocketTool::CATEGORY_TOOLS => 'Tool Management',
-                PocketTool::CATEGORY_FILE_OPS => 'File Operations',
-                PocketTool::CATEGORY_CUSTOM => 'Custom Tools',
+                'memory' => 'Memory System',
+                'tools' => 'Tool Management',
+                'file_ops' => 'File Operations',
+                'custom' => 'Custom Tools',
                 default => ucfirst(str_replace('_', ' ', $category)),
             };
 
             $lines[] = "## {$categoryTitle}\n";
 
             foreach ($categoryTools as $tool) {
-                if ($provider === PocketTool::PROVIDER_CLAUDE_CODE) {
+                if ($providerEnum?->isCliProvider()) {
                     $artisanCommand = $tool->getArtisanCommand();
                     $lines[] = "### {$artisanCommand}\n";
                 } else {
                     $lines[] = "### {$tool->name}\n";
                 }
-                $lines[] = $tool->system_prompt ?? '';
+                $lines[] = $tool->instructions ?? $tool->description;
                 $lines[] = "";
             }
         }

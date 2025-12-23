@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\PocketTool;
+use App\Tools\ExecutionContext;
+use App\Tools\ToolDeleteTool;
 use Illuminate\Console\Command;
 
 class ToolDeleteCommand extends Command
@@ -14,46 +15,22 @@ class ToolDeleteCommand extends Command
 
     public function handle(): int
     {
-        $slug = $this->argument('slug');
+        $tool = new ToolDeleteTool();
 
-        $tool = PocketTool::where('slug', $slug)->first();
+        $input = [
+            'slug' => $this->argument('slug'),
+        ];
 
-        if (!$tool) {
-            return $this->outputError("Tool '{$slug}' not found");
-        }
+        $context = new ExecutionContext(getcwd() ?: '/var/www');
+        $result = $tool->execute($input, $context);
 
-        if ($tool->isPocketdev()) {
-            return $this->outputError("Cannot delete PocketDev tool '{$slug}'. Only user-created tools can be deleted.");
-        }
+        $this->outputJson($result->toArray());
 
-        $name = $tool->name;
-
-        try {
-            $tool->delete();
-
-            $this->outputResult([
-                'output' => "Deleted tool: {$name} ({$slug})",
-                'is_error' => false,
-            ]);
-
-            return Command::SUCCESS;
-        } catch (\Exception $e) {
-            return $this->outputError('Failed to delete tool: ' . $e->getMessage());
-        }
+        return $result->isError() ? Command::FAILURE : Command::SUCCESS;
     }
 
-    private function outputError(string $message): int
+    private function outputJson(array $data): void
     {
-        $this->output->writeln(json_encode([
-            'output' => $message,
-            'is_error' => true,
-        ], JSON_PRETTY_PRINT));
-
-        return Command::FAILURE;
-    }
-
-    private function outputResult(array $result): void
-    {
-        $this->output->writeln(json_encode($result, JSON_PRETTY_PRINT));
+        $this->output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 }

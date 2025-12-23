@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\PocketTool;
+use App\Tools\ExecutionContext;
+use App\Tools\ToolShowTool;
 use Illuminate\Console\Command;
 
 class ToolShowCommand extends Command
@@ -15,92 +16,26 @@ class ToolShowCommand extends Command
 
     public function handle(): int
     {
-        $slug = $this->argument('slug');
-        $showScript = $this->option('script');
+        $tool = new ToolShowTool();
 
-        $tool = PocketTool::where('slug', $slug)->first();
-
-        if (!$tool) {
-            return $this->outputError("Tool '{$slug}' not found");
-        }
-
-        $output = [
-            'output' => $this->formatToolDetails($tool, $showScript),
-            'is_error' => false,
-            'tool' => [
-                'id' => $tool->id,
-                'slug' => $tool->slug,
-                'name' => $tool->name,
-                'description' => $tool->description,
-                'system_prompt' => $tool->system_prompt,
-                'source' => $tool->source,
-                'enabled' => $tool->enabled,
-                'category' => $tool->category,
-                'input_schema' => $tool->input_schema,
-                'has_script' => $tool->hasScript(),
-            ],
+        $input = [
+            'slug' => $this->argument('slug'),
         ];
 
-        if ($showScript && $tool->hasScript()) {
-            $output['tool']['script'] = $tool->script;
+        if ($this->option('script')) {
+            $input['include_script'] = true;
         }
 
-        $this->output->writeln(json_encode($output, JSON_PRETTY_PRINT));
+        $context = new ExecutionContext(getcwd() ?: '/var/www');
+        $result = $tool->execute($input, $context);
 
-        return Command::SUCCESS;
+        $this->outputJson($result->toArray());
+
+        return $result->isError() ? Command::FAILURE : Command::SUCCESS;
     }
 
-    private function formatToolDetails(PocketTool $tool, bool $showScript): string
+    private function outputJson(array $data): void
     {
-        $lines = [
-            "Tool: {$tool->name}",
-            "Slug: {$tool->slug}",
-            "ID: {$tool->id}",
-            "",
-            "Source: " . $tool->source,
-            "Status: " . ($tool->enabled ? 'Enabled' : 'Disabled'),
-            "Category: {$tool->category}",
-            "",
-            "Description:",
-            "  {$tool->description}",
-            "",
-            "System Prompt:",
-            "  " . str_replace("\n", "\n  ", $tool->system_prompt),
-        ];
-
-        if ($tool->input_schema) {
-            $lines[] = "";
-            $lines[] = "Input Schema:";
-            $schemaJson = json_encode($tool->input_schema, JSON_PRETTY_PRINT);
-            $lines[] = "  " . str_replace("\n", "\n  ", $schemaJson);
-        }
-
-        if ($tool->isPocketdev()) {
-            $command = $tool->getArtisanCommand();
-            if ($command) {
-                $lines[] = "";
-                $lines[] = "Artisan Command: php artisan {$command}";
-            }
-        }
-
-        if ($showScript && $tool->hasScript()) {
-            $lines[] = "";
-            $lines[] = "Script:";
-            $lines[] = "---";
-            $lines[] = $tool->script;
-            $lines[] = "---";
-        }
-
-        return implode("\n", $lines);
-    }
-
-    private function outputError(string $message): int
-    {
-        $this->output->writeln(json_encode([
-            'output' => $message,
-            'is_error' => true,
-        ], JSON_PRETTY_PRINT));
-
-        return Command::FAILURE;
+        $this->output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 }

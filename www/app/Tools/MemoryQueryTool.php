@@ -17,6 +17,8 @@ class MemoryQueryTool extends Tool
 
     public string $description = 'Query memory objects using SQL. Supports semantic search with vector similarity.';
 
+    public string $category = 'memory';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -35,6 +37,11 @@ class MemoryQueryTool extends Tool
         ],
         'required' => ['sql'],
     ];
+
+    public function getArtisanCommand(): ?string
+    {
+        return 'memory:query';
+    }
 
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryQuery to search and retrieve memory objects. This is your primary read tool for the memory system.

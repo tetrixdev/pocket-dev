@@ -15,6 +15,8 @@ class MemoryUpdateTool extends Tool
 
     public string $description = 'Update an existing memory object by ID.';
 
+    public string $category = 'memory';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -61,6 +63,11 @@ class MemoryUpdateTool extends Tool
         ],
         'required' => ['id'],
     ];
+
+    public function getArtisanCommand(): ?string
+    {
+        return 'memory:update';
+    }
 
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryUpdate to modify existing memory objects.

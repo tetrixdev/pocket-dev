@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\PocketTool;
+use App\Tools\ExecutionContext;
+use App\Tools\ToolUpdateTool;
 use Illuminate\Console\Command;
 
 class ToolUpdateCommand extends Command
@@ -21,111 +22,66 @@ class ToolUpdateCommand extends Command
 
     public function handle(): int
     {
-        $slug = $this->argument('slug');
+        $tool = new ToolUpdateTool();
 
-        $tool = PocketTool::where('slug', $slug)->first();
-
-        if (!$tool) {
-            return $this->outputError("Tool '{$slug}' not found");
-        }
-
-        if ($tool->isPocketdev()) {
-            return $this->outputError("Cannot modify PocketDev tool '{$slug}'. Only user-created tools can be modified.");
-        }
-
-        $changes = [];
+        // Build input from arguments/options
+        $input = [
+            'slug' => $this->argument('slug'),
+        ];
 
         if ($this->option('name') !== null) {
-            $tool->name = $this->option('name');
-            $changes[] = 'name';
+            $input['name'] = $this->option('name');
         }
 
         if ($this->option('description') !== null) {
-            $tool->description = $this->option('description');
-            $changes[] = 'description';
+            $input['description'] = $this->option('description');
         }
 
         if ($this->option('system-prompt') !== null) {
-            $tool->system_prompt = $this->option('system-prompt');
-            $changes[] = 'system_prompt';
+            $input['system_prompt'] = $this->option('system-prompt');
         }
 
+        // Handle script from file if provided
         if ($this->option('script-file') !== null) {
             $scriptFile = $this->option('script-file');
             if (!file_exists($scriptFile)) {
-                return $this->outputError("Script file not found: {$scriptFile}");
+                $this->outputJson([
+                    'output' => "Script file not found: {$scriptFile}",
+                    'is_error' => true,
+                ]);
+                return Command::FAILURE;
             }
-            $scriptContent = file_get_contents($scriptFile);
-            if ($scriptContent === false) {
-                return $this->outputError("Failed to read script file: {$scriptFile}");
-            }
-            $tool->script = $scriptContent;
-            $changes[] = 'script';
+            $input['script'] = file_get_contents($scriptFile);
         } elseif ($this->option('script') !== null) {
-            $tool->script = $this->option('script');
-            $changes[] = 'script';
+            $input['script'] = $this->option('script');
         }
 
         if ($this->option('category') !== null) {
-            $category = $this->option('category');
-            $allowedCategories = [
-                PocketTool::CATEGORY_MEMORY,
-                PocketTool::CATEGORY_TOOLS,
-                PocketTool::CATEGORY_FILE_OPS,
-                PocketTool::CATEGORY_CUSTOM,
-            ];
-            if (!in_array($category, $allowedCategories, true)) {
-                return $this->outputError('Invalid category. Allowed values: ' . implode(', ', $allowedCategories));
-            }
-            $tool->category = $category;
-            $changes[] = 'category';
+            $input['category'] = $this->option('category');
         }
 
         if ($this->option('input-schema') !== null) {
             $inputSchema = json_decode($this->option('input-schema'), true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                return $this->outputError('Invalid JSON in --input-schema: ' . json_last_error_msg());
+                $this->outputJson([
+                    'output' => 'Invalid JSON in --input-schema: ' . json_last_error_msg(),
+                    'is_error' => true,
+                ]);
+                return Command::FAILURE;
             }
-            $tool->input_schema = $inputSchema;
-            $changes[] = 'input_schema';
+            $input['input_schema'] = $inputSchema;
         }
 
-        if (empty($changes)) {
-            return $this->outputError('No changes specified');
-        }
+        $context = new ExecutionContext(getcwd() ?: '/var/www');
+        $result = $tool->execute($input, $context);
 
-        try {
-            $tool->save();
+        $this->outputJson($result->toArray());
 
-            $this->outputResult([
-                'output' => "Updated tool: {$tool->name} ({$slug})\nChanged: " . implode(', ', $changes),
-                'is_error' => false,
-                'tool' => [
-                    'id' => $tool->id,
-                    'slug' => $tool->slug,
-                    'name' => $tool->name,
-                ],
-                'changes' => $changes,
-            ]);
-
-            return Command::SUCCESS;
-        } catch (\Exception $e) {
-            return $this->outputError('Failed to update tool: ' . $e->getMessage());
-        }
+        return $result->isError() ? Command::FAILURE : Command::SUCCESS;
     }
 
-    private function outputError(string $message): int
+    private function outputJson(array $data): void
     {
-        $this->output->writeln(json_encode([
-            'output' => $message,
-            'is_error' => true,
-        ], JSON_PRETTY_PRINT));
-
-        return Command::FAILURE;
-    }
-
-    private function outputResult(array $result): void
-    {
-        $this->output->writeln(json_encode($result, JSON_PRETTY_PRINT));
+        $this->output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 }

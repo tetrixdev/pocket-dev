@@ -15,6 +15,8 @@ class GlobTool extends Tool
 
     public string $description = 'Find files matching a glob pattern. Returns file paths sorted by modification time (newest first).';
 
+    public string $category = 'file_ops';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -33,6 +35,36 @@ class GlobTool extends Tool
         ],
         'required' => ['pattern'],
     ];
+
+    public ?string $instructions = <<<'INSTRUCTIONS'
+Find files matching a glob pattern.
+
+## Examples
+
+```bash
+# Find all PHP files
+php artisan glob -- --pattern="**/*.php"
+
+# Find TypeScript files in src directory
+php artisan glob -- --pattern="src/**/*.ts"
+
+# Find JSON files in current directory only
+php artisan glob -- --pattern="*.json"
+
+# Search in specific directory with limit
+php artisan glob -- --pattern="**/*.md" --path=docs --limit=50
+```
+
+## Pattern Syntax
+- `*` - matches any characters except `/`
+- `**` - matches any characters including `/` (any depth)
+- `?` - matches single character
+
+## Notes
+- Results are sorted by modification time (newest first)
+- Default limit is 100 files, max is 1000
+- Paths outside working directory are not accessible
+INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

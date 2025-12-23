@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Agent;
 use App\Models\PocketTool;
 use App\Services\NativeToolService;
+use App\Services\ToolSelector;
+use App\Tools\Tool;
+use App\Tools\UserTool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1272,11 +1275,22 @@ class ConfigController extends Controller
     }
 
     /**
-     * Get PocketDev tools configuration
+     * Get PocketDev tools from the ToolSelector/ToolRegistry.
      */
-    protected function getPocketdevToolsConfig(): array
+    protected function getPocketdevTools(): array
     {
-        return config('pocketdev_tools', []);
+        $toolSelector = app(ToolSelector::class);
+
+        // Get all tools grouped by category
+        $fileOps = $toolSelector->getFileOperationTools();
+        $memory = $toolSelector->getMemoryTools();
+        $toolMgmt = $toolSelector->getToolManagementTools();
+
+        return [
+            'file_ops' => $fileOps,
+            'memory' => $memory,
+            'tools' => $toolMgmt,
+        ];
     }
 
     /**
@@ -1290,19 +1304,44 @@ class ConfigController extends Controller
             // Get native tools from config (Claude Code, Codex)
             $nativeConfig = $this->getNativeToolsConfig();
 
-            // Get PocketDev tools from config
-            $pocketdevConfig = $this->getPocketdevToolsConfig();
-            $nativePocketdevTools = collect($pocketdevConfig['native_equivalent'] ?? []);
-            $uniquePocketdevTools = collect($pocketdevConfig['unique'] ?? []);
+            // Get PocketDev tools from ToolRegistry via ToolSelector
+            $pocketdevTools = $this->getPocketdevTools();
+
+            // File ops tools are the "native equivalent" tools
+            $nativePocketdevTools = $pocketdevTools['file_ops']->map(fn(Tool $tool) => [
+                'slug' => $tool->getSlug(),
+                'name' => $tool->name,
+                'description' => $tool->description,
+                'category' => $tool->category,
+            ]);
+
+            // Memory and tool management tools are the "unique" tools
+            $uniquePocketdevTools = collect()
+                ->merge($pocketdevTools['memory']->map(fn(Tool $tool) => [
+                    'slug' => $tool->getSlug(),
+                    'name' => $tool->name,
+                    'description' => $tool->description,
+                    'category' => $tool->category,
+                ]))
+                ->merge($pocketdevTools['tools']->map(fn(Tool $tool) => [
+                    'slug' => $tool->getSlug(),
+                    'name' => $tool->name,
+                    'description' => $tool->description,
+                    'category' => $tool->category,
+                ]));
 
             // Group unique pocketdev tools by category
             $pocketdevByCategory = $uniquePocketdevTools->groupBy('category');
 
-            // Get custom/user tools from database only
-            $customTools = PocketTool::user()
-                ->orderBy('category')
-                ->orderBy('name')
-                ->get();
+            // Get custom/user tools from ToolSelector
+            // Use objects for view compatibility (the blade uses $tool->name syntax)
+            $toolSelector = app(ToolSelector::class);
+            $customTools = $toolSelector->getUserTools()->map(fn(Tool $tool) => (object) [
+                'slug' => $tool->getSlug(),
+                'name' => $tool->name,
+                'description' => $tool->description,
+                'category' => $tool->category,
+            ]);
 
             // Group custom tools by category
             $customByCategory = $customTools->groupBy('category');
@@ -1328,10 +1367,10 @@ class ConfigController extends Controller
         $request->session()->put('config_last_section', 'tools');
 
         try {
-            // First check if it's a config-based PocketDev tool
-            $tool = $this->findPocketdevToolFromConfig($slug);
+            // First check if it's a PocketDev tool from the registry
+            $tool = $this->findPocketdevToolFromRegistry($slug);
 
-            // If not found in config, check database
+            // If not found in registry, check database for user tools
             if (!$tool) {
                 $tool = PocketTool::where('slug', $slug)->firstOrFail();
             }
@@ -1347,51 +1386,59 @@ class ConfigController extends Controller
     }
 
     /**
-     * Find a PocketDev tool from config by slug.
-     * Returns a PocketTool instance (not saved) for view compatibility.
+     * Find a PocketDev tool from the ToolRegistry by slug.
+     * Returns a PocketTool-like object for view compatibility.
      */
-    protected function findPocketdevToolFromConfig(string $slug): ?PocketTool
+    protected function findPocketdevToolFromRegistry(string $slug): ?object
     {
-        $config = $this->getPocketdevToolsConfig();
+        $toolSelector = app(ToolSelector::class);
 
-        // Search in native_equivalent tools
-        foreach ($config['native_equivalent'] ?? [] as $toolData) {
-            if (($toolData['slug'] ?? '') === $slug) {
-                return $this->createPocketToolFromConfig($toolData);
-            }
-        }
+        foreach ($toolSelector->getAllTools() as $tool) {
+            if ($tool->getSlug() === $slug && !($tool instanceof UserTool)) {
+                // Create an anonymous class with methods for view compatibility
+                return new class($tool) {
+                    public string $slug;
+                    public string $name;
+                    public string $description;
+                    public ?string $category;
+                    public string $source;
+                    public ?string $system_prompt;
+                    public ?array $input_schema;
+                    public ?string $script = null;
+                    public bool $enabled = true;
+                    private ?string $artisan_command;
 
-        // Search in unique tools
-        foreach ($config['unique'] ?? [] as $toolData) {
-            if (($toolData['slug'] ?? '') === $slug) {
-                return $this->createPocketToolFromConfig($toolData);
+                    public function __construct(Tool $tool)
+                    {
+                        $this->slug = $tool->getSlug();
+                        $this->name = $tool->name;
+                        $this->description = $tool->description;
+                        $this->category = $tool->category;
+                        $this->source = PocketTool::SOURCE_POCKETDEV;
+                        $this->system_prompt = $tool->instructions;
+                        $this->input_schema = $tool->inputSchema;
+                        $this->artisan_command = $tool->getArtisanCommand();
+                    }
+
+                    public function isPocketdev(): bool
+                    {
+                        return true;
+                    }
+
+                    public function isUserTool(): bool
+                    {
+                        return false;
+                    }
+
+                    public function getArtisanCommand(): ?string
+                    {
+                        return $this->artisan_command;
+                    }
+                };
             }
         }
 
         return null;
-    }
-
-    /**
-     * Create a PocketTool instance from config data (not saved to DB).
-     */
-    protected function createPocketToolFromConfig(array $toolData): PocketTool
-    {
-        $tool = new PocketTool();
-        $tool->slug = $toolData['slug'];
-        $tool->name = $toolData['name'];
-        $tool->description = $toolData['description'] ?? null;
-        $tool->source = PocketTool::SOURCE_POCKETDEV;
-        $tool->category = $toolData['category'] ?? null;
-        $tool->capability = $toolData['capability'] ?? null;
-        $tool->native_equivalent = $toolData['native_equivalent'] ?? null;
-        $tool->excluded_providers = $toolData['excluded_providers'] ?? null;
-
-        // For display purposes, include artisan_command if present
-        if (isset($toolData['artisan_command'])) {
-            $tool->artisan_command = $toolData['artisan_command'];
-        }
-
-        return $tool;
     }
 
     /**
@@ -1426,7 +1473,6 @@ class ConfigController extends Controller
                 'description' => $validated['description'],
                 'source' => PocketTool::SOURCE_USER,
                 'category' => $validated['category'] ?: PocketTool::CATEGORY_CUSTOM,
-                'capability' => PocketTool::CAPABILITY_CUSTOM,
                 'input_schema' => $validated['input_schema'] ? json_decode($validated['input_schema'], true) : null,
                 'enabled' => true,
             ]);

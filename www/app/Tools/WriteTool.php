@@ -11,6 +11,8 @@ class WriteTool extends Tool
 
     public string $description = 'Write content to a file. Creates the file if it does not exist, overwrites if it does.';
 
+    public string $category = 'file_ops';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -27,10 +29,23 @@ class WriteTool extends Tool
     ];
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-- Use for creating new files or completely replacing file contents
-- Prefer Edit tool for small changes to existing files
-- Will create parent directories if they don't exist
+Write or create files.
+
+## Examples
+
+```bash
+# Create a new file
+php artisan write -- --file_path=config/custom.php --content='<?php return [];'
+
+# Write multi-line content (use $'...' for newlines)
+php artisan write -- --file_path=README.md --content=$'# Project\n\nDescription here.'
+```
+
+## Notes
+- Creates parent directories automatically if needed
+- Prefer Edit tool for modifying existing files
 - Overwrites existing files without warning
+- Paths outside working directory are blocked
 INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult

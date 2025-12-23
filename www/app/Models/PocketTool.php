@@ -24,31 +24,12 @@ class PocketTool extends Model
     public const CATEGORY_FILE_OPS = 'file_ops';
     public const CATEGORY_CUSTOM = 'custom';
 
-    // Capability constants
-    public const CAPABILITY_BASH = 'bash';
-    public const CAPABILITY_FILE_READ = 'file_read';
-    public const CAPABILITY_FILE_WRITE = 'file_write';
-    public const CAPABILITY_FILE_EDIT = 'file_edit';
-    public const CAPABILITY_FILE_GLOB = 'file_glob';
-    public const CAPABILITY_FILE_GREP = 'file_grep';
-    public const CAPABILITY_MEMORY = 'memory';
-    public const CAPABILITY_TOOL_MGMT = 'tool_mgmt';
-    public const CAPABILITY_CUSTOM = 'custom';
-
-    // Provider constants
-    public const PROVIDER_CLAUDE_CODE = 'claude_code';
-    public const PROVIDER_ANTHROPIC = 'anthropic';
-    public const PROVIDER_OPENAI = 'openai';
-
     protected $fillable = [
         'slug',
         'name',
         'description',
         'source',
         'category',
-        'capability',
-        'excluded_providers',
-        'native_equivalent',
         'system_prompt',
         'input_schema',
         'script',
@@ -56,7 +37,6 @@ class PocketTool extends Model
     ];
 
     protected $casts = [
-        'excluded_providers' => 'array',
         'input_schema' => 'array',
         'enabled' => 'boolean',
     ];
@@ -94,50 +74,6 @@ class PocketTool extends Model
     }
 
     /**
-     * Scope to filter by capability.
-     */
-    public function scopeCapability(Builder $query, string $capability): Builder
-    {
-        return $query->where('capability', $capability);
-    }
-
-    /**
-     * Scope to tools available for a specific provider.
-     * Excludes tools that have this provider in their excluded_providers list.
-     */
-    public function scopeForProvider(Builder $query, string $provider): Builder
-    {
-        return $query->where(function ($q) use ($provider) {
-            $q->whereNull('excluded_providers')
-              ->orWhereJsonDoesntContain('excluded_providers', $provider);
-        });
-    }
-
-    /**
-     * Scope to universal tools (no provider exclusions).
-     */
-    public function scopeUniversal(Builder $query): Builder
-    {
-        return $query->whereNull('excluded_providers');
-    }
-
-    /**
-     * Scope to tools that have native equivalents in Claude Code.
-     */
-    public function scopeHasNativeEquivalent(Builder $query): Builder
-    {
-        return $query->whereNotNull('native_equivalent');
-    }
-
-    /**
-     * Scope to tools without native equivalents.
-     */
-    public function scopeNoNativeEquivalent(Builder $query): Builder
-    {
-        return $query->whereNull('native_equivalent');
-    }
-
-    /**
      * Check if this tool is a PocketDev tool.
      */
     public function isPocketdev(): bool
@@ -167,26 +103,6 @@ class PocketTool extends Model
     public function hasScript(): bool
     {
         return !empty($this->script);
-    }
-
-    /**
-     * Check if this tool is available for a specific provider.
-     */
-    public function isAvailableFor(string $provider): bool
-    {
-        if (empty($this->excluded_providers)) {
-            return true;
-        }
-
-        return !in_array($provider, $this->excluded_providers, true);
-    }
-
-    /**
-     * Check if this tool has a native equivalent in Claude Code.
-     */
-    public function hasNativeEquivalent(): bool
-    {
-        return !empty($this->native_equivalent);
     }
 
     /**
@@ -243,13 +159,5 @@ class PocketTool extends Model
             ->sort()
             ->values()
             ->toArray();
-    }
-
-    /**
-     * Check if this is a Native PocketDev tool (file ops with native equivalents).
-     */
-    public function isNativePocketdev(): bool
-    {
-        return $this->isPocketdev() && $this->hasNativeEquivalent();
     }
 }

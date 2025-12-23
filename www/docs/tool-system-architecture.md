@@ -1,5 +1,18 @@
 # PocketDev Tool System Architecture
 
+## TLDR
+
+Tools are PHP classes in `app/Tools/`. Auto-discovered at startup, no registration needed.
+
+**Key concepts:**
+- CLI providers (Claude Code, Codex) have native file tools → exclude `file_ops` category
+- API providers (Anthropic, OpenAI) need all tools → include everything
+- User tools are bash scripts stored in DB, wrapped as `UserTool` class
+
+See also: [Provider System](architecture/providers.md) | [Philosophy](architecture/philosophy.md)
+
+---
+
 ## Overview
 
 PocketDev supports multiple AI providers, each with different tool capabilities. This document describes the unified tool system that manages tool availability, selection, and conflict resolution across all providers.
@@ -8,32 +21,26 @@ PocketDev supports multiple AI providers, each with different tool capabilities.
 
 ### Supported Providers
 
-| Provider | Built-in Tools | PocketDev Tools | User Tools |
-|----------|----------------|-----------------|------------|
-| **Claude Code** | Yes (Bash, Read, Edit, Glob, Grep, WebSearch, etc.) | Yes (Memory, Tool mgmt) | Yes |
-| **Anthropic API** | No | Yes (all) | Yes |
-| **OpenAI API** | No | Yes (all) | Yes |
+| Provider | Type | Built-in Tools | PocketDev Tools |
+|----------|------|----------------|-----------------|
+| **Claude Code** | CLI | Yes (Bash, Read, Edit, etc.) | Memory, Tool mgmt, User tools |
+| **Codex** | CLI | Yes (similar to Claude Code) | Memory, Tool mgmt, User tools |
+| **Anthropic API** | API | No | All tools including file_ops |
+| **OpenAI API** | API | No | All tools including file_ops |
+| **OpenAI Compatible** | API | No | All tools including file_ops |
 
-### The Challenge
+### The Design
 
-Claude Code has its own built-in tools that overlap with PocketDev's tools:
-- Both have `Bash` for executing shell commands
-- Both have `Read` for reading files
-- Both have `Edit` for editing files
-- Both have `Glob` for finding files
-- Both have `Grep` for searching file contents
-
-We need a system that:
-1. Prevents duplicate/conflicting tools from being enabled
-2. Uses the right tools for each provider
-3. Allows user customization with guardrails
-4. Keeps Memory and Tool management tools universal
+CLI providers (Claude Code, Codex) have native file operation tools. PocketDev:
+1. **Excludes `file_ops` category** for CLI providers (they have native equivalents)
+2. **Includes all tools** for API providers (they need our file operations)
+3. **Uses category-based filtering** instead of per-tool configuration
 
 ---
 
 ## Tool Classification
 
-### Three Dimensions
+### Two Dimensions
 
 ```text
 Tool
@@ -42,22 +49,9 @@ Tool
 │   ├── pocketdev   → PocketDev's PHP Tool classes
 │   └── user        → User-created bash script tools
 │
-├── Scope (which providers can use it)
-│   ├── universal   → All providers (Memory, Tool management)
-│   └── restricted  → Specific providers only
-│
-└── Capability (what it does - for conflict detection)
-    ├── bash        → Execute shell commands
-    ├── file_read   → Read file contents
-    ├── file_write  → Create/write files
-    ├── file_edit   → Modify existing files
-    ├── file_glob   → Find files by pattern
-    ├── file_grep   → Search file contents
-    ├── web_fetch   → Fetch web content
-    ├── web_search  → Search the web
-    ├── memory      → Memory system operations
-    ├── tool_mgmt   → Tool management operations
-    └── custom      → User-defined capability
+└── Scope (which providers can use it)
+    ├── universal   → All providers (Memory, Tool management)
+    └── restricted  → Specific providers only
 ```
 
 ### Tool Categories
@@ -66,48 +60,50 @@ Tool
 
 These are built into Claude Code and cannot be modified:
 
-| Tool | Capability | Notes |
-|------|------------|-------|
-| Bash | `bash` | Execute shell commands |
-| Read | `file_read` | Read files |
-| Write | `file_write` | Write files |
-| Edit | `file_edit` | Edit files |
-| MultiEdit | `file_edit` | Multi-file edit |
-| Glob | `file_glob` | Find files |
-| Grep | `file_grep` | Search contents |
-| LS | `file_read` | List directories |
-| Task | `agent` | Spawn sub-agents |
-| WebFetch | `web_fetch` | Fetch URLs |
-| WebSearch | `web_search` | Search web |
-| NotebookRead | `file_read` | Read notebooks |
-| NotebookEdit | `file_edit` | Edit notebooks |
+| Tool | Description |
+|------|-------------|
+| Bash | Execute shell commands |
+| Read | Read files |
+| Write | Write files |
+| Edit | Edit files |
+| MultiEdit | Multi-file edit |
+| Glob | Find files |
+| Grep | Search contents |
+| LS | List directories |
+| Task | Spawn sub-agents |
+| WebFetch | Fetch URLs |
+| WebSearch | Search web |
+| NotebookRead | Read notebooks |
+| NotebookEdit | Edit notebooks |
 
-#### 2. PocketDev Core Tools (File Operations)
+#### 2. PocketDev File Operations (`file_ops` category)
 
-These are PHP Tool classes that provide functionality for Anthropic/OpenAI:
+These PHP Tool classes provide file operations for API providers:
 
-| Tool | Class | Capability | Excluded From |
-|------|-------|------------|---------------|
-| Bash | `BashTool` | `bash` | Claude Code |
-| Read | `ReadTool` | `file_read` | Claude Code |
-| Write | `WriteTool` | `file_write` | Claude Code |
-| Edit | `EditTool` | `file_edit` | Claude Code |
-| Glob | `GlobTool` | `file_glob` | Claude Code |
-| Grep | `GrepTool` | `file_grep` | Claude Code |
+| Tool | Class | Notes |
+|------|-------|-------|
+| Bash | `BashTool` | Execute shell commands |
+| Read | `ReadTool` | Read file contents |
+| Write | `WriteTool` | Write/create files |
+| Edit | `EditTool` | Edit existing files |
+| Glob | `GlobTool` | Find files by pattern |
+| Grep | `GrepTool` | Search file contents |
+
+**Important:** These are automatically excluded for CLI providers (Claude Code, Codex) because they have native equivalents. See [Provider System](architecture/providers.md) for details.
 
 #### 3. PocketDev Universal Tools (Memory)
 
 These work with ALL providers including Claude Code:
 
-| Tool | Artisan Command | Capability |
-|------|-----------------|------------|
-| Memory Structure Create | `memory:structure:create` | `memory` |
-| Memory Structure Get | `memory:structure:get` | `memory` |
-| Memory Structure Delete | `memory:structure:delete` | `memory` |
-| Memory Create | `memory:create` | `memory` |
-| Memory Query | `memory:query` | `memory` |
-| Memory Update | `memory:update` | `memory` |
-| Memory Delete | `memory:delete` | `memory` |
+| Tool | Artisan Command |
+|------|-----------------|
+| Memory Structure Create | `memory:structure:create` |
+| Memory Structure Get | `memory:structure:get` |
+| Memory Structure Delete | `memory:structure:delete` |
+| Memory Create | `memory:create` |
+| Memory Query | `memory:query` |
+| Memory Update | `memory:update` |
+| Memory Delete | `memory:delete` |
 
 **Note:** Relationships are stored as IDs in the data object (e.g., `owner_id`, `location_id`), not in a separate relationships table.
 
@@ -115,14 +111,14 @@ These work with ALL providers including Claude Code:
 
 These work with ALL providers including Claude Code:
 
-| Tool | Artisan Command | Capability |
-|------|-----------------|------------|
-| Tool Create | `tool:create` | `tool_mgmt` |
-| Tool Update | `tool:update` | `tool_mgmt` |
-| Tool Delete | `tool:delete` | `tool_mgmt` |
-| Tool List | `tool:list` | `tool_mgmt` |
-| Tool Show | `tool:show` | `tool_mgmt` |
-| Tool Run | `tool:run` | `tool_mgmt` |
+| Tool | Artisan Command |
+|------|-----------------|
+| Tool Create | `tool:create` |
+| Tool Update | `tool:update` |
+| Tool Delete | `tool:delete` |
+| Tool List | `tool:list` |
+| Tool Show | `tool:show` |
+| Tool Run | `tool:run` |
 
 #### 5. User Tools
 
@@ -134,7 +130,6 @@ Custom tools created by users or AI:
 | Storage | Database (script in `script` column) |
 | Execution | Via `tool:run <slug>` |
 | Scope | Universal (all providers) |
-| Capability | `custom` (or user-defined) |
 
 ---
 
@@ -142,7 +137,7 @@ Custom tools created by users or AI:
 
 ### Table: `pocket_tools`
 
-Stores metadata for PocketDev and User tools:
+Stores **user-created tools only**. PocketDev built-in tools are PHP classes (not in database).
 
 ```sql
 CREATE TABLE pocket_tools (
@@ -154,22 +149,15 @@ CREATE TABLE pocket_tools (
     description TEXT NOT NULL,
 
     -- Classification
-    source VARCHAR(50) NOT NULL DEFAULT 'user',  -- 'pocketdev' | 'user'
-    category VARCHAR(100) DEFAULT 'custom',       -- 'memory' | 'tools' | 'file_ops' | 'custom'
-    capability VARCHAR(100),                      -- 'bash' | 'file_read' | 'memory' | etc.
-
-    -- Provider Compatibility
-    excluded_providers JSON,  -- ['claude_code'] = not available for CC
-
-    -- For conflict detection with native tools
-    native_equivalent VARCHAR(100),  -- 'Bash' | 'Read' | etc. (Claude Code tool name)
+    source VARCHAR(50) NOT NULL DEFAULT 'user',  -- Always 'user' now
+    category VARCHAR(100) DEFAULT 'custom',       -- 'custom' for user tools
 
     -- AI Instructions
     system_prompt TEXT NOT NULL,
     input_schema JSON,
 
-    -- User tools only
-    script TEXT,  -- Bash script content (null for pocketdev tools)
+    -- Script
+    script TEXT NOT NULL,  -- Bash script content
 
     -- State
     enabled BOOLEAN DEFAULT TRUE,
@@ -177,13 +165,9 @@ CREATE TABLE pocket_tools (
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );
-
--- Indexes
-CREATE INDEX idx_pocket_tools_source ON pocket_tools(source);
-CREATE INDEX idx_pocket_tools_category ON pocket_tools(category);
-CREATE INDEX idx_pocket_tools_capability ON pocket_tools(capability);
-CREATE INDEX idx_pocket_tools_enabled ON pocket_tools(enabled);
 ```
+
+**Note:** The `source` column is 'user' for all database records. PocketDev tools are PHP classes that are auto-discovered, not stored in the database.
 
 ### Table: `tool_conflicts`
 
@@ -214,83 +198,88 @@ CREATE TABLE tool_conflicts (
 
 ## Tool Selection Logic
 
+### The Provider Enum
+
+Tool filtering is based on the `App\Enums\Provider` enum:
+
+```php
+enum Provider: string
+{
+    case Anthropic = 'anthropic';
+    case OpenAI = 'openai';
+    case ClaudeCode = 'claude_code';
+    case Codex = 'codex';
+    case OpenAICompatible = 'openai_compatible';
+
+    public function isCliProvider(): bool
+    {
+        return match ($this) {
+            self::ClaudeCode, self::Codex => true,
+            default => false,
+        };
+    }
+}
+```
+
 ### ToolSelector Service
 
 ```php
+use App\Enums\Provider;
+
 class ToolSelector
 {
     /**
-     * Get tools available for a provider.
+     * Get all tools from the registry.
      */
-    public function getAvailableTools(string $provider): Collection
+    public function getAllTools(): Collection
     {
-        return PocketTool::query()
-            ->enabled()
-            ->where(function ($q) use ($provider) {
-                // Exclude tools that explicitly exclude this provider
-                $q->whereNull('excluded_providers')
-                  ->orWhereJsonDoesntContain('excluded_providers', $provider);
-            })
-            ->get();
+        return collect($this->registry->all());
     }
 
     /**
-     * Get default enabled tools for a provider (new conversations).
+     * Get default enabled tools for a provider.
+     * CLI providers: excludes file_ops (they have native equivalents)
+     * API providers: includes everything
      */
     public function getDefaultTools(string $provider): Collection
     {
-        $tools = $this->getAvailableTools($provider);
+        $tools = $this->getAllTools();
+        $providerEnum = Provider::tryFrom($provider);
 
-        // For Claude Code: exclude tools with native equivalents
-        if ($provider === 'claude_code') {
-            return $tools->filter(fn($t) => empty($t->native_equivalent));
+        if ($providerEnum?->isCliProvider()) {
+            return $tools->filter(fn($t) => $t->category !== 'file_ops');
         }
 
         return $tools;
-    }
-
-    /**
-     * Check if two tools conflict.
-     */
-    public function getConflict(string $slugA, string $slugB): ?ToolConflict
-    {
-        return ToolConflict::where([
-            ['tool_a_slug', $slugA],
-            ['tool_b_slug', $slugB],
-        ])->orWhere([
-            ['tool_a_slug', $slugB],
-            ['tool_b_slug', $slugA],
-        ])->first();
     }
 }
 ```
 
 ### Provider-Specific Behavior
 
-#### Claude Code Provider
+#### CLI Providers (Claude Code, Codex)
 
 ```php
-// 1. Native tools are handled by Claude Code itself
-// 2. We inject PocketDev tool instructions via --append-system-prompt
-// 3. Only non-native-equivalent tools are injected
+// Native tools are handled by the CLI itself
+// PocketDev tools are injected via system prompt as artisan commands
 
-$pocketDevTools = $toolSelector->getDefaultTools('claude_code');
+$pocketDevTools = $toolSelector->getDefaultTools(Provider::ClaudeCode->value);
 // Returns: Memory tools, Tool management tools, User tools
-// Excludes: Bash, Read, Edit, Glob, Grep (have native equivalents)
+// Excludes: file_ops category (Bash, Read, Edit, Glob, Grep)
 
 $systemPrompt = $this->buildToolInstructions($pocketDevTools);
-// Build --append-system-prompt with memory/tool instructions
+// Injected via --append-system-prompt
 ```
 
-#### Anthropic/OpenAI Providers
+#### API Providers (Anthropic, OpenAI, OpenAI Compatible)
 
 ```php
-// All enabled PocketDev tools are registered as native tools
-$tools = $toolSelector->getAvailableTools('anthropic');
-// Returns: Bash, Read, Edit, Glob, Grep, Memory tools, Tool mgmt, User tools
+// All tools are registered as function definitions
+$tools = $toolSelector->getAvailableTools(Provider::Anthropic->value);
+// Returns: ALL tools including file_ops
 
 foreach ($tools as $tool) {
-    $registry->register($this->toolFactory->create($tool));
+    $registry->register($tool);
 }
 ```
 
@@ -366,46 +355,60 @@ When a user tries to enable a conflicting tool:
 
 ## Tool Lifecycle
 
-### PocketDev Tools (Core)
+### PocketDev Tools (PHP Classes)
 
-1. **Definition**: PHP Tool classes in `app/Tools/`
-2. **Registration**: Registered in `pocket_tools` table via seeder
-3. **Execution**:
-   - Anthropic/OpenAI: Direct PHP execution via `Tool::execute()`
-   - Claude Code: Via artisan commands (injected in system prompt)
+1. **Definition**: Create PHP class in `app/Tools/` extending `Tool`
+2. **Discovery**: Auto-discovered by `ToolRegistry` via Symfony Finder
+3. **Registration**: No manual registration needed - just create the file
+4. **Execution**:
+   - API Providers: Direct PHP execution via `Tool::execute()`
+   - CLI Providers: Via artisan commands (injected in system prompt)
 
-### User Tools
+```php
+// Example: app/Tools/MyTool.php
+class MyTool extends Tool
+{
+    public string $name = 'MyTool';
+    public string $category = 'custom';
 
-1. **Creation**: Via `tool:create` command
+    public function execute(array $input, ExecutionContext $ctx): ToolResult
+    {
+        // Implementation
+    }
+
+    public function getArtisanCommand(): ?string
+    {
+        return 'my:tool';  // For CLI providers
+    }
+}
+```
+
+### User Tools (Database)
+
+1. **Creation**: Via `tool:create` command or AI
 2. **Storage**: Script stored in `pocket_tools.script`
-3. **Execution**: Via `tool:run <slug>` (writes to temp file, executes, returns output)
-4. **Modification**: Via `tool:update` command
-5. **Deletion**: Via `tool:delete` command
+3. **Wrapping**: `UserTool` class wraps `PocketTool` model
+4. **Execution**: Via `tool:run <slug>` (writes to temp file, executes)
+5. **Modification**: Via `tool:update` command
+6. **Deletion**: Via `tool:delete` command
 
 ---
 
 ## Implementation Files
 
-### New Files
+### Core Files
 
 | File | Purpose |
 |------|---------|
-| `app/Services/ToolSelector.php` | Provider-aware tool selection |
-| `app/Services/ToolFactory.php` | Create Tool instances from PocketTool models |
+| `app/Enums/Provider.php` | Single source of truth for provider identifiers |
+| `app/Tools/Tool.php` | Base class for all tools |
+| `app/Tools/UserTool.php` | Wrapper for database-stored user tools |
+| `app/Tools/*Tool.php` | Individual tool implementations |
+| `app/Services/ToolRegistry.php` | Auto-discovers and registers Tool classes |
+| `app/Services/ToolSelector.php` | Provider-aware tool filtering |
+| `app/Models/PocketTool.php` | Eloquent model for user tools |
 | `app/Models/ToolConflict.php` | Eloquent model for conflicts |
-| `database/migrations/*_add_provider_fields_to_pocket_tools.php` | Schema updates |
-| `database/migrations/*_create_tool_conflicts_table.php` | Conflicts table |
-| `database/seeders/ToolConflictSeeder.php` | Seed conflict definitions |
-
-### Modified Files
-
-| File | Changes |
-|------|---------|
-| `app/Models/PocketTool.php` | Add scopes, relationships |
-| `app/Providers/AIServiceProvider.php` | Use ToolSelector |
-| `app/Services/ToolRegistry.php` | Provider-aware registration |
-| `app/Jobs/ProcessConversationStream.php` | Use ToolSelector |
-| `database/seeders/PocketToolSeeder.php` | Add source/provider fields |
+| `app/Providers/AIServiceProvider.php` | Wires up tool discovery |
 
 ---
 
@@ -416,9 +419,10 @@ When a user tries to enable a conflicting tool:
 │                         TOOL SELECTION FLOW                          │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
-│   Provider: Claude Code                Provider: Anthropic/OpenAI   │
+│   CLI Providers                        API Providers                 │
+│   (Claude Code, Codex)                 (Anthropic, OpenAI, etc.)    │
 │   ┌─────────────────────┐              ┌─────────────────────┐      │
-│   │ Native Tools        │              │ PocketDev Tools     │      │
+│   │ Native Tools        │              │ PocketDev file_ops  │      │
 │   │ ├── Bash           │              │ ├── Bash            │      │
 │   │ ├── Read           │              │ ├── Read            │      │
 │   │ ├── Edit           │              │ ├── Edit            │      │
@@ -428,20 +432,31 @@ When a user tries to enable a conflicting tool:
 │   └─────────────────────┘              └─────────────────────┘      │
 │            +                                    +                    │
 │   ┌─────────────────────┐              ┌─────────────────────┐      │
-│   │ PocketDev Universal │              │ PocketDev Universal │      │
+│   │ PocketDev Tools     │              │ PocketDev Tools     │      │
 │   │ ├── Memory Tools    │              │ ├── Memory Tools    │      │
-│   │ └── Tool Mgmt       │              │ └── Tool Mgmt       │      │
-│   └─────────────────────┘              └─────────────────────┘      │
-│            +                                    +                    │
-│   ┌─────────────────────┐              ┌─────────────────────┐      │
-│   │ User Tools          │              │ User Tools          │      │
-│   │ └── Custom scripts  │              │ └── Custom scripts  │      │
+│   │ ├── Tool Mgmt       │              │ ├── Tool Mgmt       │      │
+│   │ └── User Tools      │              │ └── User Tools      │      │
 │   └─────────────────────┘              └─────────────────────┘      │
 │                                                                      │
 │   Injected via:                        Registered as:               │
-│   --append-system-prompt               Native tool calls            │
+│   --append-system-prompt               Function definitions         │
+│   (artisan commands)                   (direct tool calls)          │
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
+```
+
+### Category-Based Filtering
+
+```text
+Provider::isCliProvider() === true?
+    │
+    ├── YES (Claude Code, Codex)
+    │   └── Exclude category === 'file_ops'
+    │       → Return: memory, tools, custom
+    │
+    └── NO (Anthropic, OpenAI, OpenAI Compatible)
+        └── Include all categories
+            → Return: memory, tools, file_ops, custom
 ```
 
 ---

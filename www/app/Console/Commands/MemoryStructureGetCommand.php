@@ -2,45 +2,39 @@
 
 namespace App\Console\Commands;
 
-use App\Models\MemoryStructure;
+use App\Tools\ExecutionContext;
+use App\Tools\MemoryStructureGetTool;
 use Illuminate\Console\Command;
 
 class MemoryStructureGetCommand extends Command
 {
     protected $signature = 'memory:structure:get
-                            {slug : The structure slug to retrieve}';
+                            {slug? : Structure slug to retrieve (optional - lists all if omitted)}
+                            {--include-schema : Include the full JSON Schema in output}';
 
-    protected $description = 'Get a memory structure schema by slug';
+    protected $description = 'Get memory structure(s) - retrieve one by slug or list all';
 
     public function handle(): int
     {
-        $slug = $this->argument('slug');
+        $tool = new MemoryStructureGetTool();
 
-        $structure = MemoryStructure::where('slug', $slug)->first();
+        // Build input from arguments/options
+        $input = [];
 
-        if (!$structure) {
-            $this->outputJson([
-                'output' => "Structure '{$slug}' not found",
-                'is_error' => true,
-            ]);
-            return Command::FAILURE;
+        if ($this->argument('slug') !== null) {
+            $input['slug'] = $this->argument('slug');
         }
 
-        $this->outputJson([
-            'output' => "Structure: {$structure->name} ({$structure->slug})",
-            'is_error' => false,
-            'structure' => [
-                'id' => $structure->id,
-                'name' => $structure->name,
-                'slug' => $structure->slug,
-                'description' => $structure->description,
-                'schema' => $structure->schema,
-                'icon' => $structure->icon,
-                'color' => $structure->color,
-            ],
-        ]);
+        if ($this->option('include-schema')) {
+            $input['include_schema'] = true;
+        }
 
-        return Command::SUCCESS;
+        $context = new ExecutionContext(getcwd() ?: '/var/www');
+        $result = $tool->execute($input, $context);
+
+        $this->outputJson($result->toArray());
+
+        return $result->isError() ? Command::FAILURE : Command::SUCCESS;
     }
 
     private function outputJson(array $data): void

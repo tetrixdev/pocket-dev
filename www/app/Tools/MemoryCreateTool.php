@@ -17,6 +17,8 @@ class MemoryCreateTool extends Tool
 
     public string $description = 'Create a new memory object of a specified structure type.';
 
+    public string $category = 'memory';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -39,6 +41,11 @@ class MemoryCreateTool extends Tool
         ],
         'required' => ['structure', 'name'],
     ];
+
+    public function getArtisanCommand(): ?string
+    {
+        return 'memory:create';
+    }
 
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryCreate to create new memory objects.

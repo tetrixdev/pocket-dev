@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\Provider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -15,10 +16,14 @@ class Agent extends Model
     protected $keyType = 'string';
     public $incrementing = false;
 
-    // Provider constants
+    // Provider constants - deprecated, use Provider enum instead
+    /** @deprecated Use Provider::Anthropic->value instead */
     public const PROVIDER_ANTHROPIC = 'anthropic';
+    /** @deprecated Use Provider::OpenAI->value instead */
     public const PROVIDER_OPENAI = 'openai';
+    /** @deprecated Use Provider::ClaudeCode->value instead */
     public const PROVIDER_CLAUDE_CODE = 'claude_code';
+    /** @deprecated Use Provider::Codex->value instead */
     public const PROVIDER_CODEX = 'codex';
 
     protected $fillable = [
@@ -105,10 +110,10 @@ class Agent extends Model
     public function getReasoningValue(): mixed
     {
         return match ($this->provider) {
-            self::PROVIDER_ANTHROPIC => $this->anthropic_thinking_budget ?? 0,
-            self::PROVIDER_OPENAI => $this->openai_reasoning_effort ?? 'none',
-            self::PROVIDER_CLAUDE_CODE => $this->claude_code_thinking_tokens ?? 0,
-            self::PROVIDER_CODEX => $this->codex_reasoning_effort ?? 'none',
+            Provider::Anthropic->value => $this->anthropic_thinking_budget ?? 0,
+            Provider::OpenAI->value => $this->openai_reasoning_effort ?? 'none',
+            Provider::ClaudeCode->value => $this->claude_code_thinking_tokens ?? 0,
+            Provider::Codex->value => $this->codex_reasoning_effort ?? 'none',
             default => null,
         };
     }
@@ -119,19 +124,19 @@ class Agent extends Model
     public function getReasoningConfig(): array
     {
         return match ($this->provider) {
-            self::PROVIDER_ANTHROPIC => [
+            Provider::Anthropic->value => [
                 'type' => 'anthropic',
                 'budget_tokens' => $this->anthropic_thinking_budget ?? 0,
             ],
-            self::PROVIDER_OPENAI => [
+            Provider::OpenAI->value => [
                 'type' => 'openai',
                 'effort' => $this->openai_reasoning_effort ?? 'none',
             ],
-            self::PROVIDER_CLAUDE_CODE => [
+            Provider::ClaudeCode->value => [
                 'type' => 'claude_code',
                 'thinking_tokens' => $this->claude_code_thinking_tokens ?? 0,
             ],
-            self::PROVIDER_CODEX => [
+            Provider::Codex->value => [
                 'type' => 'codex',
                 'effort' => $this->codex_reasoning_effort ?? 'none',
             ],
@@ -164,25 +169,25 @@ class Agent extends Model
      */
     public function getProviderDisplayName(): string
     {
-        return match ($this->provider) {
-            self::PROVIDER_ANTHROPIC => 'Anthropic',
-            self::PROVIDER_OPENAI => 'OpenAI',
-            self::PROVIDER_CLAUDE_CODE => 'Claude Code',
-            self::PROVIDER_CODEX => 'Codex',
-            default => ucfirst($this->provider),
-        };
+        $provider = Provider::tryFrom($this->provider);
+        return $provider?->label() ?? ucfirst($this->provider);
     }
 
     /**
      * Get all available providers.
+     *
+     * @return array<string>
      */
     public static function getProviders(): array
     {
-        return [
-            self::PROVIDER_ANTHROPIC,
-            self::PROVIDER_OPENAI,
-            self::PROVIDER_CLAUDE_CODE,
-            self::PROVIDER_CODEX,
-        ];
+        return Provider::values();
+    }
+
+    /**
+     * Get the Provider enum for this agent.
+     */
+    public function getProviderEnum(): ?Provider
+    {
+        return Provider::tryFrom($this->provider);
     }
 }

@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\Provider;
 use App\Models\Conversation;
-use App\Models\PocketTool;
 
 /**
  * Builds the system prompt for AI providers.
@@ -51,7 +51,7 @@ class SystemPromptBuilder
 
         // PocketDev tools (memory, tool management, user tools)
         // These are tools that don't have native Claude Code equivalents
-        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt(PocketTool::PROVIDER_CLAUDE_CODE);
+        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt(Provider::ClaudeCode->value);
         if (!empty($pocketDevToolPrompt)) {
             $sections[] = $pocketDevToolPrompt;
         }

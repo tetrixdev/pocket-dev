@@ -2,52 +2,31 @@
 
 namespace App\Console\Commands;
 
-use App\Models\MemoryObject;
-use App\Models\MemoryStructure;
+use App\Tools\ExecutionContext;
+use App\Tools\MemoryStructureDeleteTool;
 use Illuminate\Console\Command;
 
 class MemoryStructureDeleteCommand extends Command
 {
     protected $signature = 'memory:structure:delete
-                            {slug : The structure slug to delete}';
+                            {slug : Structure slug to delete}';
 
-    protected $description = 'Delete a memory structure (only if no objects exist)';
+    protected $description = 'Delete a memory structure (only if it has no objects)';
 
     public function handle(): int
     {
-        $slug = $this->argument('slug');
+        $tool = new MemoryStructureDeleteTool();
 
-        $structure = MemoryStructure::where('slug', $slug)->first();
+        $input = [
+            'slug' => $this->argument('slug'),
+        ];
 
-        if (!$structure) {
-            $this->outputJson([
-                'output' => "Structure '{$slug}' not found",
-                'is_error' => true,
-            ]);
-            return Command::FAILURE;
-        }
+        $context = new ExecutionContext(getcwd() ?: '/var/www');
+        $result = $tool->execute($input, $context);
 
-        // Check if any objects exist for this structure
-        $objectCount = MemoryObject::where('structure_id', $structure->id)->count();
+        $this->outputJson($result->toArray());
 
-        if ($objectCount > 0) {
-            $this->outputJson([
-                'output' => "Cannot delete structure '{$slug}': {$objectCount} object(s) still exist. Delete all objects first.",
-                'is_error' => true,
-                'object_count' => $objectCount,
-            ]);
-            return Command::FAILURE;
-        }
-
-        $name = $structure->name;
-        $structure->delete();
-
-        $this->outputJson([
-            'output' => "Deleted structure: {$name} ({$slug})",
-            'is_error' => false,
-        ]);
-
-        return Command::SUCCESS;
+        return $result->isError() ? Command::FAILURE : Command::SUCCESS;
     }
 
     private function outputJson(array $data): void
