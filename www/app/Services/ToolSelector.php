@@ -297,6 +297,8 @@ php artisan tool:run <slug> -- --arg1=value1 --arg2=value2
 
 **Important:** The `--` separator is REQUIRED for `tool:run` only, before any `--arguments`.
 
+**CRITICAL: Do NOT use `--` with built-in commands** like `memory:query`, `memory:create`, `tool:list`, etc. Only `tool:run` needs it.
+
 GUIDE;
     }
 
