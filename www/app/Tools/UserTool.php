@@ -33,7 +33,8 @@ class UserTool extends Tool
         $this->pocketTool = $pocketTool;
 
         // Map PocketTool properties to Tool properties
-        $this->name = $this->pocketTool->name;
+        // Use slug as name for API compatibility (OpenAI requires ^[a-zA-Z0-9_-]+$)
+        $this->name = $this->pocketTool->slug;
         $this->description = $this->pocketTool->description;
         $this->instructions = $this->pocketTool->system_prompt;
         $this->category = $this->pocketTool->category ?? 'custom';
@@ -65,6 +66,14 @@ class UserTool extends Tool
     public function getSlug(): string
     {
         return $this->pocketTool->slug;
+    }
+
+    /**
+     * Get the human-readable display name.
+     */
+    public function getDisplayName(): string
+    {
+        return $this->pocketTool->name;
     }
 
     /**
@@ -150,6 +159,7 @@ class UserTool extends Tool
     {
         return [
             'name' => $this->name,
+            'display_name' => $this->getDisplayName(),
             'slug' => $this->getSlug(),
             'description' => $this->description,
             'category' => $this->category,
