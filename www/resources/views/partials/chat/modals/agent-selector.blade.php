@@ -32,7 +32,9 @@
                                           'bg-orange-500': providerKey === 'anthropic',
                                           'bg-green-500': providerKey === 'openai',
                                           'bg-purple-500': providerKey === 'claude_code',
-                                          'bg-gray-500': !['anthropic', 'openai', 'claude_code'].includes(providerKey)
+                                          'bg-blue-500': providerKey === 'codex',
+                                          'bg-teal-500': providerKey === 'openai_compatible',
+                                          'bg-gray-500': !['anthropic', 'openai', 'claude_code', 'codex', 'openai_compatible'].includes(providerKey)
                                       }"></span>
                                 <span x-text="getProviderDisplayName(providerKey)"></span>
                             </h4>
