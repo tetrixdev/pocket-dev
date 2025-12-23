@@ -180,7 +180,7 @@ class ToolSelector
         // Add preamble for CLI providers explaining these are CLI commands
         if ($isCliProvider) {
             $sections[] = "# PocketDev Tools\n";
-            $sections[] = "The following tools are available as artisan commands. Use your Bash tool to execute them.\n";
+            $sections[] = "These PocketDev tools are invoked via PHP Artisan commands. Use your Bash tool to execute them.\n";
             $sections[] = $this->buildInvocationGuide();
         } else {
             $sections[] = "# PocketDev Tools\n";
@@ -192,24 +192,49 @@ class ToolSelector
             $sections[] = $structuresSection;
         }
 
-        // Group by category
-        $grouped = $tools->groupBy('category');
+        if ($isCliProvider) {
+            $systemTools = $tools->filter(fn(Tool $tool) => !($tool instanceof UserTool));
+            $customTools = $tools->filter(fn(Tool $tool) => $tool instanceof UserTool);
 
-        foreach ($grouped as $category => $categoryTools) {
-            $categoryTitle = $this->formatCategoryTitle($category);
-            $sections[] = "## {$categoryTitle}\n";
+            if ($systemTools->isNotEmpty()) {
+                $sections[] = "## System Tools\n";
+                $sections[] = "Built-in PocketDev tools.\n";
 
-            foreach ($categoryTools as $tool) {
-                // Use artisan command format for CLI providers, tool name for others
-                if ($isCliProvider) {
+                foreach ($systemTools as $tool) {
                     $artisanCommand = $tool->getArtisanCommand();
                     $sections[] = "### {$artisanCommand}\n";
-                } else {
-                    $sections[] = "### {$tool->name}\n";
+                    $sections[] = $tool->instructions ?? $tool->description;
+                    $sections[] = $this->formatToolParameters($tool);
+                    $sections[] = "";
                 }
-                $sections[] = $tool->instructions ?? $tool->description;
-                $sections[] = $this->formatToolParameters($tool);
-                $sections[] = "";
+            }
+
+            if ($customTools->isNotEmpty()) {
+                $sections[] = "## Custom Tools\n";
+                $sections[] = "User-created tools invoked via `tool:run`.\n";
+
+                foreach ($customTools as $tool) {
+                    $artisanCommand = $tool->getArtisanCommand();
+                    $sections[] = "### {$artisanCommand}\n";
+                    $sections[] = $tool->instructions ?? $tool->description;
+                    $sections[] = $this->formatToolParameters($tool);
+                    $sections[] = "";
+                }
+            }
+        } else {
+            // Group by category for API providers
+            $grouped = $tools->groupBy('category');
+
+            foreach ($grouped as $category => $categoryTools) {
+                $categoryTitle = $this->formatCategoryTitle($category);
+                $sections[] = "## {$categoryTitle}\n";
+
+                foreach ($categoryTools as $tool) {
+                    $sections[] = "### {$tool->name}\n";
+                    $sections[] = $tool->instructions ?? $tool->description;
+                    $sections[] = $this->formatToolParameters($tool);
+                    $sections[] = "";
+                }
             }
         }
 
