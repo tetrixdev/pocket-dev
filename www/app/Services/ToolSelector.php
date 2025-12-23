@@ -285,8 +285,8 @@ class ToolSelector
 
 **Built-in commands (memory, tool management):**
 ```bash
-php artisan memory:query -- --sql="SELECT id, name FROM memory_structures"
-php artisan memory:create -- --structure=project --name="My Project" --data='{"status":"active"}'
+php artisan memory:query --sql="SELECT id, name FROM memory_structures"
+php artisan memory:create --structure=project --name="My Project" --data='{"status":"active"}'
 php artisan tool:list
 ```
 
@@ -295,7 +295,7 @@ php artisan tool:list
 php artisan tool:run <slug> -- --arg1=value1 --arg2=value2
 ```
 
-**Important:** The `--` separator is REQUIRED before any `--arguments` to prevent Laravel from intercepting them as its own options.
+**Important:** The `--` separator is REQUIRED for `tool:run` only, before any `--arguments`.
 
 GUIDE;
     }
