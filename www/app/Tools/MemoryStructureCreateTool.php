@@ -53,7 +53,7 @@ Use MemoryStructureCreate to define new memory object templates.
 ## Example
 
 ```bash
-php artisan memory:structure:create -- --name="Project" \
+php artisan memory:structure:create --name="Project" \
   --description="A project being tracked" \
   --schema='{"type":"object","properties":{"status":{"type":"string","description":"Current status"},"notes":{"type":"string","x-embed":true,"description":"Project notes"}}}'
 ```

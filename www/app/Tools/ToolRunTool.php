@@ -40,7 +40,7 @@ Use ToolRun to execute a user-created tool.
 php artisan tool:run greet -- --name=World
 ```
 
-**Important:** The `--` separator is REQUIRED before any `--arguments`.
+**Important:** The `--` separator is REQUIRED for `tool:run` only, before any `--arguments`.
 
 ## How Arguments Work
 

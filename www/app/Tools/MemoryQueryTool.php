@@ -46,6 +46,13 @@ class MemoryQueryTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryQuery to search and retrieve memory objects. This is your primary read tool for the memory system.
 
+## CLI Example
+
+```bash
+php artisan memory:query --sql="SELECT id, name, slug FROM memory_structures"
+php artisan memory:query --sql="SELECT * FROM memory_objects WHERE structure_slug='character'" --limit=10
+```
+
 ## Available Tables
 
 - **memory_structures**: Schema definitions (id, name, slug, description, schema, icon, color)

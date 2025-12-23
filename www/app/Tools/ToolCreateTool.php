@@ -60,7 +60,7 @@ Use ToolCreate to create custom tools with bash scripts.
 ## Example
 
 ```bash
-php artisan tool:create -- --slug=git-status --name="Git Status" \
+php artisan tool:create --slug=git-status --name="Git Status" \
   --description="Check git branch and status" \
   --system_prompt="Returns current git branch and working tree status." \
   --script='#!/bin/bash

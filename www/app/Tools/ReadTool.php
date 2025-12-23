@@ -39,10 +39,10 @@ Read file contents with line numbers.
 
 ```bash
 # Read entire file
-php artisan read -- --file_path=app/Models/User.php
+php artisan read --file_path=app/Models/User.php
 
 # Read specific lines (lines 50-100)
-php artisan read -- --file_path=app/Models/User.php --offset=50 --limit=50
+php artisan read --file_path=app/Models/User.php --offset=50 --limit=50
 ```
 
 ## Notes

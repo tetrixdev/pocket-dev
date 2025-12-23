@@ -72,6 +72,13 @@ class MemoryUpdateTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryUpdate to modify existing memory objects.
 
+## CLI Example
+
+```bash
+php artisan memory:update --id=<uuid> --data='{"level":6}'
+php artisan memory:update --id=<uuid> --name="New Name"
+```
+
 ## Examples
 
 Update specific fields (merge):

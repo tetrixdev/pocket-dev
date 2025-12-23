@@ -39,6 +39,13 @@ class MemoryDeleteTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryDelete to remove memory objects.
 
+## CLI Example
+
+```bash
+php artisan memory:delete --id=<uuid>
+php artisan memory:delete --id=<uuid> --cascade
+```
+
 ## Examples
 
 Delete single object:

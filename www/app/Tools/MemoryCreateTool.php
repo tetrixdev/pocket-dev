@@ -50,6 +50,12 @@ class MemoryCreateTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryCreate to create new memory objects.
 
+## CLI Example
+
+```bash
+php artisan memory:create --structure=character --name="Thorin" --data='{"class":"fighter","level":5}'
+```
+
 ## Example
 
 Create a character:

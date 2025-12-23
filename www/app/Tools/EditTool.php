@@ -43,12 +43,12 @@ Edit files using exact string replacement.
 
 ```bash
 # Replace a single occurrence (must be unique)
-php artisan edit -- --file_path=app/Models/User.php \
+php artisan edit --file_path=app/Models/User.php \
   --old_string='protected $table' \
   --new_string='protected $table = "users"'
 
 # Replace all occurrences
-php artisan edit -- --file_path=app/Services/Api.php \
+php artisan edit --file_path=app/Services/Api.php \
   --old_string='$oldVar' \
   --new_string='$newVar' \
   --replace_all=true

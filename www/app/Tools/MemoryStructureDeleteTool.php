@@ -30,12 +30,10 @@ class MemoryStructureDeleteTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryStructureDelete to remove a memory structure.
 
-## Example
+## CLI Example
 
-```json
-{
-  "slug": "character"
-}
+```bash
+php artisan memory:structure:delete --slug=character
 ```
 
 ## Notes

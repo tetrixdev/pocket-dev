@@ -43,16 +43,16 @@ Find files matching a glob pattern.
 
 ```bash
 # Find all PHP files
-php artisan glob -- --pattern="**/*.php"
+php artisan glob --pattern="**/*.php"
 
 # Find TypeScript files in src directory
-php artisan glob -- --pattern="src/**/*.ts"
+php artisan glob --pattern="src/**/*.ts"
 
 # Find JSON files in current directory only
-php artisan glob -- --pattern="*.json"
+php artisan glob --pattern="*.json"
 
 # Search in specific directory with limit
-php artisan glob -- --pattern="**/*.md" --path=docs --limit=50
+php artisan glob --pattern="**/*.md" --path=docs --limit=50
 ```
 
 ## Pattern Syntax

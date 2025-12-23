@@ -58,6 +58,12 @@ class MemoryStructureUpdateTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryStructureUpdate to modify an existing memory structure.
 
+## CLI Example
+
+```bash
+php artisan memory:structure:update --slug=character --name="Player Character" --description="A playable character"
+```
+
 ## Safe Updates
 These changes have no impact on existing objects:
 - name, description, icon, color

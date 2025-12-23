@@ -285,9 +285,9 @@ class ToolSelector
 
 **Built-in commands (memory, tool management):**
 ```bash
-php artisan memory:query --sql="SELECT id, name FROM memory_structures"
-php artisan memory:create --structure=project --name="My Project" --data='{"status":"active"}'
-php artisan tool:list
+php artisan memory:query --sql="SELECT id, name FROM memory_structures" --
+php artisan memory:create --structure=project --name="My Project" --data='{"status":"active"}' --
+php artisan tool:list --
 ```
 
 **User-created tools:**
@@ -295,9 +295,7 @@ php artisan tool:list
 php artisan tool:run <slug> -- --arg1=value1 --arg2=value2
 ```
 
-**Important:** The `--` separator is REQUIRED for `tool:run` only, before any `--arguments`.
-
-**CRITICAL: Do NOT use `--` with built-in commands** like `memory:query`, `memory:create`, `tool:list`, etc. Only `tool:run` needs it.
+**Important:** Always include a `--` separator in PocketDev artisan commands. For `tool:run`, it goes before tool arguments; for all other commands, put it at the end. Commands are considered invalid without it.
 
 GUIDE;
     }

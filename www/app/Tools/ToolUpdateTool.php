@@ -53,6 +53,12 @@ class ToolUpdateTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use ToolUpdate to modify an existing user-created tool.
 
+## CLI Example
+
+```bash
+php artisan tool:update --slug=my-tool --name="Updated Name" --description="New description"
+```
+
 ## Important
 - Only user-created tools can be modified
 - PocketDev built-in tools cannot be changed

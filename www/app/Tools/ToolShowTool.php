@@ -33,6 +33,13 @@ class ToolShowTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use ToolShow to get detailed information about a tool.
 
+## CLI Example
+
+```bash
+php artisan tool:show --slug=my-tool
+php artisan tool:show --slug=my-tool --include_script
+```
+
 ## Example
 
 Show basic info:

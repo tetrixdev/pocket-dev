@@ -29,12 +29,10 @@ class MemoryStructureGetTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryStructureGet to retrieve a structure's schema definition.
 
-## Example
+## CLI Example
 
-```json
-{
-  "slug": "character"
-}
+```bash
+php artisan memory:structure:get --slug=character
 ```
 
 Returns the structure's name, description, schema (with field definitions), icon, and color.
