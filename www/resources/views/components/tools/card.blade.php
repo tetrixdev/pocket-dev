@@ -4,6 +4,7 @@
     'description' => null,
     'showToggle' => false,
     'enabled' => true,
+    'disabled' => false,
     'provider' => null,
     'viewUrl' => null,
     'editUrl' => null,
@@ -17,15 +18,18 @@
         {{-- Row 1: Toggle (if applicable) + Name --}}
         <div class="flex items-center gap-3">
             @if($showToggle)
-                <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                    <input
-                        type="checkbox"
-                        class="sr-only peer"
-                        {{ $enabled ? 'checked' : '' }}
-                        @change="toggleNativeTool('{{ $provider }}', '{{ $name }}', $event.target.checked)"
-                    >
-                    <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
+                <div class="flex-shrink-0" @if($disabled) title="Managed by PocketDev - this tool may interfere with PocketDev's operation" @endif>
+                    <label class="relative inline-flex items-center {{ $disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer' }}">
+                        <input
+                            type="checkbox"
+                            class="sr-only peer"
+                            {{ $enabled ? 'checked' : '' }}
+                            {{ $disabled ? 'disabled' : '' }}
+                            @if(!$disabled) @change="toggleNativeTool('{{ $provider }}', '{{ $name }}', $event.target.checked)" @endif
+                        >
+                        <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
             @endif
             <div>
                 <span class="font-medium {{ $showToggle && !$enabled ? 'text-gray-500' : '' }}">{{ $name }}</span>
@@ -68,15 +72,18 @@
         {{-- Left: Toggle + Name + Slug --}}
         <div class="flex items-center gap-3 min-w-0 flex-shrink-0">
             @if($showToggle)
-                <label class="relative inline-flex items-center cursor-pointer">
-                    <input
-                        type="checkbox"
-                        class="sr-only peer"
-                        {{ $enabled ? 'checked' : '' }}
-                        @change="toggleNativeTool('{{ $provider }}', '{{ $name }}', $event.target.checked)"
-                    >
-                    <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
-                </label>
+                <div @if($disabled) title="Managed by PocketDev - this tool may interfere with PocketDev's operation" @endif>
+                    <label class="relative inline-flex items-center {{ $disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer' }}">
+                        <input
+                            type="checkbox"
+                            class="sr-only peer"
+                            {{ $enabled ? 'checked' : '' }}
+                            {{ $disabled ? 'disabled' : '' }}
+                            @if(!$disabled) @change="toggleNativeTool('{{ $provider }}', '{{ $name }}', $event.target.checked)" @endif
+                        >
+                        <div class="w-9 h-5 bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
             @endif
             <div>
                 <span class="font-medium {{ $showToggle && !$enabled ? 'text-gray-500' : '' }}">{{ $name }}</span>

@@ -205,6 +205,18 @@ class ClaudeCodeProvider implements AIProviderInterface
             $allowedTools = [];
         }
 
+        // Get enabled tools from NativeToolService (respects global disabled state)
+        $nativeToolService = app(\App\Services\NativeToolService::class);
+        $enabledToolNames = $nativeToolService->getEnabledToolNames('claude_code');
+
+        // Filter tools: if specific tools selected, intersect with enabled; otherwise use all enabled
+        if (!empty($allowedTools)) {
+            $allowedTools = array_values(array_intersect($allowedTools, $enabledToolNames));
+        } else {
+            // "All tools" means all enabled tools (excludes globally disabled)
+            $allowedTools = $enabledToolNames;
+        }
+
         // Base command with streaming JSON output
         // Note: --verbose is required when using --print with stream-json
         // --include-partial-messages enables real streaming with content_block_delta events

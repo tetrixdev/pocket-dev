@@ -13,13 +13,15 @@
         </button>
 
         {{-- Input Field --}}
-        <input type="text"
-               x-model="prompt"
-               :disabled="isStreaming"
-               placeholder="Ask AI to help with your code..."
-               class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white"
-               @keydown.ctrl.t.prevent="cycleReasoningLevel()"
-               @keydown.ctrl.space.prevent="toggleVoiceRecording()">
+        <textarea x-model="prompt"
+                  :disabled="isStreaming"
+                  placeholder="Ask AI to help with your code..."
+                  rows="1"
+                  class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto"
+                  style="min-height: 48px; max-height: 200px;"
+                  @keydown.ctrl.t.prevent="cycleReasoningLevel()"
+                  @keydown.ctrl.space.prevent="toggleVoiceRecording()"
+                  @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); sendMessage(); }"></textarea>
 
         {{-- Reasoning Toggle (Provider-specific) --}}
         <button type="button"

@@ -110,7 +110,7 @@
 </head>
 <body class="bg-gray-900 text-white" x-data="{ showMobileDrawer: false }">
     <!-- Desktop Layout -->
-    <div class="desktop-layout h-screen flex flex-col">
+    <div class="desktop-layout flex flex-col" style="height: 100dvh;">
 
         <!-- Header -->
         @php

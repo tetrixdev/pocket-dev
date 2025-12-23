@@ -63,6 +63,11 @@
         <div class="flex flex-wrap gap-2 mt-2">
             <a href="/config" class="text-blue-400 hover:text-blue-300">Config</a>
             <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300">Shortcuts</button>
+            <button @click="copyConversationToClipboard()"
+                    :disabled="messages.length === 0"
+                    :class="messages.length === 0 ? 'text-gray-600 cursor-not-allowed' : 'text-blue-400 hover:text-blue-300'"
+                    x-text="copyingConversation ? 'Copied!' : 'Copy Chat'">
+            </button>
         </div>
     </div>
 </div>

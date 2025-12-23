@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Agent;
 use App\Models\PocketTool;
+use App\Services\NativeToolService;
 use App\Services\SystemPromptService;
 use App\Services\ToolSelector;
 use Illuminate\Http\JsonResponse;
@@ -101,12 +102,10 @@ class AgentController extends Controller
     {
         $nativeTools = [];
 
-        // Claude Code has native tools
+        // Claude Code has native tools - get from NativeToolService with enabled status
         if ($provider === Agent::PROVIDER_CLAUDE_CODE) {
-            $nativeTools = config('ai.providers.claude_code.available_tools', [
-                'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'LS',
-                'Bash', 'Task', 'WebFetch', 'WebSearch', 'NotebookRead', 'NotebookEdit',
-            ]);
+            $nativeToolService = app(NativeToolService::class);
+            $nativeTools = $nativeToolService->getToolsForProvider('claude_code');
         }
 
         // PocketDev tools available for this provider

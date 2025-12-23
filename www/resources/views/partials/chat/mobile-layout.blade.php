@@ -89,6 +89,12 @@
             <x-button @click="showShortcutsModal = true; showMobileDrawer = false" variant="ghost" size="sm">
                 Shortcuts
             </x-button>
+            <x-button @click="copyConversationToClipboard(); showMobileDrawer = false"
+                      variant="ghost"
+                      size="sm"
+                      ::disabled="messages.length === 0">
+                <span x-text="copyingConversation ? 'Copied!' : 'Copy Chat'"></span>
+            </x-button>
         </div>
     </div>
 </div>
