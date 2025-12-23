@@ -51,8 +51,8 @@ $tools = $service->getToolsForProvider('claude_code');
 AI providers implement a common interface for streaming responses:
 
 ```php
-$provider = ProviderFactory::create($conversation);
-$provider->streamResponse($conversation, $messages, $options);
+$provider = app(ProviderFactory::class)->make($agent->provider);
+$provider->streamMessage($conversation, $options);
 ```
 
 ## Adding New Services
