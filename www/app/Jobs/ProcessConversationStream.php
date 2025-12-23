@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Contracts\AIProviderInterface;
+use App\Enums\Provider;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ModelRepository;
@@ -126,9 +127,11 @@ class ProcessConversationStream implements ShouldQueue
         $conversation->load('messages');
 
         // Build system prompt with tool instructions
-        // Claude Code uses a different method that injects artisan commands instead of native tools
-        if ($provider->getProviderType() === 'claude_code') {
-            $systemPrompt = $systemPromptBuilder->buildForClaudeCode($conversation);
+        // CLI providers (Claude Code, Codex) use artisan commands instead of native tools
+        $providerType = $provider->getProviderType();
+        $providerEnum = Provider::tryFrom($providerType);
+        if ($providerEnum?->isCliProvider()) {
+            $systemPrompt = $systemPromptBuilder->buildForCliProvider($conversation, $providerType);
         } else {
             $systemPrompt = $systemPromptBuilder->build($conversation, $toolRegistry);
         }

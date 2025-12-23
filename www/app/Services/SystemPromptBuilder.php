@@ -39,10 +39,10 @@ class SystemPromptBuilder
     }
 
     /**
-     * Build the system prompt specifically for Claude Code provider.
+     * Build the system prompt for CLI providers (Claude Code, Codex).
      * Injects PocketDev-exclusive tools (memory, tool management, user tools).
      */
-    public function buildForClaudeCode(Conversation $conversation): string
+    public function buildForCliProvider(Conversation $conversation, string $provider): string
     {
         $sections = [];
 
@@ -50,8 +50,8 @@ class SystemPromptBuilder
         $sections[] = $this->systemPromptService->get();
 
         // PocketDev tools (memory, tool management, user tools)
-        // These are tools that don't have native Claude Code equivalents
-        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt(Provider::ClaudeCode->value);
+        // These are tools that don't have native CLI provider equivalents
+        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider);
         if (!empty($pocketDevToolPrompt)) {
             $sections[] = $pocketDevToolPrompt;
         }
