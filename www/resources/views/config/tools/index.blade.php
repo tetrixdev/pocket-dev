@@ -29,6 +29,7 @@
                     :description="$tool['description'] ?? null"
                     :showToggle="true"
                     :enabled="$tool['enabled'] ?? true"
+                    :disabled="true"
                     provider="claude_code"
                 />
             @endforeach
@@ -48,6 +49,7 @@
                     :description="$tool['description'] ?? null"
                     :showToggle="true"
                     :enabled="$tool['enabled'] ?? true"
+                    :disabled="true"
                     provider="codex"
                 />
             @endforeach

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Agent;
 use App\Models\PocketTool;
+use App\Services\NativeToolService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1225,31 +1226,12 @@ class ConfigController extends Controller
      *
      * The static config defines all available tools with their default enabled state.
      * Database records in tool_settings override these defaults at runtime.
+     *
+     * @see \App\Services\NativeToolService for the centralized implementation
      */
     protected function getNativeToolsConfig(): array
     {
-        $config = config('native_tools', []);
-
-        // Load all overrides from database
-        $overrides = DB::table('tool_settings')
-            ->get()
-            ->keyBy(fn ($row) => "{$row->provider}.{$row->tool_name}");
-
-        // Apply overrides to each provider's tools
-        foreach ($config as $provider => &$providerConfig) {
-            if (!isset($providerConfig['tools'])) {
-                continue;
-            }
-
-            foreach ($providerConfig['tools'] as &$tool) {
-                $key = "{$provider}.{$tool['name']}";
-                if ($overrides->has($key)) {
-                    $tool['enabled'] = (bool) $overrides->get($key)->enabled;
-                }
-            }
-        }
-
-        return $config;
+        return app(NativeToolService::class)->getAllConfig();
     }
 
     /**
@@ -1284,6 +1266,9 @@ class ConfigController extends Controller
                 ? ['enabled' => $enabled, 'updated_at' => now()]
                 : ['enabled' => $enabled, 'created_at' => now(), 'updated_at' => now()]
         );
+
+        // Clear the NativeToolService cache so changes take effect immediately
+        app(NativeToolService::class)->clearCache();
     }
 
     /**

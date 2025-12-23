@@ -212,16 +212,25 @@
                 <div x-show="provider === 'claude_code' && nativeTools.length > 0">
                     <h4 class="text-sm font-medium text-gray-300 mb-2">Native Tools <span class="text-gray-500 text-xs" x-text="'(' + nativeTools.length + ')'"></span></h4>
                     <div class="flex flex-wrap gap-2">
-                        <template x-for="tool in nativeTools" :key="tool">
-                            <label class="flex items-center gap-1.5 px-2 py-1 bg-gray-800 border border-gray-700 rounded" :class="allToolsSelected ? 'cursor-not-allowed' : 'cursor-pointer hover:border-gray-600'">
+                        <template x-for="tool in nativeTools" :key="typeof tool === 'string' ? tool : tool.name">
+                            <label
+                                class="flex items-center gap-1.5 px-2 py-1 bg-gray-800 border rounded"
+                                :class="{
+                                    'border-yellow-600/50 opacity-60 cursor-not-allowed': typeof tool === 'object' && !tool.enabled,
+                                    'border-gray-700 cursor-not-allowed': (typeof tool === 'string' || tool.enabled) && allToolsSelected,
+                                    'border-gray-700 cursor-pointer hover:border-gray-600': (typeof tool === 'string' || tool.enabled) && !allToolsSelected
+                                }"
+                                :title="typeof tool === 'object' && !tool.enabled ? 'Managed by PocketDev - this tool may interfere with PocketDev operation' : ''"
+                            >
                                 <input
                                     type="checkbox"
-                                    :checked="isToolSelected(tool)"
-                                    @change="toggleTool(tool)"
-                                    :disabled="allToolsSelected"
+                                    :checked="isToolSelected(typeof tool === 'string' ? tool : tool.name)"
+                                    @change="toggleTool(typeof tool === 'string' ? tool : tool.name)"
+                                    :disabled="(typeof tool === 'object' && !tool.enabled) || allToolsSelected"
                                     class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500 disabled:opacity-50"
                                 >
-                                <span class="text-xs" x-text="tool"></span>
+                                <span class="text-xs" x-text="typeof tool === 'string' ? tool : tool.name"></span>
+                                <span x-show="typeof tool === 'object' && !tool.enabled" class="text-yellow-500 text-xs ml-0.5">&#9888;</span>
                             </label>
                         </template>
                     </div>

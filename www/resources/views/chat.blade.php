@@ -183,6 +183,9 @@
                 // Per-message breakdown
                 breakdownMessage: null,
 
+                // Copy conversation state
+                copyingConversation: false,
+
                 // Voice recording state
                 isRecording: false,
                 isProcessing: false,
@@ -1287,11 +1290,13 @@
                 },
 
                 // Get available tools for Claude Code from config
+                // Filters to only enabled tools (tools now come as objects with enabled status)
                 get claudeCodeAvailableTools() {
-                    return this.providers.claude_code?.available_tools || [
-                        'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'LS',
-                        'Bash', 'Task', 'WebFetch', 'WebSearch', 'NotebookRead', 'NotebookEdit',
-                    ];
+                    const tools = this.providers.claude_code?.available_tools || [];
+                    // Filter to only enabled tools, return just names for the multi-select
+                    return tools
+                        .filter(t => typeof t === 'string' || t.enabled !== false)
+                        .map(t => typeof t === 'string' ? t : t.name);
                 },
 
                 // Get display name for current reasoning setting
@@ -1772,6 +1777,149 @@
                     if (this.isProcessing) return 'bg-gray-600 text-gray-200 cursor-not-allowed';
                     if (this.isRecording) return 'bg-red-600 text-white hover:bg-red-700';
                     return 'bg-purple-600 text-white hover:bg-purple-700';
+                },
+
+                // ==================== Copy Conversation ====================
+
+                async copyConversationToClipboard() {
+                    if (this.messages.length === 0) {
+                        this.showError('No conversation to copy');
+                        return;
+                    }
+
+                    this.copyingConversation = true;
+
+                    try {
+                        const text = this.formatConversationForExport();
+                        await navigator.clipboard.writeText(text);
+
+                        // Brief visual feedback
+                        setTimeout(() => {
+                            this.copyingConversation = false;
+                        }, 2000);
+                    } catch (err) {
+                        console.error('Failed to copy conversation:', err);
+                        this.showError('Failed to copy conversation to clipboard');
+                        this.copyingConversation = false;
+                    }
+                },
+
+                formatConversationForExport() {
+                    const lines = [];
+
+                    // Header with conversation metadata
+                    lines.push('# Chat Conversation Export');
+                    lines.push(`**Exported:** ${new Date().toISOString()}`);
+                    if (this.currentAgent) {
+                        lines.push(`**Agent:** ${this.currentAgent.name}`);
+                        lines.push(`**Provider:** ${this.getProviderDisplayName(this.currentAgent.provider)}`);
+                        lines.push(`**Model:** ${this.model}`);
+                    }
+                    lines.push(`**Total Cost:** $${this.sessionCost.toFixed(4)}`);
+                    lines.push(`**Total Tokens:** ${this.totalTokens.toLocaleString()}`);
+                    lines.push('');
+                    lines.push('---');
+                    lines.push('');
+
+                    // Format each message
+                    for (const msg of this.messages) {
+                        lines.push(this.formatMessageForExport(msg));
+                        lines.push('');
+                    }
+
+                    return lines.join('\n');
+                },
+
+                formatMessageForExport(msg) {
+                    const lines = [];
+                    const timestamp = this.formatTimestamp(msg.timestamp);
+
+                    switch (msg.role) {
+                        case 'user':
+                            lines.push(`## User [${timestamp}]`);
+                            lines.push('');
+                            lines.push(msg.content);
+                            break;
+
+                        case 'assistant':
+                            lines.push(`## Assistant [${timestamp}]`);
+                            if (msg.model) {
+                                lines.push(`*Model: ${this.getModelDisplayName(msg.model)}*`);
+                            }
+                            if (msg.cost) {
+                                lines.push(`*Cost: $${msg.cost.toFixed(4)}*`);
+                            }
+                            lines.push('');
+                            lines.push(msg.content);
+                            break;
+
+                        case 'thinking':
+                            lines.push(`## Thinking [${timestamp}]`);
+                            if (msg.cost) {
+                                lines.push(`*Cost: $${msg.cost.toFixed(4)}*`);
+                            }
+                            lines.push('');
+                            lines.push('```');
+                            lines.push(msg.content);
+                            lines.push('```');
+                            break;
+
+                        case 'tool':
+                            lines.push(`## Tool: ${msg.toolName} [${timestamp}]`);
+                            if (msg.model) {
+                                lines.push(`*Model: ${this.getModelDisplayName(msg.model)}*`);
+                            }
+                            if (msg.cost) {
+                                lines.push(`*Cost: $${msg.cost.toFixed(4)}*`);
+                            }
+                            lines.push('');
+                            lines.push('**Input:**');
+                            lines.push('```json');
+                            lines.push(this.formatToolInputForExport(msg.toolInput));
+                            lines.push('```');
+                            if (msg.toolResult) {
+                                lines.push('');
+                                lines.push('**Result:**');
+                                lines.push('```');
+                                lines.push(typeof msg.toolResult === 'string'
+                                    ? msg.toolResult
+                                    : JSON.stringify(msg.toolResult, null, 2));
+                                lines.push('```');
+                            }
+                            break;
+
+                        case 'system':
+                            lines.push(`## System: ${msg.command || 'Info'} [${timestamp}]`);
+                            lines.push('');
+                            lines.push(msg.content);
+                            break;
+
+                        case 'empty-response':
+                            lines.push(`## Assistant (No Content) [${timestamp}]`);
+                            if (msg.cost) {
+                                lines.push(`*Cost: $${msg.cost.toFixed(4)}*`);
+                            }
+                            break;
+
+                        default:
+                            lines.push(`## ${msg.role} [${timestamp}]`);
+                            lines.push('');
+                            lines.push(msg.content || '');
+                    }
+
+                    return lines.join('\n');
+                },
+
+                formatToolInputForExport(toolInput) {
+                    if (!toolInput) return '';
+                    try {
+                        const input = typeof toolInput === 'string'
+                            ? JSON.parse(toolInput)
+                            : toolInput;
+                        return JSON.stringify(input, null, 2);
+                    } catch (e) {
+                        return String(toolInput);
+                    }
                 }
             };
         }

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ProcessConversationStream;
 use App\Models\Agent;
 use App\Models\Conversation;
+use App\Services\NativeToolService;
 use App\Services\ProviderFactory;
 use App\Services\StreamManager;
 use App\Streaming\SseWriter;
@@ -447,9 +448,10 @@ class ConversationController extends Controller
                 $providerData['reasoning_config'] = $reasoningConfig;
             }
 
-            // Include available tools for claude_code
+            // Include available tools for claude_code with enabled status
             if ($type === 'claude_code') {
-                $providerData['available_tools'] = config('ai.providers.claude_code.available_tools', []);
+                $nativeToolService = app(NativeToolService::class);
+                $providerData['available_tools'] = $nativeToolService->getToolsForProvider('claude_code');
             }
 
             $providers[$type] = $providerData;
