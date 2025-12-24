@@ -1776,11 +1776,11 @@
                         // Always commit to flush any pending audio (empty buffer errors are ignored)
                         this.realtimeWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
 
-                        // Always wait for transcription to complete (or timeout after 3s)
+                        // Always wait for transcription to complete (or timeout after 6s)
                         this.waitingForFinalTranscript = true;
                         this.stopTimeout = setTimeout(() => {
                             this.finishStopRecording();
-                        }, 3000);
+                        }, 6000);
                     } else {
                         this.cleanupRealtimeSession();
                     }
