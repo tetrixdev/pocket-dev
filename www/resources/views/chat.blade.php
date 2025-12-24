@@ -194,6 +194,15 @@
                 openAiKeyConfigured: false,
                 autoSendAfterTranscription: false,
 
+                // Realtime transcription state (WebSocket-based)
+                realtimeWs: null,
+                realtimeTranscript: '',
+                realtimeAudioContext: null,
+                realtimeAudioWorklet: null,
+                realtimeStream: null,
+                waitingForFinalTranscript: false,
+                stopTimeout: null,
+
                 // Anthropic API key state (for Claude Code)
                 anthropicKeyInput: '',
                 anthropicKeyConfigured: false,
@@ -1589,144 +1598,312 @@
 
                 async startVoiceRecording() {
                     try {
-                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                        this.isProcessing = true;
+                        // Preserve existing prompt text, add space if needed
+                        this.realtimeTranscript = this.prompt.trim() ? this.prompt.trim() + ' ' : '';
+                        this.currentTranscriptItemId = null;
 
-                        const audioConstraints = isMobile ? {
+                        // Get ephemeral token from backend
+                        const sessionResponse = await fetch('/api/claude/transcribe/realtime-session', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        });
+
+                        if (sessionResponse.status === 428) {
+                            this.openAiKeyConfigured = false;
+                            this.showOpenAiModal = true;
+                            this.isProcessing = false;
+                            return;
+                        }
+
+                        const sessionData = await sessionResponse.json();
+                        if (!sessionData.success || !sessionData.client_secret) {
+                            throw new Error(sessionData.error || 'Failed to create transcription session');
+                        }
+
+                        // Connect to OpenAI Realtime API (GA - no beta header)
+                        const wsUrl = 'wss://api.openai.com/v1/realtime?intent=transcription';
+                        this.realtimeWs = new WebSocket(wsUrl, [
+                            'realtime',
+                            `openai-insecure-api-key.${sessionData.client_secret}`,
+                        ]);
+
+                        this.realtimeWs.onopen = async () => {
+                            this.debugLog('WebSocket connected');
+
+                            // Configure the transcription session (GA API uses audio.input structure)
+                            this.realtimeWs.send(JSON.stringify({
+                                type: 'session.update',
+                                session: {
+                                    type: 'transcription',
+                                    audio: {
+                                        input: {
+                                            format: {
+                                                type: 'audio/pcm',
+                                                rate: 24000,
+                                            },
+                                            transcription: {
+                                                model: 'gpt-4o-transcribe',
+                                            },
+                                            turn_detection: {
+                                                type: 'server_vad',
+                                                threshold: 0.5,
+                                                prefix_padding_ms: 300,
+                                                silence_duration_ms: 500,
+                                            },
+                                            noise_reduction: {
+                                                type: 'near_field',
+                                            },
+                                        },
+                                    },
+                                }
+                            }));
+
+                            // Start capturing audio
+                            await this.startAudioCapture();
+                            this.isRecording = true;
+                            this.isProcessing = false;
+                        };
+
+                        this.realtimeWs.onmessage = (event) => {
+                            const msg = JSON.parse(event.data);
+
+                            // DEBUG: Log all incoming messages
+                            this.debugLog(' Received:', msg.type, msg);
+
+                            if (msg.type === 'conversation.item.input_audio_transcription.delta') {
+                                // Incremental transcript update
+                                this.debugLog(' Delta transcript:', msg.delta);
+                                if (msg.delta) {
+                                    // Add space between turns
+                                    if (this.currentTranscriptItemId && this.currentTranscriptItemId !== msg.item_id) {
+                                        this.realtimeTranscript += ' ';
+                                    }
+                                    this.currentTranscriptItemId = msg.item_id;
+                                    this.realtimeTranscript += msg.delta;
+                                    this.prompt = this.realtimeTranscript;
+                                    this.debugLog(' Current transcript:', this.realtimeTranscript);
+                                }
+                            } else if (msg.type === 'conversation.item.input_audio_transcription.completed') {
+                                // Final transcript for this turn
+                                this.debugLog(' Completed transcript:', msg.transcript);
+                                // Don't overwrite - deltas already built the transcript
+                                // if (msg.transcript) { this.prompt = msg.transcript; }
+                                // If we're waiting to stop, finish now
+                                if (this.waitingForFinalTranscript) {
+                                    this.debugLog('Got final transcript, finishing...');
+                                    this.finishStopRecording();
+                                }
+                            } else if (msg.type === 'session.created' || msg.type === 'session.updated') {
+                                this.debugLog(' Session config:', msg.session);
+                            } else if (msg.type === 'input_audio_buffer.speech_started') {
+                                this.debugLog(' Speech started detected');
+                            } else if (msg.type === 'input_audio_buffer.speech_stopped') {
+                                this.debugLog(' Speech stopped detected');
+                            } else if (msg.type === 'input_audio_buffer.committed') {
+                                this.debugLog(' Audio buffer committed');
+                            } else if (msg.type === 'error') {
+                                console.error('[RT] API error:', msg.error);
+                                // Ignore empty buffer error when stopping
+                                if (msg.error?.code === 'input_audio_buffer_commit_empty' && this.waitingForFinalTranscript) {
+                                    this.debugLog('Buffer was empty, finishing...');
+                                    this.finishStopRecording();
+                                } else {
+                                    this.showError('Transcription error: ' + (msg.error?.message || 'Unknown error'));
+                                }
+                            }
+                        };
+
+                        this.realtimeWs.onerror = (error) => {
+                            console.error('WebSocket error:', error);
+                            this.cleanupRealtimeSession();
+                            this.showError('Connection error. Please try again.');
+                        };
+
+                        this.realtimeWs.onclose = () => {
+                            this.debugLog('WebSocket closed');
+                            this.cleanupRealtimeSession();
+                        };
+
+                    } catch (err) {
+                        console.error('Error starting voice recording:', err);
+                        this.isProcessing = false;
+                        this.showError(err.message || 'Could not start voice recording.');
+                    }
+                },
+
+                async startAudioCapture() {
+                    try {
+                        this.debugLog('Starting audio capture...');
+                        // Get microphone access - don't specify sampleRate (mobile doesn't support it)
+                        this.realtimeStream = await navigator.mediaDevices.getUserMedia({
                             audio: {
+                                channelCount: 1,
                                 echoCancellation: true,
                                 noiseSuppression: true,
-                                autoGainControl: true
+                                autoGainControl: true,
                             }
-                        } : {
-                            audio: {
-                                autoGainControl: false,
-                                echoCancellation: false,
-                                noiseSuppression: false,
-                                sampleRate: 16000,
-                                channelCount: 1
-                            }
-                        };
+                        });
+                        this.debugLog('Microphone access granted');
 
-                        const stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
-
-                        const mimeTypes = [
-                            'audio/webm;codecs=opus',
-                            'audio/webm',
-                            'audio/mp4',
-                            'audio/ogg;codecs=opus',
-                            'audio/wav'
-                        ];
-
-                        let selectedMimeType = '';
-                        for (const mimeType of mimeTypes) {
-                            if (MediaRecorder.isTypeSupported(mimeType)) {
-                                selectedMimeType = mimeType;
-                                break;
-                            }
+                        // Create AudioContext at device's native rate (mobile won't honor specific rates)
+                        this.realtimeAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        
+                        // Mobile browsers require explicit resume after user gesture
+                        if (this.realtimeAudioContext.state === 'suspended') {
+                            this.debugLog(' AudioContext suspended, resuming...');
+                            await this.realtimeAudioContext.resume();
                         }
+                        this.debugLog(' AudioContext state:', this.realtimeAudioContext.state);
+                        
+                        const nativeSampleRate = this.realtimeAudioContext.sampleRate;
+                        const targetSampleRate = 24000;
+                        this.debugLog(' Native sample rate:', nativeSampleRate, '-> resampling to', targetSampleRate);
 
-                        if (!selectedMimeType) {
-                            this.mediaRecorder = new MediaRecorder(stream);
-                        } else {
-                            this.mediaRecorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
-                        }
+                        const source = this.realtimeAudioContext.createMediaStreamSource(this.realtimeStream);
 
-                        this.audioChunks = [];
+                        // Use ScriptProcessorNode for audio processing
+                        // Larger buffer for mobile stability
+                        const processor = this.realtimeAudioContext.createScriptProcessor(4096, 1, 1);
 
-                        this.mediaRecorder.ondataavailable = (event) => {
-                            if (event.data.size > 0) {
-                                this.audioChunks.push(event.data);
+                        this.audioChunkCount = 0;
+                        processor.onaudioprocess = (e) => {
+                            if (!this.realtimeWs || this.realtimeWs.readyState !== WebSocket.OPEN) return;
+
+                            const inputData = e.inputBuffer.getChannelData(0);
+
+                            // Resample to 24kHz if needed
+                            let resampledData;
+                            if (nativeSampleRate !== targetSampleRate) {
+                                const ratio = nativeSampleRate / targetSampleRate;
+                                const newLength = Math.floor(inputData.length / ratio);
+                                resampledData = new Float32Array(newLength);
+                                for (let i = 0; i < newLength; i++) {
+                                    const srcIndex = Math.floor(i * ratio);
+                                    resampledData[i] = inputData[srcIndex];
+                                }
+                            } else {
+                                resampledData = inputData;
+                            }
+
+                            // Convert Float32 [-1, 1] to Int16 PCM
+                            const pcm16 = new Int16Array(resampledData.length);
+                            for (let i = 0; i < resampledData.length; i++) {
+                                const s = Math.max(-1, Math.min(1, resampledData[i]));
+                                pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                            }
+
+                            // Convert to base64 and send
+                            const base64Audio = this.arrayBufferToBase64(pcm16.buffer);
+                            this.realtimeWs.send(JSON.stringify({
+                                type: 'input_audio_buffer.append',
+                                audio: base64Audio
+                            }));
+
+                            // DEBUG: Log every 10th chunk to avoid spam
+                            this.audioChunkCount++;
+                            if (this.audioChunkCount % 10 === 0) {
+                                this.debugLog(' Sent audio chunk #' + this.audioChunkCount + ', size:', base64Audio.length);
                             }
                         };
 
-                        this.mediaRecorder.onstop = async () => {
-                            await this.processRecording();
-                        };
+                        source.connect(processor);
+                        processor.connect(this.realtimeAudioContext.destination);
+                        this.debugLog('Audio processor connected');
 
-                        this.mediaRecorder.start(isMobile ? 1000 : undefined);
-                        this.isRecording = true;
+                        this.realtimeAudioWorklet = processor;
                     } catch (err) {
-                        console.error('Error accessing microphone:', err);
-                        this.showError('Could not access microphone. Please check permissions.');
+                        console.error('Error capturing audio:', err);
+                        throw new Error('Could not access microphone. Please check permissions.');
                     }
+                },
+
+                debugLog(...args) {
+                    console.log('[RT]', ...args);
+                },
+
+                arrayBufferToBase64(buffer) {
+                    const bytes = new Uint8Array(buffer);
+                    let binary = '';
+                    for (let i = 0; i < bytes.byteLength; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    return btoa(binary);
                 },
 
                 stopVoiceRecording() {
-                    if (this.mediaRecorder && this.isRecording) {
-                        this.mediaRecorder.stop();
-                        this.isRecording = false;
-                        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                    if (!this.isRecording) return;
+
+                    this.isRecording = false;
+                    this.debugLog('Stopping recording...');
+
+                    if (this.realtimeWs && this.realtimeWs.readyState === WebSocket.OPEN) {
+                        // Try to commit any pending audio (ignore errors if buffer empty)
+                        this.realtimeWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+                        this.debugLog('Sent commit, waiting for transcription...');
+
+                        // Wait for transcription to complete (or timeout after 3s)
+                        this.waitingForFinalTranscript = true;
+                        this.stopTimeout = setTimeout(() => {
+                            this.debugLog('Timeout reached, closing...');
+                            this.finishStopRecording();
+                        }, 3000);
+                    } else {
+                        this.cleanupRealtimeSession();
                     }
                 },
 
-                async processRecording() {
-                    this.isProcessing = true;
-
-                    try {
-                        if (!this.audioChunks || this.audioChunks.length === 0) {
-                            this.showError('No audio recorded. Please try again and speak for at least 1 second.');
-                            return;
-                        }
-
-                        const actualMimeType = this.mediaRecorder.mimeType || 'audio/webm';
-                        const audioBlob = new Blob(this.audioChunks, { type: actualMimeType });
-
-                        if (audioBlob.size < 1000) {
-                            this.showError('Recording too short. Please record for at least 1 second.');
-                            return;
-                        }
-
-                        if (audioBlob.size > 25 * 1024 * 1024) {
-                            this.showError('Recording too large. Please keep it under 25MB.');
-                            return;
-                        }
-
-                        let extension = 'webm';
-                        if (actualMimeType.includes('mp4')) extension = 'm4a';
-                        else if (actualMimeType.includes('mpeg') || actualMimeType.includes('mp3')) extension = 'mp3';
-                        else if (actualMimeType.includes('wav')) extension = 'wav';
-                        else if (actualMimeType.includes('ogg')) extension = 'ogg';
-
-                        const formData = new FormData();
-                        formData.append('audio', audioBlob, `recording.${extension}`);
-
-                        const response = await fetch('/api/claude/transcribe', {
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                            },
-                            body: formData
-                        });
-
-                        if (response.status === 428) {
-                            this.openAiKeyConfigured = false;
-                            this.showOpenAiModal = true;
-                            return;
-                        }
-
-                        const data = await response.json();
-
-                        if (!response.ok) {
-                            this.showError('Transcription failed: ' + (data.error || 'Unknown error'));
-                            return;
-                        }
-
-                        if (data.success && data.transcription) {
-                            this.prompt = data.transcription;
-
-                            if (this.autoSendAfterTranscription) {
-                                this.autoSendAfterTranscription = false;
-                                setTimeout(() => this.sendMessage(), 100);
-                            }
-                        } else {
-                            this.showError('Transcription failed: ' + (data.error || 'Unknown error'));
-                        }
-                    } catch (err) {
-                        console.error('Error processing recording:', err);
-                        this.showError('Error processing audio');
-                    } finally {
-                        this.isProcessing = false;
+                finishStopRecording() {
+                    if (this.stopTimeout) {
+                        clearTimeout(this.stopTimeout);
+                        this.stopTimeout = null;
                     }
+                    this.waitingForFinalTranscript = false;
+
+                    if (this.realtimeWs) {
+                        this.realtimeWs.close();
+                    }
+                    this.cleanupRealtimeSession();
+
+                    // Handle auto-send
+                    if (this.autoSendAfterTranscription && this.prompt.trim()) {
+                        this.autoSendAfterTranscription = false;
+                        setTimeout(() => this.sendMessage(), 100);
+                    }
+                },
+
+                cleanupRealtimeSession() {
+                    // Stop audio processing
+                    if (this.realtimeAudioWorklet) {
+                        this.realtimeAudioWorklet.disconnect();
+                        this.realtimeAudioWorklet = null;
+                    }
+
+                    // Close audio context
+                    if (this.realtimeAudioContext) {
+                        this.realtimeAudioContext.close();
+                        this.realtimeAudioContext = null;
+                    }
+
+                    // Stop microphone stream
+                    if (this.realtimeStream) {
+                        this.realtimeStream.getTracks().forEach(track => track.stop());
+                        this.realtimeStream = null;
+                    }
+
+                    // Close WebSocket
+                    if (this.realtimeWs) {
+                        if (this.realtimeWs.readyState === WebSocket.OPEN) {
+                            this.realtimeWs.close();
+                        }
+                        this.realtimeWs = null;
+                    }
+
+                    this.isRecording = false;
+                    this.isProcessing = false;
                 },
 
                 async saveOpenAiKey() {
@@ -1770,7 +1947,7 @@
                 },
 
                 get voiceButtonText() {
-                    if (this.isProcessing) return '⏳ Processing...';
+                    if (this.isProcessing) return '⏳ Connecting...';
                     if (this.isRecording) return '⏹️ Stop';
                     return '🎙️ Record';
                 },

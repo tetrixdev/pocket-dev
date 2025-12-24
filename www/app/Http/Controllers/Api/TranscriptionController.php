@@ -8,7 +8,6 @@ use App\Services\AppSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Controller for voice transcription and OpenAI API key management.
@@ -22,46 +21,35 @@ class TranscriptionController extends Controller
     ) {}
 
     /**
-     * Transcribe audio using OpenAI Whisper.
+     * Create a realtime transcription session.
+     * Returns an ephemeral token for direct WebSocket connection to OpenAI.
      */
-    public function transcribe(Request $request): JsonResponse
+    public function createRealtimeSession(): JsonResponse
     {
         try {
-            $request->validate([
-                'audio' => 'required|file|mimes:webm,wav,mp3,m4a,ogg|max:25600', // 25MB max (OpenAI Whisper limit)
-            ]);
-
             // Check if API key is configured
             if (!$this->appSettings->hasOpenAiApiKey()) {
                 return response()->json([
                     'error' => 'OpenAI API key not configured',
                     'requires_setup' => true
-                ], 428); // 428 Precondition Required
+                ], 428);
             }
 
-            $audioFile = $request->file('audio');
-
-            // Transcribe using OpenAI service
-            $transcription = $this->transcriptionService->transcribeAudio($audioFile);
+            $session = $this->transcriptionService->createRealtimeSession();
 
             return response()->json([
-                'transcription' => trim($transcription),
                 'success' => true,
+                'client_secret' => $session['client_secret'],
+                'expires_at' => $session['expires_at'],
             ]);
-
-        } catch (ValidationException $e) {
-            return response()->json([
-                'error' => 'Invalid audio file: ' . implode(', ', $e->errors()['audio'] ?? ['Unknown validation error'])
-            ], 422);
 
         } catch (\Exception $e) {
-            Log::error('Audio transcription failed', [
+            Log::error('Failed to create realtime session', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
-                'error' => 'Audio processing failed: ' . $e->getMessage()
+                'error' => 'Failed to create transcription session: ' . $e->getMessage()
             ], 500);
         }
     }
