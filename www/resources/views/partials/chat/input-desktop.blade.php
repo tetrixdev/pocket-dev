@@ -6,7 +6,7 @@
                 @click="toggleVoiceRecording()"
                 :class="voiceButtonClass"
                 :disabled="isProcessing || isStreaming || waitingForFinalTranscript"
-                class="px-4 py-4 rounded-lg font-medium text-sm flex items-center justify-center min-w-[120px]"
+                class="p-4 rounded-lg font-medium text-sm flex items-center justify-center"
                 title="Voice input (Ctrl+Space)"
                 @keydown.ctrl.space.window.prevent="toggleVoiceRecording()"
                 x-text="voiceButtonText">
@@ -47,12 +47,12 @@
                 @click="handleSendClick($event)"
                 :disabled="isStreaming || isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
                 :class="isStreaming || isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-700'"
-                class="px-6 py-4 rounded-lg flex items-center justify-center disabled:cursor-not-allowed">
+                class="p-4 rounded-lg flex items-center justify-center disabled:cursor-not-allowed">
             <template x-if="!isStreaming">
-                <span>Send</span>
+                <span>▶️ Send</span>
             </template>
             <template x-if="isStreaming">
-                <span>Streaming...</span>
+                <span>⏳ Streaming...</span>
             </template>
         </button>
     </form>
