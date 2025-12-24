@@ -42,8 +42,8 @@
         {{-- Send Button --}}
         <button type="submit"
                 @click="handleSendClick($event)"
-                :disabled="isStreaming || waitingForFinalTranscript || (!prompt.trim() && !isRecording)"
-                :class="isStreaming || waitingForFinalTranscript ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-700'"
+                :disabled="isStreaming || isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
+                :class="isStreaming || isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-700'"
                 class="px-6 py-3 rounded-lg flex items-center justify-center disabled:cursor-not-allowed">
             <template x-if="!isStreaming">
                 <span>Send</span>

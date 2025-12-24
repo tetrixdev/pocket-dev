@@ -49,9 +49,9 @@
 
         {{-- Send Button --}}
         <button type="button"
-                @click="handleSendClick($event); if(!isRecording) sendMessage()"
-                :disabled="isStreaming || waitingForFinalTranscript || (!prompt.trim() && !isRecording)"
-                :class="isStreaming || waitingForFinalTranscript ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-700'"
+                @click="handleSendClick($event); if(!isRecording && !isProcessing && !waitingForFinalTranscript) sendMessage()"
+                :disabled="isStreaming || isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
+                :class="isStreaming || isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-700'"
                 class="px-4 py-3 rounded-lg font-semibold text-sm disabled:cursor-not-allowed">
             <template x-if="!isStreaming">
                 <span>Send</span>

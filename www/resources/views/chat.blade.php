@@ -1773,14 +1773,19 @@
                     this.isRecording = false;
 
                     if (this.realtimeWs && this.realtimeWs.readyState === WebSocket.OPEN) {
-                        // Try to commit any pending audio (ignore errors if buffer empty)
-                        this.realtimeWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+                        // Only commit if we actually sent audio chunks (avoids empty buffer error)
+                        if (this.audioChunkCount > 0) {
+                            this.realtimeWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
 
-                        // Wait for transcription to complete (or timeout after 3s)
-                        this.waitingForFinalTranscript = true;
-                        this.stopTimeout = setTimeout(() => {
-                            this.finishStopRecording();
-                        }, 3000);
+                            // Wait for transcription to complete (or timeout after 3s)
+                            this.waitingForFinalTranscript = true;
+                            this.stopTimeout = setTimeout(() => {
+                                this.finishStopRecording();
+                            }, 3000);
+                        } else {
+                            // No audio was captured, just cleanup
+                            this.cleanupRealtimeSession();
+                        }
                     } else {
                         this.cleanupRealtimeSession();
                     }
