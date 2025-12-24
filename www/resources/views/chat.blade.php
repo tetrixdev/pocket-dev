@@ -885,13 +885,16 @@
                     };
 
                     try {
-                        // Build stream request body with provider-specific reasoning settings
+                        // Build stream request body
                         const streamBody = {
                             prompt: userPrompt,
                             response_level: this.responseLevel,
                             model: this.model
                         };
-                        // Add provider-specific reasoning settings
+                        // NOTE: Reasoning/thinking settings are now loaded from the agent on the backend.
+                        // Per-message reasoning override has been disabled (see input-desktop.blade.php).
+                        // To re-enable, uncomment below and the reasoning toggle button.
+                        /*
                         if (this.provider === 'anthropic') {
                             streamBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
                         } else if (this.provider === 'openai') {
@@ -901,6 +904,7 @@
                         } else if (this.provider === 'claude_code') {
                             streamBody.claude_code_thinking_tokens = this.claudeCodeThinkingTokens;
                         }
+                        */
 
                         // Start the background streaming job
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/stream`, {

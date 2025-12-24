@@ -24,7 +24,8 @@
                   @keydown.ctrl.space.prevent="toggleVoiceRecording()"
                   @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); sendMessage(); }"></textarea>
 
-        {{-- Reasoning Toggle (Provider-specific) --}}
+        {{-- Reasoning Toggle - DISABLED: Now relying on agent's thinking level instead of per-message override.
+             Uncomment to re-enable per-message reasoning control.
         <button type="button"
                 @click="cycleReasoningLevel()"
                 :class="{
@@ -39,6 +40,7 @@
             <span x-text="currentReasoningName === 'Off' ? '🧠' : (currentReasoningName === 'Light' ? '💭' : (currentReasoningName === 'Standard' ? '🤔' : (currentReasoningName === 'Deep' ? '🧩' : '🌟')))"></span>
             <span class="ml-1" x-text="currentReasoningName"></span>
         </button>
+        --}}
 
         {{-- Send Button --}}
         <button type="submit"

@@ -24,7 +24,7 @@
             <span x-text="isProcessing ? '⏳' : (waitingForFinalTranscript ? '⏳' : (isRecording ? '⏹️' : '🎙️'))"></span>
         </button>
 
-        {{-- Reasoning Toggle --}}
+        {{-- Reasoning Toggle - DISABLED: Now relying on agent's thinking level instead of per-message override.
         <button type="button"
                 @click="cycleReasoningLevel()"
                 :class="{
@@ -38,6 +38,7 @@
                 title="Toggle reasoning">
             <span x-text="currentReasoningName === 'Off' ? '🧠' : (currentReasoningName === 'Light' ? '💭' : (currentReasoningName === 'Standard' ? '🤔' : (currentReasoningName === 'Deep' ? '🧩' : '🌟')))"></span>
         </button>
+        --}}
 
         {{-- Clear Button --}}
         <button type="button"
