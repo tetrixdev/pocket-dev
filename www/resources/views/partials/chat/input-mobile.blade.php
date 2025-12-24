@@ -1,22 +1,30 @@
 {{-- Fixed Bottom Input (Mobile) --}}
 <div class="fixed bottom-0 left-0 right-0 z-20 bg-gray-800 border-t border-gray-700 safe-area-bottom">
     {{-- Input Row --}}
-    <div class="p-3">
+    <div class="p-2">
         <textarea x-model="prompt"
                   x-ref="promptInput"
                   :disabled="isStreaming"
                   @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); sendMessage(); }"
-                  @focus="isPromptFocused = true"
-                  @blur="isPromptFocused = false"
                   placeholder="Ask AI..."
                   rows="1"
-                  class="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto transition-all duration-200"
-                  :style="{ 'min-height': isPromptFocused ? '56px' : '32px', 'max-height': '120px' }"></textarea>
+                  class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto"
+                  style="height: 40px; max-height: 120px;"></textarea>
     </div>
 
-    {{-- Controls Row 1: Reasoning + Clear --}}
-    <div class="px-3 pb-2 grid grid-cols-2 gap-2">
-        {{-- Reasoning Toggle (Provider-specific) --}}
+    {{-- Controls Row: All buttons in one row with icons only --}}
+    <div class="px-2 pb-2 flex gap-2">
+        {{-- Voice Button --}}
+        <button type="button"
+                @click="toggleVoiceRecording()"
+                :class="voiceButtonClass"
+                :disabled="isProcessing || isStreaming || waitingForFinalTranscript"
+                class="flex-1 py-2 rounded-lg text-xl flex items-center justify-center"
+                title="Voice input">
+            <span x-text="isProcessing ? '⏳' : (waitingForFinalTranscript ? '⏳' : (isRecording ? '⏹️' : '🎙️'))"></span>
+        </button>
+
+        {{-- Reasoning Toggle --}}
         <button type="button"
                 @click="cycleReasoningLevel()"
                 :class="{
@@ -26,28 +34,17 @@
                     'bg-pink-600 text-white': currentReasoningName === 'Deep',
                     'bg-yellow-600 text-white': currentReasoningName === 'Maximum'
                 }"
-                class="px-4 py-3 rounded-lg font-medium text-sm flex items-center justify-center transition-all">
+                class="flex-1 py-2 rounded-lg text-xl flex items-center justify-center"
+                title="Toggle reasoning">
             <span x-text="currentReasoningName === 'Off' ? '🧠' : (currentReasoningName === 'Light' ? '💭' : (currentReasoningName === 'Standard' ? '🤔' : (currentReasoningName === 'Deep' ? '🧩' : '🌟')))"></span>
-            <span class="ml-1" x-text="currentReasoningName"></span>
         </button>
 
         {{-- Clear Button --}}
         <button type="button"
                 @click="prompt = ''"
-                class="px-4 py-3 bg-red-600 hover:bg-red-700 rounded-lg font-medium text-sm">
-            Clear
-        </button>
-    </div>
-
-    {{-- Controls Row 2: Voice + Send --}}
-    <div class="px-3 pb-3 grid grid-cols-2 gap-2">
-        {{-- Voice Button --}}
-        <button type="button"
-                @click="toggleVoiceRecording()"
-                :class="voiceButtonClass"
-                :disabled="isProcessing || isStreaming || waitingForFinalTranscript"
-                class="px-4 py-3 rounded-lg font-semibold text-sm flex items-center justify-center"
-                x-text="voiceButtonText">
+                class="flex-1 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-xl flex items-center justify-center"
+                title="Clear input">
+            🗑️
         </button>
 
         {{-- Send Button --}}
@@ -55,13 +52,9 @@
                 @click="handleSendClick($event); if(!isRecording && !isProcessing && !waitingForFinalTranscript) sendMessage()"
                 :disabled="isStreaming || isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
                 :class="isStreaming || isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-700'"
-                class="px-4 py-3 rounded-lg font-semibold text-sm disabled:cursor-not-allowed">
-            <template x-if="!isStreaming">
-                <span>Send</span>
-            </template>
-            <template x-if="isStreaming">
-                <span>Streaming...</span>
-            </template>
+                class="flex-1 py-2 rounded-lg text-xl flex items-center justify-center disabled:cursor-not-allowed"
+                title="Send message">
+            <span x-text="isStreaming ? '⏳' : '➤'"></span>
         </button>
     </div>
 </div>

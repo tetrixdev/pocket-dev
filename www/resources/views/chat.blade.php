@@ -188,7 +188,6 @@
 
                 // Voice recording state
                 isRecording: false,
-                isPromptFocused: false,
                 isProcessing: false,
                 mediaRecorder: null,
                 audioChunks: [],
