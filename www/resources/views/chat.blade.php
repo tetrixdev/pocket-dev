@@ -544,8 +544,16 @@
                     // Clear URL to base path
                     this.updateUrl(null);
 
-                    // Re-fetch agents and select default
+                    // Re-fetch agents and reload current agent's settings
                     await this.fetchAgents();
+
+                    // Force reload agent settings (fetchAgents skips if agent already selected)
+                    if (this.currentAgentId) {
+                        const agent = this.agents.find(a => a.id === this.currentAgentId);
+                        if (agent) {
+                            this.selectAgent(agent, false);
+                        }
+                    }
                 },
 
                 async loadConversation(uuid) {
