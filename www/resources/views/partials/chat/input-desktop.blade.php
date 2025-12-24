@@ -1,6 +1,6 @@
 {{-- Desktop Input Form --}}
 <div class="border-t border-gray-700 p-3">
-    <form @submit.prevent="sendMessage()" class="flex gap-2 items-stretch">
+    <form @submit.prevent="sendMessage()" class="flex gap-2 items-start">
         {{-- Voice Button --}}
         <button type="button"
                 @click="toggleVoiceRecording()"
