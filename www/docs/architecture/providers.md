@@ -237,7 +237,7 @@ class ProviderFactory
 The `SystemPromptBuilder` injects PocketDev tools as artisan commands:
 
 ```php
-public function buildForClaudeCode(Conversation $conversation): string
+public function buildForCliProvider(Conversation $conversation, string $provider): string
 {
     $sections = [];
 
@@ -245,9 +245,7 @@ public function buildForClaudeCode(Conversation $conversation): string
     $sections[] = $this->systemPromptService->get();
 
     // PocketDev tools (memory, tool management, user tools)
-    $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt(
-        Provider::ClaudeCode->value
-    );
+    $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider);
     if (!empty($pocketDevToolPrompt)) {
         $sections[] = $pocketDevToolPrompt;
     }

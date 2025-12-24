@@ -287,36 +287,49 @@ foreach ($tools as $tool) {
 
 ## System Prompt Injection
 
-### For Claude Code
+### For CLI Providers
 
-When Claude Code is the provider, we inject tool instructions for PocketDev-exclusive tools:
+When a CLI provider (Claude Code, Codex) is used, PocketDev injects tool instructions for tools that don't have native equivalents:
 
 ```markdown
 # PocketDev Tools
 
-## Memory System
+These PocketDev tools are invoked via PHP Artisan commands. Use your Bash tool to execute them.
 
-Use the following artisan commands to manage persistent memory:
+## How to Invoke
 
-### memory:create
-[system_prompt from pocket_tools table]
+**Built-in commands (memory, tool management):**
+```bash
+php artisan memory:query --sql="SELECT id, name FROM memory_structures"
+php artisan memory:create --structure=project --name="My Project" --data='{"status":"active"}'
+php artisan tool:list
+```
+
+**User-created tools:**
+```bash
+php artisan tool:run <slug> -- --arg1=value1 --arg2=value2
+```
+
+**Important:** Only `tool:run` requires the `--` separator, and it must appear before the tool arguments.
+
+## System Tools
+
+Built-in PocketDev tools.
 
 ### memory:query
-[system_prompt from pocket_tools table]
+[instructions from Tool class]
 
-... (other memory tools)
+### memory:create
+[instructions from Tool class]
 
-## Tool Management
-
-### tool:create
-[system_prompt from pocket_tools table]
-
-... (other tool management commands)
+... (other memory/tool management commands)
 
 ## Custom Tools
 
-### my-custom-tool
-[system_prompt from pocket_tools table]
+User-created tools invoked via `tool:run`.
+
+### tool:run my-custom-tool
+[instructions from PocketTool model]
 
 ... (user-created tools)
 ```
