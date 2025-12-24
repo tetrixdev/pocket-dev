@@ -58,6 +58,7 @@ class TranscriptionService
                             ],
                             'transcription' => [
                                 'model' => 'gpt-4o-transcribe',
+                                'language' => 'en', // ISO-639-1 format, improves accuracy for short clips
                             ],
                             'noise_reduction' => [
                                 'type' => 'near_field',
