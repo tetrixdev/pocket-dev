@@ -1895,10 +1895,10 @@
                 // Auto-scroll textarea to show latest transcription
                 scrollPromptToEnd() {
                     this.$nextTick(() => {
-                        const textarea = this.$refs.promptInput;
-                        if (textarea) {
+                        // Scroll all prompt textareas (both desktop and mobile exist in DOM)
+                        this.$root.querySelectorAll('textarea[x-model="prompt"]').forEach(textarea => {
                             textarea.scrollTop = textarea.scrollHeight;
-                        }
+                        });
                     });
                 },
 
