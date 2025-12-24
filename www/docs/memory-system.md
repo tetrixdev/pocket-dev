@@ -297,7 +297,7 @@ php artisan memory:create \
 ```bash
 php artisan memory:query \
   --sql="SELECT mo.id, mo.name, 1 - (me.embedding <=> :search_embedding) as sim FROM memory_objects mo JOIN memory_embeddings me ON mo.id = me.object_id ORDER BY sim DESC LIMIT 5" \
-  --search_text="ancient magical library"
+  --search-text="ancient magical library"
 ```
 
 **Update with text operations:**

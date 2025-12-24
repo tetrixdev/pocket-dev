@@ -290,9 +290,8 @@ INSTRUCTIONS;
                                     ]);
                                 }
                             });
+                            $count++;
                         }
-
-                        $count++;
                     }
                 });
         } catch (\Exception $e) {

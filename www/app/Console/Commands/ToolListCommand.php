@@ -13,8 +13,7 @@ class ToolListCommand extends Command
         {--disabled : Show only disabled tools}
         {--pocketdev : Show only PocketDev tools}
         {--user : Show only user tools}
-        {--category= : Filter by category}
-        {--provider= : Filter by provider availability}';
+        {--category= : Filter by category}';
 
     protected $description = 'List all tools';
 
@@ -43,10 +42,6 @@ class ToolListCommand extends Command
 
         if ($this->option('category') !== null) {
             $input['category'] = $this->option('category');
-        }
-
-        if ($this->option('provider') !== null) {
-            $input['provider'] = $this->option('provider');
         }
 
         $context = new ExecutionContext(getcwd() ?: '/var/www');
