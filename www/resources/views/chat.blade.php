@@ -1687,7 +1687,6 @@
 
                 async startAudioCapture() {
                     try {
-                        // Get microphone access - don't specify sampleRate (mobile doesn't support it)
                         this.realtimeStream = await navigator.mediaDevices.getUserMedia({
                             audio: {
                                 channelCount: 1,
@@ -1697,10 +1696,8 @@
                             }
                         });
 
-                        // Create AudioContext at device's native rate (mobile won't honor specific rates)
                         this.realtimeAudioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-                        // Mobile browsers require explicit resume after user gesture
                         if (this.realtimeAudioContext.state === 'suspended') {
                             await this.realtimeAudioContext.resume();
                         }
@@ -1710,16 +1707,19 @@
 
                         const source = this.realtimeAudioContext.createMediaStreamSource(this.realtimeStream);
 
-                        // TODO: ScriptProcessorNode is deprecated but AudioWorklet has mobile Safari issues
+                        // Using ScriptProcessorNode (deprecated) instead of AudioWorkletNode because:
+                        // - AudioWorklet's postMessage causes audio data loss due to async messaging latency
+                        // - Proper AudioWorklet requires SharedArrayBuffer + ring buffer + COOP/COEP headers
+                        // - ScriptProcessorNode works reliably and deprecation != removal (still in all browsers)
+                        // Future: implement AudioWorklet with SharedArrayBuffer ring buffer pattern
+                        // See: https://developer.chrome.com/blog/audio-worklet-design-pattern
                         const processor = this.realtimeAudioContext.createScriptProcessor(4096, 1, 1);
 
-                        this.audioChunkCount = 0;
                         processor.onaudioprocess = (e) => {
                             if (!this.realtimeWs || this.realtimeWs.readyState !== WebSocket.OPEN) return;
 
                             const inputData = e.inputBuffer.getChannelData(0);
 
-                            // Resample to 24kHz if needed (linear interpolation)
                             let resampledData;
                             if (nativeSampleRate !== targetSampleRate) {
                                 const ratio = nativeSampleRate / targetSampleRate;
@@ -1736,14 +1736,12 @@
                                 resampledData = inputData;
                             }
 
-                            // Convert Float32 [-1, 1] to Int16 PCM
                             const pcm16 = new Int16Array(resampledData.length);
                             for (let i = 0; i < resampledData.length; i++) {
                                 const s = Math.max(-1, Math.min(1, resampledData[i]));
                                 pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                             }
 
-                            // Convert to base64 and send
                             const base64Audio = this.arrayBufferToBase64(pcm16.buffer);
                             this.realtimeWs.send(JSON.stringify({
                                 type: 'input_audio_buffer.append',
