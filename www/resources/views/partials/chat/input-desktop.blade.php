@@ -1,5 +1,5 @@
 {{-- Desktop Input Form --}}
-<div class="border-t border-gray-700 p-2">
+<div class="border-t border-gray-700 p-4">
     <form @submit.prevent="sendMessage()" class="flex gap-2 items-stretch">
         {{-- Voice Button --}}
         <button type="button"
@@ -19,7 +19,7 @@
                   placeholder="Ask AI to help with your code..."
                   rows="1"
                   class="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto transition-all duration-200"
-                  :style="{ 'min-height': isPromptFocused ? '90px' : '48px', 'max-height': '200px' }"
+                  :style="{ 'min-height': isPromptFocused ? '72px' : '32px', 'max-height': '200px' }"
                   @focus="isPromptFocused = true"
                   @blur="isPromptFocused = false"
                   @keydown.ctrl.t.prevent="cycleReasoningLevel()"
