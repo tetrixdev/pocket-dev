@@ -1713,7 +1713,7 @@
                         // - ScriptProcessorNode works reliably and deprecation != removal (still in all browsers)
                         // Future: implement AudioWorklet with SharedArrayBuffer ring buffer pattern
                         // See: https://developer.chrome.com/blog/audio-worklet-design-pattern
-                        const processor = this.realtimeAudioContext.createScriptProcessor(4096, 1, 1);
+                        const processor = this.realtimeAudioContext.createScriptProcessor(2048, 1, 1);
 
                         processor.onaudioprocess = (e) => {
                             if (!this.realtimeWs || this.realtimeWs.readyState !== WebSocket.OPEN) return;
