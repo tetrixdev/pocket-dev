@@ -14,6 +14,8 @@ class MemoryDeleteTool extends Tool
 
     public string $description = 'Delete a memory object by ID. Also removes its embeddings and relationships.';
 
+    public string $category = 'memory';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -29,8 +31,20 @@ class MemoryDeleteTool extends Tool
         'required' => ['id'],
     ];
 
+    public function getArtisanCommand(): ?string
+    {
+        return 'memory:delete';
+    }
+
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryDelete to remove memory objects.
+
+## CLI Example
+
+```bash
+php artisan memory:delete --id=<uuid>
+php artisan memory:delete --id=<uuid> --cascade
+```
 
 ## Examples
 

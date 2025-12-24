@@ -2,7 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\PocketTool;
+use App\Tools\ExecutionContext;
+use App\Tools\ToolCreateTool;
 use Illuminate\Console\Command;
 
 class ToolCreateCommand extends Command
@@ -22,102 +23,72 @@ class ToolCreateCommand extends Command
 
     public function handle(): int
     {
-        $slug = $this->option('slug');
-        $name = $this->option('name');
-        $description = $this->option('description');
-        $systemPrompt = $this->option('system-prompt');
-        $script = $this->option('script');
-        $scriptFile = $this->option('script-file');
-        $category = $this->option('category');
-        $inputSchema = $this->option('input-schema');
-        $disabled = $this->option('disabled');
+        $tool = new ToolCreateTool();
 
-        // Validation
-        if (empty($slug)) {
-            return $this->outputError('The --slug option is required');
+        // Build input from options
+        $input = [];
+
+        if ($this->option('slug') !== null) {
+            $input['slug'] = $this->option('slug');
         }
 
-        if (empty($name)) {
-            return $this->outputError('The --name option is required');
+        if ($this->option('name') !== null) {
+            $input['name'] = $this->option('name');
         }
 
-        if (empty($description)) {
-            return $this->outputError('The --description option is required');
+        if ($this->option('description') !== null) {
+            $input['description'] = $this->option('description');
         }
 
-        if (empty($systemPrompt)) {
-            return $this->outputError('The --system-prompt option is required');
+        if ($this->option('system-prompt') !== null) {
+            $input['system_prompt'] = $this->option('system-prompt');
         }
 
-        // Get script from file if provided
-        if ($scriptFile) {
+        // Handle script from file if provided
+        if ($this->option('script-file') !== null) {
+            $scriptFile = $this->option('script-file');
             if (!file_exists($scriptFile)) {
-                return $this->outputError("Script file not found: {$scriptFile}");
+                $this->outputJson([
+                    'output' => "Script file not found: {$scriptFile}",
+                    'is_error' => true,
+                ]);
+                return Command::FAILURE;
             }
-            $script = file_get_contents($scriptFile);
+            $input['script'] = file_get_contents($scriptFile);
+        } elseif ($this->option('script') !== null) {
+            $input['script'] = $this->option('script');
         }
 
-        if (empty($script)) {
-            return $this->outputError('Either --script or --script-file is required');
+        if ($this->option('category') !== null) {
+            $input['category'] = $this->option('category');
         }
 
-        // Check for duplicate slug
-        if (PocketTool::where('slug', $slug)->exists()) {
-            return $this->outputError("A tool with slug '{$slug}' already exists");
-        }
-
-        // Parse input schema if provided
-        $parsedInputSchema = null;
-        if ($inputSchema) {
-            $parsedInputSchema = json_decode($inputSchema, true);
+        if ($this->option('input-schema') !== null) {
+            $inputSchema = json_decode($this->option('input-schema'), true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                return $this->outputError('Invalid JSON in --input-schema: ' . json_last_error_msg());
+                $this->outputJson([
+                    'output' => 'Invalid JSON in --input-schema: ' . json_last_error_msg(),
+                    'is_error' => true,
+                ]);
+                return Command::FAILURE;
             }
+            $input['input_schema'] = $inputSchema;
         }
 
-        try {
-            $tool = PocketTool::create([
-                'slug' => $slug,
-                'name' => $name,
-                'description' => $description,
-                'system_prompt' => $systemPrompt,
-                'script' => $script,
-                'source' => PocketTool::SOURCE_USER,
-                'category' => $category,
-                'capability' => PocketTool::CAPABILITY_CUSTOM,
-                'enabled' => !$disabled,
-                'input_schema' => $parsedInputSchema,
-            ]);
-
-            $this->outputResult([
-                'output' => "Created tool: {$name} ({$slug})\nID: {$tool->id}\nEnabled: " . ($tool->enabled ? 'yes' : 'no'),
-                'is_error' => false,
-                'tool' => [
-                    'id' => $tool->id,
-                    'slug' => $tool->slug,
-                    'name' => $tool->name,
-                    'enabled' => $tool->enabled,
-                ],
-            ]);
-
-            return Command::SUCCESS;
-        } catch (\Exception $e) {
-            return $this->outputError('Failed to create tool: ' . $e->getMessage());
+        if ($this->option('disabled')) {
+            $input['disabled'] = true;
         }
+
+        $context = new ExecutionContext(getcwd() ?: '/var/www');
+        $result = $tool->execute($input, $context);
+
+        $this->outputJson($result->toArray());
+
+        return $result->isError() ? Command::FAILURE : Command::SUCCESS;
     }
 
-    private function outputError(string $message): int
+    private function outputJson(array $data): void
     {
-        $this->output->writeln(json_encode([
-            'output' => $message,
-            'is_error' => true,
-        ], JSON_PRETTY_PRINT));
-
-        return Command::FAILURE;
-    }
-
-    private function outputResult(array $result): void
-    {
-        $this->output->writeln(json_encode($result, JSON_PRETTY_PRINT));
+        $this->output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
     }
 }

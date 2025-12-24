@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Contracts\AIProviderInterface;
+use App\Models\PocketTool;
 use App\Services\EmbeddingService;
 use App\Services\Providers\AnthropicProvider;
 use App\Services\Providers\ClaudeCodeProvider;
@@ -12,17 +13,12 @@ use App\Services\Providers\OpenAIProvider;
 use App\Services\SystemPromptBuilder;
 use App\Services\SystemPromptService;
 use App\Services\ToolRegistry;
-use App\Tools\BashTool;
-use App\Tools\EditTool;
-use App\Tools\GlobTool;
-use App\Tools\GrepTool;
-use App\Tools\MemoryCreateTool;
-use App\Tools\MemoryDeleteTool;
-use App\Tools\MemoryQueryTool;
-use App\Tools\MemoryUpdateTool;
-use App\Tools\ReadTool;
-use App\Tools\WriteTool;
+use App\Tools\Tool;
+use App\Tools\UserTool;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
+use ReflectionClass;
+use Symfony\Component\Finder\Finder;
 
 class AIServiceProvider extends ServiceProvider
 {
@@ -35,27 +31,11 @@ class AIServiceProvider extends ServiceProvider
         $this->app->singleton(ToolRegistry::class, function () {
             $registry = new ToolRegistry();
 
-            // Register enabled tools
-            $enabledTools = config('ai.tools.enabled', []);
+            // Auto-discover and register all Tool classes
+            $this->discoverAndRegisterTools($registry);
 
-            $toolClasses = [
-                'Read' => ReadTool::class,
-                'Edit' => EditTool::class,
-                'Write' => WriteTool::class,
-                'Bash' => BashTool::class,
-                'Grep' => GrepTool::class,
-                'Glob' => GlobTool::class,
-                'MemoryQuery' => MemoryQueryTool::class,
-                'MemoryCreate' => MemoryCreateTool::class,
-                'MemoryUpdate' => MemoryUpdateTool::class,
-                'MemoryDelete' => MemoryDeleteTool::class,
-            ];
-
-            foreach ($enabledTools as $toolName) {
-                if (isset($toolClasses[$toolName])) {
-                    $registry->register(new $toolClasses[$toolName]());
-                }
-            }
+            // Also register user-created tools from the database
+            $this->registerUserTools($registry);
 
             return $registry;
         });
@@ -87,6 +67,81 @@ class AIServiceProvider extends ServiceProvider
                 default => $app->make(AnthropicProvider::class),
             };
         });
+    }
+
+    /**
+     * Auto-discover and register all Tool classes from app/Tools directory.
+     */
+    private function discoverAndRegisterTools(ToolRegistry $registry): void
+    {
+        $toolsPath = app_path('Tools');
+
+        if (!is_dir($toolsPath)) {
+            return;
+        }
+
+        $finder = new Finder();
+        $finder->files()->in($toolsPath)->name('*Tool.php');
+
+        foreach ($finder as $file) {
+            $className = 'App\\Tools\\' . $file->getBasename('.php');
+
+            // Skip if class doesn't exist
+            if (!class_exists($className)) {
+                continue;
+            }
+
+            $reflection = new ReflectionClass($className);
+
+            // Skip abstract classes, interfaces, and the base Tool class
+            if ($reflection->isAbstract() || $reflection->isInterface()) {
+                continue;
+            }
+
+            // Only register classes that extend Tool
+            if (!$reflection->isSubclassOf(Tool::class)) {
+                continue;
+            }
+
+            // Skip UserTool as it's a wrapper class
+            if ($className === UserTool::class) {
+                continue;
+            }
+
+            // Instantiate and register the tool
+            try {
+                $tool = $reflection->newInstance();
+                $registry->register($tool);
+            } catch (\Throwable $e) {
+                // Log error but don't fail the entire boot
+                Log::warning(
+                    "Failed to register tool: {$className}",
+                    ['error' => $e->getMessage()]
+                );
+            }
+        }
+    }
+
+    /**
+     * Register user-created tools from the database.
+     */
+    private function registerUserTools(ToolRegistry $registry): void
+    {
+        try {
+            // Only load enabled user tools
+            $userTools = PocketTool::user()->enabled()->get();
+
+            foreach ($userTools as $pocketTool) {
+                $userTool = new UserTool($pocketTool);
+                $registry->register($userTool);
+            }
+        } catch (\Throwable $e) {
+            // Database might not be available during some boot scenarios
+            Log::debug(
+                'Could not load user tools',
+                ['error' => $e->getMessage()]
+            );
+        }
     }
 
     /**

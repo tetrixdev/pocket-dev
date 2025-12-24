@@ -38,7 +38,7 @@ class ConversationController extends Controller
             'working_directory' => 'required|string|max:500',
             'agent_id' => 'nullable|uuid|exists:agents,id',
             // Legacy fields (used when no agent_id provided)
-            'provider_type' => 'nullable|string|in:anthropic,openai,claude_code,openai_compatible',
+            'provider_type' => 'nullable|string|in:anthropic,openai,claude_code,codex,openai_compatible',
             'model' => 'nullable|string|max:100',
             'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',

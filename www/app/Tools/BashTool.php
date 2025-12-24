@@ -13,6 +13,8 @@ class BashTool extends Tool
 
     public string $description = 'Execute a bash command. Use for git, npm, docker, and other terminal operations.';
 
+    public string $category = 'file_ops';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -29,11 +31,29 @@ class BashTool extends Tool
     ];
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-- Use for git, npm, docker, and terminal operations
+Execute bash commands for git, npm, docker, and terminal operations.
+
+## Examples
+
+```bash
+# Git operations
+php artisan bash --command="git status"
+php artisan bash --command="git log --oneline -10"
+
+# Package management
+php artisan bash --command="composer install"
+php artisan bash --command="npm run build"
+
+# With timeout for long operations
+php artisan bash --command="npm install" --timeout=300
+```
+
+## Notes
+- Use for terminal operations only (git, npm, docker, etc.)
 - Do NOT use for file operations - use Read, Edit, Write instead
 - Commands run in the working directory
-- Output is truncated at 30000 characters
-- Default timeout is 120 seconds (max 600)
+- Output truncated at 30000 characters
+- Default timeout: 120s, max: 600s
 INSTRUCTIONS;
 
     /** Commands that are blocked for security */

@@ -52,59 +52,11 @@
                 <span class="text-white">{{ ucfirst(str_replace('_', ' ', $tool->category ?? 'None')) }}</span>
             </div>
 
-            {{-- Capability --}}
-            @if($tool->capability)
-                <div class="px-4 py-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <span class="text-gray-400 text-sm">Capability</span>
-                    <span class="text-white">{{ $tool->capability }}</span>
-                </div>
-            @endif
-
             {{-- Description --}}
             <div class="px-4 py-3">
                 <span class="text-gray-400 text-sm block mb-2">Description</span>
                 <p class="text-white text-sm sm:text-base">{{ $tool->description }}</p>
             </div>
-
-            {{-- Provider Compatibility --}}
-            <div class="px-4 py-3">
-                <span class="text-gray-400 text-sm block mb-2">Provider Compatibility</span>
-                <div class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
-                    @php
-                        $providers = [
-                            'claude_code' => 'Claude Code',
-                            'anthropic' => 'Anthropic',
-                            'openai' => 'OpenAI',
-                            'codex' => 'Codex',
-                        ];
-                    @endphp
-                    @foreach($providers as $key => $label)
-                        @if($tool->isAvailableFor($key))
-                            <span class="flex items-center gap-1 text-green-400 text-sm">
-                                <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-                                </svg>
-                                <span class="truncate">{{ $label }}</span>
-                            </span>
-                        @else
-                            <span class="flex items-center gap-1 text-red-400 text-sm">
-                                <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                                </svg>
-                                <span class="truncate">{{ $label }}</span>
-                            </span>
-                        @endif
-                    @endforeach
-                </div>
-            </div>
-
-            {{-- Native Equivalent --}}
-            @if($tool->native_equivalent)
-                <div class="px-4 py-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <span class="text-gray-400 text-sm">Native Equivalent</span>
-                    <span class="text-blue-400">{{ $tool->native_equivalent }}</span>
-                </div>
-            @endif
 
             {{-- Artisan Command --}}
             @if($tool->getArtisanCommand())

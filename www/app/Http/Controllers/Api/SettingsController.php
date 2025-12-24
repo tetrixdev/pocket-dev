@@ -64,7 +64,7 @@ class SettingsController extends Controller
     public function updateChatDefaults(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'provider' => 'nullable|string|in:anthropic,openai,claude_code',
+            'provider' => 'nullable|string|in:anthropic,openai,claude_code,codex,openai_compatible',
             'model' => 'nullable|string|max:100',
             'response_level' => 'nullable|integer|min:0|max:5',
             // Provider-specific reasoning settings

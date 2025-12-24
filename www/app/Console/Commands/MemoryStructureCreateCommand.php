@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\MemoryStructure;
+use App\Tools\ExecutionContext;
+use App\Tools\MemoryStructureCreateTool;
 use Illuminate\Console\Command;
-use Illuminate\Support\Str;
 
 class MemoryStructureCreateCommand extends Command
 {
@@ -20,71 +20,49 @@ class MemoryStructureCreateCommand extends Command
 
     public function handle(): int
     {
-        $name = $this->option('name');
-        $slug = $this->option('slug') ?: Str::slug($name);
-        $description = $this->option('description') ?: '';
-        $schemaJson = $this->option('schema');
-        $icon = $this->option('icon');
-        $color = $this->option('color');
+        $tool = new MemoryStructureCreateTool();
 
-        // Validate required fields
-        if (empty($name)) {
-            $this->outputJson([
-                'output' => 'Missing required option: --name',
-                'is_error' => true,
-            ]);
-            return Command::FAILURE;
+        // Build input from options
+        $input = [];
+
+        if ($this->option('name') !== null) {
+            $input['name'] = $this->option('name');
         }
 
-        if (empty($schemaJson)) {
-            $this->outputJson([
-                'output' => 'Missing required option: --schema (JSON Schema)',
-                'is_error' => true,
-            ]);
-            return Command::FAILURE;
+        if ($this->option('slug') !== null) {
+            $input['slug'] = $this->option('slug');
         }
 
-        // Parse and validate schema JSON
-        $schema = json_decode($schemaJson, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            $this->outputJson([
-                'output' => 'Invalid JSON in --schema: ' . json_last_error_msg(),
-                'is_error' => true,
-            ]);
-            return Command::FAILURE;
+        if ($this->option('description') !== null) {
+            $input['description'] = $this->option('description');
         }
 
-        // Check if slug already exists
-        if (MemoryStructure::where('slug', $slug)->exists()) {
-            $this->outputJson([
-                'output' => "Structure with slug '{$slug}' already exists",
-                'is_error' => true,
-            ]);
-            return Command::FAILURE;
+        if ($this->option('schema') !== null) {
+            $schema = json_decode($this->option('schema'), true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $this->outputJson([
+                    'output' => 'Invalid JSON in --schema: ' . json_last_error_msg(),
+                    'is_error' => true,
+                ]);
+                return Command::FAILURE;
+            }
+            $input['schema'] = $schema;
         }
 
-        // Create the structure
-        $structure = MemoryStructure::create([
-            'name' => $name,
-            'slug' => $slug,
-            'description' => $description,
-            'schema' => $schema,
-            'icon' => $icon,
-            'color' => $color,
-        ]);
+        if ($this->option('icon') !== null) {
+            $input['icon'] = $this->option('icon');
+        }
 
-        $this->outputJson([
-            'output' => "Created structure: {$name} ({$slug})\nID: {$structure->id}",
-            'is_error' => false,
-            'structure' => [
-                'id' => $structure->id,
-                'name' => $structure->name,
-                'slug' => $structure->slug,
-                'description' => $structure->description,
-            ],
-        ]);
+        if ($this->option('color') !== null) {
+            $input['color'] = $this->option('color');
+        }
 
-        return Command::SUCCESS;
+        $context = new ExecutionContext(getcwd() ?: '/var/www');
+        $result = $tool->execute($input, $context);
+
+        $this->outputJson($result->toArray());
+
+        return $result->isError() ? Command::FAILURE : Command::SUCCESS;
     }
 
     private function outputJson(array $data): void

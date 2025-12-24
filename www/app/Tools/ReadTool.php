@@ -11,6 +11,8 @@ class ReadTool extends Tool
 
     public string $description = 'Read the contents of a file. Returns file content with line numbers.';
 
+    public string $category = 'file_ops';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -31,10 +33,23 @@ class ReadTool extends Tool
     ];
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-- Use to read file contents before editing
-- Supports offset and limit for large files
-- Returns line numbers for reference in edits
-- Can read any text file format
+Read file contents with line numbers.
+
+## Examples
+
+```bash
+# Read entire file
+php artisan read --file_path=app/Models/User.php
+
+# Read specific lines (lines 50-100)
+php artisan read --file_path=app/Models/User.php --offset=50 --limit=50
+```
+
+## Notes
+- Always read a file before editing it
+- Line numbers in output can be used for Edit tool reference
+- Files > 10MB require using offset/limit
+- Default limit is 2000 lines, max is 5000
 INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult

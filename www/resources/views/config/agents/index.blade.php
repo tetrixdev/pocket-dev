@@ -18,8 +18,9 @@
         'openai' => 'OpenAI',
         'claude_code' => 'Claude Code',
         'codex' => 'Codex',
+        'openai_compatible' => 'OpenAI Compatible',
     ];
-    $providerOrder = ['anthropic', 'openai', 'claude_code', 'codex'];
+    $providerOrder = ['anthropic', 'openai', 'claude_code', 'codex', 'openai_compatible'];
 @endphp
 
 @if($agents->isEmpty())

@@ -11,6 +11,8 @@ class EditTool extends Tool
 
     public string $description = 'Perform exact string replacement in a file. The old_string must be unique unless using replace_all.';
 
+    public string $category = 'file_ops';
+
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
@@ -35,11 +37,28 @@ class EditTool extends Tool
     ];
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-- ALWAYS read a file before editing it
-- old_string must be unique in the file, or use replace_all: true
-- Preserve exact indentation from the source
-- For variable renaming across a file, use replace_all: true
-- The edit will FAIL if old_string appears multiple times (unless replace_all is true)
+Edit files using exact string replacement.
+
+## Examples
+
+```bash
+# Replace a single occurrence (must be unique)
+php artisan edit --file_path=app/Models/User.php \
+  --old_string='protected $table' \
+  --new_string='protected $table = "users"'
+
+# Replace all occurrences
+php artisan edit --file_path=app/Services/Api.php \
+  --old_string='$oldVar' \
+  --new_string='$newVar' \
+  --replace_all=true
+```
+
+## Important
+- **Always read the file first** to get exact text including whitespace
+- old_string must be unique OR use `--replace_all=true`
+- Preserve exact indentation from source
+- Edit fails if old_string not found or appears multiple times (without replace_all)
 INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
