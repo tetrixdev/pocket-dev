@@ -1878,12 +1878,13 @@
 
                 get voiceButtonText() {
                     if (this.isProcessing) return '⏳ Connecting...';
+                    if (this.waitingForFinalTranscript) return '⏳ Finishing...';
                     if (this.isRecording) return '⏹️ Stop';
                     return '🎙️ Record';
                 },
 
                 get voiceButtonClass() {
-                    if (this.isProcessing) return 'bg-gray-600 text-gray-200 cursor-not-allowed';
+                    if (this.isProcessing || this.waitingForFinalTranscript) return 'bg-gray-600 text-gray-200 cursor-not-allowed';
                     if (this.isRecording) return 'bg-red-600 text-white hover:bg-red-700';
                     return 'bg-purple-600 text-white hover:bg-purple-700';
                 },
