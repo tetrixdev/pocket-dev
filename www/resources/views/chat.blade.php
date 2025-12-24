@@ -1654,9 +1654,10 @@
                                     this.prompt = this.realtimeTranscript;
                                 }
                             } else if (msg.type === 'conversation.item.input_audio_transcription.completed') {
-                                if (this.waitingForFinalTranscript) {
-                                    this.finishStopRecording();
-                                }
+                                // Don't close on completed - there might be more turns pending.
+                                // The timeout handles closing to ensure all deltas are received.
+                                // See: https://platform.openai.com/docs/guides/realtime-transcription
+                                // "ordering between completion events from different speech turns is not guaranteed"
                             } else if (msg.type === 'error') {
                                 console.error('[RT] API error:', msg.error);
                                 // Ignore empty buffer error when stopping

@@ -67,7 +67,7 @@ class TranscriptionService
                                 'type' => 'server_vad',
                                 'threshold' => 0.5,           // Speech detection sensitivity (0-1)
                                 'prefix_padding_ms' => 300,   // Audio to include before speech
-                                'silence_duration_ms' => 1000, // Silence before ending turn (1s = tolerant of pauses)
+                                'silence_duration_ms' => 500, // Silence before ending turn
                             ],
                         ],
                     ],
