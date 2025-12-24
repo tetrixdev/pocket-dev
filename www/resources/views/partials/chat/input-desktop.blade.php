@@ -14,11 +14,14 @@
 
         {{-- Input Field --}}
         <textarea x-model="prompt"
+                  x-ref="promptInput"
                   :disabled="isStreaming"
                   placeholder="Ask AI to help with your code..."
                   rows="1"
-                  class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto"
-                  style="min-height: 48px; max-height: 200px;"
+                  class="flex-1 px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto transition-all duration-200"
+                  :style="{ 'min-height': isPromptFocused ? '90px' : '48px', 'max-height': '200px' }"
+                  @focus="isPromptFocused = true"
+                  @blur="isPromptFocused = false"
                   @keydown.ctrl.t.prevent="cycleReasoningLevel()"
                   @keydown.ctrl.space.prevent="toggleVoiceRecording()"
                   @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); sendMessage(); }"></textarea>

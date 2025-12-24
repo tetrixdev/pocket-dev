@@ -3,12 +3,15 @@
     {{-- Input Row --}}
     <div class="p-3">
         <textarea x-model="prompt"
+                  x-ref="promptInput"
                   :disabled="isStreaming"
                   @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); sendMessage(); }"
+                  @focus="isPromptFocused = true"
+                  @blur="isPromptFocused = false"
                   placeholder="Ask AI..."
                   rows="1"
-                  class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto"
-                  style="min-height: 48px; max-height: 120px;"></textarea>
+                  class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto transition-all duration-200"
+                  :style="{ 'min-height': isPromptFocused ? '72px' : '48px', 'max-height': '120px' }"></textarea>
     </div>
 
     {{-- Controls Row 1: Reasoning + Clear --}}

@@ -188,6 +188,7 @@
 
                 // Voice recording state
                 isRecording: false,
+                isPromptFocused: false,
                 isProcessing: false,
                 mediaRecorder: null,
                 audioChunks: [],
@@ -1652,6 +1653,7 @@
                                     this.currentTranscriptItemId = msg.item_id;
                                     this.realtimeTranscript += msg.delta;
                                     this.prompt = this.realtimeTranscript;
+                                    this.scrollPromptToEnd();
                                 }
                             } else if (msg.type === 'conversation.item.input_audio_transcription.completed') {
                                 // Don't close on completed - there might be more turns pending.
@@ -1888,6 +1890,16 @@
                     if (this.isProcessing || this.waitingForFinalTranscript) return 'bg-gray-600 text-gray-200 cursor-not-allowed';
                     if (this.isRecording) return 'bg-red-600 text-white hover:bg-red-700';
                     return 'bg-purple-600 text-white hover:bg-purple-700';
+                },
+
+                // Auto-scroll textarea to show latest transcription
+                scrollPromptToEnd() {
+                    this.$nextTick(() => {
+                        const textarea = this.$refs.promptInput;
+                        if (textarea) {
+                            textarea.scrollTop = textarea.scrollHeight;
+                        }
+                    });
                 },
 
                 // ==================== Copy Conversation ====================
