@@ -1,7 +1,7 @@
 {{-- Fixed Bottom Input (Mobile) --}}
 <div class="fixed bottom-0 left-0 right-0 z-20 bg-gray-800 border-t border-gray-700 safe-area-bottom">
     {{-- Input Row --}}
-    <div class="p-3">
+    <div class="p-2">
         <textarea x-model="prompt"
                   x-ref="promptInput"
                   :disabled="isStreaming"
@@ -10,7 +10,7 @@
                   @blur="isPromptFocused = false"
                   placeholder="Ask AI..."
                   rows="1"
-                  class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto transition-all duration-200"
+                  class="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto transition-all duration-200"
                   :style="{ 'min-height': isPromptFocused ? '72px' : '48px', 'max-height': '120px' }"></textarea>
     </div>
 
