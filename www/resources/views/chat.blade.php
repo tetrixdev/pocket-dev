@@ -202,6 +202,8 @@
                 realtimeStream: null,
                 waitingForFinalTranscript: false,
                 stopTimeout: null,
+                currentTranscriptItemId: null,
+                audioChunkCount: 0,
 
                 // Anthropic API key state (for Claude Code)
                 anthropicKeyInput: '',
@@ -1632,37 +1634,7 @@
                         ]);
 
                         this.realtimeWs.onopen = async () => {
-                            this.debugLog('WebSocket connected');
-
-                            // Configure the transcription session (GA API uses audio.input structure)
-                            this.realtimeWs.send(JSON.stringify({
-                                type: 'session.update',
-                                session: {
-                                    type: 'transcription',
-                                    audio: {
-                                        input: {
-                                            format: {
-                                                type: 'audio/pcm',
-                                                rate: 24000,
-                                            },
-                                            transcription: {
-                                                model: 'gpt-4o-transcribe',
-                                            },
-                                            turn_detection: {
-                                                type: 'server_vad',
-                                                threshold: 0.5,
-                                                prefix_padding_ms: 300,
-                                                silence_duration_ms: 500,
-                                            },
-                                            noise_reduction: {
-                                                type: 'near_field',
-                                            },
-                                        },
-                                    },
-                                }
-                            }));
-
-                            // Start capturing audio
+                            // Session config already applied via backend client_secrets call
                             await this.startAudioCapture();
                             this.isRecording = true;
                             this.isProcessing = false;
@@ -1671,12 +1643,7 @@
                         this.realtimeWs.onmessage = (event) => {
                             const msg = JSON.parse(event.data);
 
-                            // DEBUG: Log all incoming messages
-                            this.debugLog(' Received:', msg.type, msg);
-
                             if (msg.type === 'conversation.item.input_audio_transcription.delta') {
-                                // Incremental transcript update
-                                this.debugLog(' Delta transcript:', msg.delta);
                                 if (msg.delta) {
                                     // Add space between turns
                                     if (this.currentTranscriptItemId && this.currentTranscriptItemId !== msg.item_id) {
@@ -1685,31 +1652,15 @@
                                     this.currentTranscriptItemId = msg.item_id;
                                     this.realtimeTranscript += msg.delta;
                                     this.prompt = this.realtimeTranscript;
-                                    this.debugLog(' Current transcript:', this.realtimeTranscript);
                                 }
                             } else if (msg.type === 'conversation.item.input_audio_transcription.completed') {
-                                // Final transcript for this turn
-                                this.debugLog(' Completed transcript:', msg.transcript);
-                                // Don't overwrite - deltas already built the transcript
-                                // if (msg.transcript) { this.prompt = msg.transcript; }
-                                // If we're waiting to stop, finish now
                                 if (this.waitingForFinalTranscript) {
-                                    this.debugLog('Got final transcript, finishing...');
                                     this.finishStopRecording();
                                 }
-                            } else if (msg.type === 'session.created' || msg.type === 'session.updated') {
-                                this.debugLog(' Session config:', msg.session);
-                            } else if (msg.type === 'input_audio_buffer.speech_started') {
-                                this.debugLog(' Speech started detected');
-                            } else if (msg.type === 'input_audio_buffer.speech_stopped') {
-                                this.debugLog(' Speech stopped detected');
-                            } else if (msg.type === 'input_audio_buffer.committed') {
-                                this.debugLog(' Audio buffer committed');
                             } else if (msg.type === 'error') {
                                 console.error('[RT] API error:', msg.error);
                                 // Ignore empty buffer error when stopping
                                 if (msg.error?.code === 'input_audio_buffer_commit_empty' && this.waitingForFinalTranscript) {
-                                    this.debugLog('Buffer was empty, finishing...');
                                     this.finishStopRecording();
                                 } else {
                                     this.showError('Transcription error: ' + (msg.error?.message || 'Unknown error'));
@@ -1724,7 +1675,6 @@
                         };
 
                         this.realtimeWs.onclose = () => {
-                            this.debugLog('WebSocket closed');
                             this.cleanupRealtimeSession();
                         };
 
@@ -1737,7 +1687,6 @@
 
                 async startAudioCapture() {
                     try {
-                        this.debugLog('Starting audio capture...');
                         // Get microphone access - don't specify sampleRate (mobile doesn't support it)
                         this.realtimeStream = await navigator.mediaDevices.getUserMedia({
                             audio: {
@@ -1747,26 +1696,21 @@
                                 autoGainControl: true,
                             }
                         });
-                        this.debugLog('Microphone access granted');
 
                         // Create AudioContext at device's native rate (mobile won't honor specific rates)
                         this.realtimeAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                        
+
                         // Mobile browsers require explicit resume after user gesture
                         if (this.realtimeAudioContext.state === 'suspended') {
-                            this.debugLog(' AudioContext suspended, resuming...');
                             await this.realtimeAudioContext.resume();
                         }
-                        this.debugLog(' AudioContext state:', this.realtimeAudioContext.state);
-                        
+
                         const nativeSampleRate = this.realtimeAudioContext.sampleRate;
                         const targetSampleRate = 24000;
-                        this.debugLog(' Native sample rate:', nativeSampleRate, '-> resampling to', targetSampleRate);
 
                         const source = this.realtimeAudioContext.createMediaStreamSource(this.realtimeStream);
 
-                        // Use ScriptProcessorNode for audio processing
-                        // Larger buffer for mobile stability
+                        // TODO: ScriptProcessorNode is deprecated but AudioWorklet has mobile Safari issues
                         const processor = this.realtimeAudioContext.createScriptProcessor(4096, 1, 1);
 
                         this.audioChunkCount = 0;
@@ -1775,15 +1719,18 @@
 
                             const inputData = e.inputBuffer.getChannelData(0);
 
-                            // Resample to 24kHz if needed
+                            // Resample to 24kHz if needed (linear interpolation)
                             let resampledData;
                             if (nativeSampleRate !== targetSampleRate) {
                                 const ratio = nativeSampleRate / targetSampleRate;
                                 const newLength = Math.floor(inputData.length / ratio);
                                 resampledData = new Float32Array(newLength);
                                 for (let i = 0; i < newLength; i++) {
-                                    const srcIndex = Math.floor(i * ratio);
-                                    resampledData[i] = inputData[srcIndex];
+                                    const srcPos = i * ratio;
+                                    const srcIndex = Math.floor(srcPos);
+                                    const frac = srcPos - srcIndex;
+                                    const nextIndex = Math.min(srcIndex + 1, inputData.length - 1);
+                                    resampledData[i] = inputData[srcIndex] * (1 - frac) + inputData[nextIndex] * frac;
                                 }
                             } else {
                                 resampledData = inputData;
@@ -1802,27 +1749,15 @@
                                 type: 'input_audio_buffer.append',
                                 audio: base64Audio
                             }));
-
-                            // DEBUG: Log every 10th chunk to avoid spam
-                            this.audioChunkCount++;
-                            if (this.audioChunkCount % 10 === 0) {
-                                this.debugLog(' Sent audio chunk #' + this.audioChunkCount + ', size:', base64Audio.length);
-                            }
                         };
 
                         source.connect(processor);
                         processor.connect(this.realtimeAudioContext.destination);
-                        this.debugLog('Audio processor connected');
-
                         this.realtimeAudioWorklet = processor;
                     } catch (err) {
                         console.error('Error capturing audio:', err);
                         throw new Error('Could not access microphone. Please check permissions.');
                     }
-                },
-
-                debugLog(...args) {
-                    console.log('[RT]', ...args);
                 },
 
                 arrayBufferToBase64(buffer) {
@@ -1838,17 +1773,14 @@
                     if (!this.isRecording) return;
 
                     this.isRecording = false;
-                    this.debugLog('Stopping recording...');
 
                     if (this.realtimeWs && this.realtimeWs.readyState === WebSocket.OPEN) {
                         // Try to commit any pending audio (ignore errors if buffer empty)
                         this.realtimeWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
-                        this.debugLog('Sent commit, waiting for transcription...');
 
                         // Wait for transcription to complete (or timeout after 3s)
                         this.waitingForFinalTranscript = true;
                         this.stopTimeout = setTimeout(() => {
-                            this.debugLog('Timeout reached, closing...');
                             this.finishStopRecording();
                         }, 3000);
                     } else {

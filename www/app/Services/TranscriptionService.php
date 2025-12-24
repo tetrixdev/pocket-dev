@@ -20,7 +20,7 @@ class TranscriptionService
         if (str_ends_with($this->baseUrl, '/v1')) {
             $this->baseUrl = substr($this->baseUrl, 0, -3);
         }
-        // Note: API key validation moved to transcribeAudio() to avoid chicken-and-egg
+        // Note: API key validation moved to createRealtimeSession() to avoid chicken-and-egg
         // problem where the controller can't be instantiated to save the key
     }
 
@@ -62,11 +62,12 @@ class TranscriptionService
                             'noise_reduction' => [
                                 'type' => 'near_field',
                             ],
+                            // Server-side VAD: detects speech pauses to segment transcription
                             'turn_detection' => [
                                 'type' => 'server_vad',
-                                'threshold' => 0.5,
-                                'prefix_padding_ms' => 300,
-                                'silence_duration_ms' => 500,
+                                'threshold' => 0.5,           // Speech detection sensitivity (0-1)
+                                'prefix_padding_ms' => 300,   // Audio to include before speech
+                                'silence_duration_ms' => 500, // Silence before ending turn
                             ],
                         ],
                     ],
@@ -104,5 +105,4 @@ class TranscriptionService
             throw $e;
         }
     }
-
 }
