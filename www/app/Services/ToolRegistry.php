@@ -2,33 +2,74 @@
 
 namespace App\Services;
 
+use App\Models\PocketTool;
 use App\Tools\ExecutionContext;
 use App\Tools\Tool;
 use App\Tools\ToolResult;
+use App\Tools\UserTool;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Registry for available tools.
  * Manages tool registration, lookup, and execution.
+ *
+ * Built-in tools (from app/Tools) are cached in the singleton.
+ * User tools (from database) are always fetched fresh to ensure
+ * newly created tools are available without restarting the queue worker.
  */
 class ToolRegistry
 {
-    /** @var array<string, Tool> */
-    private array $tools = [];
+    /** @var array<string, Tool> Built-in tools (cached) */
+    private array $builtInTools = [];
 
     /**
-     * Register a tool.
+     * Register a built-in tool.
      */
     public function register(Tool $tool): void
     {
-        $this->tools[$tool->name] = $tool;
+        $this->builtInTools[$tool->name] = $tool;
+    }
+
+    /**
+     * Get fresh user tools from the database.
+     *
+     * @return array<string, Tool>
+     */
+    private function getUserTools(): array
+    {
+        $userTools = [];
+
+        try {
+            $pocketTools = PocketTool::user()->enabled()->get();
+
+            foreach ($pocketTools as $pocketTool) {
+                $userTool = new UserTool($pocketTool);
+                $userTools[$userTool->name] = $userTool;
+            }
+        } catch (\Throwable $e) {
+            // Database might not be available during some scenarios
+            Log::debug('ToolRegistry: Could not load user tools', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $userTools;
     }
 
     /**
      * Get a tool by name.
+     * Checks built-in tools first, then user tools.
      */
     public function get(string $name): ?Tool
     {
-        return $this->tools[$name] ?? null;
+        // Check built-in tools first (cached)
+        if (isset($this->builtInTools[$name])) {
+            return $this->builtInTools[$name];
+        }
+
+        // Check user tools (fresh from DB)
+        $userTools = $this->getUserTools();
+        return $userTools[$name] ?? null;
     }
 
     /**
@@ -36,17 +77,17 @@ class ToolRegistry
      */
     public function has(string $name): bool
     {
-        return isset($this->tools[$name]);
+        return $this->get($name) !== null;
     }
 
     /**
-     * Get all registered tools.
+     * Get all registered tools (built-in + fresh user tools).
      *
      * @return array<string, Tool>
      */
     public function all(): array
     {
-        return $this->tools;
+        return array_merge($this->builtInTools, $this->getUserTools());
     }
 
     /**
@@ -59,7 +100,7 @@ class ToolRegistry
     {
         return array_map(
             fn(Tool $tool) => $tool->toDefinition(),
-            array_values($this->tools)
+            array_values($this->all())
         );
     }
 
@@ -71,7 +112,7 @@ class ToolRegistry
     {
         $instructions = [];
 
-        foreach ($this->tools as $tool) {
+        foreach ($this->all() as $tool) {
             if ($tool->instructions !== null) {
                 $instructions[] = "## {$tool->name} Tool\n\n{$tool->instructions}";
             }
@@ -103,6 +144,6 @@ class ToolRegistry
      */
     public function count(): int
     {
-        return count($this->tools);
+        return count($this->all());
     }
 }

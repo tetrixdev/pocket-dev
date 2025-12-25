@@ -239,7 +239,7 @@ class ProcessConversationStream implements ShouldQueue
                         'type' => 'tool_use',
                         'id' => $event->metadata['tool_id'],
                         'name' => $event->metadata['tool_name'],
-                        'input' => [],
+                        'input' => new \stdClass(),
                     ];
                     $currentToolInput[$event->blockIndex] = '';
                     break;
@@ -263,10 +263,16 @@ class ProcessConversationStream implements ShouldQueue
                                 'json_error' => json_last_error_msg(),
                                 'input_preview' => substr($inputJson, 0, 200),
                             ]);
-                            $parsedInput = [];
+                            $parsedInput = new \stdClass();
                         }
 
-                        $contentBlocks[$event->blockIndex]['input'] = $parsedInput ?? [];
+                        // Ensure input is an object (not array) for Anthropic API compatibility
+                        // Empty arrays [] get encoded as JSON arrays, but API requires objects {}
+                        $input = $parsedInput ?? new \stdClass();
+                        if (is_array($input) && empty($input)) {
+                            $input = new \stdClass();
+                        }
+                        $contentBlocks[$event->blockIndex]['input'] = $input;
                         $pendingToolUses[] = $contentBlocks[$event->blockIndex];
                         Log::channel('api')->info('ProcessConversationStream: Tool use completed', [
                             'block_index' => $event->blockIndex,
