@@ -36,65 +36,91 @@ else
     echo "   Set GIT_TOKEN, GIT_USER_NAME, and GIT_USER_EMAIL to enable"
 fi
 
-# Set group ownership to www-data for shared access (user:www-data)
-# This allows both host user and container to write files
-chgrp -R www-data /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
+# Check if running as main PHP container (no args or php-fpm)
+# vs secondary container (queue worker, scheduler, etc.)
+if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
+    # Main PHP container: run full setup
 
-# Set group write permissions (664 for files, 775 for directories)
-find /var/www/storage -type d -exec chmod 775 {} \;
-find /var/www/storage -type f -exec chmod 664 {} \;
-find /var/www/bootstrap/cache -type d -exec chmod 775 {} \;
-find /var/www/bootstrap/cache -type f -exec chmod 664 {} \;
+    # Set group ownership to www-data for shared access (user:www-data)
+    # This allows both host user and container to write files
+    chgrp -R www-data /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
 
-# Fix permissions for mounted config volumes (for config editor)
-# Make directories and files group-writable so www-data (in group 1001) can edit configs
-if [ -d "/etc/nginx-proxy-config" ]; then
-    echo "Setting permissions on /etc/nginx-proxy-config..."
-    find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
-    find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
-    # Change group ownership to hostdocker so www-data can write
-    find /etc/nginx-proxy-config -exec chgrp hostdocker {} \; 2>/dev/null || true
+    # Set group write permissions (664 for files, 775 for directories)
+    find /var/www/storage -type d -exec chmod 775 {} \;
+    find /var/www/storage -type f -exec chmod 664 {} \;
+    find /var/www/bootstrap/cache -type d -exec chmod 775 {} \;
+    find /var/www/bootstrap/cache -type f -exec chmod 664 {} \;
+
+    # Fix permissions for mounted config volumes (for config editor)
+    # Make directories and files group-writable so www-data (in group 1001) can edit configs
+    if [ -d "/etc/nginx-proxy-config" ]; then
+        echo "Setting permissions on /etc/nginx-proxy-config..."
+        find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
+        find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
+        # Change group ownership to hostdocker so www-data can write
+        find /etc/nginx-proxy-config -exec chgrp hostdocker {} \; 2>/dev/null || true
+    fi
+
+    # Fix permissions for pocketdev storage volume (recursive with setgid)
+    if [ -d "/var/www/storage/pocketdev" ]; then
+        echo "Setting permissions on /var/www/storage/pocketdev..."
+        chgrp -R www-data /var/www/storage/pocketdev 2>/dev/null || true
+        find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
+        find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
+    fi
+
+    # Generate Laravel application key if not set
+    if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
+        echo "Generating Laravel application key..."
+        php artisan key:generate --no-interaction
+    fi
+
+    # Create storage symlink if it doesn't exist
+    if [ ! -L "public/storage" ]; then
+        echo "Creating storage symlink..."
+        php artisan storage:link --no-interaction
+    fi
+
+    # Install npm dependencies and build assets
+    cd /var/www
+    if [ -f "package.json" ]; then
+        echo "Installing npm dependencies..."
+        npm install
+
+        echo "Building frontend assets..."
+        npm run build
+
+        echo "✅ Built assets ready in public/build/"
+        echo "ℹ️  To start Vite dev server: docker compose exec pocket-dev-php npm run dev"
+    fi
+
+    composer install
+    composer dump-autoload -o
+    php artisan migrate --force
+    php artisan optimize:clear
+    php artisan config:cache
+    php artisan queue:restart
+
+    echo "Development environment ready"
+    echo "Starting PHP-FPM"
+    exec php-fpm
+else
+    # Secondary container (queue worker, scheduler, etc.):
+    # Wait for main container to complete migrations, then run the command
+    echo "⏳ Waiting for database migrations..."
+    max_attempts=60
+    attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        if php artisan migrate:status > /dev/null 2>&1; then
+            echo "✅ Database ready"
+            break
+        fi
+        attempt=$((attempt + 1))
+        if [ $attempt -eq $max_attempts ]; then
+            echo "❌ Timeout waiting for database migrations"
+            exit 1
+        fi
+        sleep 1
+    done
+    exec "$@"
 fi
-
-# Fix permissions for pocketdev storage volume (recursive with setgid)
-if [ -d "/var/www/storage/pocketdev" ]; then
-    echo "Setting permissions on /var/www/storage/pocketdev..."
-    chgrp -R www-data /var/www/storage/pocketdev 2>/dev/null || true
-    find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
-    find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
-fi
-
-# Generate Laravel application key if not set
-if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
-    echo "Generating Laravel application key..."
-    php artisan key:generate --no-interaction
-fi
-
-# Create storage symlink if it doesn't exist
-if [ ! -L "public/storage" ]; then
-    echo "Creating storage symlink..."
-    php artisan storage:link --no-interaction
-fi
-
-# Install npm dependencies and build assets
-cd /var/www
-if [ -f "package.json" ]; then
-    echo "Installing npm dependencies..."
-    npm install
-
-    echo "Building frontend assets..."
-    npm run build
-
-    echo "✅ Built assets ready in public/build/"
-    echo "ℹ️  To start Vite dev server: docker compose exec pocket-dev-php npm run dev"
-fi
-
-composer install
-composer dump-autoload -o
-php artisan migrate --force
-php artisan optimize:clear
-php artisan config:cache
-php artisan queue:restart
-
-echo "Starting PHP-FPM"
-exec php-fpm
