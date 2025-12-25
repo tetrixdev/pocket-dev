@@ -45,13 +45,13 @@ class CodexProvider implements AIProviderInterface
     }
 
     /**
-     * Check if Codex auth.json exists (contains either OAuth or API key).
+     * Check if Codex auth.json exists and is readable (contains either OAuth or API key).
      */
     public function hasCredentials(): bool
     {
         $home = getenv('HOME') ?: '/home/appuser';
         $authFile = $home . '/.codex/auth.json';
-        return file_exists($authFile);
+        return is_readable($authFile);
     }
 
     /**
