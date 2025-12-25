@@ -256,7 +256,6 @@
 
                 // Mobile input height tracking (for dynamic messages container bottom)
                 mobileInputHeight: 60,
-                audioChunkCount: 0,
 
                 // Anthropic API key state (for Claude Code)
                 anthropicKeyInput: '',
@@ -1826,7 +1825,12 @@
                         };
 
                         source.connect(processor);
-                        processor.connect(this.realtimeAudioContext.destination);
+                        // Connect through silent GainNode to prevent audio feedback
+                        // (ScriptProcessorNode must be connected to work, but we don't want speaker output)
+                        const silentGain = this.realtimeAudioContext.createGain();
+                        silentGain.gain.value = 0;
+                        processor.connect(silentGain);
+                        silentGain.connect(this.realtimeAudioContext.destination);
                         this.realtimeAudioWorklet = processor;
                     } catch (err) {
                         console.error('Error capturing audio:', err);
