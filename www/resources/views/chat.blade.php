@@ -19,6 +19,9 @@
             crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+          integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
 
     <style>
         .markdown-content { line-height: 1.6; }
@@ -43,6 +46,52 @@
         @media (max-width: 767px) {
             html, body { overflow: hidden; height: 100%; }
             #messages { -webkit-overflow-scrolling: touch; }
+        }
+
+        /* Custom scrollbar for textareas - dark theme */
+        textarea::-webkit-scrollbar {
+            width: 6px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: transparent;
+            margin: 4px 0; /* Inset from top/bottom to respect rounded corners */
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        /* Firefox */
+        textarea {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 transparent;
+        }
+
+        /* Custom scrollbar for messages and conversations - dark theme */
+        #messages::-webkit-scrollbar,
+        #conversations-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        #messages::-webkit-scrollbar-track,
+        #conversations-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #messages::-webkit-scrollbar-thumb,
+        #conversations-list::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        #messages::-webkit-scrollbar-thumb:hover,
+        #conversations-list::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        /* Firefox */
+        #messages,
+        #conversations-list {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 transparent;
         }
     </style>
 </head>
@@ -69,8 +118,9 @@
             {{-- Desktop: flex container scroll with overflow-y-auto --}}
             <div id="messages"
                  class="p-4 space-y-4 overflow-y-auto bg-gray-900
-                        fixed top-[60px] bottom-[200px] left-0 right-0 z-0
-                        md:static md:pt-4 md:pb-4 md:flex-1">
+                        fixed top-[60px] left-0 right-0 z-0
+                        md:static md:pt-4 md:pb-4 md:flex-1"
+                 :style="'bottom: ' + mobileInputHeight + 'px'">
 
                 {{-- Empty State --}}
                 <template x-if="messages.length === 0">
@@ -194,6 +244,19 @@
                 openAiKeyConfigured: false,
                 autoSendAfterTranscription: false,
 
+                // Realtime transcription state (WebSocket-based)
+                realtimeWs: null,
+                realtimeTranscript: '',
+                realtimeAudioContext: null,
+                realtimeAudioWorklet: null,
+                realtimeStream: null,
+                waitingForFinalTranscript: false,
+                stopTimeout: null,
+                currentTranscriptItemId: null,
+
+                // Mobile input height tracking (for dynamic messages container bottom)
+                mobileInputHeight: 60,
+
                 // Anthropic API key state (for Claude Code)
                 anthropicKeyInput: '',
                 anthropicKeyConfigured: false,
@@ -256,6 +319,18 @@
                         } else {
                             // Back to new conversation state
                             this.newConversation();
+                        }
+                    });
+
+                    // Track mobile input height for dynamic messages container bottom
+                    this.$nextTick(() => {
+                        if (this.$refs.mobileInput) {
+                            const resizeObserver = new ResizeObserver((entries) => {
+                                for (const entry of entries) {
+                                    this.mobileInputHeight = entry.contentRect.height;
+                                }
+                            });
+                            resizeObserver.observe(this.$refs.mobileInput);
                         }
                     });
                 },
@@ -532,8 +607,16 @@
                     // Clear URL to base path
                     this.updateUrl(null);
 
-                    // Re-fetch agents and select default
+                    // Re-fetch agents and reload current agent's settings
                     await this.fetchAgents();
+
+                    // Force reload agent settings (fetchAgents skips if agent already selected)
+                    if (this.currentAgentId) {
+                        const agent = this.agents.find(a => a.id === this.currentAgentId);
+                        if (agent) {
+                            this.selectAgent(agent, false);
+                        }
+                    }
                 },
 
                 async loadConversation(uuid) {
@@ -866,22 +949,13 @@
                     };
 
                     try {
-                        // Build stream request body with provider-specific reasoning settings
+                        // Build stream request body
+                        // NOTE: Reasoning/thinking settings are loaded from the agent on the backend
                         const streamBody = {
                             prompt: userPrompt,
                             response_level: this.responseLevel,
                             model: this.model
                         };
-                        // Add provider-specific reasoning settings
-                        if (this.provider === 'anthropic') {
-                            streamBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
-                        } else if (this.provider === 'openai') {
-                            streamBody.openai_reasoning_effort = this.openaiReasoningEffort;
-                        } else if (this.provider === 'openai_compatible') {
-                            streamBody.openai_compatible_reasoning_effort = this.openaiCompatibleReasoningEffort;
-                        } else if (this.provider === 'claude_code') {
-                            streamBody.claude_code_thinking_tokens = this.claudeCodeThinkingTokens;
-                        }
 
                         // Start the background streaming job
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/stream`, {
@@ -1589,144 +1663,257 @@
 
                 async startVoiceRecording() {
                     try {
-                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                        this.isProcessing = true;
+                        // Preserve existing prompt text, add space if needed
+                        this.realtimeTranscript = this.prompt.trim() ? this.prompt.trim() + ' ' : '';
+                        this.currentTranscriptItemId = null;
 
-                        const audioConstraints = isMobile ? {
+                        // Get ephemeral token from backend
+                        const sessionResponse = await fetch('/api/claude/transcribe/realtime-session', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        });
+
+                        if (sessionResponse.status === 428) {
+                            this.openAiKeyConfigured = false;
+                            this.showOpenAiModal = true;
+                            this.isProcessing = false;
+                            return;
+                        }
+
+                        const sessionData = await sessionResponse.json();
+                        if (!sessionData.success || !sessionData.client_secret) {
+                            throw new Error(sessionData.error || 'Failed to create transcription session');
+                        }
+
+                        // Connect to OpenAI Realtime API (GA - no beta header)
+                        // TODO: Make WebSocket URL configurable to match backend's baseUrl setting
+                        const wsUrl = 'wss://api.openai.com/v1/realtime?intent=transcription';
+                        this.realtimeWs = new WebSocket(wsUrl, [
+                            'realtime',
+                            `openai-insecure-api-key.${sessionData.client_secret}`,
+                        ]);
+
+                        this.realtimeWs.onopen = async () => {
+                            // Session config already applied via backend client_secrets call
+                            await this.startAudioCapture();
+                            this.isRecording = true;
+                            this.isProcessing = false;
+                        };
+
+                        this.realtimeWs.onmessage = (event) => {
+                            let msg;
+                            try {
+                                msg = JSON.parse(event.data);
+                            } catch (e) {
+                                console.error('[RT] Failed to parse message:', e);
+                                return;
+                            }
+
+                            if (msg.type === 'conversation.item.input_audio_transcription.delta') {
+                                if (msg.delta) {
+                                    // Sync with any manual edits the user made during recording
+                                    this.realtimeTranscript = this.prompt;
+
+                                    // Add space between turns
+                                    if (this.currentTranscriptItemId && this.currentTranscriptItemId !== msg.item_id) {
+                                        this.realtimeTranscript += ' ';
+                                    }
+                                    this.currentTranscriptItemId = msg.item_id;
+                                    this.realtimeTranscript += msg.delta;
+                                    this.prompt = this.realtimeTranscript;
+                                    this.scrollPromptToEnd();
+                                }
+                            } else if (msg.type === 'conversation.item.input_audio_transcription.completed') {
+                                // Don't close on completed - there might be more turns pending.
+                                // The timeout handles closing to ensure all deltas are received.
+                                // See: https://platform.openai.com/docs/guides/realtime-transcription
+                                // "ordering between completion events from different speech turns is not guaranteed"
+                            } else if (msg.type === 'error') {
+                                console.error('[RT] API error:', msg.error);
+                                // Ignore empty buffer error when stopping
+                                if (msg.error?.code === 'input_audio_buffer_commit_empty' && this.waitingForFinalTranscript) {
+                                    this.finishStopRecording();
+                                } else {
+                                    this.showError('Transcription error: ' + (msg.error?.message || 'Unknown error'));
+                                }
+                            }
+                        };
+
+                        this.realtimeWs.onerror = (error) => {
+                            console.error('WebSocket error:', error);
+                            this.cleanupRealtimeSession();
+                            this.showError('Connection error. Please try again.');
+                        };
+
+                        this.realtimeWs.onclose = () => {
+                            this.cleanupRealtimeSession();
+                        };
+
+                    } catch (err) {
+                        console.error('Error starting voice recording:', err);
+                        this.isProcessing = false;
+                        this.showError(err.message || 'Could not start voice recording.');
+                    }
+                },
+
+                async startAudioCapture() {
+                    try {
+                        this.realtimeStream = await navigator.mediaDevices.getUserMedia({
                             audio: {
+                                channelCount: 1,
                                 echoCancellation: true,
                                 noiseSuppression: true,
-                                autoGainControl: true
+                                autoGainControl: true,
                             }
-                        } : {
-                            audio: {
-                                autoGainControl: false,
-                                echoCancellation: false,
-                                noiseSuppression: false,
-                                sampleRate: 16000,
-                                channelCount: 1
-                            }
-                        };
+                        });
 
-                        const stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+                        this.realtimeAudioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-                        const mimeTypes = [
-                            'audio/webm;codecs=opus',
-                            'audio/webm',
-                            'audio/mp4',
-                            'audio/ogg;codecs=opus',
-                            'audio/wav'
-                        ];
-
-                        let selectedMimeType = '';
-                        for (const mimeType of mimeTypes) {
-                            if (MediaRecorder.isTypeSupported(mimeType)) {
-                                selectedMimeType = mimeType;
-                                break;
-                            }
+                        if (this.realtimeAudioContext.state === 'suspended') {
+                            await this.realtimeAudioContext.resume();
                         }
 
-                        if (!selectedMimeType) {
-                            this.mediaRecorder = new MediaRecorder(stream);
-                        } else {
-                            this.mediaRecorder = new MediaRecorder(stream, { mimeType: selectedMimeType });
-                        }
+                        const nativeSampleRate = this.realtimeAudioContext.sampleRate;
+                        const targetSampleRate = 24000;
 
-                        this.audioChunks = [];
+                        const source = this.realtimeAudioContext.createMediaStreamSource(this.realtimeStream);
 
-                        this.mediaRecorder.ondataavailable = (event) => {
-                            if (event.data.size > 0) {
-                                this.audioChunks.push(event.data);
+                        // Using ScriptProcessorNode (deprecated) instead of AudioWorkletNode because:
+                        // - AudioWorklet's postMessage causes audio data loss due to async messaging latency
+                        // - Proper AudioWorklet requires SharedArrayBuffer + ring buffer + COOP/COEP headers
+                        // - ScriptProcessorNode works reliably and deprecation != removal (still in all browsers)
+                        // Future: implement AudioWorklet with SharedArrayBuffer ring buffer pattern
+                        // See: https://developer.chrome.com/blog/audio-worklet-design-pattern
+                        const processor = this.realtimeAudioContext.createScriptProcessor(2048, 1, 1);
+
+                        processor.onaudioprocess = (e) => {
+                            if (!this.realtimeWs || this.realtimeWs.readyState !== WebSocket.OPEN) return;
+
+                            const inputData = e.inputBuffer.getChannelData(0);
+
+                            let resampledData;
+                            if (nativeSampleRate !== targetSampleRate) {
+                                const ratio = nativeSampleRate / targetSampleRate;
+                                const newLength = Math.floor(inputData.length / ratio);
+                                resampledData = new Float32Array(newLength);
+                                for (let i = 0; i < newLength; i++) {
+                                    const srcPos = i * ratio;
+                                    const srcIndex = Math.floor(srcPos);
+                                    const frac = srcPos - srcIndex;
+                                    const nextIndex = Math.min(srcIndex + 1, inputData.length - 1);
+                                    resampledData[i] = inputData[srcIndex] * (1 - frac) + inputData[nextIndex] * frac;
+                                }
+                            } else {
+                                resampledData = inputData;
                             }
+
+                            const pcm16 = new Int16Array(resampledData.length);
+                            for (let i = 0; i < resampledData.length; i++) {
+                                const s = Math.max(-1, Math.min(1, resampledData[i]));
+                                pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                            }
+
+                            const base64Audio = this.arrayBufferToBase64(pcm16.buffer);
+                            this.realtimeWs.send(JSON.stringify({
+                                type: 'input_audio_buffer.append',
+                                audio: base64Audio
+                            }));
                         };
 
-                        this.mediaRecorder.onstop = async () => {
-                            await this.processRecording();
-                        };
-
-                        this.mediaRecorder.start(isMobile ? 1000 : undefined);
-                        this.isRecording = true;
+                        source.connect(processor);
+                        // Connect through silent GainNode to prevent audio feedback
+                        // (ScriptProcessorNode must be connected to work, but we don't want speaker output)
+                        const silentGain = this.realtimeAudioContext.createGain();
+                        silentGain.gain.value = 0;
+                        processor.connect(silentGain);
+                        silentGain.connect(this.realtimeAudioContext.destination);
+                        this.realtimeAudioWorklet = processor;
                     } catch (err) {
-                        console.error('Error accessing microphone:', err);
-                        this.showError('Could not access microphone. Please check permissions.');
+                        console.error('Error capturing audio:', err);
+                        throw new Error('Could not access microphone. Please check permissions.');
                     }
+                },
+
+                arrayBufferToBase64(buffer) {
+                    const bytes = new Uint8Array(buffer);
+                    let binary = '';
+                    for (let i = 0; i < bytes.byteLength; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    return btoa(binary);
                 },
 
                 stopVoiceRecording() {
-                    if (this.mediaRecorder && this.isRecording) {
-                        this.mediaRecorder.stop();
-                        this.isRecording = false;
-                        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                    if (!this.isRecording) return;
+
+                    this.isRecording = false;
+
+                    if (this.realtimeWs && this.realtimeWs.readyState === WebSocket.OPEN) {
+                        // Always commit to flush any pending audio (empty buffer errors are ignored)
+                        this.realtimeWs.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+
+                        // Always wait for transcription to complete (or timeout after 6s)
+                        this.waitingForFinalTranscript = true;
+                        this.stopTimeout = setTimeout(() => {
+                            this.finishStopRecording();
+                        }, 6000);
+                    } else {
+                        this.cleanupRealtimeSession();
                     }
                 },
 
-                async processRecording() {
-                    this.isProcessing = true;
-
-                    try {
-                        if (!this.audioChunks || this.audioChunks.length === 0) {
-                            this.showError('No audio recorded. Please try again and speak for at least 1 second.');
-                            return;
-                        }
-
-                        const actualMimeType = this.mediaRecorder.mimeType || 'audio/webm';
-                        const audioBlob = new Blob(this.audioChunks, { type: actualMimeType });
-
-                        if (audioBlob.size < 1000) {
-                            this.showError('Recording too short. Please record for at least 1 second.');
-                            return;
-                        }
-
-                        if (audioBlob.size > 25 * 1024 * 1024) {
-                            this.showError('Recording too large. Please keep it under 25MB.');
-                            return;
-                        }
-
-                        let extension = 'webm';
-                        if (actualMimeType.includes('mp4')) extension = 'm4a';
-                        else if (actualMimeType.includes('mpeg') || actualMimeType.includes('mp3')) extension = 'mp3';
-                        else if (actualMimeType.includes('wav')) extension = 'wav';
-                        else if (actualMimeType.includes('ogg')) extension = 'ogg';
-
-                        const formData = new FormData();
-                        formData.append('audio', audioBlob, `recording.${extension}`);
-
-                        const response = await fetch('/api/claude/transcribe', {
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                            },
-                            body: formData
-                        });
-
-                        if (response.status === 428) {
-                            this.openAiKeyConfigured = false;
-                            this.showOpenAiModal = true;
-                            return;
-                        }
-
-                        const data = await response.json();
-
-                        if (!response.ok) {
-                            this.showError('Transcription failed: ' + (data.error || 'Unknown error'));
-                            return;
-                        }
-
-                        if (data.success && data.transcription) {
-                            this.prompt = data.transcription;
-
-                            if (this.autoSendAfterTranscription) {
-                                this.autoSendAfterTranscription = false;
-                                setTimeout(() => this.sendMessage(), 100);
-                            }
-                        } else {
-                            this.showError('Transcription failed: ' + (data.error || 'Unknown error'));
-                        }
-                    } catch (err) {
-                        console.error('Error processing recording:', err);
-                        this.showError('Error processing audio');
-                    } finally {
-                        this.isProcessing = false;
+                finishStopRecording() {
+                    if (this.stopTimeout) {
+                        clearTimeout(this.stopTimeout);
+                        this.stopTimeout = null;
                     }
+                    this.waitingForFinalTranscript = false;
+
+                    if (this.realtimeWs) {
+                        this.realtimeWs.close();
+                    }
+                    this.cleanupRealtimeSession();
+
+                    // Handle auto-send
+                    if (this.autoSendAfterTranscription && this.prompt.trim()) {
+                        this.autoSendAfterTranscription = false;
+                        setTimeout(() => this.sendMessage(), 100);
+                    }
+                },
+
+                cleanupRealtimeSession() {
+                    // Stop audio processing
+                    if (this.realtimeAudioWorklet) {
+                        this.realtimeAudioWorklet.disconnect();
+                        this.realtimeAudioWorklet = null;
+                    }
+
+                    // Close audio context
+                    if (this.realtimeAudioContext) {
+                        this.realtimeAudioContext.close();
+                        this.realtimeAudioContext = null;
+                    }
+
+                    // Stop microphone stream
+                    if (this.realtimeStream) {
+                        this.realtimeStream.getTracks().forEach(track => track.stop());
+                        this.realtimeStream = null;
+                    }
+
+                    // Close WebSocket
+                    if (this.realtimeWs) {
+                        if (this.realtimeWs.readyState === WebSocket.OPEN) {
+                            this.realtimeWs.close();
+                        }
+                        this.realtimeWs = null;
+                    }
+
+                    this.isRecording = false;
+                    this.isProcessing = false;
                 },
 
                 async saveOpenAiKey() {
@@ -1770,15 +1957,26 @@
                 },
 
                 get voiceButtonText() {
-                    if (this.isProcessing) return '⏳ Processing...';
-                    if (this.isRecording) return '⏹️ Stop';
-                    return '🎙️ Record';
+                    if (this.isProcessing) return '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
+                    if (this.waitingForFinalTranscript) return '<i class="fa-solid fa-spinner fa-spin"></i> Finishing...';
+                    if (this.isRecording) return '<i class="fa-solid fa-stop"></i> Stop';
+                    return '<i class="fa-solid fa-microphone"></i> Record';
                 },
 
                 get voiceButtonClass() {
-                    if (this.isProcessing) return 'bg-gray-600 text-gray-200 cursor-not-allowed';
-                    if (this.isRecording) return 'bg-red-600 text-white hover:bg-red-700';
-                    return 'bg-purple-600 text-white hover:bg-purple-700';
+                    if (this.isProcessing || this.waitingForFinalTranscript) return 'bg-gray-600/80 text-gray-300 cursor-not-allowed';
+                    if (this.isRecording) return 'bg-rose-500/90 text-white hover:bg-rose-400';
+                    return 'bg-violet-500/90 text-white hover:bg-violet-400';
+                },
+
+                // Auto-scroll textarea to show latest transcription
+                scrollPromptToEnd() {
+                    this.$nextTick(() => {
+                        // Scroll all prompt textareas (both desktop and mobile exist in DOM)
+                        this.$root.querySelectorAll('textarea[x-model="prompt"]').forEach(textarea => {
+                            textarea.scrollTop = textarea.scrollHeight;
+                        });
+                    });
                 },
 
                 // ==================== Copy Conversation ====================
