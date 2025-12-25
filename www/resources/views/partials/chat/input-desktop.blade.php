@@ -16,7 +16,7 @@
         <textarea x-model="prompt"
                   x-ref="promptInput"
                   :disabled="isStreaming"
-                  placeholder="Ask AI to help with your code..."
+                  placeholder="Hey PocketDev, can you..."
                   rows="1"
                   class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none"
                   style="height: 40px; min-height: 40px; max-height: 168px; overflow-y: hidden;"

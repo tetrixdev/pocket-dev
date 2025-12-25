@@ -68,6 +68,31 @@
             scrollbar-width: thin;
             scrollbar-color: #4b5563 transparent;
         }
+
+        /* Custom scrollbar for messages and conversations - dark theme */
+        #messages::-webkit-scrollbar,
+        #conversations-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        #messages::-webkit-scrollbar-track,
+        #conversations-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #messages::-webkit-scrollbar-thumb,
+        #conversations-list::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        #messages::-webkit-scrollbar-thumb:hover,
+        #conversations-list::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        /* Firefox */
+        #messages,
+        #conversations-list {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 transparent;
+        }
     </style>
 </head>
 <body class="antialiased bg-gray-900 text-gray-100 h-screen overflow-hidden" x-data="chatApp()" x-init="init()">
@@ -93,8 +118,9 @@
             {{-- Desktop: flex container scroll with overflow-y-auto --}}
             <div id="messages"
                  class="p-4 space-y-4 overflow-y-auto bg-gray-900
-                        fixed top-[60px] bottom-[200px] left-0 right-0 z-0
-                        md:static md:pt-4 md:pb-4 md:flex-1">
+                        fixed top-[60px] left-0 right-0 z-0
+                        md:static md:pt-4 md:pb-4 md:flex-1"
+                 :style="'bottom: ' + mobileInputHeight + 'px'">
 
                 {{-- Empty State --}}
                 <template x-if="messages.length === 0">
@@ -227,6 +253,9 @@
                 waitingForFinalTranscript: false,
                 stopTimeout: null,
                 currentTranscriptItemId: null,
+
+                // Mobile input height tracking (for dynamic messages container bottom)
+                mobileInputHeight: 60,
                 audioChunkCount: 0,
 
                 // Anthropic API key state (for Claude Code)
@@ -291,6 +320,18 @@
                         } else {
                             // Back to new conversation state
                             this.newConversation();
+                        }
+                    });
+
+                    // Track mobile input height for dynamic messages container bottom
+                    this.$nextTick(() => {
+                        if (this.$refs.mobileInput) {
+                            const resizeObserver = new ResizeObserver((entries) => {
+                                for (const entry of entries) {
+                                    this.mobileInputHeight = entry.contentRect.height;
+                                }
+                            });
+                            resizeObserver.observe(this.$refs.mobileInput);
                         }
                     });
                 },
@@ -1675,6 +1716,9 @@
 
                             if (msg.type === 'conversation.item.input_audio_transcription.delta') {
                                 if (msg.delta) {
+                                    // Sync with any manual edits the user made during recording
+                                    this.realtimeTranscript = this.prompt;
+
                                     // Add space between turns
                                     if (this.currentTranscriptItemId && this.currentTranscriptItemId !== msg.item_id) {
                                         this.realtimeTranscript += ' ';

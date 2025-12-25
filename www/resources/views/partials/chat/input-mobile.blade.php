@@ -1,5 +1,5 @@
 {{-- Fixed Bottom Input (Mobile) --}}
-<div class="fixed bottom-0 left-0 right-0 z-20 bg-gray-800 border-t border-gray-700 safe-area-bottom">
+<div x-ref="mobileInput" class="fixed bottom-0 left-0 right-0 z-20 bg-gray-800 border-t border-gray-700 safe-area-bottom">
     {{-- Single Row: Voice | Textarea | Send --}}
     <div class="p-2 flex gap-2 items-end">
         {{-- Voice Button --}}
@@ -16,7 +16,7 @@
         <textarea x-model="prompt"
                   x-ref="promptInput"
                   :disabled="isStreaming"
-                  placeholder="Ask AI to help with your code..."
+                  placeholder="Hey PocketDev, can you..."
                   rows="1"
                   class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none"
                   style="height: 40px; min-height: 40px; max-height: 168px; overflow-y: hidden;"
