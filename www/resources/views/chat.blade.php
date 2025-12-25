@@ -19,6 +19,9 @@
             crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+          integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
 
     <style>
         .markdown-content { line-height: 1.6; }
@@ -43,6 +46,27 @@
         @media (max-width: 767px) {
             html, body { overflow: hidden; height: 100%; }
             #messages { -webkit-overflow-scrolling: touch; }
+        }
+
+        /* Custom scrollbar for textareas - dark theme */
+        textarea::-webkit-scrollbar {
+            width: 6px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: transparent;
+            margin: 4px 0; /* Inset from top/bottom to respect rounded corners */
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        /* Firefox */
+        textarea {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 transparent;
         }
     </style>
 </head>
@@ -1891,16 +1915,16 @@
                 },
 
                 get voiceButtonText() {
-                    if (this.isProcessing) return '⏳ Connecting...';
-                    if (this.waitingForFinalTranscript) return '⏳ Finishing...';
-                    if (this.isRecording) return '⏹️ Stop';
-                    return '🎙️ Record';
+                    if (this.isProcessing) return '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
+                    if (this.waitingForFinalTranscript) return '<i class="fa-solid fa-spinner fa-spin"></i> Finishing...';
+                    if (this.isRecording) return '<i class="fa-solid fa-stop"></i> Stop';
+                    return '<i class="fa-solid fa-microphone"></i> Record';
                 },
 
                 get voiceButtonClass() {
-                    if (this.isProcessing || this.waitingForFinalTranscript) return 'bg-gray-600 text-gray-200 cursor-not-allowed';
-                    if (this.isRecording) return 'bg-red-600 text-white hover:bg-red-700';
-                    return 'bg-purple-600 text-white hover:bg-purple-700';
+                    if (this.isProcessing || this.waitingForFinalTranscript) return 'bg-gray-600/80 text-gray-300 cursor-not-allowed';
+                    if (this.isRecording) return 'bg-rose-500/90 text-white hover:bg-rose-400';
+                    return 'bg-violet-500/90 text-white hover:bg-violet-400';
                 },
 
                 // Auto-scroll textarea to show latest transcription

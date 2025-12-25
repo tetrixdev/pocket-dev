@@ -58,7 +58,7 @@ class TranscriptionService
                             ],
                             'transcription' => [
                                 'model' => 'gpt-4o-transcribe',
-                                'language' => 'en', // ISO-639-1 format, improves accuracy for short clips
+                                'language' => 'en', // ISO-639-1 format
                             ],
                             'noise_reduction' => [
                                 'type' => 'near_field',
@@ -68,7 +68,7 @@ class TranscriptionService
                                 'type' => 'server_vad',
                                 'threshold' => 0.5,           // Speech detection sensitivity (0-1)
                                 'prefix_padding_ms' => 300,   // Audio to include before speech
-                                'silence_duration_ms' => 300, // Silence before ending turn
+                                'silence_duration_ms' => 500, // Silence before ending turn
                             ],
                         ],
                     ],

@@ -1,25 +1,26 @@
 {{-- Desktop Input Form --}}
-<div class="border-t border-gray-700 p-3">
-    <form @submit.prevent="sendMessage()" class="flex gap-2 items-center">
+<div class="border-t border-gray-700 p-3 bg-gray-800">
+    <form @submit.prevent="sendMessage()" class="flex gap-2 items-end">
         {{-- Voice Button --}}
         <button type="button"
                 @click="toggleVoiceRecording()"
                 :class="voiceButtonClass"
                 :disabled="isProcessing || isStreaming || waitingForFinalTranscript"
-                class="p-4 rounded-lg font-medium text-sm flex items-center justify-center"
+                class="px-4 py-[10px] min-w-[106px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:cursor-not-allowed"
                 title="Voice input (Ctrl+Space)"
                 @keydown.ctrl.space.window.prevent="toggleVoiceRecording()"
-                x-text="voiceButtonText">
+                x-html="voiceButtonText">
         </button>
 
-        {{-- Input Field (fixed 2-row height) --}}
+        {{-- Input Field (auto-grow, max 6 rows) --}}
         <textarea x-model="prompt"
                   x-ref="promptInput"
                   :disabled="isStreaming"
                   placeholder="Ask AI to help with your code..."
-                  rows="2"
-                  class="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none overflow-y-auto"
-                  style="height: 52px; max-height: 200px;"
+                  rows="1"
+                  class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none"
+                  style="height: 40px; min-height: 40px; max-height: 168px; overflow-y: hidden;"
+                  x-effect="prompt; $nextTick(() => { $el.style.height = 'auto'; const sh = $el.scrollHeight; $el.style.height = Math.min(sh, 168) + 'px'; $el.style.overflowY = sh > 168 ? 'auto' : 'hidden'; if (prompt) $el.scrollTop = $el.scrollHeight; })"
                   @keydown.ctrl.t.prevent="cycleReasoningLevel()"
                   @keydown.ctrl.space.prevent="toggleVoiceRecording()"
                   @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); sendMessage(); }"></textarea>
@@ -46,14 +47,9 @@
         <button type="submit"
                 @click="handleSendClick($event)"
                 :disabled="isStreaming || isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
-                :class="isStreaming || isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600' : 'bg-green-600 hover:bg-green-700'"
-                class="p-4 rounded-lg flex items-center justify-center disabled:cursor-not-allowed">
-            <template x-if="!isStreaming">
-                <span>▶️ Send</span>
-            </template>
-            <template x-if="isStreaming">
-                <span>⏳ Streaming...</span>
-            </template>
+                :class="isStreaming || isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600 text-gray-400' : 'bg-emerald-600/90 hover:bg-emerald-500 text-white'"
+                class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:cursor-not-allowed"
+                x-html="isStreaming ? '<i class=\'fa-solid fa-spinner fa-spin\'></i> Streaming...' : '<i class=\'fa-solid fa-paper-plane\'></i> Send'">
         </button>
     </form>
 </div>
