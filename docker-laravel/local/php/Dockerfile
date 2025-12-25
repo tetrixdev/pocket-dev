@@ -83,6 +83,11 @@ RUN mkdir -p /home/appuser/.claude /home/appuser/.codex \
     && chown -R 1000:1000 /home/appuser \
     && chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex
 
+# Change www-data's home directory to /home/appuser
+# This ensures all CLI tools (claude, codex, git, gh, etc.) use consistent paths
+# regardless of whether called from PHP-FPM, entrypoint, or docker exec
+RUN usermod -d /home/appuser www-data
+
 # Set working directory
 WORKDIR /var/www
 
