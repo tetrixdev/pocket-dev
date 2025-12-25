@@ -31,30 +31,31 @@ else
     echo "ℹ️  Git credentials not provided - skipping git/GitHub CLI setup"
 fi
 
-# Generate Laravel application key if not set
-if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
-    echo "Generating Laravel application key..."
-    php artisan key:generate --no-interaction --force
-fi
-
-# Run Laravel production optimizations
-echo "Running Laravel optimizations..."
-php artisan migrate --force --no-interaction
-php artisan config:cache --no-interaction
-php artisan route:cache --no-interaction
-php artisan view:cache --no-interaction
-php artisan queue:restart --no-interaction
-
-echo "Laravel application ready for production"
-
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
+    # Main PHP container: run migrations, caching, and start PHP-FPM
+
+    # Generate Laravel application key if not set
+    if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
+        echo "Generating Laravel application key..."
+        php artisan key:generate --no-interaction --force
+    fi
+
+    # Run Laravel production optimizations
+    echo "Running Laravel optimizations..."
+    php artisan migrate --force --no-interaction
+    php artisan config:cache --no-interaction
+    php artisan route:cache --no-interaction
+    php artisan view:cache --no-interaction
+    php artisan queue:restart --no-interaction
+
+    echo "Laravel application ready for production"
     echo "Starting PHP-FPM..."
     exec php-fpm
 else
-    # Secondary container: wait for migrations to complete before running command
-    # This handles queue workers, schedulers, or any other artisan commands
+    # Secondary container (queue worker, scheduler, etc.):
+    # Wait for main container to complete migrations, then run the command
     echo "⏳ Waiting for database migrations..."
     max_attempts=60
     attempt=0
