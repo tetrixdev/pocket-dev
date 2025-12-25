@@ -3,7 +3,6 @@
 namespace App\Providers;
 
 use App\Contracts\AIProviderInterface;
-use App\Models\PocketTool;
 use App\Services\EmbeddingService;
 use App\Services\Providers\AnthropicProvider;
 use App\Services\Providers\ClaudeCodeProvider;
@@ -14,7 +13,6 @@ use App\Services\SystemPromptBuilder;
 use App\Services\SystemPromptService;
 use App\Services\ToolRegistry;
 use App\Tools\Tool;
-use App\Tools\UserTool;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use ReflectionClass;
@@ -28,14 +26,16 @@ class AIServiceProvider extends ServiceProvider
     public function register(): void
     {
         // Register ToolRegistry as singleton
+        // Built-in tools are cached; user tools are fetched fresh from DB on each access
         $this->app->singleton(ToolRegistry::class, function () {
             $registry = new ToolRegistry();
 
-            // Auto-discover and register all Tool classes
+            // Auto-discover and register built-in Tool classes (cached)
             $this->discoverAndRegisterTools($registry);
 
-            // Also register user-created tools from the database
-            $this->registerUserTools($registry);
+            // User tools are NOT registered here - ToolRegistry fetches them fresh
+            // from the database on each access to ensure newly created tools are
+            // available without restarting the queue worker
 
             return $registry;
         });
@@ -122,27 +122,6 @@ class AIServiceProvider extends ServiceProvider
         }
     }
 
-    /**
-     * Register user-created tools from the database.
-     */
-    private function registerUserTools(ToolRegistry $registry): void
-    {
-        try {
-            // Only load enabled user tools
-            $userTools = PocketTool::user()->enabled()->get();
-
-            foreach ($userTools as $pocketTool) {
-                $userTool = new UserTool($pocketTool);
-                $registry->register($userTool);
-            }
-        } catch (\Throwable $e) {
-            // Database might not be available during some boot scenarios
-            Log::debug(
-                'Could not load user tools',
-                ['error' => $e->getMessage()]
-            );
-        }
-    }
 
     /**
      * Bootstrap services.
