@@ -36,13 +36,13 @@ class ClaudeCodeProvider implements AIProviderInterface
     }
 
     /**
-     * Check if OAuth credentials exist (from `claude login`).
+     * Check if OAuth credentials exist and are readable (from `claude login`).
      */
     public function hasOAuthCredentials(): bool
     {
         $home = getenv('HOME') ?: '/home/appuser';
         $credentialsFile = $home . '/.claude/.credentials.json';
-        return file_exists($credentialsFile);
+        return is_readable($credentialsFile);
     }
 
     /**
