@@ -910,25 +910,12 @@
 
                     try {
                         // Build stream request body
+                        // NOTE: Reasoning/thinking settings are loaded from the agent on the backend
                         const streamBody = {
                             prompt: userPrompt,
                             response_level: this.responseLevel,
                             model: this.model
                         };
-                        // NOTE: Reasoning/thinking settings are now loaded from the agent on the backend.
-                        // Per-message reasoning override has been disabled (see input-desktop.blade.php).
-                        // To re-enable, uncomment below and the reasoning toggle button.
-                        /*
-                        if (this.provider === 'anthropic') {
-                            streamBody.anthropic_thinking_budget = this.anthropicThinkingBudget;
-                        } else if (this.provider === 'openai') {
-                            streamBody.openai_reasoning_effort = this.openaiReasoningEffort;
-                        } else if (this.provider === 'openai_compatible') {
-                            streamBody.openai_compatible_reasoning_effort = this.openaiCompatibleReasoningEffort;
-                        } else if (this.provider === 'claude_code') {
-                            streamBody.claude_code_thinking_tokens = this.claudeCodeThinkingTokens;
-                        }
-                        */
 
                         // Start the background streaming job
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/stream`, {
@@ -1663,6 +1650,7 @@
                         }
 
                         // Connect to OpenAI Realtime API (GA - no beta header)
+                        // TODO: Make WebSocket URL configurable to match backend's baseUrl setting
                         const wsUrl = 'wss://api.openai.com/v1/realtime?intent=transcription';
                         this.realtimeWs = new WebSocket(wsUrl, [
                             'realtime',
@@ -1677,7 +1665,13 @@
                         };
 
                         this.realtimeWs.onmessage = (event) => {
-                            const msg = JSON.parse(event.data);
+                            let msg;
+                            try {
+                                msg = JSON.parse(event.data);
+                            } catch (e) {
+                                console.error('[RT] Failed to parse message:', e);
+                                return;
+                            }
 
                             if (msg.type === 'conversation.item.input_audio_transcription.delta') {
                                 if (msg.delta) {
