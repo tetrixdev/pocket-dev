@@ -5,6 +5,7 @@ use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\CodexAuthController;
 use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\CredentialsController;
+use App\Http\Controllers\MemoryController;
 use App\Http\Controllers\SystemPromptController;
 use Illuminate\Support\Facades\Route;
 
@@ -98,3 +99,12 @@ Route::delete("/config/tools/{slug}", [ConfigController::class, "deleteTool"])->
 
 // Native tools toggle (AJAX)
 Route::post("/config/tools/native/toggle", [ConfigController::class, "toggleNativeTool"])->name("config.tools.native.toggle");
+
+// Memory management
+Route::get("/config/memory", [MemoryController::class, "index"])->name("config.memory");
+Route::post("/config/memory/settings", [MemoryController::class, "updateSettings"])->name("config.memory.settings");
+Route::post("/config/memory/snapshots", [MemoryController::class, "createSnapshot"])->name("config.memory.snapshots.create");
+Route::post("/config/memory/snapshots/{filename}/restore", [MemoryController::class, "restoreSnapshot"])->name("config.memory.snapshots.restore");
+Route::delete("/config/memory/snapshots/{filename}", [MemoryController::class, "deleteSnapshot"])->name("config.memory.snapshots.delete");
+Route::get("/config/memory/export", [MemoryController::class, "export"])->name("config.memory.export");
+Route::post("/config/memory/import", [MemoryController::class, "import"])->name("config.memory.import");

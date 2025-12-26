@@ -6,29 +6,29 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Query memory objects using raw SQL (SELECT only).
+ * Query memory tables using raw SQL (SELECT only).
  *
- * This tool allows semantic search and complex queries against the memory store.
+ * This tool allows semantic search and complex queries against the memory schema.
  * Only SELECT queries are allowed for safety.
  */
 class MemoryQueryTool extends Tool
 {
     public string $name = 'MemoryQuery';
 
-    public string $description = 'Query memory objects using SQL. Supports semantic search with vector similarity.';
+    public string $description = 'Query memory tables using SQL. Supports semantic search with vector similarity.';
 
-    public string $category = 'memory';
+    public string $category = 'memory_data';
 
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
             'sql' => [
                 'type' => 'string',
-                'description' => 'SQL SELECT query. Available tables: memory_structures, memory_objects, memory_embeddings, memory_relationships. For semantic search, use: embedding <=> $query_embedding where $query_embedding is a vector literal like \'[0.1,0.2,...]\'. Use 1 - (embedding <=> query) for similarity score.',
+                'description' => 'SQL SELECT query. Tables are in memory schema (memory.tablename). For semantic search, use: embedding <=> :search_embedding. Use 1 - (embedding <=> :search_embedding) for similarity score (0-1).',
             ],
             'search_text' => [
                 'type' => 'string',
-                'description' => 'Optional: Text to convert to embedding for semantic search. If provided, the embedding will be available as :search_embedding parameter in your SQL.',
+                'description' => 'Optional: Text to convert to embedding for semantic search. If provided, the embedding will be available as :search_embedding in your SQL.',
             ],
             'limit' => [
                 'type' => 'integer',
@@ -44,64 +44,70 @@ class MemoryQueryTool extends Tool
     }
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-Use MemoryQuery to search and retrieve memory objects. This is your primary read tool for the memory system.
+Use MemoryQuery to search and retrieve data from memory tables. This is your primary read tool for the memory system.
 
 ## CLI Example
 
 ```bash
-php artisan memory:query --sql="SELECT id, name, slug FROM memory_structures"
-php artisan memory:query --sql="SELECT * FROM memory_objects WHERE structure_slug='character'" --limit=10
+php artisan memory:query --sql="SELECT * FROM memory.characters LIMIT 10"
+php artisan memory:query --sql="SELECT * FROM memory.schema_registry"
 ```
 
-## Available Tables
+## System Tables
 
-- **memory_structures**: Schema definitions (id, name, slug, description, schema, icon, color)
-- **memory_objects**: All entities (id, structure_id, structure_slug, name, data, searchable_text, parent_id)
-- **memory_embeddings**: Vector embeddings (id, object_id, field_path, content_hash, embedding)
-- **memory_relationships**: Links between objects (id, source_id, target_id, relationship_type)
+- **memory.schema_registry**: Table metadata (table_name, description, embeddable_fields)
+- **memory.embeddings**: Vector embeddings (source_table, source_id, field_name, embedding, content)
 
 ## Common Query Patterns
 
-### List all structures
+### List all tables
 ```sql
-SELECT id, name, slug, description FROM memory_structures
+SELECT table_name, description, embeddable_fields FROM memory.schema_registry
 ```
 
-### List objects of a type
+### Query a user table
 ```sql
-SELECT id, name, data FROM memory_objects WHERE structure_slug = 'character'
-```
-
-### Get object with relationships
-```sql
-SELECT mo.*, mr.relationship_type, target.name as related_name
-FROM memory_objects mo
-LEFT JOIN memory_relationships mr ON mo.id = mr.source_id
-LEFT JOIN memory_objects target ON mr.target_id = target.id
-WHERE mo.id = 'uuid-here'
+SELECT id, name, class FROM memory.characters WHERE class = 'wizard'
 ```
 
 ### Semantic search (requires search_text parameter)
 ```sql
-SELECT mo.id, mo.name, 1 - (me.embedding <=> :search_embedding) as similarity
-FROM memory_objects mo
-JOIN memory_embeddings me ON mo.id = me.object_id
-WHERE mo.structure_slug = 'location'
-  AND 1 - (me.embedding <=> :search_embedding) > 0.5
+SELECT c.id, c.name, c.backstory, 1 - (e.embedding <=> :search_embedding) as similarity
+FROM memory.characters c
+JOIN memory.embeddings e ON e.source_id = c.id AND e.source_table = 'characters'
+WHERE e.field_name = 'backstory'
+  AND 1 - (e.embedding <=> :search_embedding) > 0.5
 ORDER BY similarity DESC
 ```
 
-### JSONB queries
+### Cross-table semantic search
 ```sql
-SELECT * FROM memory_objects
-WHERE structure_slug = 'item'
-  AND data @> '{"type": "weapon"}'
+SELECT e.source_table, e.source_id, e.field_name, e.content,
+       1 - (e.embedding <=> :search_embedding) as similarity
+FROM memory.embeddings e
+WHERE 1 - (e.embedding <=> :search_embedding) > 0.6
+ORDER BY similarity DESC
+LIMIT 10
+```
+
+### Fuzzy text search (pg_trgm)
+```sql
+SELECT * FROM memory.characters WHERE name % 'Gandolf'
+```
+
+### Spatial query (PostGIS)
+```sql
+SELECT name, ST_Distance(coordinates, ST_MakePoint(-122.4, 37.8)::geography) as distance_m
+FROM memory.locations
+WHERE ST_DWithin(coordinates, ST_MakePoint(-122.4, 37.8)::geography, 50000)
+ORDER BY distance_m
 ```
 
 ## Notes
 - Only SELECT queries allowed
 - Results limited to 100 rows
-- Use :search_embedding placeholder for vector searches
+- Use :search_embedding placeholder with search_text parameter for vector searches
+- Tables are in memory schema (memory.tablename)
 INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
@@ -116,7 +122,7 @@ INSTRUCTIONS;
 
         // Security: Only allow SELECT queries
         if (!$this->isSelectQuery($sql)) {
-            return ToolResult::error('Only SELECT queries are allowed. Use MemoryCreate, MemoryUpdate, MemoryDelete, MemoryLink, or MemoryUnlink for modifications.');
+            return ToolResult::error('Only SELECT queries are allowed. Use MemoryInsert, MemoryUpdate, or MemoryDelete for modifications.');
         }
 
         // Security: Block dangerous patterns

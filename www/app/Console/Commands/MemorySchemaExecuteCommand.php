@@ -3,36 +3,29 @@
 namespace App\Console\Commands;
 
 use App\Tools\ExecutionContext;
-use App\Tools\MemoryDeleteTool;
+use App\Tools\MemorySchemaExecuteTool;
 use Illuminate\Console\Command;
 
-class MemoryDeleteCommand extends Command
+class MemorySchemaExecuteCommand extends Command
 {
-    protected $signature = 'memory:delete
-        {--table= : Table name (without schema prefix)}
-        {--where= : WHERE clause (without WHERE keyword)}';
+    protected $signature = 'memory:schema:execute
+        {--sql= : DDL SQL statement to execute}';
 
-    protected $description = 'Delete rows from a memory table and their associated embeddings';
+    protected $description = 'Execute DDL SQL on the memory schema (CREATE INDEX, DROP TABLE, etc.)';
 
     public function handle(): int
     {
-        $table = $this->option('table');
-        $where = $this->option('where');
+        $sql = $this->option('sql');
 
-        if (empty($table)) {
-            return $this->outputError('The --table option is required');
-        }
-
-        if (empty($where)) {
-            return $this->outputError('The --where option is required');
+        if (empty($sql)) {
+            return $this->outputError('The --sql option is required');
         }
 
         $input = [
-            'table' => $table,
-            'where' => $where,
+            'sql' => $sql,
         ];
 
-        $tool = new MemoryDeleteTool();
+        $tool = new MemorySchemaExecuteTool();
         $context = new ExecutionContext(getcwd());
         $result = $tool->execute($input, $context);
 

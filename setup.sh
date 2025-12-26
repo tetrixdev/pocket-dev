@@ -70,6 +70,11 @@ DB_READONLY_PASSWORD=$(openssl rand -hex 16)
 sedi "s|DB_READONLY_PASSWORD=|DB_READONLY_PASSWORD=$DB_READONLY_PASSWORD|" .env
 echo "Generated DB_READONLY_PASSWORD"
 
+# Generate DB_MEMORY_AI_PASSWORD (for memory schema DDL/DML user)
+DB_MEMORY_AI_PASSWORD=$(openssl rand -hex 16)
+sedi "s|DB_MEMORY_AI_PASSWORD=|DB_MEMORY_AI_PASSWORD=$DB_MEMORY_AI_PASSWORD|" .env
+echo "Generated DB_MEMORY_AI_PASSWORD"
+
 # Ask for NGINX_PORT
 echo ""
 read -p "HTTP port for PocketDev [80]: " NGINX_PORT
