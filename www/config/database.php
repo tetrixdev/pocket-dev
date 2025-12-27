@@ -99,7 +99,7 @@ return [
         ],
 
         // Read-only connection for MemoryQueryTool
-        // This user can only SELECT from memory_* tables
+        // This user can only SELECT from memory schema tables
         // Note: Password fallback is intentional for development environments
         'pgsql_readonly' => [
             'driver' => 'pgsql',
@@ -111,7 +111,24 @@ return [
             'charset' => env('DB_CHARSET', 'utf8'),
             'prefix' => '',
             'prefix_indexes' => true,
-            'search_path' => 'public',
+            'search_path' => 'memory,public',
+            'sslmode' => 'prefer',
+        ],
+
+        // DDL/DML connection for memory schema operations
+        // This user can CREATE/ALTER/DROP tables in memory schema
+        // Used by memory:schema:* and memory:insert/update/delete tools
+        'pgsql_memory_ai' => [
+            'driver' => 'pgsql',
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '5432'),
+            'database' => env('DB_DATABASE', 'laravel'),
+            'username' => 'memory_ai',
+            'password' => env('DB_MEMORY_AI_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'memory',
             'sslmode' => 'prefer',
         ],
 

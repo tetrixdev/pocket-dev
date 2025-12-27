@@ -1,14 +1,14 @@
-# Memory System Architecture
+# Memory System V2 Architecture
 
 ## TLDR
 
-The Memory System provides persistent, semantically-searchable structured storage for PocketDev's AI. It uses PostgreSQL with pgvector for vector similarity search.
+The Memory System provides persistent, semantically-searchable storage using **dynamic PostgreSQL tables**. AI can create proper typed tables with indexes, not just JSONB storage.
 
 **Key concepts:**
-- **Structures** = Schemas/templates (like classes)
-- **Objects** = Instances (like objects)
-- **Embeddings** = Vectors for semantic search
-- **Relationships** = UUID references stored in object's JSONB `data` field
+- **Tables** = User-defined PostgreSQL tables in `memory` schema
+- **Embeddings** = Central table for cross-table semantic search
+- **Schema Registry** = Metadata about tables and embeddable fields
+- **Snapshots** = Tiered disaster recovery (hourly → daily → archived)
 
 **Read level:** 📖 Full read recommended for implementation
 
@@ -16,46 +16,29 @@ The Memory System provides persistent, semantically-searchable structured storag
 
 ## Requirements
 
-- **PostgreSQL 17** with **pgvector 0.5+** (for HNSW index support)
-  - PocketDev uses `pgvector/pgvector:pg17` Docker image which includes pgvector 0.8+
-- **OpenAI API key** (or compatible embedding API) for generating embeddings
-  - Model: `text-embedding-3-small` (1536 dimensions by default)
+- **PostgreSQL 17** with extensions:
+  - **pgvector 0.5+** (HNSW index support)
+  - **PostGIS** (geospatial queries)
+  - **pg_trgm** (fuzzy text search)
+- **OpenAI API key** for embeddings
+  - Model: `text-embedding-3-small` (1536 dimensions)
   - Configure via Settings UI
 
 ---
 
 ## Overview
 
-The Memory System is a vector-based knowledge store that allows PocketDev's AI to persistently store, retrieve, and semantically search structured information. It combines PostgreSQL's relational database with pgvector's vector similarity search.
+Memory System V2 replaces the JSONB-based storage with dynamic PostgreSQL tables. AI can now create proper typed tables with indexes, enabling efficient queries and better data integrity.
 
-## The Problem We're Solving
+### V1 → V2 Migration
 
-AI assistants typically operate statelessly - each conversation starts fresh without knowledge of previous context. The Memory System addresses this by providing:
-
-1. **Persistent Knowledge Storage** - Information survives across conversations
-2. **Semantic Search** - Find relevant information by meaning, not just keywords
-3. **User-Defined Schemas** - Flexible structure that adapts to different use cases
-4. **Relationship Modeling** - Connect related pieces of information via ID references
-
-## Use Cases
-
-### Software Development
-- **Projects**: Track project metadata, descriptions, and goals
-- **Features/Deliverables**: Break projects into manageable chunks
-- **Tasks**: Individual work items with status, owner references
-- **Technical Decisions**: Document architectural choices and rationale
-
-### World Building (D&D, Fiction)
-- **Worlds**: Top-level containers for campaigns/stories
-- **Locations**: Places with coordinates, descriptions, and location references
-- **Characters**: People/creatures with stats, backstories, relationship references
-- **Items**: Equipment, artifacts with owner/location references
-- **Events**: Historical occurrences that shaped the world
-
-### Personal Knowledge Management
-- **Notes**: Free-form information with semantic searchability
-- **Contacts**: People with relationship context
-- **Ideas**: Concepts that can be linked and explored
+| Aspect | V1 (JSONB) | V2 (Dynamic Tables) |
+|--------|------------|---------------------|
+| Storage | All data in `memory_objects.data` | Dedicated tables per entity type |
+| Typing | JSON validation only | PostgreSQL column types |
+| Indexes | GIN on JSONB | Native indexes (B-tree, HNSW, GiST) |
+| Queries | JSONB operators | Standard SQL |
+| Schema changes | Update JSON Schema | Recreate table (with data migration) |
 
 ---
 
@@ -65,309 +48,193 @@ AI assistants typically operate statelessly - each conversation starts fresh wit
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  memory_structures                                           │
-│  ├── id (UUID, PK)                                          │
-│  ├── name, slug (unique identifier)                         │
-│  ├── description (for AI system prompt)                     │
-│  ├── schema (JSON Schema with x-embed markers)              │
-│  └── icon, color (UI customization)                         │
+│  memory.schema_registry (Protected)                         │
+│  ├── table_name (PK, varchar)                              │
+│  ├── description (text)                                     │
+│  ├── embed_fields (text[]) - columns to auto-embed         │
+│  └── created_at, updated_at                                │
 ├─────────────────────────────────────────────────────────────┤
-│  memory_objects                                              │
+│  memory.embeddings (Protected)                              │
 │  ├── id (UUID, PK)                                          │
-│  ├── structure_id, structure_slug (denormalized)            │
-│  ├── name                                                   │
-│  ├── data (JSONB - all fields including relationship IDs)  │
-│  └── searchable_text (concatenated for full-text)           │
-├─────────────────────────────────────────────────────────────┤
-│  memory_embeddings                                           │
-│  ├── id (UUID, PK)                                          │
-│  ├── object_id (FK to memory_objects)                       │
-│  ├── field_path ('description', 'history', etc.)            │
-│  ├── content_hash (detect changes)                          │
+│  ├── source_table (varchar)                                 │
+│  ├── source_id (varchar)                                    │
+│  ├── field_name (varchar)                                   │
+│  ├── content_hash (varchar) - detect changes                │
 │  └── embedding (vector(1536) with HNSW index)               │
+├─────────────────────────────────────────────────────────────┤
+│  memory.<user_tables>                                        │
+│  ├── id (UUID, PK, auto-generated)                          │
+│  ├── ...user-defined columns...                             │
+│  └── created_at, updated_at (auto-added)                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Modeling Relationships
+### Database Users
 
-**Relationships are stored as IDs in the data object**, not in a separate table. This simplifies the schema and makes queries more intuitive.
-
-Example schema with relationships:
-```json
-{
-  "type": "object",
-  "properties": {
-    "name": { "type": "string" },
-    "owner_id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "UUID of the character who owns this item"
-    },
-    "location_id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "UUID of the location where this item is found"
-    },
-    "description": {
-      "type": "string",
-      "x-embed": true
-    }
-  }
-}
-```
-
-Example object:
-```json
-{
-  "name": "Flaming Sword",
-  "owner_id": "550e8400-e29b-41d4-a716-446655440001",
-  "location_id": null,
-  "description": "A legendary blade wreathed in eternal flames"
-}
-```
-
-Query relationships with JSONB operators:
-```sql
--- Find all items owned by a character
-SELECT * FROM memory_objects
-WHERE structure_slug = 'item'
-  AND data->>'owner_id' = '550e8400-e29b-41d4-a716-446655440001';
-
--- Find items at a location
-SELECT * FROM memory_objects
-WHERE structure_slug = 'item'
-  AND data->>'location_id' = 'some-location-uuid';
-```
-
-### Key Design Decisions
-
-#### Why pgvector Instead of a Separate Vector Database?
-
-1. **Single Source of Truth** - No synchronization issues between Postgres and a vector store
-2. **Transactional Integrity** - Updates to data and embeddings are atomic
-3. **Hybrid Queries** - Combine SQL filters with vector similarity in one query
-4. **Simpler Operations** - One database to backup, monitor, and maintain
-5. **Sufficient Scale** - pgvector handles 10M+ vectors with proper indexing
-
-#### Why JSONB Instead of Dynamic Tables?
-
-1. **Security** - No DDL operations from AI input
-2. **Flexibility** - Users can modify schemas without migrations
-3. **Indexing** - GIN indexes on JSONB enable efficient queries
-4. **Simplicity** - One table for all object types
-
-#### Why Multiple Embeddings Per Object?
-
-A location might have both a `description` and a `history`. Searching for "ancient magical library" should match the description, while "destroyed by the Cataclysm" should match the history. Separate embeddings allow targeted semantic search.
+| User | Role | Purpose |
+|------|------|---------|
+| `memory_readonly` | SELECT on memory schema | Query tool (safe) |
+| `memory_ai` | Full access to memory schema | DDL/DML operations |
+| `pocketdev` | Superuser | Migrations only |
 
 ---
 
 ## How It Works
 
-### 1. Define a Structure (Schema)
+### 1. Create a Table
 
-Structures are templates that define what fields an object type has. Use JSON Schema `description` fields to document each property:
-
-```json
-{
-  "name": "Character",
-  "slug": "character",
-  "description": "A player character or NPC in the world",
-  "schema": {
-    "type": "object",
-    "properties": {
-      "class": {
-        "type": "string",
-        "description": "The character's class (fighter, wizard, rogue, etc.)"
-      },
-      "level": {
-        "type": "integer",
-        "description": "Character level (1-20)"
-      },
-      "backstory": {
-        "type": "string",
-        "description": "The character's background and history",
-        "x-embed": true
-      },
-      "location_id": {
-        "type": "string",
-        "format": "uuid",
-        "description": "UUID of the character's current location"
-      },
-      "ally_ids": {
-        "type": "array",
-        "items": { "type": "string", "format": "uuid" },
-        "description": "UUIDs of allied characters"
-      }
-    },
-    "required": ["class"]
-  }
-}
+```bash
+php artisan memory:schema:create-table \
+  --name=characters \
+  --description="Player and NPC characters" \
+  --columns='[
+    {"name":"name","type":"VARCHAR(255)","nullable":false,"description":"Character name"},
+    {"name":"class","type":"VARCHAR(100)","description":"Character class"},
+    {"name":"level","type":"INTEGER","default":"1","description":"Character level"},
+    {"name":"backstory","type":"TEXT","description":"Character background","embed":true},
+    {"name":"location_id","type":"UUID","description":"Current location reference"}
+  ]'
 ```
 
-Key schema features:
-- `x-embed: true` - Marks fields for vector embedding
-- `description` - Documents what each field is for (shown to AI)
-- `format: "uuid"` - Indicates this is a reference to another object
+This creates:
+1. Table `memory.characters` with typed columns
+2. Entry in `memory.schema_registry` with embed_fields=['backstory']
+3. Column comments from descriptions
 
-### 2. Create Objects
+### 2. Insert Data (Auto-Embedding)
 
-Objects are instances of a structure:
-
-```json
-{
-  "structure": "character",
-  "name": "Thorin Ironforge",
-  "data": {
-    "class": "fighter",
-    "level": 5,
-    "backstory": "A dwarven warrior who lost his clan to a dragon attack...",
-    "location_id": "550e8400-e29b-41d4-a716-446655440000",
-    "ally_ids": ["550e8400-e29b-41d4-a716-446655440001"]
-  }
-}
+```bash
+php artisan memory:insert \
+  --table=characters \
+  --data='{"name":"Thorin","class":"fighter","level":5,"backstory":"A dwarf warrior..."}'
 ```
 
-### 3. Embeddings Are Generated Automatically
+The system:
+1. Inserts row with auto-generated UUID
+2. Checks schema_registry for embed_fields
+3. Generates embeddings for 'backstory'
+4. Stores in memory.embeddings with source_table/source_id
 
-When an object is created or updated, the system:
-1. Extracts fields marked with `x-embed: true`
-2. Generates vector embeddings using OpenAI's API
-3. Stores embeddings with content hashes to avoid regeneration
+### 3. Query with Semantic Search
 
-### 4. Search Semantically
-
-Find objects by meaning, not just keywords:
-
-```sql
-SELECT mo.id, mo.name, 1 - (me.embedding <=> :query_embedding) as similarity
-FROM memory_objects mo
-JOIN memory_embeddings me ON mo.id = me.object_id
-WHERE mo.structure_slug = 'character'
-  AND me.field_path = 'backstory'
-  AND 1 - (me.embedding <=> :query_embedding) > 0.5
-ORDER BY similarity DESC
-LIMIT 10;
+```bash
+php artisan memory:query \
+  --sql="SELECT c.id, c.name, 1 - (e.embedding <=> :search_embedding) as sim
+         FROM memory.characters c
+         JOIN memory.embeddings e ON e.source_table = 'characters' AND e.source_id::uuid = c.id
+         WHERE 1 - (e.embedding <=> :search_embedding) > 0.5
+         ORDER BY sim DESC" \
+  --search_text="warriors who lost their families"
 ```
 
-Query: "warriors who lost their families" would match Thorin even though those exact words don't appear.
+### 4. Update Data (Auto-Re-Embedding)
+
+```bash
+php artisan memory:update \
+  --table=characters \
+  --data='{"backstory":"Updated backstory..."}' \
+  --where="name = 'Thorin'"
+```
+
+Changed embeddable fields are automatically re-embedded.
+
+### 5. Schema Changes (Recreate Pattern)
+
+To modify table structure, use the recreate pattern:
+
+```bash
+# 1. Create new table with updated schema
+php artisan memory:schema:create-table --name=characters_v2 ...
+
+# 2. Migrate data
+php artisan memory:schema:execute \
+  --sql="INSERT INTO memory.characters_v2 (id, name, ...) SELECT id, name, ... FROM memory.characters"
+
+# 3. Drop old table
+php artisan memory:schema:execute --sql="DROP TABLE memory.characters"
+
+# 4. Rename new table
+php artisan memory:schema:execute --sql="ALTER TABLE memory.characters_v2 RENAME TO characters"
+
+# 5. Update registry (use memory:schema:execute for consistency)
+php artisan memory:schema:execute \
+  --sql="UPDATE memory.schema_registry SET table_name = 'characters' WHERE table_name = 'characters_v2'"
+```
 
 ---
 
 ## AI Tools
 
-The AI has access to these tools for memory management:
-
-### Structure Management
+### Schema Tools (memory_schema category)
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Memory Structure Create | `memory:structure:create` | Create new schemas |
-| Memory Structure Get | `memory:structure:get` | Retrieve a schema |
-| Memory Structure Delete | `memory:structure:delete` | Remove a schema (no objects) |
+| MemorySchemaCreateTable | `memory:schema:create-table` | Create typed tables |
+| MemorySchemaExecute | `memory:schema:execute` | DDL operations (ALTER, DROP, CREATE INDEX) |
+| MemorySchemaListTables | `memory:schema:list-tables` | List tables with columns |
 
-### Object Management
+### Data Tools (memory_data category)
 
 | Tool | Command | Purpose |
 |------|---------|---------|
-| Memory Create | `memory:create` | Create new objects |
-| Memory Query | `memory:query` | Read/search with SQL |
-| Memory Update | `memory:update` | Modify existing objects |
-| Memory Delete | `memory:delete` | Remove objects |
-
-### Command Examples
-
-**Create a structure:**
-```bash
-php artisan memory:structure:create \
-  --name="Character" \
-  --description="A player character or NPC" \
-  --schema='{"type":"object","properties":{"class":{"type":"string","description":"Character class"},"backstory":{"type":"string","x-embed":true}}}'
-```
-
-**Create an object:**
-```bash
-php artisan memory:create \
-  --structure=character \
-  --name="Thorin Ironforge" \
-  --data='{"class":"fighter","level":5,"location_id":"uuid-here"}'
-```
-
-**Query with semantic search:**
-```bash
-php artisan memory:query \
-  --sql="SELECT mo.id, mo.name, 1 - (me.embedding <=> :search_embedding) as sim FROM memory_objects mo JOIN memory_embeddings me ON mo.id = me.object_id ORDER BY sim DESC LIMIT 5" \
-  --search-text="ancient magical library"
-```
-
-**Update with text operations:**
-```bash
-# Append to a field
-php artisan memory:update --id=<uuid> --field=backstory --append="\n\nNew chapter..."
-
-# Replace text
-php artisan memory:update --id=<uuid> --field=description --replace-text="old" --with="new"
-
-# Insert after marker
-php artisan memory:update --id=<uuid> --field=notes --insert-after="## Section A" --insert-text="\nContent"
-```
-
-### Query Examples
-
-**List all structures:**
-```sql
-SELECT slug, name, description FROM memory_structures
-```
-
-**Find characters by class:**
-```sql
-SELECT id, name, data FROM memory_objects
-WHERE structure_slug = 'character'
-  AND data->>'class' = 'fighter'
-```
-
-**Find all items owned by a character:**
-```sql
-SELECT id, name, data FROM memory_objects
-WHERE structure_slug = 'item'
-  AND data->>'owner_id' = '<character-uuid>'
-```
-
-**Semantic search with similarity threshold:**
-```sql
-SELECT mo.id, mo.name, 1 - (me.embedding <=> :search_embedding) as similarity
-FROM memory_objects mo
-JOIN memory_embeddings me ON mo.id = me.object_id
-WHERE mo.structure_slug = 'location'
-  AND 1 - (me.embedding <=> :search_embedding) > 0.5
-ORDER BY similarity DESC
-LIMIT 10
-```
+| MemoryInsert | `memory:insert` | Insert with auto-embedding |
+| MemoryQuery | `memory:query` | SELECT with semantic search |
+| MemoryUpdate | `memory:update` | Update with auto-re-embedding |
+| MemoryDelete | `memory:delete` | Delete with embedding cleanup |
 
 ---
 
-## Configuration
+## Supported Column Types
 
-### API Keys
+| Category | Types |
+|----------|-------|
+| **Text** | VARCHAR(n), TEXT, CHAR(n) |
+| **Numeric** | INTEGER, BIGINT, SMALLINT, DECIMAL(p,s), NUMERIC(p,s), REAL, DOUBLE PRECISION |
+| **Boolean** | BOOLEAN |
+| **Date/Time** | DATE, TIME, TIMESTAMP, TIMESTAMPTZ, INTERVAL |
+| **JSON** | JSON, JSONB |
+| **Binary** | BYTEA |
+| **UUID** | UUID |
+| **Arrays** | type[] (e.g., TEXT[], INTEGER[]) |
+| **Vector** | VECTOR(dimensions) |
+| **Geometry** | GEOMETRY, GEOGRAPHY |
 
-API keys are managed via the PocketDev UI:
+---
 
-1. Go to **Config → Credentials**
-2. Enter your **OpenAI API Key** (used for embeddings)
-3. Save
+## Snapshots & Disaster Recovery
 
-The OpenAI key is stored securely in the database and used by the EmbeddingService.
+### Automatic Snapshots
 
-### Config File (config/ai.php)
+The scheduler creates snapshots automatically:
+- **Hourly**: Keep for 24 hours
+- **Daily (4/day)**: Keep for 7 days
+- **Daily (1/day)**: Keep for 30 days (configurable)
 
-```php
-'embeddings' => [
-    // API key managed via UI (uses OpenAI key from database)
-    'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
-    'model' => 'text-embedding-3-small',
-    'dimensions' => 1536,
-],
+### Manual Commands
+
+```bash
+# Create snapshot
+php artisan memory:snapshot create
+
+# Create schema-only snapshot
+php artisan memory:snapshot create --schema-only
+
+# List snapshots
+php artisan memory:snapshot list
+
+# Restore (creates backup first)
+php artisan memory:snapshot restore memory_20250115_120000.sql
+
+# Prune old snapshots
+php artisan memory:snapshot prune
 ```
+
+### Export/Import
+
+Via Settings → Memory page:
+- **Full Backup** - Data + Schema
+- **Schema Only** - Structure without data
+- **Import** - Upload and restore
 
 ---
 
@@ -375,130 +242,138 @@ The OpenAI key is stored securely in the database and used by the EmbeddingServi
 
 ```text
 app/
-├── Models/
-│   ├── MemoryStructure.php    # Schema definitions
-│   ├── MemoryObject.php       # All entities
-│   └── MemoryEmbedding.php    # Vector embeddings
 ├── Services/
-│   └── EmbeddingService.php   # OpenAI embeddings API
+│   ├── MemorySchemaService.php    # DDL operations (memory_ai connection)
+│   ├── MemoryDataService.php      # DML with auto-embedding
+│   ├── MemoryEmbeddingService.php # Embedding generation/storage
+│   └── MemorySnapshotService.php  # pg_dump/pg_restore
 ├── Tools/
-│   ├── MemoryQueryTool.php    # SQL queries
-│   ├── MemoryCreateTool.php   # Create objects
-│   ├── MemoryUpdateTool.php   # Update objects (with text ops)
-│   └── MemoryDeleteTool.php   # Delete objects
+│   ├── MemorySchemaCreateTableTool.php
+│   ├── MemorySchemaExecuteTool.php
+│   ├── MemorySchemaListTablesTool.php
+│   ├── MemoryInsertTool.php
+│   ├── MemoryQueryTool.php
+│   ├── MemoryUpdateTool.php
+│   └── MemoryDeleteTool.php
 ├── Console/Commands/
-│   ├── MemoryStructureCreateCommand.php
-│   ├── MemoryStructureGetCommand.php
-│   ├── MemoryStructureDeleteCommand.php
-│   ├── MemoryCreateCommand.php
+│   ├── MemorySchemaCreateTableCommand.php
+│   ├── MemorySchemaExecuteCommand.php
+│   ├── MemorySchemaListTablesCommand.php
+│   ├── MemoryInsertCommand.php
 │   ├── MemoryQueryCommand.php
 │   ├── MemoryUpdateCommand.php
-│   └── MemoryDeleteCommand.php
-└── Providers/
-    └── AIServiceProvider.php  # Tool registration
-
-database/migrations/
-└── See database/migrations/ for complete list of memory-related migrations
+│   ├── MemoryDeleteCommand.php
+│   └── MemorySnapshotCommand.php
+└── Http/Controllers/
+    └── MemoryController.php       # Settings UI
 
 config/
-└── ai.php                     # Embeddings configuration
+├── memory.php                     # Memory configuration
+└── database.php                   # memory_ai, memory_readonly connections
+
+database/migrations/
+├── create_memory_schema.php       # Schema + extensions
+├── create_memory_embeddings.php   # Central embeddings table
+├── create_memory_schema_registry.php
+└── create_memory_users.php        # Database users
+
+routes/
+└── console.php                    # Snapshot scheduler
 ```
 
 ---
 
-## Schema Design Best Practices
+## Configuration
 
-### 1. Use Description Fields
+### config/memory.php
 
-Every property should have a `description` that explains its purpose:
+```php
+return [
+    'snapshot_retention_days' => env('MEMORY_SNAPSHOT_RETENTION_DAYS', 30),
+    'snapshot_path' => storage_path('memory_snapshots'),
+    'pg_dump_path' => env('MEMORY_PG_DUMP_PATH', '/usr/bin/pg_dump'),
+    'pg_restore_path' => env('MEMORY_PG_RESTORE_PATH', '/usr/bin/pg_restore'),
+];
+```
+
+### config/database.php connections
+
+```php
+'pgsql_memory_ai' => [
+    // Full access for schema/data operations
+    'username' => env('DB_MEMORY_AI_USERNAME', 'memory_ai'),
+    'password' => env('DB_MEMORY_AI_PASSWORD', ''),
+],
+'pgsql_readonly' => [
+    // SELECT only for queries
+    'username' => env('DB_READONLY_USERNAME', 'memory_readonly'),
+    'password' => env('DB_READONLY_PASSWORD', ''),
+],
+```
+
+---
+
+## Security
+
+### Protected Tables
+
+The following tables cannot be dropped or truncated:
+- `memory.embeddings`
+- `memory.schema_registry`
+
+### SQL Safety
+
+- Schema tools validate table/column names
+- Query tool only allows SELECT statements
+- UPDATE/DELETE require WHERE clause (no bulk operations)
+
+### Embedding Safety
+
+- Content hashed before embedding
+- Unchanged content not re-embedded
+- Embeddings cleaned up on row deletion
+
+---
+
+## Best Practices
+
+### 1. Use Descriptive Column Comments
 
 ```json
-{
-  "properties": {
-    "hp": {
-      "type": "integer",
-      "description": "Current hit points (health remaining)"
-    }
-  }
-}
+{"name":"hp","type":"INTEGER","description":"Current hit points (0 = unconscious)"}
 ```
 
 ### 2. Mark Embeddable Fields
 
-Add `x-embed: true` to text fields that should be semantically searchable:
-
+Only text fields that should be semantically searchable:
 ```json
-{
-  "properties": {
-    "backstory": {
-      "type": "string",
-      "x-embed": true,
-      "description": "Character's background story"
-    }
-  }
-}
+{"name":"backstory","type":"TEXT","embed":true,"description":"Character background"}
 ```
 
-### 3. Use Format for Relationships
-
-Use `format: "uuid"` for ID references:
+### 3. Use UUIDs for References
 
 ```json
-{
-  "properties": {
-    "owner_id": {
-      "type": "string",
-      "format": "uuid",
-      "description": "UUID of the owning character"
-    },
-    "member_ids": {
-      "type": "array",
-      "items": { "type": "string", "format": "uuid" },
-      "description": "UUIDs of party members"
-    }
-  }
-}
+{"name":"owner_id","type":"UUID","description":"Character who owns this item"}
 ```
 
-### 4. Document Relationship Semantics
+### 4. Create Indexes for Common Queries
 
-Name relationship fields clearly with `_id` suffix:
+```bash
+php artisan memory:schema:execute \
+  --sql="CREATE INDEX idx_characters_class ON memory.characters(class)"
+```
 
-- `owner_id` - Who owns this
-- `location_id` - Where this is located
-- `creator_id` - Who created this
-- `target_id` - What this affects
-- `member_ids` - Array of members
+### 5. Regular Snapshots
 
----
-
-## Security Considerations
-
-- **SQL Injection Prevention**: MemoryQuery only allows SELECT statements and blocks dangerous patterns
-- **No Dynamic DDL**: Structures use JSONB, not dynamic table creation
-- **Input Validation**: Objects are validated against their structure's JSON Schema
-- **Embedding Safety**: Content is hashed before embedding to detect tampering
-
----
-
-## Future Enhancements
-
-### Planned Features
-
-- **Batch Operations** - Create/update multiple objects at once
-- **Schema Versioning** - Track changes to structure definitions
-- **Import/Export** - JSON export for backup and sharing
-- **Computed Fields** - Auto-populate fields based on queries
-- **Audit Trail** - Track who changed what and when
-- **Auto-Generated System Prompt** - Inject available structures into AI context
+Enable automatic snapshots and configure retention via Settings → Memory.
 
 ---
 
 ## Getting Started
 
-1. Ensure PostgreSQL is running with pgvector extension
+1. Ensure PostgreSQL is running with extensions (pgvector, PostGIS, pg_trgm)
 2. Run migrations: `php artisan migrate`
-3. Run seeders: `php artisan db:seed`
-4. Add your OpenAI API key via **Config → Credentials** in the UI
-5. Create a structure using the AI or artisan command
-6. Start creating objects and searching semantically
+3. Add OpenAI API key via **Settings → Credentials**
+4. Create a table using AI or artisan command
+5. Insert data and search semantically
+6. Configure snapshots via **Settings → Memory**

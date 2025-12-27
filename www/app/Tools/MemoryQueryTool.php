@@ -6,29 +6,29 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Query memory objects using raw SQL (SELECT only).
+ * Query memory tables using raw SQL (SELECT only).
  *
- * This tool allows semantic search and complex queries against the memory store.
+ * This tool allows semantic search and complex queries against the memory schema.
  * Only SELECT queries are allowed for safety.
  */
 class MemoryQueryTool extends Tool
 {
     public string $name = 'MemoryQuery';
 
-    public string $description = 'Query memory objects using SQL. Supports semantic search with vector similarity.';
+    public string $description = 'Query memory tables using SQL. Supports semantic search with vector similarity.';
 
-    public string $category = 'memory';
+    public string $category = 'memory_data';
 
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
             'sql' => [
                 'type' => 'string',
-                'description' => 'SQL SELECT query. Available tables: memory_structures, memory_objects, memory_embeddings, memory_relationships. For semantic search, use: embedding <=> $query_embedding where $query_embedding is a vector literal like \'[0.1,0.2,...]\'. Use 1 - (embedding <=> query) for similarity score.',
+                'description' => 'SQL SELECT query. Tables are in memory schema (memory.tablename). For semantic search, use: embedding <=> :search_embedding. Use 1 - (embedding <=> :search_embedding) for similarity score (0-1).',
             ],
             'search_text' => [
                 'type' => 'string',
-                'description' => 'Optional: Text to convert to embedding for semantic search. If provided, the embedding will be available as :search_embedding parameter in your SQL.',
+                'description' => 'Optional: Text to convert to embedding for semantic search. If provided, the embedding will be available as :search_embedding in your SQL.',
             ],
             'limit' => [
                 'type' => 'integer',
@@ -44,64 +44,79 @@ class MemoryQueryTool extends Tool
     }
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-Use MemoryQuery to search and retrieve memory objects. This is your primary read tool for the memory system.
+Use MemoryQuery to search and retrieve data from memory tables. This is your primary read tool for the memory system.
 
 ## CLI Example
 
 ```bash
-php artisan memory:query --sql="SELECT id, name, slug FROM memory_structures"
-php artisan memory:query --sql="SELECT * FROM memory_objects WHERE structure_slug='character'" --limit=10
+php artisan memory:query --sql="SELECT * FROM memory.characters LIMIT 10"
+php artisan memory:query --sql="SELECT * FROM memory.schema_registry"
 ```
 
-## Available Tables
+## System Tables
 
-- **memory_structures**: Schema definitions (id, name, slug, description, schema, icon, color)
-- **memory_objects**: All entities (id, structure_id, structure_slug, name, data, searchable_text, parent_id)
-- **memory_embeddings**: Vector embeddings (id, object_id, field_path, content_hash, embedding)
-- **memory_relationships**: Links between objects (id, source_id, target_id, relationship_type)
+- **memory.schema_registry**: Table metadata (table_name, description, embeddable_fields)
+- **memory.embeddings**: Vector embeddings (source_table, source_id, field_name, embedding, content)
 
 ## Common Query Patterns
 
-### List all structures
+### List all tables
 ```sql
-SELECT id, name, slug, description FROM memory_structures
+SELECT table_name, description, embeddable_fields FROM memory.schema_registry
 ```
 
-### List objects of a type
+### Query a user table
 ```sql
-SELECT id, name, data FROM memory_objects WHERE structure_slug = 'character'
-```
-
-### Get object with relationships
-```sql
-SELECT mo.*, mr.relationship_type, target.name as related_name
-FROM memory_objects mo
-LEFT JOIN memory_relationships mr ON mo.id = mr.source_id
-LEFT JOIN memory_objects target ON mr.target_id = target.id
-WHERE mo.id = 'uuid-here'
+SELECT id, name, class FROM memory.characters WHERE class = 'wizard'
 ```
 
 ### Semantic search (requires search_text parameter)
 ```sql
-SELECT mo.id, mo.name, 1 - (me.embedding <=> :search_embedding) as similarity
-FROM memory_objects mo
-JOIN memory_embeddings me ON mo.id = me.object_id
-WHERE mo.structure_slug = 'location'
-  AND 1 - (me.embedding <=> :search_embedding) > 0.5
+SELECT c.id, c.name, c.backstory, 1 - (e.embedding <=> :search_embedding) as similarity
+FROM memory.characters c
+JOIN memory.embeddings e ON e.source_id = c.id AND e.source_table = 'characters'
+WHERE e.field_name = 'backstory'
+  AND 1 - (e.embedding <=> :search_embedding) > 0.5
 ORDER BY similarity DESC
 ```
 
-### JSONB queries
+### Cross-table semantic search
 ```sql
-SELECT * FROM memory_objects
-WHERE structure_slug = 'item'
-  AND data @> '{"type": "weapon"}'
+SELECT e.source_table, e.source_id, e.field_name, e.content,
+       1 - (e.embedding <=> :search_embedding) as similarity
+FROM memory.embeddings e
+WHERE 1 - (e.embedding <=> :search_embedding) > 0.6
+ORDER BY similarity DESC
+LIMIT 10
 ```
+
+### Fuzzy text search (pg_trgm)
+```sql
+SELECT * FROM memory.characters WHERE name % 'Gandolf'
+```
+
+### Spatial query (PostGIS)
+```sql
+SELECT name, ST_Distance(coordinates, ST_MakePoint(-122.4, 37.8)::geography) as distance_m
+FROM memory.locations
+WHERE ST_DWithin(coordinates, ST_MakePoint(-122.4, 37.8)::geography, 50000)
+ORDER BY distance_m
+```
+
+## Important: Embedding Columns
+
+- **Never SELECT the embedding column directly** - it's a 1536-dimension vector array
+- Use `1 - (e.embedding <=> :search_embedding) as similarity` to get a 0-1 similarity score
+- Filter with `WHERE 1 - (e.embedding <=> :search_embedding) > 0.5` (adjust threshold as needed)
+- ORDER BY similarity DESC to get best matches first
+- The `content` column in memory.embeddings contains the original text that was embedded
 
 ## Notes
 - Only SELECT queries allowed
-- Results limited to 100 rows
-- Use :search_embedding placeholder for vector searches
+- If no LIMIT specified, results are limited to 50 rows (max 100)
+- Output is JSON format with full text (no truncation)
+- Use :search_embedding placeholder with search_text parameter for vector searches
+- Tables are in memory schema (memory.tablename)
 INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
@@ -116,7 +131,7 @@ INSTRUCTIONS;
 
         // Security: Only allow SELECT queries
         if (!$this->isSelectQuery($sql)) {
-            return ToolResult::error('Only SELECT queries are allowed. Use MemoryCreate, MemoryUpdate, MemoryDelete, MemoryLink, or MemoryUnlink for modifications.');
+            return ToolResult::error('Only SELECT queries are allowed. Use MemoryInsert, MemoryUpdate, or MemoryDelete for modifications.');
         }
 
         // Security: Block dangerous patterns
@@ -147,12 +162,19 @@ INSTRUCTIONS;
             // The memory_readonly user can only SELECT from memory_* tables
             $results = DB::connection('pgsql_readonly')->select($sql, $bindings);
 
+            // Check if limit was applied
+            $hadLimit = preg_match('/\bLIMIT\s+\d+/i', $input['sql'] ?? '');
+            $limitApplied = !$hadLimit;
+
             if (empty($results)) {
-                return ToolResult::success("No results found.\n\nQuery: {$sql}");
+                return ToolResult::success(json_encode([
+                    'results' => [],
+                    'count' => 0,
+                ], JSON_PRETTY_PRINT));
             }
 
-            // Format results as table
-            $output = $this->formatResults($results, $sql);
+            // Format results as JSON
+            $output = $this->formatResults($results, $limitApplied, $limit);
 
             return ToolResult::success($output);
         } catch (\Exception $e) {
@@ -167,25 +189,56 @@ INSTRUCTIONS;
     private function isSelectQuery(string $sql): bool
     {
         $normalized = strtoupper(trim($sql));
-        return str_starts_with($normalized, 'SELECT') ||
-               str_starts_with($normalized, 'WITH');
+
+        // Must start with SELECT or WITH
+        if (!str_starts_with($normalized, 'SELECT') && !str_starts_with($normalized, 'WITH')) {
+            return false;
+        }
+
+        // For CTEs (WITH), ensure it ends with SELECT, not a mutating statement
+        // WITH ... DELETE/UPDATE/INSERT are not allowed
+        if (str_starts_with($normalized, 'WITH')) {
+            // Check for mutating statements after the CTE definition
+            // The CTE pattern is: WITH name AS (...) <final statement>
+            // We need to ensure the final statement is SELECT
+            if (preg_match('/\)\s*(DELETE|UPDATE|INSERT)\b/i', $normalized)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function containsDangerousPatterns(string $sql): bool
     {
         $normalized = strtoupper($sql);
 
+        // Block mutating statements (backup check - isSelectQuery should catch these too)
+        $mutating = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE'];
+        foreach ($mutating as $pattern) {
+            if (preg_match('/\b' . $pattern . '\b/', $normalized)) {
+                return true;
+            }
+        }
+
+        // Block dangerous functions and system access
         $dangerous = [
-            'INSERT', 'UPDATE', 'DELETE', 'DROP', 'TRUNCATE', 'ALTER',
-            'CREATE', 'GRANT', 'REVOKE', 'EXECUTE', 'EXEC',
+            'EXECUTE', 'EXEC',
             'INTO OUTFILE', 'INTO DUMPFILE', 'LOAD_FILE',
-            'INFORMATION_SCHEMA', 'PG_CATALOG', 'PG_',
+            'INFORMATION_SCHEMA', 'PG_CATALOG',
         ];
 
         foreach ($dangerous as $pattern) {
             if (str_contains($normalized, $pattern)) {
                 return true;
             }
+        }
+
+        // Block access to PostgreSQL system tables (pg_*) except allowed extensions
+        // Allow: pg_trgm functions (similarity, show_trgm, etc. - used via % operator, not pg_trgm prefix)
+        // Block: pg_class, pg_tables, pg_user, pg_roles, pg_settings, etc.
+        if (preg_match('/\bPG_[A-Z]/', $normalized)) {
+            return true;
         }
 
         return false;
@@ -202,71 +255,33 @@ INSTRUCTIONS;
         return '[' . implode(',', $embedding) . ']';
     }
 
-    private function formatResults(array $results, string $sql): string
+    private function formatResults(array $results, bool $limitApplied, int $limit): string
     {
         $count = count($results);
-        $output = ["Found {$count} result(s)", ""];
 
         // Convert to arrays for easier handling
         $rows = array_map(fn($r) => (array) $r, $results);
 
-        if (empty($rows)) {
-            return "No results.";
-        }
+        // Build output structure
+        $output = [
+            'results' => $rows,
+            'count' => $count,
+        ];
 
-        $columns = array_keys($rows[0]);
-
-        // Calculate column widths
-        $widths = [];
-        foreach ($columns as $col) {
-            $widths[$col] = strlen($col);
-            foreach ($rows as $row) {
-                $value = $this->formatValue($row[$col] ?? null);
-                $widths[$col] = max($widths[$col], min(50, strlen($value)));
+        // Add meta info if limit was auto-applied
+        if ($limitApplied) {
+            $output['_meta'] = [
+                'limit_applied' => $limit,
+                'note' => $count >= $limit
+                    ? "Results limited to {$limit} rows. Add a WHERE clause or explicit LIMIT to narrow results."
+                    : null,
+            ];
+            // Remove note if null
+            if ($output['_meta']['note'] === null) {
+                unset($output['_meta']['note']);
             }
         }
 
-        // Build header
-        $header = '| ';
-        $separator = '|-';
-        foreach ($columns as $col) {
-            $header .= str_pad($col, $widths[$col]) . ' | ';
-            $separator .= str_repeat('-', $widths[$col]) . '-|-';
-        }
-        $output[] = $header;
-        $output[] = $separator;
-
-        // Build rows
-        foreach ($rows as $row) {
-            $line = '| ';
-            foreach ($columns as $col) {
-                $value = $this->formatValue($row[$col] ?? null);
-                if (strlen($value) > 50) {
-                    $value = substr($value, 0, 47) . '...';
-                }
-                $line .= str_pad($value, $widths[$col]) . ' | ';
-            }
-            $output[] = $line;
-        }
-
-        return implode("\n", $output);
-    }
-
-    private function formatValue(mixed $value): string
-    {
-        if ($value === null) {
-            return 'NULL';
-        }
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-        if (is_array($value)) {
-            return json_encode($value);
-        }
-        // Truncate embedding vectors
-        if (is_string($value) && str_starts_with($value, '[') && strlen($value) > 100) {
-            return '[vector...]';
-        }
-        return (string) $value;
+        return json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     }
 }
