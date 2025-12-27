@@ -366,12 +366,24 @@ class MemorySnapshotService
                     $deleted++;
                 }
             } elseif ($daysAgo >= 7) {
-                // 7-30 days: Keep only 1 per day (closest to midnight)
-                $kept = false;
-                foreach ($daySnapshots as $item) {
-                    if (!$kept && $item['hour'] < 6) {
-                        $kept = true; // Keep this one
-                    } else {
+                // 7-30 days: Keep only 1 per day (closest to midnight, prefer hour < 6)
+                // First, try to find one before 6 AM
+                $keptIndex = null;
+                foreach ($daySnapshots as $index => $item) {
+                    if ($item['hour'] < 6) {
+                        $keptIndex = $index;
+                        break; // Keep the earliest one before 6 AM
+                    }
+                }
+
+                // If none before 6 AM, keep the first (earliest) snapshot of the day
+                if ($keptIndex === null && !empty($daySnapshots)) {
+                    $keptIndex = 0;
+                }
+
+                // Delete all except the kept one
+                foreach ($daySnapshots as $index => $item) {
+                    if ($index !== $keptIndex) {
                         $this->delete($item['snapshot']['filename']);
                         $deleted++;
                     }

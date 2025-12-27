@@ -52,6 +52,17 @@ class MemoryDataService
             ];
         }
 
+        // Validate column names
+        foreach (array_keys($data) as $column) {
+            if (!preg_match('/^[a-z][a-z0-9_]*$/', $column)) {
+                return [
+                    'success' => false,
+                    'id' => null,
+                    'message' => "Invalid column name: {$column}",
+                ];
+            }
+        }
+
         // Get embeddable fields from schema_registry
         $embedFields = $this->schemaService->getEmbeddableFields($tableName);
 
@@ -66,7 +77,7 @@ class MemoryDataService
                 $columns = array_keys($data);
                 $placeholders = array_map(fn($c) => $this->formatValue($data[$c], $columnTypes[$c] ?? null), $columns);
 
-                $columnsSql = implode(', ', array_map(fn($c) => '"' . $c . '"', $columns));
+                $columnsSql = implode(', ', array_map(fn($c) => '"' . str_replace('"', '""', $c) . '"', $columns));
                 $valuesSql = implode(', ', $placeholders);
 
                 $sql = "INSERT INTO memory.{$quotedTable} ({$columnsSql}) VALUES ({$valuesSql}) RETURNING id";
@@ -198,7 +209,7 @@ class MemoryDataService
             // Build and execute UPDATE
             $setClauses = [];
             foreach ($data as $column => $value) {
-                $setClauses[] = '"' . $column . '" = ' . $this->formatValue($value, $columnTypes[$column] ?? null);
+                $setClauses[] = '"' . str_replace('"', '""', $column) . '" = ' . $this->formatValue($value, $columnTypes[$column] ?? null);
             }
             $setSql = implode(', ', $setClauses);
 
@@ -359,13 +370,34 @@ class MemoryDataService
      */
     public function query(string $sql, array $params = []): array
     {
-        // Validate it's a SELECT
-        if (!preg_match('/^\s*SELECT\s/i', $sql)) {
+        // Validate it's a SELECT (or WITH ... SELECT)
+        if (!preg_match('/^\s*(SELECT|WITH)\s/i', $sql)) {
             return [
                 'success' => false,
                 'data' => [],
                 'message' => 'Only SELECT queries are allowed',
             ];
+        }
+
+        // Block mutation keywords that could be used in writable CTEs
+        // E.g., WITH deleted AS (DELETE FROM ...) SELECT * FROM deleted
+        $dangerousPatterns = [
+            '/\bINSERT\s+INTO\b/i',
+            '/\bUPDATE\s+\w+\s+SET\b/i',
+            '/\bDELETE\s+FROM\b/i',
+            '/\bDROP\s+/i',
+            '/\bTRUNCATE\s+/i',
+            '/\bALTER\s+/i',
+            '/\bCREATE\s+/i',
+        ];
+        foreach ($dangerousPatterns as $pattern) {
+            if (preg_match($pattern, $sql)) {
+                return [
+                    'success' => false,
+                    'data' => [],
+                    'message' => 'Query contains disallowed mutation patterns',
+                ];
+            }
         }
 
         try {

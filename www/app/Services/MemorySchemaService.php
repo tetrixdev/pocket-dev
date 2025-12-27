@@ -532,6 +532,7 @@ class MemorySchemaService
 
     /**
      * Convert PostgreSQL array literal to PHP array.
+     * Handles escaped quotes and backslashes properly.
      */
     protected function pgArrayToArray(?string $pgArray): array
     {
@@ -545,13 +546,37 @@ class MemorySchemaService
             return [];
         }
 
-        // Parse quoted strings
-        preg_match_all('/"([^"]*)"/', $content, $matches);
-        if (!empty($matches[1])) {
-            return $matches[1];
+        // Parse with proper escape handling for PostgreSQL array format
+        // Handles: {"value", "with \"quotes\"", "and\\backslash"}
+        $result = [];
+        $current = '';
+        $inQuotes = false;
+        $escaped = false;
+        $len = strlen($content);
+
+        for ($i = 0; $i < $len; $i++) {
+            $char = $content[$i];
+
+            if ($escaped) {
+                $current .= $char;
+                $escaped = false;
+            } elseif ($char === '\\') {
+                $escaped = true;
+            } elseif ($char === '"') {
+                $inQuotes = !$inQuotes;
+            } elseif ($char === ',' && !$inQuotes) {
+                $result[] = $current;
+                $current = '';
+            } else {
+                $current .= $char;
+            }
         }
 
-        // Fallback: simple split for unquoted values
-        return array_map('trim', explode(',', $content));
+        // Don't forget the last element
+        if ($current !== '' || $inQuotes) {
+            $result[] = $current;
+        }
+
+        return $result;
     }
 }
