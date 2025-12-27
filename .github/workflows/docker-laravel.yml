@@ -85,6 +85,22 @@ jobs:
             --push \
             .
 
+      # Build and push PostgreSQL image with extensions
+      - name: Build and push pocket-dev-postgres image
+        run: |
+          TAGS="--tag ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:${{ github.event.release.tag_name }}"
+          if [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            TAGS="$TAGS --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:latest"
+          fi
+          docker buildx build \
+            --file docker-postgres/Dockerfile \
+            --progress plain \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:cache,mode=max \
+            $TAGS \
+            --push \
+            .
+
       # Output image information
       - name: Image build complete
         run: |
@@ -92,6 +108,7 @@ jobs:
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }}"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }}"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }}"
+          echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:${{ github.event.release.tag_name }}"
           echo ""
           if [ "${{ github.event.release.prerelease }}" = "true" ]; then
             echo "⚠️  Pre-release: 'latest' tag NOT updated"
