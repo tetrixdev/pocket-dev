@@ -189,25 +189,56 @@ INSTRUCTIONS;
     private function isSelectQuery(string $sql): bool
     {
         $normalized = strtoupper(trim($sql));
-        return str_starts_with($normalized, 'SELECT') ||
-               str_starts_with($normalized, 'WITH');
+
+        // Must start with SELECT or WITH
+        if (!str_starts_with($normalized, 'SELECT') && !str_starts_with($normalized, 'WITH')) {
+            return false;
+        }
+
+        // For CTEs (WITH), ensure it ends with SELECT, not a mutating statement
+        // WITH ... DELETE/UPDATE/INSERT are not allowed
+        if (str_starts_with($normalized, 'WITH')) {
+            // Check for mutating statements after the CTE definition
+            // The CTE pattern is: WITH name AS (...) <final statement>
+            // We need to ensure the final statement is SELECT
+            if (preg_match('/\)\s*(DELETE|UPDATE|INSERT)\b/i', $normalized)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function containsDangerousPatterns(string $sql): bool
     {
         $normalized = strtoupper($sql);
 
+        // Block mutating statements (backup check - isSelectQuery should catch these too)
+        $mutating = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'REVOKE'];
+        foreach ($mutating as $pattern) {
+            if (preg_match('/\b' . $pattern . '\b/', $normalized)) {
+                return true;
+            }
+        }
+
+        // Block dangerous functions and system access
         $dangerous = [
-            'INSERT', 'UPDATE', 'DELETE', 'DROP', 'TRUNCATE', 'ALTER',
-            'CREATE', 'GRANT', 'REVOKE', 'EXECUTE', 'EXEC',
+            'EXECUTE', 'EXEC',
             'INTO OUTFILE', 'INTO DUMPFILE', 'LOAD_FILE',
-            'INFORMATION_SCHEMA', 'PG_CATALOG', 'PG_',
+            'INFORMATION_SCHEMA', 'PG_CATALOG',
         ];
 
         foreach ($dangerous as $pattern) {
             if (str_contains($normalized, $pattern)) {
                 return true;
             }
+        }
+
+        // Block access to PostgreSQL system tables (pg_*) except allowed extensions
+        // Allow: pg_trgm functions (similarity, show_trgm, etc. - used via % operator, not pg_trgm prefix)
+        // Block: pg_class, pg_tables, pg_user, pg_roles, pg_settings, etc.
+        if (preg_match('/\bPG_[A-Z]/', $normalized)) {
+            return true;
         }
 
         return false;

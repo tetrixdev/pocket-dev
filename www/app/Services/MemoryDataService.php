@@ -33,6 +33,16 @@ class MemoryDataService
      */
     public function insert(string $tableName, array $data): array
     {
+        // Validate table name format
+        $quotedTable = $this->quoteTableName($tableName);
+        if ($quotedTable === null) {
+            return [
+                'success' => false,
+                'id' => null,
+                'message' => "Invalid table name: {$tableName}",
+            ];
+        }
+
         // Validate table exists
         if (!$this->schemaService->tableExists($tableName)) {
             return [
@@ -48,7 +58,7 @@ class MemoryDataService
         try {
             $rowId = null;
 
-            $this->connection()->transaction(function () use ($tableName, $data, $embedFields, &$rowId) {
+            $this->connection()->transaction(function () use ($quotedTable, $data, $embedFields, &$rowId) {
                 // Build and execute INSERT
                 $columns = array_keys($data);
                 $placeholders = array_map(fn($c) => $this->formatValue($data[$c]), $columns);
@@ -56,7 +66,7 @@ class MemoryDataService
                 $columnsSql = implode(', ', array_map(fn($c) => '"' . $c . '"', $columns));
                 $valuesSql = implode(', ', $placeholders);
 
-                $sql = "INSERT INTO memory.{$tableName} ({$columnsSql}) VALUES ({$valuesSql}) RETURNING id";
+                $sql = "INSERT INTO memory.{$quotedTable} ({$columnsSql}) VALUES ({$valuesSql}) RETURNING id";
 
                 $result = $this->connection()->selectOne($sql);
                 $rowId = $result->id ?? null;
@@ -118,6 +128,16 @@ class MemoryDataService
      */
     public function update(string $tableName, array $data, string $whereClause, array $whereParams = []): array
     {
+        // Validate table name format
+        $quotedTable = $this->quoteTableName($tableName);
+        if ($quotedTable === null) {
+            return [
+                'success' => false,
+                'affected_rows' => 0,
+                'message' => "Invalid table name: {$tableName}",
+            ];
+        }
+
         // Validate table exists
         if (!$this->schemaService->tableExists($tableName)) {
             return [
@@ -143,6 +163,17 @@ class MemoryDataService
             ];
         }
 
+        // Validate column names
+        foreach (array_keys($data) as $column) {
+            if (!preg_match('/^[a-z][a-z0-9_]*$/', $column)) {
+                return [
+                    'success' => false,
+                    'affected_rows' => 0,
+                    'message' => "Invalid column name: {$column}",
+                ];
+            }
+        }
+
         // Get embeddable fields
         $embedFields = $this->schemaService->getEmbeddableFields($tableName);
         $updatedEmbedFields = array_intersect($embedFields, array_keys($data));
@@ -152,7 +183,7 @@ class MemoryDataService
             $affectedIds = [];
             if (!empty($updatedEmbedFields)) {
                 $idResults = $this->connection()->select(
-                    "SELECT id FROM memory.{$tableName} WHERE {$whereClause}",
+                    "SELECT id FROM memory.{$quotedTable} WHERE {$whereClause}",
                     $whereParams
                 );
                 $affectedIds = array_map(fn($r) => $r->id, $idResults);
@@ -165,7 +196,7 @@ class MemoryDataService
             }
             $setSql = implode(', ', $setClauses);
 
-            $sql = "UPDATE memory.{$tableName} SET {$setSql} WHERE {$whereClause}";
+            $sql = "UPDATE memory.{$quotedTable} SET {$setSql} WHERE {$whereClause}";
             $affectedRows = $this->connection()->update($sql, $whereParams);
 
             // Regenerate embeddings for affected rows
@@ -174,7 +205,7 @@ class MemoryDataService
                 foreach ($affectedIds as $rowId) {
                     // Get updated row data
                     $row = $this->connection()->selectOne(
-                        "SELECT * FROM memory.{$tableName} WHERE id = ?",
+                        "SELECT * FROM memory.{$quotedTable} WHERE id = ?",
                         [$rowId]
                     );
 
@@ -230,6 +261,17 @@ class MemoryDataService
      */
     public function delete(string $tableName, string $whereClause, array $whereParams = []): array
     {
+        // Validate table name format
+        $quotedTable = $this->quoteTableName($tableName);
+        if ($quotedTable === null) {
+            return [
+                'success' => false,
+                'deleted_rows' => 0,
+                'deleted_embeddings' => 0,
+                'message' => "Invalid table name: {$tableName}",
+            ];
+        }
+
         // Validate table exists
         if (!$this->schemaService->tableExists($tableName)) {
             return [
@@ -250,46 +292,43 @@ class MemoryDataService
         }
 
         try {
-            // Get IDs of rows to be deleted
-            $rowsToDelete = $this->connection()->select(
-                "SELECT id FROM memory.{$tableName} WHERE {$whereClause}",
-                $whereParams
-            );
-            $ids = array_map(fn($r) => $r->id, $rowsToDelete);
+            // Use transaction to prevent TOCTOU race condition
+            return $this->connection()->transaction(function () use ($tableName, $quotedTable, $whereClause, $whereParams) {
+                // Delete rows and get their IDs in one atomic operation using RETURNING
+                $deletedRows = $this->connection()->select(
+                    "DELETE FROM memory.{$quotedTable} WHERE {$whereClause} RETURNING id",
+                    $whereParams
+                );
+                $ids = array_map(fn($r) => $r->id, $deletedRows);
 
-            if (empty($ids)) {
+                if (empty($ids)) {
+                    return [
+                        'success' => true,
+                        'deleted_rows' => 0,
+                        'deleted_embeddings' => 0,
+                        'message' => 'No rows matched the WHERE clause',
+                    ];
+                }
+
+                // Delete embeddings for deleted rows
+                $deletedEmbeddings = 0;
+                foreach ($ids as $rowId) {
+                    $deletedEmbeddings += $this->embeddingService->deleteRowEmbeddings($tableName, $rowId);
+                }
+
+                Log::info('Memory rows deleted', [
+                    'table' => $tableName,
+                    'deleted_rows' => count($ids),
+                    'deleted_embeddings' => $deletedEmbeddings,
+                ]);
+
                 return [
                     'success' => true,
-                    'deleted_rows' => 0,
-                    'deleted_embeddings' => 0,
-                    'message' => 'No rows matched the WHERE clause',
+                    'deleted_rows' => count($ids),
+                    'deleted_embeddings' => $deletedEmbeddings,
+                    'message' => "Deleted " . count($ids) . " row(s) from memory.{$tableName}",
                 ];
-            }
-
-            // Delete embeddings first
-            $deletedEmbeddings = 0;
-            foreach ($ids as $rowId) {
-                $deletedEmbeddings += $this->embeddingService->deleteRowEmbeddings($tableName, $rowId);
-            }
-
-            // Delete the rows
-            $deletedRows = $this->connection()->delete(
-                "DELETE FROM memory.{$tableName} WHERE {$whereClause}",
-                $whereParams
-            );
-
-            Log::info('Memory rows deleted', [
-                'table' => $tableName,
-                'deleted_rows' => $deletedRows,
-                'deleted_embeddings' => $deletedEmbeddings,
-            ]);
-
-            return [
-                'success' => true,
-                'deleted_rows' => $deletedRows,
-                'deleted_embeddings' => $deletedEmbeddings,
-                'message' => "Deleted {$deletedRows} row(s) from memory.{$tableName}",
-            ];
+            });
         } catch (\Exception $e) {
             Log::error('Failed to delete memory rows', [
                 'table' => $tableName,
@@ -338,6 +377,25 @@ class MemoryDataService
                 'message' => 'Query failed: ' . $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Validate and quote a table name to prevent SQL injection.
+     * Only allows valid PostgreSQL identifiers.
+     *
+     * @param string $tableName Table name to validate
+     * @return string|null Quoted table name or null if invalid
+     */
+    protected function quoteTableName(string $tableName): ?string
+    {
+        // Only allow valid PostgreSQL identifiers: lowercase letters, numbers, underscores
+        // Must start with a letter
+        if (!preg_match('/^[a-z][a-z0-9_]*$/', $tableName)) {
+            return null;
+        }
+
+        // Double-quote the identifier for safety
+        return '"' . $tableName . '"';
     }
 
     /**

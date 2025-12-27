@@ -139,6 +139,32 @@ class MemorySnapshotService
     }
 
     /**
+     * Validate filename to prevent path traversal attacks.
+     *
+     * @param string $filename Filename to validate
+     * @return bool True if filename is safe
+     */
+    protected function isValidFilename(string $filename): bool
+    {
+        // Reject empty filenames
+        if (empty($filename)) {
+            return false;
+        }
+
+        // Reject path traversal attempts
+        if (str_contains($filename, '..') || str_contains($filename, '/') || str_contains($filename, '\\')) {
+            return false;
+        }
+
+        // Must match expected pattern: memory_YYYYMMDD_HHMMSS[_schema][_imported].sql
+        if (!preg_match('/^memory_\d{8}_\d{6}(_schema)?(_imported)?\.sql$/', $filename)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Restore the memory schema from a snapshot.
      * Automatically creates a snapshot of current state first.
      *
@@ -147,6 +173,14 @@ class MemorySnapshotService
      */
     public function restore(string $filename): array
     {
+        // Validate filename to prevent path traversal
+        if (!$this->isValidFilename($filename)) {
+            return [
+                'success' => false,
+                'message' => 'Invalid filename. Must be a valid snapshot filename.',
+            ];
+        }
+
         $path = $this->directory . '/' . $filename;
 
         if (!file_exists($path)) {
@@ -251,6 +285,14 @@ class MemorySnapshotService
      */
     public function delete(string $filename): array
     {
+        // Validate filename to prevent path traversal
+        if (!$this->isValidFilename($filename)) {
+            return [
+                'success' => false,
+                'message' => 'Invalid filename. Must be a valid snapshot filename.',
+            ];
+        }
+
         $path = $this->directory . '/' . $filename;
 
         if (!file_exists($path)) {
@@ -379,6 +421,14 @@ class MemorySnapshotService
      */
     public function getForDownload(string $filename): array
     {
+        // Validate filename to prevent path traversal
+        if (!$this->isValidFilename($filename)) {
+            return [
+                'success' => false,
+                'message' => 'Invalid filename. Must be a valid snapshot filename.',
+            ];
+        }
+
         $path = $this->directory . '/' . $filename;
 
         if (!file_exists($path)) {
