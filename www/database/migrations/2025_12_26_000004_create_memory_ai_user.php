@@ -49,6 +49,20 @@ return new class extends Migration
         $database = DB::connection()->getDatabaseName();
         $quotedDatabase = '"' . str_replace('"', '""', $database) . '"';
         DB::statement("GRANT CONNECT ON DATABASE {$quotedDatabase} TO memory_ai");
+
+        // Also grant memory_readonly access to memory schema
+        // (memory_readonly is created by an earlier migration, but needs access to new schema)
+        $readonlyExists = DB::selectOne("SELECT 1 FROM pg_roles WHERE rolname = 'memory_readonly'");
+        if ($readonlyExists) {
+            // Grant schema usage
+            DB::statement('GRANT USAGE ON SCHEMA memory TO memory_readonly');
+
+            // Grant SELECT on all current tables in memory schema
+            DB::statement('GRANT SELECT ON ALL TABLES IN SCHEMA memory TO memory_readonly');
+
+            // Grant SELECT on future tables created in memory schema
+            DB::statement('ALTER DEFAULT PRIVILEGES IN SCHEMA memory GRANT SELECT ON TABLES TO memory_readonly');
+        }
     }
 
     /**
@@ -56,7 +70,15 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Check if user exists
+        // Revoke memory_readonly permissions on memory schema
+        $readonlyExists = DB::selectOne("SELECT 1 FROM pg_roles WHERE rolname = 'memory_readonly'");
+        if ($readonlyExists) {
+            DB::statement('ALTER DEFAULT PRIVILEGES IN SCHEMA memory REVOKE SELECT ON TABLES FROM memory_readonly');
+            DB::statement('REVOKE SELECT ON ALL TABLES IN SCHEMA memory FROM memory_readonly');
+            DB::statement('REVOKE USAGE ON SCHEMA memory FROM memory_readonly');
+        }
+
+        // Check if memory_ai user exists
         $userExists = DB::selectOne(
             "SELECT 1 FROM pg_roles WHERE rolname = 'memory_ai'"
         );
