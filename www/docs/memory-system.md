@@ -156,8 +156,9 @@ php artisan memory:schema:execute --sql="DROP TABLE memory.characters"
 # 4. Rename new table
 php artisan memory:schema:execute --sql="ALTER TABLE memory.characters_v2 RENAME TO characters"
 
-# 5. Update registry
-UPDATE memory.schema_registry SET table_name = 'characters' WHERE table_name = 'characters_v2'
+# 5. Update registry (use memory:schema:execute for consistency)
+php artisan memory:schema:execute \
+  --sql="UPDATE memory.schema_registry SET table_name = 'characters' WHERE table_name = 'characters_v2'"
 ```
 
 ---

@@ -90,7 +90,7 @@ class MemorySchemaService
                 // Grant SELECT to memory_readonly for query access
                 // This is needed because ALTER DEFAULT PRIVILEGES only applies to tables
                 // created by the role that ran the ALTER, not tables created by other roles
-                DB::statement("GRANT SELECT ON memory.{$tableName} TO memory_readonly");
+                $this->connection()->statement("GRANT SELECT ON memory.{$tableName} TO memory_readonly");
             });
 
             Log::info('Memory table created', [
@@ -477,6 +477,12 @@ class MemorySchemaService
                     return false;
                 }
             }
+        }
+
+        // Also check for quoted schema.table references outside memory schema
+        // E.g., "public"."users" or "other_schema"."table"
+        if (preg_match('/\b(from|join|into|update|table)\s+"(?!memory")[a-z_][a-z0-9_]*"\s*\./i', $sqlWithoutStrings)) {
+            return false;
         }
 
         return true;
