@@ -103,9 +103,18 @@ WHERE ST_DWithin(coordinates, ST_MakePoint(-122.4, 37.8)::geography, 50000)
 ORDER BY distance_m
 ```
 
+## Important: Embedding Columns
+
+- **Never SELECT the embedding column directly** - it's a 1536-dimension vector array
+- Use `1 - (e.embedding <=> :search_embedding) as similarity` to get a 0-1 similarity score
+- Filter with `WHERE 1 - (e.embedding <=> :search_embedding) > 0.5` (adjust threshold as needed)
+- ORDER BY similarity DESC to get best matches first
+- The `content` column in memory.embeddings contains the original text that was embedded
+
 ## Notes
 - Only SELECT queries allowed
-- Results limited to 100 rows
+- If no LIMIT specified, results are limited to 50 rows (max 100)
+- Output is JSON format with full text (no truncation)
 - Use :search_embedding placeholder with search_text parameter for vector searches
 - Tables are in memory schema (memory.tablename)
 INSTRUCTIONS;
@@ -153,12 +162,19 @@ INSTRUCTIONS;
             // The memory_readonly user can only SELECT from memory_* tables
             $results = DB::connection('pgsql_readonly')->select($sql, $bindings);
 
+            // Check if limit was applied
+            $hadLimit = preg_match('/\bLIMIT\s+\d+/i', $input['sql'] ?? '');
+            $limitApplied = !$hadLimit;
+
             if (empty($results)) {
-                return ToolResult::success("No results found.\n\nQuery: {$sql}");
+                return ToolResult::success(json_encode([
+                    'results' => [],
+                    'count' => 0,
+                ], JSON_PRETTY_PRINT));
             }
 
-            // Format results as table
-            $output = $this->formatResults($results, $sql);
+            // Format results as JSON
+            $output = $this->formatResults($results, $limitApplied, $limit);
 
             return ToolResult::success($output);
         } catch (\Exception $e) {
@@ -208,71 +224,33 @@ INSTRUCTIONS;
         return '[' . implode(',', $embedding) . ']';
     }
 
-    private function formatResults(array $results, string $sql): string
+    private function formatResults(array $results, bool $limitApplied, int $limit): string
     {
         $count = count($results);
-        $output = ["Found {$count} result(s)", ""];
 
         // Convert to arrays for easier handling
         $rows = array_map(fn($r) => (array) $r, $results);
 
-        if (empty($rows)) {
-            return "No results.";
-        }
+        // Build output structure
+        $output = [
+            'results' => $rows,
+            'count' => $count,
+        ];
 
-        $columns = array_keys($rows[0]);
-
-        // Calculate column widths
-        $widths = [];
-        foreach ($columns as $col) {
-            $widths[$col] = strlen($col);
-            foreach ($rows as $row) {
-                $value = $this->formatValue($row[$col] ?? null);
-                $widths[$col] = max($widths[$col], min(50, strlen($value)));
+        // Add meta info if limit was auto-applied
+        if ($limitApplied) {
+            $output['_meta'] = [
+                'limit_applied' => $limit,
+                'note' => $count >= $limit
+                    ? "Results limited to {$limit} rows. Add a WHERE clause or explicit LIMIT to narrow results."
+                    : null,
+            ];
+            // Remove note if null
+            if ($output['_meta']['note'] === null) {
+                unset($output['_meta']['note']);
             }
         }
 
-        // Build header
-        $header = '| ';
-        $separator = '|-';
-        foreach ($columns as $col) {
-            $header .= str_pad($col, $widths[$col]) . ' | ';
-            $separator .= str_repeat('-', $widths[$col]) . '-|-';
-        }
-        $output[] = $header;
-        $output[] = $separator;
-
-        // Build rows
-        foreach ($rows as $row) {
-            $line = '| ';
-            foreach ($columns as $col) {
-                $value = $this->formatValue($row[$col] ?? null);
-                if (strlen($value) > 50) {
-                    $value = substr($value, 0, 47) . '...';
-                }
-                $line .= str_pad($value, $widths[$col]) . ' | ';
-            }
-            $output[] = $line;
-        }
-
-        return implode("\n", $output);
-    }
-
-    private function formatValue(mixed $value): string
-    {
-        if ($value === null) {
-            return 'NULL';
-        }
-        if (is_bool($value)) {
-            return $value ? 'true' : 'false';
-        }
-        if (is_array($value)) {
-            return json_encode($value);
-        }
-        // Truncate embedding vectors
-        if (is_string($value) && str_starts_with($value, '[') && strlen($value) > 100) {
-            return '[vector...]';
-        }
-        return (string) $value;
+        return json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     }
 }
