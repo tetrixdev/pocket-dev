@@ -55,13 +55,16 @@ class MemoryDataService
         // Get embeddable fields from schema_registry
         $embedFields = $this->schemaService->getEmbeddableFields($tableName);
 
+        // Get column types for proper array/jsonb handling
+        $columnTypes = $this->getColumnTypes($tableName);
+
         try {
             $rowId = null;
 
-            $this->connection()->transaction(function () use ($quotedTable, $data, $embedFields, &$rowId) {
+            $this->connection()->transaction(function () use ($quotedTable, $data, $columnTypes, &$rowId) {
                 // Build and execute INSERT
                 $columns = array_keys($data);
-                $placeholders = array_map(fn($c) => $this->formatValue($data[$c]), $columns);
+                $placeholders = array_map(fn($c) => $this->formatValue($data[$c], $columnTypes[$c] ?? null), $columns);
 
                 $columnsSql = implode(', ', array_map(fn($c) => '"' . $c . '"', $columns));
                 $valuesSql = implode(', ', $placeholders);
@@ -178,6 +181,9 @@ class MemoryDataService
         $embedFields = $this->schemaService->getEmbeddableFields($tableName);
         $updatedEmbedFields = array_intersect($embedFields, array_keys($data));
 
+        // Get column types for proper array/jsonb handling
+        $columnTypes = $this->getColumnTypes($tableName);
+
         try {
             // First, get the IDs of rows that will be updated (for embedding regeneration)
             $affectedIds = [];
@@ -192,7 +198,7 @@ class MemoryDataService
             // Build and execute UPDATE
             $setClauses = [];
             foreach ($data as $column => $value) {
-                $setClauses[] = '"' . $column . '" = ' . $this->formatValue($value);
+                $setClauses[] = '"' . $column . '" = ' . $this->formatValue($value, $columnTypes[$column] ?? null);
             }
             $setSql = implode(', ', $setClauses);
 
@@ -399,9 +405,49 @@ class MemoryDataService
     }
 
     /**
-     * Format a value for SQL insertion.
+     * Get column types for a table from information_schema.
+     *
+     * @param string $tableName Table name (without schema prefix)
+     * @return array<string, string> Column name => data type
      */
-    protected function formatValue(mixed $value): string
+    protected function getColumnTypes(string $tableName): array
+    {
+        static $cache = [];
+
+        if (isset($cache[$tableName])) {
+            return $cache[$tableName];
+        }
+
+        $columns = DB::connection('pgsql_readonly')->select("
+            SELECT column_name, data_type, udt_name
+            FROM information_schema.columns
+            WHERE table_schema = 'memory' AND table_name = ?
+        ", [$tableName]);
+
+        $types = [];
+        foreach ($columns as $col) {
+            // udt_name gives us the base type (e.g., '_text' for text[])
+            // data_type gives us 'ARRAY' for arrays
+            if ($col->data_type === 'ARRAY') {
+                // udt_name starts with _ for array types (e.g., _text, _uuid, _int4)
+                $baseType = ltrim($col->udt_name, '_');
+                $types[$col->column_name] = $baseType . '[]';
+            } else {
+                $types[$col->column_name] = $col->data_type;
+            }
+        }
+
+        $cache[$tableName] = $types;
+        return $types;
+    }
+
+    /**
+     * Format a value for SQL insertion.
+     *
+     * @param mixed $value The value to format
+     * @param string|null $columnType Optional column type for proper casting
+     */
+    protected function formatValue(mixed $value, ?string $columnType = null): string
     {
         if ($value === null) {
             return 'NULL';
@@ -416,11 +462,39 @@ class MemoryDataService
         }
 
         if (is_array($value)) {
-            // JSON for complex arrays
+            // Check if target column is an array type (e.g., text[], uuid[], int4[])
+            if ($columnType !== null && str_ends_with($columnType, '[]')) {
+                // Format as PostgreSQL array
+                return $this->formatPgArray($value, $columnType);
+            }
+
+            // Default to JSONB for arrays
             return "'" . str_replace("'", "''", json_encode($value)) . "'::jsonb";
         }
 
         // String - escape single quotes
         return "'" . str_replace("'", "''", (string) $value) . "'";
+    }
+
+    /**
+     * Format a PHP array as a PostgreSQL array literal.
+     *
+     * @param array $value The array to format
+     * @param string $columnType The PostgreSQL array type (e.g., 'text[]', 'uuid[]')
+     */
+    protected function formatPgArray(array $value, string $columnType): string
+    {
+        // Escape each element and wrap in PostgreSQL array syntax
+        $escaped = array_map(function ($item) {
+            if ($item === null) {
+                return 'NULL';
+            }
+            // Escape backslashes and double quotes, then wrap in quotes
+            $escaped = str_replace('\\', '\\\\', (string) $item);
+            $escaped = str_replace('"', '\\"', $escaped);
+            return '"' . $escaped . '"';
+        }, $value);
+
+        return "'{" . implode(',', $escaped) . "}'::" . $columnType;
     }
 }

@@ -86,6 +86,11 @@ class MemorySchemaService
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                // Grant SELECT to memory_readonly for query access
+                // This is needed because ALTER DEFAULT PRIVILEGES only applies to tables
+                // created by the role that ran the ALTER, not tables created by other roles
+                DB::statement("GRANT SELECT ON memory.{$tableName} TO memory_readonly");
             });
 
             Log::info('Memory table created', [
@@ -152,10 +157,10 @@ class MemorySchemaService
             $this->connection()->statement($sql);
 
             // If this was a DROP TABLE, also clean up schema_registry
+            // Use main Laravel connection which has DELETE permission on schema_registry
             $droppedTable = $this->extractDroppedTableName($sql);
             if ($droppedTable) {
-                $this->connection()
-                    ->table('schema_registry')
+                DB::table('memory.schema_registry')
                     ->where('table_name', $droppedTable)
                     ->delete();
 
@@ -419,23 +424,55 @@ class MemorySchemaService
     }
 
     /**
+     * Strip string literals from SQL to avoid false positives in validation.
+     * Replaces 'string content' with '' placeholder.
+     */
+    protected function stripStringLiterals(string $sql): string
+    {
+        // Handle escaped quotes within strings: replace '' with placeholder first
+        $sql = str_replace("''", "\x00\x00", $sql);
+
+        // Remove content between single quotes (non-greedy)
+        $sql = preg_replace("/'[^']*'/", "''", $sql);
+
+        // Restore escaped quote placeholders
+        $sql = str_replace("\x00\x00", "''", $sql);
+
+        return $sql;
+    }
+
+    /**
      * Check if SQL only operates on memory schema.
      */
     protected function sqlOperatesOnMemorySchemaOnly(string $sql): bool
     {
-        // For now, check that any table references use memory. prefix
-        // This is a simplified check - could be more rigorous
-        $sql = strtolower($sql);
+        // Strip string literals to avoid false positives from content like {"type": "..."}
+        $sqlWithoutStrings = $this->stripStringLiterals($sql);
+        $sqlWithoutStrings = strtolower($sqlWithoutStrings);
+
+        // Comprehensive list of SQL keywords that might appear after FROM/JOIN/etc.
+        $keywords = [
+            // Common clauses
+            'set', 'where', 'values', 'select', 'as', 'and', 'or', 'not', 'null', 'true', 'false',
+            // Join types
+            'inner', 'outer', 'left', 'right', 'full', 'cross', 'natural',
+            // Other keywords that might follow table references
+            'on', 'using', 'group', 'order', 'having', 'limit', 'offset', 'returning',
+            'union', 'except', 'intersect', 'with', 'recursive',
+            // CASE expression
+            'case', 'when', 'then', 'else', 'end',
+            // Misc
+            'distinct', 'all', 'exists', 'in', 'between', 'like', 'ilike', 'is', 'any', 'some',
+            'default', 'constraint', 'primary', 'key', 'foreign', 'references', 'unique', 'check',
+            'index', 'cascade', 'restrict', 'no', 'action', 'initially', 'deferred', 'immediate',
+        ];
 
         // Look for table references that aren't memory. prefixed
         // Common patterns: FROM table, JOIN table, INTO table, UPDATE table, TABLE table
-        if (preg_match('/\b(from|join|into|update|table|on)\s+(?!memory\.)([a-z_][a-z0-9_]*)\s/i', $sql)) {
-            // Check if it's a keyword or function, not a table
-            $matches = [];
-            if (preg_match('/\b(from|join|into|update|table|on)\s+([a-z_][a-z0-9_]*)/i', $sql, $matches)) {
-                $potentialTable = $matches[2];
-                // Allow common SQL keywords
-                $keywords = ['set', 'where', 'values', 'select', 'as', 'and', 'or', 'not', 'null', 'true', 'false'];
+        if (preg_match_all('/\b(from|join|into|update|table)\s+(?!memory\.)([a-z_][a-z0-9_]*)/i', $sqlWithoutStrings, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $potentialTable = strtolower($match[2]);
+                // If it's not a keyword, it's likely an unqualified table reference
                 if (!in_array($potentialTable, $keywords)) {
                     return false;
                 }
