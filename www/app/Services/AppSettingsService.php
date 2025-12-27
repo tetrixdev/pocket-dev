@@ -401,4 +401,26 @@ class AppSettingsService
         $credentialsFile = $home . '/.codex/auth.json';
         return file_exists($credentialsFile);
     }
+
+    // =========================================================================
+    // Memory System Settings
+    // =========================================================================
+
+    /**
+     * Get memory snapshot retention days
+     */
+    public function getMemorySnapshotRetentionDays(): int
+    {
+        return (int) $this->get('memory_snapshot_retention_days', config('memory.snapshot_retention_days', 30));
+    }
+
+    /**
+     * Set memory snapshot retention days
+     */
+    public function setMemorySnapshotRetentionDays(int $days): AppSetting
+    {
+        $days = max(1, min(365, $days));
+        Log::info('Memory snapshot retention updated', ['days' => $days]);
+        return $this->set('memory_snapshot_retention_days', $days);
+    }
 }

@@ -17,6 +17,13 @@ RUN apt-get update && apt-get install -y \
     locales \
     && rm -rf /var/lib/apt/lists/*
 
+# Install PostgreSQL 17 client (for pg_dump/pg_restore with PG17 server)
+RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y postgresql-client-17 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Configure and generate UTF-8 locale for proper Unicode character support
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen en_US.UTF-8 && \

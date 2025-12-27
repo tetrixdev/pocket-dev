@@ -220,6 +220,14 @@
                     </a>
                 </div>
 
+                <!-- Memory -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.memory') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.memory' ? 'active' : '' }}">
+                        🧠 Memory
+                    </a>
+                </div>
+
                 <!-- Credentials -->
                 <div class="border-b border-gray-700">
                     <a href="{{ route('config.credentials') }}"
@@ -440,6 +448,15 @@
                    @click="showMobileDrawer = false"
                    class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.tools') ? 'active' : '' }}">
                     🛠️ Tools
+                </a>
+            </div>
+
+            <!-- Memory -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.memory') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.memory' ? 'active' : '' }}">
+                    🧠 Memory
                 </a>
             </div>
 

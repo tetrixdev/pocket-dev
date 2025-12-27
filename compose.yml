@@ -93,9 +93,9 @@ services:
       start_period: 15s
 
   pocket-dev-postgres:
-    # pgvector/pgvector:pg17 includes pgvector 0.8+ with HNSW index support
-    # Required for semantic search in the memory system
-    image: pgvector/pgvector:pg17
+    build:
+      context: .
+      dockerfile: docker-postgres/Dockerfile
     container_name: pocket-dev-postgres
     restart: unless-stopped
     environment:

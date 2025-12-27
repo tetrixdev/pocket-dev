@@ -20,6 +20,8 @@ class PocketTool extends Model
     // Common category values (not enforced - categories are flexible labels)
     // These are just convenience constants for common categories
     public const CATEGORY_MEMORY = 'memory';
+    public const CATEGORY_MEMORY_SCHEMA = 'memory_schema';
+    public const CATEGORY_MEMORY_DATA = 'memory_data';
     public const CATEGORY_TOOLS = 'tools';
     public const CATEGORY_FILE_OPS = 'file_ops';
     public const CATEGORY_CUSTOM = 'custom';

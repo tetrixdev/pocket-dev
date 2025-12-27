@@ -2,33 +2,32 @@
 
 namespace App\Tools;
 
-use App\Models\MemoryObject;
-use Illuminate\Support\Facades\DB;
+use App\Services\MemoryDataService;
 
 /**
- * Delete a memory object.
+ * Delete rows from a memory table and their associated embeddings.
  */
 class MemoryDeleteTool extends Tool
 {
     public string $name = 'MemoryDelete';
 
-    public string $description = 'Delete a memory object by ID. Also removes its embeddings and relationships.';
+    public string $description = 'Delete rows from a memory table and their associated embeddings.';
 
-    public string $category = 'memory';
+    public string $category = 'memory_data';
 
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
-            'id' => [
+            'table' => [
                 'type' => 'string',
-                'description' => 'The UUID of the object to delete.',
+                'description' => 'Table name (without schema prefix).',
             ],
-            'cascade' => [
-                'type' => 'boolean',
-                'description' => 'If true, also delete child objects. Default: false.',
+            'where' => [
+                'type' => 'string',
+                'description' => 'WHERE clause (without WHERE keyword). Required. Example: "id = \'uuid-here\'"',
             ],
         ],
-        'required' => ['id'],
+        'required' => ['table', 'where'],
     ];
 
     public function getArtisanCommand(): ?string
@@ -37,110 +36,85 @@ class MemoryDeleteTool extends Tool
     }
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-Use MemoryDelete to remove memory objects.
+Use MemoryDelete to remove rows from memory tables. Associated embeddings are automatically deleted.
 
 ## CLI Example
 
 ```bash
-php artisan memory:delete --id=<uuid>
-php artisan memory:delete --id=<uuid> --cascade
+php artisan memory:delete --table=characters --where="id = '123e4567-e89b-12d3-a456-426614174000'"
 ```
 
-## Examples
+## WHERE Clause
 
-Delete single object:
-```json
-{
-  "id": "object-uuid"
-}
+The WHERE clause is **required** to prevent accidental deletion of all rows:
+
+```bash
+# Delete by ID (most common)
+--where="id = 'uuid-here'"
+
+# Delete by name
+--where="name = 'Old Character'"
+
+# Delete multiple matching rows
+--where="class = 'deprecated'"
 ```
 
-Delete with children:
+## Cascading Deletion
+
+When you delete rows:
+1. The delete tool finds all matching row IDs
+2. Deletes associated embeddings from memory.embeddings
+3. Deletes the rows themselves
+4. Returns counts of deleted rows and embeddings
+
+## Example: Delete a character
+
 ```json
 {
-  "id": "parent-uuid",
-  "cascade": true
+  "table": "characters",
+  "where": "name = 'Thorin Ironforge'"
 }
 ```
 
 ## Notes
-- Embeddings are automatically deleted (cascade)
-- Relationships involving this object are automatically deleted (cascade)
-- Child objects are NOT deleted unless cascade: true
-- Child objects will have their parent_id set to null if parent is deleted
+
+- WHERE clause is required (use DROP TABLE for clearing all data)
+- Embeddings are deleted first, then rows
+- Returns count of deleted rows and embeddings
+- Cannot delete from protected tables (embeddings, schema_registry)
 INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
-        $id = $input['id'] ?? '';
-        $cascade = $input['cascade'] ?? false;
+        $table = trim($input['table'] ?? '');
+        $where = trim($input['where'] ?? '');
 
-        if (empty($id)) {
-            return ToolResult::error('id is required');
+        if (empty($table)) {
+            return ToolResult::error('table is required');
         }
 
-        $object = MemoryObject::find($id);
-        if (!$object) {
-            return ToolResult::error("Object '{$id}' not found.");
+        if (empty($where)) {
+            return ToolResult::error('where clause is required');
         }
 
-        $name = $object->name;
-        $structureSlug = $object->structure_slug;
-
-        // Check for orphaned children BEFORE deletion (FK constraint will nullify parent_id)
-        $orphanedChildren = 0;
-        if (!$cascade) {
-            $orphanedChildren = $object->children()->count();
+        // Prevent deletion from protected tables
+        if (in_array($table, ['embeddings', 'schema_registry'])) {
+            return ToolResult::error("Cannot delete from protected table: {$table}");
         }
 
-        try {
-            $childCount = 0;
+        $service = app(MemoryDataService::class);
+        $result = $service->delete($table, $where);
 
-            DB::transaction(function () use ($object, $cascade, &$childCount) {
-                if ($cascade) {
-                    // Delete all descendants recursively
-                    $childCount = $this->deleteDescendants($object);
-                }
+        if ($result['success']) {
+            $output = [$result['message']];
 
-                // Delete the object (embeddings and relationships cascade via FK)
-                $object->delete();
-            });
-
-            $output = ["Deleted {$structureSlug}: {$name}", "", "ID: {$id}"];
-
-            if ($cascade && $childCount > 0) {
-                $output[] = "Also deleted {$childCount} child object(s)";
-            }
-
-            // Report orphaned children using pre-deletion count
-            if (!$cascade && $orphanedChildren > 0) {
-                $output[] = "";
-                $output[] = "Note: {$orphanedChildren} child object(s) are now orphaned (parent_id set to null)";
+            if ($result['deleted_embeddings'] > 0) {
+                $output[] = "Deleted {$result['deleted_embeddings']} embedding(s)";
             }
 
             return ToolResult::success(implode("\n", $output));
-        } catch (\Exception $e) {
-            return ToolResult::error('Failed to delete object: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Recursively delete all descendants of an object.
-     *
-     * @return int Number of descendants deleted
-     */
-    private function deleteDescendants(MemoryObject $object): int
-    {
-        $count = 0;
-        $children = $object->children()->get();
-
-        foreach ($children as $child) {
-            // Recursively delete grandchildren first
-            $count += $this->deleteDescendants($child);
-            $child->delete();
-            $count++;
         }
 
-        return $count;
+        return ToolResult::error($result['message']);
     }
 }

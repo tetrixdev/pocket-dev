@@ -3,36 +3,36 @@
 namespace App\Console\Commands;
 
 use App\Tools\ExecutionContext;
-use App\Tools\MemoryDeleteTool;
+use App\Tools\MemoryInsertTool;
 use Illuminate\Console\Command;
 
-class MemoryDeleteCommand extends Command
+class MemoryInsertCommand extends Command
 {
-    protected $signature = 'memory:delete
+    protected $signature = 'memory:insert
         {--table= : Table name (without schema prefix)}
-        {--where= : WHERE clause (without WHERE keyword)}';
+        {--data= : JSON object with column => value pairs}';
 
-    protected $description = 'Delete rows from a memory table and their associated embeddings';
+    protected $description = 'Insert a row into a memory table with auto-embedding';
 
     public function handle(): int
     {
         $table = $this->option('table');
-        $where = $this->option('where');
+        $data = $this->option('data');
 
         if (empty($table)) {
             return $this->outputError('The --table option is required');
         }
 
-        if (empty($where)) {
-            return $this->outputError('The --where option is required');
+        if (empty($data)) {
+            return $this->outputError('The --data option is required');
         }
 
         $input = [
             'table' => $table,
-            'where' => $where,
+            'data' => $data,
         ];
 
-        $tool = new MemoryDeleteTool();
+        $tool = new MemoryInsertTool();
         $context = new ExecutionContext(getcwd());
         $result = $tool->execute($input, $context);
 

@@ -37,7 +37,7 @@ services:
       start_period: 20s
 
   pocket-dev-postgres:
-    image: postgres:17-alpine
+    image: ghcr.io/tetrixdev/pocket-dev-postgres:${IMAGE_TAG:-latest}
     container_name: pocket-dev-postgres
     restart: unless-stopped
     environment:

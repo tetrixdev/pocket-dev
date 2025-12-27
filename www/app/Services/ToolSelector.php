@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use App\Enums\Provider;
-use App\Models\MemoryStructure;
 use App\Models\PocketTool;
 use App\Models\ToolConflict;
+use App\Services\MemorySchemaService;
 use App\Tools\Tool;
 use App\Tools\UserTool;
 use Illuminate\Support\Collection;
@@ -186,10 +186,10 @@ class ToolSelector
             $sections[] = "# PocketDev Tools\n";
         }
 
-        // Add available memory structures
-        $structuresSection = $this->buildStructuresSection();
-        if ($structuresSection) {
-            $sections[] = $structuresSection;
+        // Add available memory tables from schema registry
+        $tablesSection = $this->buildTablesSection();
+        if ($tablesSection) {
+            $sections[] = $tablesSection;
         }
 
         if ($isCliProvider) {
@@ -242,48 +242,99 @@ class ToolSelector
     }
 
     /**
-     * Build the memory structures section for the system prompt.
+     * Build the memory tables section for the system prompt.
+     * Reads from schema_registry to show available user tables.
      */
-    private function buildStructuresSection(): ?string
+    private function buildTablesSection(): ?string
     {
-        $structures = MemoryStructure::orderBy('name')->get();
+        try {
+            $schemaService = app(MemorySchemaService::class);
+            $tables = $schemaService->listTables();
+        } catch (\Exception $e) {
+            // Database not ready or memory schema doesn't exist yet
+            return null;
+        }
 
-        if ($structures->isEmpty()) {
+        // Filter out system tables - they're documented in tool instructions
+        $userTables = array_filter($tables, fn($t) => !in_array($t['table_name'], ['embeddings', 'schema_registry']));
+
+        if (empty($userTables)) {
             return null;
         }
 
         $lines = [];
-        $lines[] = "## Available Memory Structures\n";
-        $lines[] = "The following memory structures are defined. Use `memory:query` to list objects or `memory:create` to create new ones.\n";
-        $lines[] = "Store relationships between objects as UUID fields in the data (e.g., `owner_id`, `location_id`).\n";
+        $lines[] = "## Memory Tables\n";
+        $lines[] = "The following tables exist in the `memory` schema. Use `memory:query` to read, `memory:insert` to create rows.\n";
 
-        foreach ($structures as $structure) {
-            $lines[] = "### {$structure->name} (`{$structure->slug}`)";
-            if ($structure->description) {
-                $lines[] = $structure->description;
+        foreach ($userTables as $table) {
+            $lines[] = "### memory.{$table['table_name']}";
+            if ($table['description']) {
+                $lines[] = $table['description'];
             }
 
-            // Extract field descriptions from schema
-            $schema = $structure->schema;
-            if (isset($schema['properties']) && is_array($schema['properties'])) {
-                $lines[] = "\n**Fields:**";
-                foreach ($schema['properties'] as $fieldName => $fieldDef) {
-                    $type = $fieldDef['type'] ?? 'any';
-                    $description = $fieldDef['description'] ?? '';
-                    $embed = isset($fieldDef['x-embed']) && $fieldDef['x-embed'] ? ' [embeddable]' : '';
-                    $format = isset($fieldDef['format']) ? " ({$fieldDef['format']})" : '';
+            // Show embeddable fields if any
+            if (!empty($table['embeddable_fields'])) {
+                $lines[] = "**Auto-embed:** " . implode(', ', $table['embeddable_fields']);
+            }
 
-                    if ($description) {
-                        $lines[] = "- `{$fieldName}` ({$type}{$format}){$embed}: {$description}";
-                    } else {
-                        $lines[] = "- `{$fieldName}` ({$type}{$format}){$embed}";
-                    }
+            // Show columns
+            if (!empty($table['columns'])) {
+                $lines[] = "\n**Columns:**";
+                foreach ($table['columns'] as $col) {
+                    $nullable = $col['nullable'] ? '' : ' NOT NULL';
+                    $desc = $col['description'] ? ": {$col['description']}" : '';
+                    $lines[] = "- `{$col['name']}` ({$col['type']}{$nullable}){$desc}";
                 }
             }
+
             $lines[] = "";
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * Get category-level instructions (shared guidance for a category).
+     */
+    private function getCategoryInstructions(string $category): ?string
+    {
+        return match ($category) {
+            PocketTool::CATEGORY_MEMORY_SCHEMA => $this->getMemorySchemaInstructions(),
+            default => null,
+        };
+    }
+
+    /**
+     * Get shared instructions for memory_schema category tools.
+     */
+    private function getMemorySchemaInstructions(): string
+    {
+        return <<<'MD'
+### Schema Change Guidelines
+
+**ALTER TABLE is not supported.** To modify a table schema, use the recreate pattern:
+
+1. Create new table: `memory:schema:create-table --name=tablename_v2 ...`
+2. Migrate data: `memory:schema:execute --sql="INSERT INTO memory.new SELECT ... FROM memory.old"`
+3. Update embeddings: `memory:schema:execute --sql="UPDATE memory.embeddings SET source_table = 'new' WHERE source_table = 'old'"`
+4. Drop old table: `memory:schema:execute --sql="DROP TABLE memory.old"`
+
+**Always confirm with the user before starting a schema migration.**
+
+### Extensions Available
+
+**PostGIS (Spatial):**
+```sql
+coordinates GEOGRAPHY(Point, 4326)
+ST_DWithin(coordinates, ST_MakePoint(-122.4, 37.8)::geography, 50000)
+```
+
+**pg_trgm (Fuzzy Text):**
+```sql
+CREATE INDEX idx_name_trgm ON memory.table USING GIN (name gin_trgm_ops);
+WHERE name % 'Gandolf'  -- Finds "Gandalf"
+```
+MD;
     }
 
     /**
@@ -293,6 +344,8 @@ class ToolSelector
     {
         return match ($category) {
             PocketTool::CATEGORY_MEMORY => 'Memory System',
+            PocketTool::CATEGORY_MEMORY_SCHEMA => 'Memory Schema Operations',
+            PocketTool::CATEGORY_MEMORY_DATA => 'Memory Data Operations',
             PocketTool::CATEGORY_TOOLS => 'Tool Management',
             PocketTool::CATEGORY_FILE_OPS => 'File Operations',
             PocketTool::CATEGORY_CUSTOM => 'Custom Tools',
@@ -323,6 +376,28 @@ php artisan tool:run <slug> -- --arg1=value1 --arg2=value2
 **Important:** Only `tool:run` requires the `--` separator, and it must appear before the tool arguments.
 
 GUIDE;
+    }
+
+    /**
+     * Get memory schema tools.
+     */
+    public function getMemorySchemaTools(): Collection
+    {
+        return $this->getAllTools()
+            ->filter(fn(Tool $tool) => $tool->category === PocketTool::CATEGORY_MEMORY_SCHEMA)
+            ->sortBy('name')
+            ->values();
+    }
+
+    /**
+     * Get memory data tools.
+     */
+    public function getMemoryDataTools(): Collection
+    {
+        return $this->getAllTools()
+            ->filter(fn(Tool $tool) => $tool->category === PocketTool::CATEGORY_MEMORY_DATA)
+            ->sortBy('name')
+            ->values();
     }
 
     /**
