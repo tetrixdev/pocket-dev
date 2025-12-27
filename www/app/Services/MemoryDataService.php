@@ -383,7 +383,7 @@ class MemoryDataService
         // E.g., WITH deleted AS (DELETE FROM ...) SELECT * FROM deleted
         $dangerousPatterns = [
             '/\bINSERT\s+INTO\b/i',
-            '/\bUPDATE\s+\w+\s+SET\b/i',
+            '/\bUPDATE\b/i',
             '/\bDELETE\s+FROM\b/i',
             '/\bDROP\s+/i',
             '/\bTRUNCATE\s+/i',
