@@ -51,10 +51,51 @@
                             </div>
                         @endif
 
+                        {{-- System Prompt Preview --}}
+                        @php
+                            $rawMarkdown = "### memory.{$table['table_name']}\n";
+                            if ($table['description']) {
+                                $rawMarkdown .= "{$table['description']}\n";
+                            }
+                            if (!empty($table['embeddable_fields'])) {
+                                $rawMarkdown .= "**Auto-embed:** " . implode(', ', $table['embeddable_fields']) . "\n";
+                            }
+                            if (!empty($table['columns'])) {
+                                $rawMarkdown .= "\n**Columns:**\n";
+                                foreach ($table['columns'] as $col) {
+                                    $nullable = $col['nullable'] ? '' : ' NOT NULL';
+                                    $desc = $col['description'] ? ": {$col['description']}" : '';
+                                    $rawMarkdown .= "- `{$col['name']}` ({$col['type']}{$nullable}){$desc}\n";
+                                }
+                            }
+                        @endphp
+                        <details class="mt-3" x-data="{ copied: false, markdown: {{ Illuminate\Support\Js::from($rawMarkdown) }} }">
+                            <summary class="text-sm text-purple-400 cursor-pointer hover:text-purple-300 font-medium">
+                                Show System Prompt Preview
+                            </summary>
+                            <div
+                                class="mt-2 bg-gray-900 rounded p-3 overflow-x-auto cursor-pointer hover:bg-gray-800 transition-colors relative group"
+                                @click="
+                                    navigator.clipboard.writeText(markdown);
+                                    copied = true;
+                                    setTimeout(() => copied = false, 2000);
+                                "
+                                title="Click to copy raw markdown"
+                            >
+                                <div class="text-sm markdown-content" x-html="DOMPurify.sanitize(marked.parse(markdown))"></div>
+                                <div
+                                    class="absolute top-2 right-2 text-xs px-2 py-1 rounded transition-opacity"
+                                    :class="copied ? 'bg-green-600 text-white opacity-100' : 'bg-gray-700 text-gray-400 opacity-0 group-hover:opacity-100'"
+                                    x-text="copied ? 'Copied!' : 'Click to copy'"
+                                ></div>
+                            </div>
+                        </details>
+
+                        {{-- Database Structure --}}
                         @if(!empty($table['columns']))
-                            <details class="mt-3">
+                            <details class="mt-2">
                                 <summary class="text-sm text-gray-400 cursor-pointer hover:text-gray-300">
-                                    {{ count($table['columns']) }} columns
+                                    Show Database Structure ({{ count($table['columns']) }} columns)
                                 </summary>
                                 <div class="mt-2 pl-4 border-l border-gray-700 space-y-1">
                                     @foreach($table['columns'] as $col)
@@ -62,7 +103,7 @@
                                             <span class="text-gray-300">{{ $col['name'] }}</span>
                                             <span class="text-gray-500">({{ $col['type'] }}{{ $col['nullable'] ? '' : ' NOT NULL' }})</span>
                                             @if($col['description'])
-                                                <span class="text-gray-400">- {{ $col['description'] }}</span>
+                                                <p class="text-gray-400 text-xs mt-1 ml-4">{{ $col['description'] }}</p>
                                             @endif
                                         </div>
                                     @endforeach
@@ -238,4 +279,21 @@
         </div>
     </section>
 </div>
+
+{{-- Markdown rendering dependencies (same as chat.blade.php) --}}
+<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+<style>
+    .markdown-content { line-height: 1.6; }
+    .markdown-content h1 { font-size: 1.5em; font-weight: bold; margin: 1em 0 0.5em; }
+    .markdown-content h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.5em; }
+    .markdown-content h3 { font-size: 1.1em; font-weight: bold; margin: 0.5em 0 0.5em; color: #e5e7eb; }
+    .markdown-content p { margin: 0.5em 0; color: #d1d5db; }
+    .markdown-content ul, .markdown-content ol { margin: 0.5em 0; padding-left: 2em; }
+    .markdown-content li { margin: 0.25em 0; color: #d1d5db; }
+    .markdown-content code { background: #374151; padding: 0.2em 0.4em; border-radius: 0.25em; font-size: 0.9em; color: #93c5fd; }
+    .markdown-content pre { background: #1f2937; padding: 1em; border-radius: 0.5em; overflow-x: auto; margin: 1em 0; }
+    .markdown-content pre code { background: none; padding: 0; }
+    .markdown-content strong { color: #e5e7eb; }
+</style>
 @endsection
