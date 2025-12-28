@@ -42,6 +42,34 @@ class MemoryUpdateTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryUpdate to modify existing rows. Embeddings are automatically regenerated for any changed fields that are configured for embedding.
 
+## CRITICAL: Read Before Write
+
+**You MUST read the existing row before updating text fields to avoid data loss.**
+
+Updates REPLACE field values, they do not append. If you update a field without reading it first, you will lose the existing content.
+
+**Correct pattern:**
+```bash
+# 1. READ the current value
+php artisan memory:query --sql="SELECT backstory, notes FROM memory.characters WHERE id = 'uuid'" --limit=1
+
+# 2. THEN update, preserving and appending to existing content
+php artisan memory:update --table=characters --data='{"backstory":"[preserved original content] + [new content]"}' --where="id = 'uuid'"
+```
+
+**Wrong pattern (causes data loss):**
+```bash
+# DON'T do this - you'll overwrite the existing backstory
+php artisan memory:update --table=characters --data='{"backstory":"New content only"}' --where="id = 'uuid'"
+```
+
+**Fields that commonly need read-before-write:**
+- story_arcs: hooks, current_status, secrets_revealed
+- entities: notes, backstory, current_goals
+- Any text field where content accumulates over time
+
+**Note:** For relationship tracking, prefer using the append-only `relationship_events` table instead of updating `entity_relationships`. See dm_system_prompt.md for the pattern.
+
 ## CLI Example
 
 ```bash
