@@ -312,14 +312,14 @@ class ToolSelector
         return <<<'MD'
 ### Schema Change Guidelines
 
-**ALTER TABLE is not supported.** To modify a table schema, use the recreate pattern:
+**ALTER TABLE is supported** for non-protected tables (add/drop/rename columns, rename tables).
 
-1. Create new table: `memory:schema:create-table --name=tablename_v2 ...`
-2. Migrate data: `memory:schema:execute --sql="INSERT INTO memory.new SELECT ... FROM memory.old"`
-3. Update embeddings: `memory:schema:execute --sql="UPDATE memory.embeddings SET source_table = 'new' WHERE source_table = 'old'"`
-4. Drop old table: `memory:schema:execute --sql="DROP TABLE memory.old"`
+For table renames, also update related metadata:
+1. Rename table: `ALTER TABLE memory.old_name RENAME TO new_name`
+2. Update embeddings: `UPDATE memory.embeddings SET source_table = 'new_name' WHERE source_table = 'old_name'`
+3. Update registry: `memory:update --table=schema_registry --data='{"table_name":"new_name"}' --where="table_name = 'old_name'"`
 
-**Always confirm with the user before starting a schema migration.**
+**Protected tables** (embeddings, schema_registry) cannot be altered.
 
 ### Extensions Available
 
