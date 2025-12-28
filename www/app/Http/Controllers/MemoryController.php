@@ -280,6 +280,9 @@ class MemoryController extends Controller
 
     /**
      * Format a cell value for display.
+     *
+     * TODO: Consider extracting shared logic with formatFullValue() into a base method
+     * with a "truncate" flag parameter to reduce duplication. (CodeRabbit suggestion)
      */
     protected function formatCellValue(mixed $value, string $type): array
     {
@@ -347,6 +350,10 @@ class MemoryController extends Controller
 
     /**
      * Parse PostgreSQL array format to PHP array.
+     *
+     * TODO: Consider using MemorySchemaService::pgArrayToArray() instead to eliminate
+     * duplication. That method also handles edge cases like null and unterminated quotes.
+     * (CodeRabbit suggestion)
      */
     protected function parsePgArray(string $pgArray): array
     {
