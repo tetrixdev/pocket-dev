@@ -3,6 +3,7 @@
 namespace App\Tools;
 
 use App\Services\MemoryDataService;
+use App\Services\MemorySchemaService;
 
 /**
  * Delete rows from a memory table and their associated embeddings.
@@ -82,6 +83,13 @@ When you delete rows:
 - Embeddings are deleted first, then rows
 - Returns count of deleted rows and embeddings
 - Cannot delete from protected tables (embeddings)
+
+## schema_registry Deletion
+
+Deleting from schema_registry has special validation to prevent metadata corruption:
+- Only `table_name = 'tablename'` format is allowed
+- The table must NOT exist (only orphaned entries can be deleted)
+- Use this to clean up registry entries after dropping a table
 INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
@@ -98,9 +106,31 @@ INSTRUCTIONS;
         }
 
         // Prevent deletion from protected tables
-        // Note: schema_registry is allowed so AI can clean up orphaned entries
         if ($table === 'embeddings') {
             return ToolResult::error("Cannot delete from protected table: {$table}");
+        }
+
+        // Special validation for schema_registry to prevent metadata corruption
+        // Only allow deletion of entries for tables that no longer exist
+        if ($table === 'schema_registry') {
+            // Only allow simple equality on table_name column
+            if (!preg_match('/^table_name\s*=\s*[\'"]([a-z_][a-z0-9_]*)[\'"]$/i', $where, $matches)) {
+                return ToolResult::error(
+                    "schema_registry deletions must use simple format: table_name = 'tablename'. " .
+                    "This prevents accidental deletion of active table metadata."
+                );
+            }
+
+            $targetTable = $matches[1];
+            $schemaService = app(MemorySchemaService::class);
+
+            // Verify the table doesn't actually exist
+            if ($schemaService->tableExists($targetTable)) {
+                return ToolResult::error(
+                    "Cannot delete schema_registry entry for existing table: {$targetTable}. " .
+                    "Only orphaned entries (where the table no longer exists) can be deleted."
+                );
+            }
         }
 
         $service = app(MemoryDataService::class);

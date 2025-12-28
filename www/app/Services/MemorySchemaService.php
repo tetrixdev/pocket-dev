@@ -477,13 +477,16 @@ class MemorySchemaService
 
     /**
      * Check if SQL tries to DROP, TRUNCATE, or ALTER protected tables.
+     * Only matches when the protected table name appears as the target table,
+     * not when it appears elsewhere (e.g., in column names like "embeddings_count").
      */
     protected function checkProtectedTables(string $sql): ?string
     {
         $sql = strtolower($sql);
 
         foreach (self::PROTECTED_TABLES as $protected) {
-            if (preg_match('/\b(drop|truncate|alter)\s+table\s+.*\b' . preg_quote($protected, '/') . '\b/', $sql)) {
+            // Match: DROP/TRUNCATE/ALTER TABLE [IF EXISTS] [memory.]protected_table_name
+            if (preg_match('/\b(drop|truncate|alter)\s+table\s+(?:if\s+exists\s+)?(?:memory\.)?' . preg_quote($protected, '/') . '\b/', $sql)) {
                 return "Cannot DROP, TRUNCATE, or ALTER protected table: {$protected}";
             }
         }
