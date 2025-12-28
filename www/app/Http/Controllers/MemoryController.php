@@ -291,6 +291,11 @@ class MemoryController extends Controller
         if ($type === 'jsonb' || $type === 'json') {
             if (is_string($value)) {
                 $decoded = json_decode($value, true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    // Malformed JSON - display as raw text
+                    $preview = strlen($value) > 50 ? substr($value, 0, 50) . '...' : $value;
+                    return ['display' => $preview, 'full' => $value, 'type' => 'text'];
+                }
                 $formatted = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
                 $preview = strlen($value) > 50 ? substr($value, 0, 50) . '...' : $value;
                 return ['display' => $preview, 'full' => $formatted, 'type' => 'json'];

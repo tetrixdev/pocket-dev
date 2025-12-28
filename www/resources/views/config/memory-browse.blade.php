@@ -104,7 +104,7 @@
                                             <button
                                                 type="button"
                                                 class="text-blue-400 hover:text-blue-300 font-mono text-xs cursor-pointer"
-                                                @click="copyToClipboard('{{ $cell['full'] }}')"
+                                                @click="copyToClipboard({{ Illuminate\Support\Js::from($cell['full']) }})"
                                                 title="Click to copy: {{ $cell['full'] }}"
                                             >
                                                 {{ $cell['display'] }}

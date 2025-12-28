@@ -3,7 +3,7 @@
 @section('title', 'View Row: ' . $tableName)
 
 @section('content')
-<div class="space-y-6" x-data="{ copied: false }">
+<div class="space-y-6" x-data="{ copiedField: null }">
     {{-- Header --}}
     <div class="flex items-center justify-between">
         <div>
@@ -18,10 +18,10 @@
                 <button
                     type="button"
                     class="ml-2 text-blue-400 hover:text-blue-300"
-                    @click="navigator.clipboard.writeText('{{ $rowId }}'); copied = true; setTimeout(() => copied = false, 2000)"
+                    @click="navigator.clipboard.writeText({{ Illuminate\Support\Js::from($rowId) }}); copiedField = 'rowId'; setTimeout(() => copiedField = null, 2000)"
                 >
-                    <span x-show="!copied">Copy</span>
-                    <span x-show="copied" x-cloak class="text-green-400">Copied!</span>
+                    <span x-show="copiedField !== 'rowId'">Copy</span>
+                    <span x-show="copiedField === 'rowId'" x-cloak class="text-green-400">Copied!</span>
                 </button>
             </p>
         </div>
@@ -48,11 +48,12 @@
                                             ? implode(', ', $field['value']['content'])
                                             : $field['value']['content']
                                     ) }});
-                                    copied = true;
-                                    setTimeout(() => copied = false, 2000)
+                                    copiedField = '{{ $field['name'] }}';
+                                    setTimeout(() => copiedField = null, 2000)
                                 "
                             >
-                                Copy
+                                <span x-show="copiedField !== '{{ $field['name'] }}'">Copy</span>
+                                <span x-show="copiedField === '{{ $field['name'] }}'" x-cloak class="text-green-400">Copied!</span>
                             </button>
                         @endif
                     </div>
