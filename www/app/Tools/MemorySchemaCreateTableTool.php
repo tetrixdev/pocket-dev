@@ -76,6 +76,28 @@ php artisan memory:schema:create-table \
 4. **embed_fields is required**: List text fields to auto-embed, or empty string for none
 5. **Column descriptions are optional but recommended**: Helps AI understand the schema
 
+## Table Description Requirements (6 Mandatory Elements)
+
+The `--description` parameter must include these 6 elements for complete documentation:
+
+1. **What data is stored** - Primary purpose of the table
+2. **Which fields are auto-embedded** - List the embed_fields and what they're used for
+3. **What queries are typical** - Common access patterns
+4. **Relationships to other tables** - Foreign keys and join patterns
+5. **Append vs. Replace guidelines** - Which fields accumulate content vs. get replaced
+6. **Example insert** - A sample insert command
+
+**Example description:**
+```
+Tracks relationships between entities (NPCs, PCs, creatures). Store both directions in a single row.
+**Auto-embed:** notes, relationship_from_entity, relationship_from_related
+**Typical queries:** Find all relationships for an entity, find relationship between two specific entities
+**Relationships:** entity_id and related_entity_id reference memory.entities(id)
+**Append fields:** relationship_from_entity, relationship_from_related, notes - ALWAYS read before update
+**Replace fields:** relationship_type, status
+**Example:** php artisan memory:insert --table=entity_relationships --data='{"entity_id":"...", "related_entity_id":"...", "relationship_type":"ally"}'
+```
+
 ## Supported Column Types
 
 - TEXT, VARCHAR(n) - text fields (can be embedded)

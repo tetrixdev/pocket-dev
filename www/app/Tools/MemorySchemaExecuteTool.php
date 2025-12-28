@@ -12,7 +12,7 @@ class MemorySchemaExecuteTool extends Tool
 {
     public string $name = 'MemorySchemaExecute';
 
-    public string $description = 'Execute DDL SQL on the memory schema (CREATE INDEX, DROP TABLE, etc.). ALTER TABLE is not supported.';
+    public string $description = 'Execute DDL SQL on the memory schema (CREATE INDEX, DROP TABLE, ALTER TABLE, etc.).';
 
     public string $category = 'memory_schema';
 
@@ -34,10 +34,11 @@ class MemorySchemaExecuteTool extends Tool
 
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemorySchemaExecute for DDL operations other than CREATE TABLE:
+- ALTER TABLE (add/drop/rename columns)
 - CREATE INDEX
 - DROP TABLE
 - DROP INDEX
-- UPDATE memory.embeddings (for recreate pattern)
+- UPDATE memory.embeddings (for table renames)
 - Other memory schema operations
 
 ## CLI Example
@@ -47,35 +48,29 @@ php artisan memory:schema:execute --sql="CREATE INDEX idx_characters_name ON mem
 php artisan memory:schema:execute --sql="DROP TABLE IF EXISTS memory.old_table"
 ```
 
-## ALTER TABLE is NOT supported
+## ALTER TABLE
 
-To modify a table schema, use the **recreate pattern**:
+ALTER TABLE is supported for modifying existing tables:
 
-1. Create new table with new schema:
-   ```bash
-   php artisan memory:schema:create-table --name=characters_v2 ...
-   ```
+```bash
+# Add a column
+php artisan memory:schema:execute --sql="ALTER TABLE memory.session_logs ADD COLUMN in_game_date_start TEXT"
 
-2. Migrate data:
-   ```bash
-   php artisan memory:schema:execute --sql="INSERT INTO memory.characters_v2 SELECT id, name, class, backstory FROM memory.characters"
-   ```
+# Drop a column
+php artisan memory:schema:execute --sql="ALTER TABLE memory.characters DROP COLUMN old_field"
 
-3. Update embeddings:
-   ```bash
-   php artisan memory:schema:execute --sql="UPDATE memory.embeddings SET source_table = 'characters_v2' WHERE source_table = 'characters'"
-   ```
+# Rename a column
+php artisan memory:schema:execute --sql="ALTER TABLE memory.characters RENAME COLUMN old_name TO new_name"
 
-4. Drop old table:
-   ```bash
-   php artisan memory:schema:execute --sql="DROP TABLE memory.characters"
-   ```
-
-**Always confirm with the user before starting a schema migration.**
+# Rename a table (also update embeddings and schema_registry)
+php artisan memory:schema:execute --sql="ALTER TABLE memory.old_name RENAME TO new_name"
+php artisan memory:schema:execute --sql="UPDATE memory.embeddings SET source_table = 'new_name' WHERE source_table = 'old_name'"
+php artisan memory:update --table=schema_registry --data='{"table_name":"new_name"}' --where="table_name = 'old_name'"
+```
 
 ## Protected Tables
 
-Cannot DROP or TRUNCATE:
+Cannot DROP, TRUNCATE, or ALTER:
 - memory.embeddings
 - memory.schema_registry
 

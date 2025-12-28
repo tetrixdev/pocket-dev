@@ -37,10 +37,14 @@ return new class extends Migration
         DB::statement('ALTER DEFAULT PRIVILEGES IN SCHEMA memory GRANT ALL PRIVILEGES ON SEQUENCES TO memory_ai');
 
         // Protect embeddings table - revoke destructive operations
+        // DELETE is revoked because embeddings should only be deleted via MemoryEmbeddingService
+        // which handles cleanup when source rows are deleted
         DB::statement('REVOKE DELETE, TRUNCATE ON memory.embeddings FROM memory_ai');
 
-        // Protect schema_registry table - revoke destructive operations
-        DB::statement('REVOKE DELETE, TRUNCATE ON memory.schema_registry FROM memory_ai');
+        // Protect schema_registry table - revoke bulk destruction only
+        // DELETE is allowed so AI can clean up registry entries when dropping tables
+        // TRUNCATE is revoked to prevent wiping all table metadata at once
+        DB::statement('REVOKE TRUNCATE ON memory.schema_registry FROM memory_ai');
 
         // Ensure no access to public schema
         DB::statement('REVOKE ALL ON SCHEMA public FROM memory_ai');

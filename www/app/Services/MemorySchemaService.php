@@ -123,20 +123,7 @@ class MemorySchemaService
      */
     public function execute(string $sql): array
     {
-        // Block ALTER TABLE - must use recreate pattern
-        if ($this->isAlterTableStatement($sql)) {
-            return [
-                'success' => false,
-                'message' => 'ALTER TABLE is not supported. To modify a table schema, use the recreate pattern: '
-                    . '1) Create new table with new schema, '
-                    . '2) Migrate data with INSERT...SELECT, '
-                    . '3) Update embeddings source_table, '
-                    . '4) Drop old table. '
-                    . 'Always confirm with the user before starting.',
-            ];
-        }
-
-        // Check for protected tables in DROP/TRUNCATE statements
+        // Check for protected tables in DROP/TRUNCATE/ALTER statements
         $protectedCheck = $this->checkProtectedTables($sql);
         if ($protectedCheck !== null) {
             return [
@@ -489,15 +476,18 @@ class MemorySchemaService
     }
 
     /**
-     * Check if SQL tries to DROP or TRUNCATE protected tables.
+     * Check if SQL tries to DROP, TRUNCATE, or ALTER protected tables.
+     * Only matches when the protected table name appears as the target table,
+     * not when it appears elsewhere (e.g., in column names like "embeddings_count").
      */
     protected function checkProtectedTables(string $sql): ?string
     {
         $sql = strtolower($sql);
 
         foreach (self::PROTECTED_TABLES as $protected) {
-            if (preg_match('/\b(drop|truncate)\s+table\s+.*\b' . preg_quote($protected, '/') . '\b/', $sql)) {
-                return "Cannot DROP or TRUNCATE protected table: {$protected}";
+            // Match: DROP/TRUNCATE/ALTER TABLE [IF EXISTS] [memory.]protected_table_name
+            if (preg_match('/\b(drop|truncate|alter)\s+table\s+(?:if\s+exists\s+)?(?:memory\.)?' . preg_quote($protected, '/') . '\b/', $sql)) {
+                return "Cannot DROP, TRUNCATE, or ALTER protected table: {$protected}";
             }
         }
 

@@ -25,7 +25,7 @@ return [
     | Directory where memory schema snapshots (pg_dump files) are stored.
     |
     */
-    'snapshot_directory' => storage_path('memory-snapshots'),
+    'snapshot_directory' => storage_path('app/private/memory-snapshots'),
 
     /*
     |--------------------------------------------------------------------------
