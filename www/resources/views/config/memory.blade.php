@@ -39,10 +39,16 @@
                             <div>
                                 <h3 class="font-medium text-white">memory.{{ $table['table_name'] }}</h3>
                                 @if($table['description'])
-                                    <p class="text-sm text-gray-400">{{ $table['description'] }}</p>
+                                    <p class="text-sm text-gray-400">{{ Str::limit($table['description'], 150) }}</p>
                                 @endif
                             </div>
-                            <span class="text-sm text-gray-500">{{ number_format($table['row_count']) }} rows</span>
+                            <div class="flex items-center gap-3">
+                                <a href="{{ route('config.memory.browse', $table['table_name']) }}"
+                                   class="text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                                    Browse
+                                </a>
+                                <span class="text-sm text-gray-500">{{ number_format($table['row_count']) }} rows</span>
+                            </div>
                         </div>
 
                         @if(!empty($table['embeddable_fields']))
