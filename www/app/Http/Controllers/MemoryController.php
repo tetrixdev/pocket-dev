@@ -254,7 +254,7 @@ class MemoryController extends Controller
                 $processedRows[] = $processedRow;
             }
 
-            $totalPages = ceil($totalRows / $perPage);
+            $totalPages = (int) ceil($totalRows / $perPage);
 
             return view('config.memory-browse', [
                 'tableName' => $tableName,
