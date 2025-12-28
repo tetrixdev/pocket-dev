@@ -81,7 +81,7 @@ When you delete rows:
 - WHERE clause is required (use DROP TABLE for clearing all data)
 - Embeddings are deleted first, then rows
 - Returns count of deleted rows and embeddings
-- Cannot delete from protected tables (embeddings, schema_registry)
+- Cannot delete from protected tables (embeddings)
 INSTRUCTIONS;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
@@ -98,7 +98,8 @@ INSTRUCTIONS;
         }
 
         // Prevent deletion from protected tables
-        if (in_array($table, ['embeddings', 'schema_registry'])) {
+        // Note: schema_registry is allowed so AI can clean up orphaned entries
+        if ($table === 'embeddings') {
             return ToolResult::error("Cannot delete from protected table: {$table}");
         }
 
