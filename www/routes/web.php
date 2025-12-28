@@ -102,6 +102,8 @@ Route::post("/config/tools/native/toggle", [ConfigController::class, "toggleNati
 
 // Memory management
 Route::get("/config/memory", [MemoryController::class, "index"])->name("config.memory");
+Route::get("/config/memory/tables/{tableName}", [MemoryController::class, "browseTable"])->name("config.memory.browse");
+Route::get("/config/memory/tables/{tableName}/{rowId}", [MemoryController::class, "showRow"])->name("config.memory.show");
 Route::post("/config/memory/settings", [MemoryController::class, "updateSettings"])->name("config.memory.settings");
 Route::post("/config/memory/snapshots", [MemoryController::class, "createSnapshot"])->name("config.memory.snapshots.create");
 Route::post("/config/memory/snapshots/{filename}/restore", [MemoryController::class, "restoreSnapshot"])->name("config.memory.snapshots.restore");
