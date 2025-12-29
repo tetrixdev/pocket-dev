@@ -1185,6 +1185,12 @@
 
                 // Handle a single stream event
                 handleStreamEvent(event) {
+                    // Validate event belongs to current conversation (prevents cross-talk)
+                    if (event.conversation_uuid && event.conversation_uuid !== this.currentConversationUuid) {
+                        console.debug('Ignoring event for different conversation:', event.conversation_uuid);
+                        return;
+                    }
+
                     const state = this._streamState;
 
                     // Debug: log all events except usage

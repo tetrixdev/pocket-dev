@@ -143,7 +143,7 @@ services:
       - "1000"
       - "${DOCKER_GID:-1001}"
     entrypoint: ["/queue-entrypoint.sh"]
-    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=1", "--timeout=600"]
+    # Command removed - supervisord in entrypoint manages multiple workers
     environment:
       - HOME=/home/appuser
       - GIT_TOKEN=${GIT_TOKEN:-}
@@ -161,6 +161,7 @@ services:
       - pocketdev-storage:/var/www/storage/pocketdev
       - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
       - ./docker-laravel/local/php/queue-entrypoint.sh:/queue-entrypoint.sh
+      - ./docker-laravel/local/php/supervisord.conf:/etc/supervisor/conf.d/queue-workers.conf:ro
     networks:
       - pocket-dev
     depends_on:

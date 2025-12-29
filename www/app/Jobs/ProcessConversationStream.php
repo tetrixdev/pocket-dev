@@ -14,6 +14,7 @@ use App\Services\ToolRegistry;
 use App\Streaming\StreamEvent;
 use App\Tools\ExecutionContext;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -29,7 +30,7 @@ use Illuminate\Support\Facades\Log;
  * - Saves the final response to the database
  * - Handles tool execution loops
  */
-class ProcessConversationStream implements ShouldQueue
+class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProcessing
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -41,6 +42,15 @@ class ProcessConversationStream implements ShouldQueue
         public string $prompt,
         public array $options = [],
     ) {}
+
+    /**
+     * Unique ID for job deduplication.
+     * Prevents multiple jobs for the same conversation from being queued.
+     */
+    public function uniqueId(): string
+    {
+        return $this->conversationUuid;
+    }
 
     public function handle(
         ProviderFactory $providerFactory,

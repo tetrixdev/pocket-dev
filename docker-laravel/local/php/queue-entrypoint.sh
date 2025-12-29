@@ -27,5 +27,6 @@ while [ $attempt -lt $max_attempts ]; do
     sleep 1
 done
 
-# Execute the command passed to the container
-exec "$@"
+# Start supervisord to manage multiple queue workers
+# The supervisord.conf defines 3 workers for parallel job processing
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/queue-workers.conf

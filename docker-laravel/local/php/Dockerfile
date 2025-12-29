@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     build-essential \
     locales \
+    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PostgreSQL 17 client (for pg_dump/pg_restore with PG17 server)
