@@ -27,3 +27,18 @@ Schedule::command('memory:snapshot prune')
     ->daily()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Stale Conversation Cleanup
+|--------------------------------------------------------------------------
+|
+| Cleanup conversations stuck in "processing" state (e.g., worker died).
+| Runs every minute, marks stale conversations as failed after 5 min.
+|
+*/
+
+Schedule::command('conversations:cleanup-stale')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

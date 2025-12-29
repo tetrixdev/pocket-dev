@@ -172,6 +172,7 @@
                         <x-chat.tool-block />
                         <x-chat.system-block />
                         <x-chat.interrupted-block />
+                        <x-chat.error-block />
                         <x-chat.empty-response />
                     </div>
                 </template>
@@ -339,8 +340,10 @@
                     textContent: '',
                     toolInput: '',
                     turnCost: 0,
-                    toolInProgress: false,
+                    toolInProgress: false,        // True while streaming tool parameters
+                    waitingForToolResults: new Set(), // Tool IDs waiting for execution results
                     abortPending: false,
+                    abortSkipSync: false,         // If true, backend should skip syncing to CLI session
                 },
 
                 async init() {
@@ -784,7 +787,9 @@
                             turnCacheCreationTokens: 0,
                             turnCacheReadTokens: 0,
                             toolInProgress: false,
+                            waitingForToolResults: new Set(),
                             abortPending: false,
+                            abortSkipSync: false,
                         };
 
                         // Calculate totals and sum costs from stored values
@@ -1012,6 +1017,14 @@
                                     content: 'Response interrupted',
                                     timestamp: dbMsg.created_at,
                                 });
+                            } else if (block.type === 'error') {
+                                // Error marker - shown when job failed unexpectedly
+                                this.messages.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'error',
+                                    content: block.message || 'An unexpected error occurred',
+                                    timestamp: dbMsg.created_at,
+                                });
                             }
                         }
                     }
@@ -1088,7 +1101,9 @@
                         turnCacheCreationTokens: 0,
                         turnCacheReadTokens: 0,
                         toolInProgress: false,
+                        waitingForToolResults: new Set(),
                         abortPending: false,
+                        abortSkipSync: false,
                     };
 
                     try {
@@ -1253,13 +1268,24 @@
 
                     const state = this._streamState;
 
-                    // If a tool call is in progress, wait for it to complete before aborting
-                    // This prevents interrupting mid-tool-execution which can leave inconsistent state
+                    // If tool parameters are being streamed, wait for tool_use_stop
                     if (state.toolInProgress) {
-                        console.log('Abort requested while tool in progress - deferring until tool completes');
+                        console.log('Abort requested while streaming tool parameters - deferring until tool_use_stop');
                         state.abortPending = true;
                         return;
                     }
+
+                    // If tools are waiting for execution results, wait for all tool_results
+                    // This ensures CLI providers have complete tool_use + tool_result in their session
+                    if (state.waitingForToolResults.size > 0) {
+                        console.log('Abort requested while waiting for tool results - deferring until all tools complete');
+                        state.abortPending = true;
+                        return;
+                    }
+
+                    // Determine if we should skip syncing to CLI session file
+                    // skipSync=true when aborting after tools completed (CLI already has complete data)
+                    const skipSync = state.abortSkipSync;
 
                     try {
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/abort`, {
@@ -1268,7 +1294,11 @@
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                             },
+                            body: JSON.stringify({ skipSync }),
                         });
+
+                        // Reset skipSync flag (even if request fails, don't carry over to next abort)
+                        state.abortSkipSync = false;
 
                         if (!response.ok) {
                             console.error('Failed to abort stream:', await response.text());
@@ -1454,11 +1484,18 @@
                             state.toolInProgress = true;
                             state.toolMsgIndex = this.messages.length;
                             state.toolInput = '';
+                            // Track this tool as pending execution
+                            const toolId = event.metadata?.tool_id;
+                            if (toolId) {
+                                state.waitingForToolResults.add(toolId);
+                            } else {
+                                console.warn('tool_use_start event missing tool_id in metadata');
+                            }
                             this.messages.push({
                                 id: 'msg-' + Date.now() + '-tool',
                                 role: 'tool',
                                 toolName: event.metadata?.tool_name || 'Tool',
-                                toolId: event.metadata?.tool_id,
+                                toolId: toolId,
                                 toolInput: '',
                                 toolResult: null,
                                 content: '',
@@ -1491,24 +1528,34 @@
                                 state.toolMsgIndex = -1;
                                 state.toolInput = '';
                             }
-                            // If abort was deferred waiting for tool to complete, trigger it now
-                            if (state.abortPending) {
-                                state.abortPending = false;
-                                this.abortStream();
-                            }
+                            // Note: We do NOT trigger abort here anymore.
+                            // We wait for tool_result so the tool execution completes.
+                            // The abort will be triggered in tool_result handler.
                             break;
 
                         case 'tool_result':
                             // Find the tool message with matching toolId and add the result
-                            const toolUseId = event.metadata?.tool_id;
-                            if (toolUseId) {
-                                const toolMsgIndex = this.messages.findIndex(m => m.role === 'tool' && m.toolId === toolUseId);
+                            const toolResultId = event.metadata?.tool_id;
+                            if (toolResultId) {
+                                const toolMsgIndex = this.messages.findIndex(m => m.role === 'tool' && m.toolId === toolResultId);
                                 if (toolMsgIndex >= 0) {
                                     this.messages[toolMsgIndex] = {
                                         ...this.messages[toolMsgIndex],
                                         toolResult: event.content
                                     };
                                 }
+                                // Remove from pending set - tool execution is complete
+                                state.waitingForToolResults.delete(toolResultId);
+                            } else {
+                                console.warn('tool_result event missing tool_id in metadata');
+                            }
+                            // If abort was deferred and all tools have results, trigger it now
+                            // Use skipSync=true since CLI already has the complete tool_use + tool_result
+                            if (state.abortPending && state.waitingForToolResults.size === 0 && !state.toolInProgress) {
+                                console.log('All pending tools complete - triggering deferred abort with skipSync');
+                                state.abortPending = false;
+                                state.abortSkipSync = true;
+                                this.abortStream();
                             }
                             break;
 

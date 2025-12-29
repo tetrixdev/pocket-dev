@@ -682,6 +682,20 @@ class ClaudeCodeProvider implements AIProviderInterface
             ($block['type'] ?? '') !== 'interrupted'
         ));
 
+        // Sanity check: we should never sync tool_use blocks
+        // With proper abort handling, abort either:
+        // - Happens during thinking/text (no tool_use yet)
+        // - Waits for tool_result then skips sync (skipSync=true)
+        // If we have tool_use blocks here, something is wrong with the abort flow
+        foreach ($content as $block) {
+            if (($block['type'] ?? '') === 'tool_use') {
+                throw new \RuntimeException(
+                    'BUG: Attempting to sync tool_use block without tool_result. ' .
+                    'This should never happen - abort should wait for tool completion or skip sync.'
+                );
+            }
+        }
+
         return [
             'parentUuid' => $parentUuid,
             'isSidechain' => false,
