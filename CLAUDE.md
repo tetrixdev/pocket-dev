@@ -133,6 +133,48 @@ Components live in `resources/views/components/`:
 3. **Chat components access parent scope** - They expect `msg` variable from x-for loop
 4. **Add new icons to `components/icon/`** - Keep SVGs as components for consistency
 
+## Debug Logger
+
+A global debug logging system for tracing frontend behavior. Logs to both browser console and a viewable panel.
+
+### Usage
+
+```javascript
+// Global helper (works anywhere after Alpine initializes)
+debugLog('message', { optional: 'data' });
+
+// From Alpine component
+$store.debug.log('message', data);
+```
+
+### Opening the Panel
+
+- **Mobile**: Menu drawer → "Debug Log" button
+- **Any page**: `<button @click="$store.debug.toggle()">Debug</button>`
+
+### Adding to a Page
+
+```blade
+{{-- Basic usage --}}
+<x-debug-panel />
+
+{{-- With page-specific state display --}}
+<x-debug-panel>
+    <x-slot:stateDisplay>
+        <div class="px-4 py-2 font-mono text-xs">
+            myVar=<span x-text="myVar"></span>
+        </div>
+    </x-slot:stateDisplay>
+</x-debug-panel>
+```
+
+### When Claude Uses Debug Logging
+
+If Claude adds debug logging to investigate an issue, they will ask you to:
+1. Open the debug panel
+2. Reproduce the issue
+3. Tap "Copy" and paste the logs back to Claude
+
 ## Git Workflow
 
 - **Never commit directly to main** - always use feature branches and pull requests
