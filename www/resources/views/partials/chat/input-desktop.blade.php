@@ -43,13 +43,29 @@
         </button>
         --}}
 
-        {{-- Send Button --}}
-        <button type="submit"
-                @click="handleSendClick($event)"
-                :disabled="isStreaming || isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
-                :class="isStreaming || isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600 text-gray-400' : 'bg-emerald-600/90 hover:bg-emerald-500 text-white'"
-                class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:cursor-not-allowed"
-                x-html="isStreaming ? '<i class=\'fa-solid fa-spinner fa-spin\'></i> Streaming...' : '<i class=\'fa-solid fa-paper-plane\'></i> Send'">
-        </button>
+        {{-- Send/Stop Button --}}
+        <template x-if="isStreaming && _streamState.abortPending">
+            <button type="button"
+                    disabled
+                    class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-not-allowed bg-gray-600 text-gray-300">
+                <i class="fa-solid fa-spinner fa-spin"></i> Aborting...
+            </button>
+        </template>
+        <template x-if="isStreaming && !_streamState.abortPending">
+            <button type="button"
+                    @click="abortStream()"
+                    class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer bg-rose-600/90 hover:bg-rose-500 text-white">
+                <i class="fa-solid fa-stop"></i> Stop
+            </button>
+        </template>
+        <template x-if="!isStreaming">
+            <button type="submit"
+                    @click="handleSendClick($event)"
+                    :disabled="isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
+                    :class="isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600 text-gray-400' : 'bg-emerald-600/90 hover:bg-emerald-500 text-white'"
+                    class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:cursor-not-allowed">
+                <i class="fa-solid fa-paper-plane"></i> Send
+            </button>
+        </template>
     </form>
 </div>

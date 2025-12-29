@@ -171,6 +171,7 @@
                         <x-chat.thinking-block />
                         <x-chat.tool-block />
                         <x-chat.system-block />
+                        <x-chat.interrupted-block />
                         <x-chat.empty-response />
                     </div>
                 </template>
@@ -334,6 +335,8 @@
                     textContent: '',
                     toolInput: '',
                     turnCost: 0,
+                    toolInProgress: false,
+                    abortPending: false,
                 },
 
                 async init() {
@@ -953,6 +956,14 @@
                                         toolResult: block.content
                                     };
                                 }
+                            } else if (block.type === 'interrupted') {
+                                // Interrupted marker - shown when response was aborted
+                                this.messages.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'interrupted',
+                                    content: 'Response interrupted',
+                                    timestamp: dbMsg.created_at,
+                                });
                             }
                         }
                     }
@@ -1027,6 +1038,8 @@
                         turnOutputTokens: 0,
                         turnCacheCreationTokens: 0,
                         turnCacheReadTokens: 0,
+                        toolInProgress: false,
+                        abortPending: false,
                     };
 
                     try {
@@ -1183,6 +1196,75 @@
                     }
                 },
 
+                // Abort the current stream (user clicked stop button)
+                async abortStream() {
+                    if (!this.isStreaming || !this.currentConversationUuid) {
+                        return;
+                    }
+
+                    const state = this._streamState;
+
+                    // If a tool call is in progress, wait for it to complete before aborting
+                    // This prevents interrupting mid-tool-execution which can leave inconsistent state
+                    if (state.toolInProgress) {
+                        console.log('Abort requested while tool in progress - deferring until tool completes');
+                        state.abortPending = true;
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/abort`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            },
+                        });
+
+                        if (!response.ok) {
+                            console.error('Failed to abort stream:', await response.text());
+                        }
+
+                        // Clean up in-progress streaming messages
+                        // (state was already captured at the start of abortStream)
+
+                        // Remove in-progress thinking block (won't have signature, will be filtered on backend anyway)
+                        if (state.thinkingMsgIndex >= 0 && state.thinkingMsgIndex < this.messages.length) {
+                            this.messages.splice(state.thinkingMsgIndex, 1);
+                            // Adjust other indices if they come after
+                            if (state.textMsgIndex > state.thinkingMsgIndex) state.textMsgIndex--;
+                            if (state.toolMsgIndex > state.thinkingMsgIndex) state.toolMsgIndex--;
+                        }
+
+                        // Remove empty text blocks (keep partial text - it's still useful)
+                        if (state.textMsgIndex >= 0 && state.textMsgIndex < this.messages.length) {
+                            const textMsg = this.messages[state.textMsgIndex];
+                            if (!textMsg.content || textMsg.content.trim() === '') {
+                                this.messages.splice(state.textMsgIndex, 1);
+                            }
+                        }
+
+                        // Add interrupted marker
+                        this.messages.push({
+                            id: 'msg-' + Date.now() + '-interrupted',
+                            role: 'interrupted',
+                            content: 'Response interrupted',
+                            timestamp: new Date().toISOString(),
+                        });
+
+                        // Scroll to show the interrupted marker
+                        this.scrollToBottom();
+
+                        // Disconnect from SSE - the done event from abort will handle cleanup
+                        this.disconnectFromStream();
+                        this.isStreaming = false;
+
+                    } catch (err) {
+                        console.error('Error aborting stream:', err);
+                        this.isStreaming = false;
+                    }
+                },
+
                 // Handle a single stream event
                 handleStreamEvent(event) {
                     // Validate event belongs to current conversation (prevents cross-talk)
@@ -1284,6 +1366,7 @@
                                     collapsed: true
                                 };
                             }
+                            state.toolInProgress = true;
                             state.toolMsgIndex = this.messages.length;
                             state.toolInput = '';
                             this.messages.push({
@@ -1313,6 +1396,7 @@
                             break;
 
                         case 'tool_use_stop':
+                            state.toolInProgress = false;
                             if (state.toolMsgIndex >= 0) {
                                 this.messages[state.toolMsgIndex] = {
                                     ...this.messages[state.toolMsgIndex],
@@ -1321,6 +1405,11 @@
                                 // Reset for next tool
                                 state.toolMsgIndex = -1;
                                 state.toolInput = '';
+                            }
+                            // If abort was deferred waiting for tool to complete, trigger it now
+                            if (state.abortPending) {
+                                state.abortPending = false;
+                                this.abortStream();
                             }
                             break;
 

@@ -4,8 +4,10 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
+use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -18,8 +20,12 @@ use Illuminate\Support\Facades\Log;
  */
 class CodexProvider implements AIProviderInterface
 {
+    use InjectsInterruptionReminder;
+
     private ModelRepository $models;
     private AppSettingsService $appSettings;
+    /** @var resource|null */
+    private $activeProcess = null;
 
     public function __construct(ModelRepository $models, AppSettingsService $appSettings)
     {
@@ -100,6 +106,11 @@ class CodexProvider implements AIProviderInterface
             return;
         }
 
+        // Inject interruption reminder if previous response was interrupted
+        if (!empty($options['interruption_reminder'])) {
+            $latestMessage = $options['interruption_reminder'] . "\n\n" . $latestMessage;
+        }
+
         $command = $this->buildCommand($conversation, $options);
 
         Log::channel('api')->info('CodexProvider: Starting CLI stream', [
@@ -125,9 +136,18 @@ class CodexProvider implements AIProviderInterface
                 continue;
             }
 
+            $content = $message->content;
+
+            // Filter out 'interrupted' blocks (UI-only marker)
+            if (is_array($content)) {
+                $content = array_values(array_filter($content, fn($block) =>
+                    ($block['type'] ?? '') !== 'interrupted'
+                ));
+            }
+
             $messages[] = [
                 'role' => $message->role,
-                'content' => $message->content,
+                'content' => $content,
             ];
         }
 
@@ -264,6 +284,8 @@ class CodexProvider implements AIProviderInterface
             return;
         }
 
+        $this->activeProcess = $process;
+
         // Close stdin (not needed for Codex)
         fclose($pipes[0]);
 
@@ -349,6 +371,7 @@ class CodexProvider implements AIProviderInterface
             }
 
             $exitCode = proc_close($process);
+            $this->activeProcess = null;
 
             // Clean up system prompt file after process completes
             // Codex reads this at startup, so it's safe to remove after proc_close
@@ -380,10 +403,52 @@ class CodexProvider implements AIProviderInterface
             if (is_resource($process)) {
                 proc_terminate($process);
             }
+            $this->activeProcess = null;
 
             // Clean up system prompt file on error too
             $this->cleanupPocketDevInstructionsFile($conversation->working_directory ?? base_path());
         }
+    }
+
+    /**
+     * Abort the current streaming operation.
+     */
+    public function abort(): void
+    {
+        if ($this->activeProcess !== null && is_resource($this->activeProcess)) {
+            // Try graceful termination first (15 = SIGTERM)
+            proc_terminate($this->activeProcess, 15);
+
+            // Give it 100ms to terminate gracefully
+            usleep(100000);
+
+            $status = proc_get_status($this->activeProcess);
+            if ($status['running']) {
+                // Force kill if still running (9 = SIGKILL)
+                proc_terminate($this->activeProcess, 9);
+            }
+
+            try {
+                proc_close($this->activeProcess);
+            } catch (\Exception $e) {
+                Log::warning('CodexProvider: Error closing process', ['error' => $e->getMessage()]);
+            }
+
+            $this->activeProcess = null;
+        }
+    }
+
+    /**
+     * Sync aborted message to native storage.
+     * TODO: Implement if Codex CLI has a session file format that can be synced.
+     * For now, this is a no-op since Codex session storage format is unknown.
+     */
+    public function syncAbortedMessage(
+        Conversation $conversation,
+        Message $userMessage,
+        Message $assistantMessage
+    ): bool {
+        return true;
     }
 
     /**

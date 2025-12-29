@@ -4,8 +4,10 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
+use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -16,10 +18,13 @@ use Illuminate\Support\Facades\Log;
  */
 class AnthropicProvider implements AIProviderInterface
 {
+    use InjectsInterruptionReminder;
+
     private string $apiKey;
     private string $baseUrl;
     private string $apiVersion;
     private ModelRepository $models;
+    private ?\Psr\Http\Message\StreamInterface $activeStream = null;
 
     public function __construct(ModelRepository $models, AppSettingsService $settings)
     {
@@ -100,6 +105,13 @@ class AnthropicProvider implements AIProviderInterface
                 $content = [['type' => 'text', 'text' => $content]];
             }
 
+            // Filter out 'interrupted' blocks (UI-only marker, not valid for API)
+            if (is_array($content)) {
+                $content = array_values(array_filter($content, fn($block) =>
+                    ($block['type'] ?? '') !== 'interrupted'
+                ));
+            }
+
             $messages[] = [
                 'role' => $message->role,
                 'content' => $content,
@@ -116,6 +128,11 @@ class AnthropicProvider implements AIProviderInterface
     {
         // Get all messages from conversation (should already include new user message)
         $messages = $this->buildMessagesFromConversation($conversation);
+
+        // Inject interruption reminder into the last user message if present
+        if (!empty($options['interruption_reminder'])) {
+            $messages = $this->injectInterruptionReminder($messages, $options['interruption_reminder']);
+        }
 
         // Get reasoning config from conversation (provider-specific)
         $reasoningConfig = $conversation->getReasoningConfig();
@@ -196,6 +213,7 @@ class AnthropicProvider implements AIProviderInterface
             ]);
 
             $stream = $response->getBody();
+            $this->activeStream = $stream;
             $buffer = '';
             $currentBlocks = [];
             $eventCount = 0;
@@ -400,5 +418,32 @@ class AnthropicProvider implements AIProviderInterface
                 yield StreamEvent::error($errorMessage);
                 break;
         }
+    }
+
+    /**
+     * Abort the current streaming operation.
+     */
+    public function abort(): void
+    {
+        if ($this->activeStream !== null) {
+            try {
+                $this->activeStream->close();
+            } catch (\Exception $e) {
+                Log::warning('AnthropicProvider: Error closing stream', ['error' => $e->getMessage()]);
+            }
+            $this->activeStream = null;
+        }
+    }
+
+    /**
+     * Sync aborted message to native storage.
+     * No-op for API providers - they don't have local storage.
+     */
+    public function syncAbortedMessage(
+        Conversation $conversation,
+        Message $userMessage,
+        Message $assistantMessage
+    ): bool {
+        return true;
     }
 }

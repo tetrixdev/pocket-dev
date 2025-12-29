@@ -4,7 +4,9 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Services\AppSettingsService;
+use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -25,12 +27,15 @@ use Illuminate\Support\Facades\Log;
  */
 class OpenAICompatibleProvider implements AIProviderInterface
 {
+    use InjectsInterruptionReminder;
+
     private ?string $apiKey;
     private string $baseUrl;
     private string $defaultModel;
     private int $maxTokens;
     private int $contextWindow;
     private AppSettingsService $settings;
+    private ?\Psr\Http\Message\StreamInterface $activeStream = null;
 
     public function __construct(AppSettingsService $settings)
     {
@@ -163,6 +168,10 @@ class OpenAICompatibleProvider implements AIProviderInterface
                         case 'thinking':
                             // Skip thinking blocks - not supported in standard API
                             break;
+
+                        case 'interrupted':
+                            // Skip interrupted markers - UI-only, not for API
+                            break;
                     }
                 }
 
@@ -208,6 +217,11 @@ class OpenAICompatibleProvider implements AIProviderInterface
 
         // Build messages array from conversation
         $messages = $this->buildMessagesFromConversation($conversation);
+
+        // Inject interruption reminder into the last user message if present
+        if (!empty($options['interruption_reminder'])) {
+            $messages = $this->injectInterruptionReminder($messages, $options['interruption_reminder']);
+        }
 
         // Prepend system message if provided
         if (!empty($options['system'])) {
@@ -272,6 +286,7 @@ class OpenAICompatibleProvider implements AIProviderInterface
             ]);
 
             $stream = $response->getBody();
+            $this->activeStream = $stream;
             $buffer = '';
             $eventCount = 0;
 
@@ -471,6 +486,33 @@ class OpenAICompatibleProvider implements AIProviderInterface
                 $usage['completion_tokens'] ?? 0
             );
         }
+    }
+
+    /**
+     * Abort the current streaming operation.
+     */
+    public function abort(): void
+    {
+        if ($this->activeStream !== null) {
+            try {
+                $this->activeStream->close();
+            } catch (\Exception $e) {
+                Log::warning('OpenAICompatibleProvider: Error closing stream', ['error' => $e->getMessage()]);
+            }
+            $this->activeStream = null;
+        }
+    }
+
+    /**
+     * Sync aborted message to native storage.
+     * No-op for API providers - they don't have local storage.
+     */
+    public function syncAbortedMessage(
+        Conversation $conversation,
+        Message $userMessage,
+        Message $assistantMessage
+    ): bool {
+        return true;
     }
 
     /**

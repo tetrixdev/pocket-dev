@@ -423,6 +423,30 @@ class ConversationController extends Controller
     }
 
     /**
+     * Abort an active stream.
+     *
+     * Sets the abort flag which the job will check and terminate gracefully.
+     */
+    public function abort(Conversation $conversation): JsonResponse
+    {
+        // Only allow aborting if actually streaming
+        if (!$this->streamManager->isStreaming($conversation->uuid)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Conversation is not currently streaming',
+            ], 400);
+        }
+
+        // Set abort flag - the job will pick this up
+        $this->streamManager->setAbortFlag($conversation->uuid);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Abort signal sent',
+        ]);
+    }
+
+    /**
      * Delete a conversation.
      */
     public function destroy(Conversation $conversation): JsonResponse

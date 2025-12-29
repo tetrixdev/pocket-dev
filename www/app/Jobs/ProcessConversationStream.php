@@ -136,6 +136,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Reload messages
         $conversation->load('messages');
 
+        // Check if previous assistant response was interrupted (for context injection)
+        $interruptionReminder = null;
+        if ($iteration === 0) {
+            $interruptionReminder = $this->getInterruptionReminder($conversation);
+        }
+
         // Build system prompt with tool instructions
         // CLI providers (Claude Code, Codex) use artisan commands instead of native tools
         $providerType = $provider->getProviderType();
@@ -150,6 +156,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $providerOptions = array_merge($options, [
             'system' => $systemPrompt,
             'tools' => $toolRegistry->getDefinitions(),
+            'interruption_reminder' => $interruptionReminder,
         ]);
 
         // Track state for this turn
@@ -174,6 +181,70 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
         // Stream from provider
         foreach ($provider->streamMessage($conversation, $providerOptions) as $event) {
+            // Check abort flag BEFORE processing each event
+            if ($streamManager->checkAbortFlag($this->conversationUuid)) {
+                Log::info('ProcessConversationStream: Abort requested', [
+                    'conversation' => $this->conversationUuid,
+                ]);
+
+                // Terminate the provider's stream
+                $provider->abort();
+
+                // Save partial response - filter out incomplete blocks
+                // 1. Remove thinking blocks without signatures (required for multi-turn)
+                // 2. Remove in-progress blocks that weren't completed
+                $contentBlocks = array_values(array_filter($contentBlocks, function ($block) {
+                    $type = $block['type'] ?? '';
+
+                    // Filter out thinking blocks without signatures
+                    if ($type === 'thinking' && empty($block['signature'])) {
+                        return false;
+                    }
+
+                    // Keep all complete blocks
+                    return true;
+                }));
+
+                // Add an "interrupted" marker for UI display (filtered out when sent to API)
+                $contentBlocks[] = [
+                    'type' => 'interrupted',
+                    'reason' => 'user_abort',
+                ];
+
+                $assistantMessage = null;
+                if (!empty($contentBlocks)) {
+                    $assistantMessage = $this->saveAssistantMessage(
+                        $conversation,
+                        $contentBlocks,
+                        $inputTokens,
+                        $outputTokens,
+                        $cacheCreationTokens,
+                        $cacheReadTokens,
+                        'aborted',
+                        $turnCost > 0 ? $turnCost : null
+                    );
+
+                    // Sync aborted message to provider's native storage (if applicable)
+                    // This allows CLI providers to maintain session continuity on next resume
+                    $userMessage = $conversation->messages()
+                        ->where('role', 'user')
+                        ->latest('id')
+                        ->first();
+
+                    if ($userMessage && $assistantMessage) {
+                        $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
+                    }
+                }
+
+                // Complete stream with aborted status
+                $conversation->completeProcessing();
+                $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
+                $streamManager->completeStream($this->conversationUuid, 'aborted');
+                $streamManager->clearAbortFlag($this->conversationUuid);
+
+                return; // Exit the method entirely
+            }
+
             // For usage events, calculate cost and emit enriched event
             if ($event->type === StreamEvent::USAGE) {
                 $inputTokens = $event->metadata['input_tokens'] ?? $inputTokens;
@@ -437,5 +508,36 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         }
 
         return $results;
+    }
+
+    /**
+     * Check if the previous assistant response was interrupted and return a reminder string.
+     */
+    private function getInterruptionReminder(Conversation $conversation): ?string
+    {
+        // Get the second-to-last assistant message (the one before the current user message)
+        // We need to check if that assistant response has an 'interrupted' block
+        $lastAssistantMessage = $conversation->messages()
+            ->where('role', 'assistant')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        if (!$lastAssistantMessage) {
+            return null;
+        }
+
+        $content = $lastAssistantMessage->content;
+        if (!is_array($content)) {
+            return null;
+        }
+
+        // Check for 'interrupted' block
+        foreach ($content as $block) {
+            if (isset($block['type']) && $block['type'] === 'interrupted') {
+                return '<system-reminder>Your previous response was interrupted by the user. Completed content blocks have been retained. You may continue from where you left off or address the user\'s new message as appropriate.</system-reminder>';
+            }
+        }
+
+        return null;
     }
 }

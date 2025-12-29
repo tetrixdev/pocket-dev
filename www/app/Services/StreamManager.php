@@ -53,13 +53,16 @@ class StreamManager
 
     /**
      * Mark stream as completed.
+     *
+     * @param string $conversationUuid
+     * @param string $status The completion status: 'completed' or 'aborted'
      */
-    public function completeStream(string $conversationUuid): void
+    public function completeStream(string $conversationUuid, string $status = 'completed'): void
     {
         $key = $this->key($conversationUuid);
 
         Redis::multi();
-        Redis::set("{$key}:status", 'completed');
+        Redis::set("{$key}:status", $status);
         // Reduce TTL for completed streams
         Redis::expire("{$key}:status", self::TTL_COMPLETED);
         Redis::expire("{$key}:events", self::TTL_COMPLETED);
@@ -69,6 +72,7 @@ class StreamManager
         // Publish completion event
         Redis::publish("stream:{$conversationUuid}", json_encode([
             'type' => 'stream_completed',
+            'status' => $status,
         ]));
     }
 
@@ -193,12 +197,38 @@ class StreamManager
     }
 
     /**
+     * Set the abort flag for a stream.
+     * The job will check this flag and terminate if set.
+     */
+    public function setAbortFlag(string $conversationUuid): void
+    {
+        $key = $this->key($conversationUuid);
+        Redis::set("{$key}:abort", 'true', 'EX', self::TTL_STREAMING);
+    }
+
+    /**
+     * Check if the abort flag is set for a stream.
+     */
+    public function checkAbortFlag(string $conversationUuid): bool
+    {
+        return Redis::get($this->key($conversationUuid) . ':abort') === 'true';
+    }
+
+    /**
+     * Clear the abort flag for a stream.
+     */
+    public function clearAbortFlag(string $conversationUuid): void
+    {
+        Redis::del($this->key($conversationUuid) . ':abort');
+    }
+
+    /**
      * Clean up a stream's data.
      */
     public function cleanup(string $conversationUuid): void
     {
         $key = $this->key($conversationUuid);
-        Redis::del("{$key}:events", "{$key}:status", "{$key}:metadata");
+        Redis::del("{$key}:events", "{$key}:status", "{$key}:metadata", "{$key}:abort");
     }
 
     /**
