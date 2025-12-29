@@ -108,7 +108,7 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     entrypoint: ["/queue-entrypoint.sh"]
-    # Supervisor manages 3 parallel queue workers (configured in image)
+    # Supervisor manages 10 parallel queue workers (configured in image)
     volumes:
       - .env:/var/www/.env
       - user-data:/home/appuser
