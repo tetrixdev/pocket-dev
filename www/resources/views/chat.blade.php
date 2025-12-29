@@ -233,6 +233,9 @@
                 prompt: '',
                 messages: [],
                 conversations: [],
+                conversationsPage: 1,
+                conversationsLastPage: 1,
+                loadingMoreConversations: false,
                 currentConversationUuid: null,
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
@@ -522,6 +525,17 @@
                     return names[providerKey] || providerKey;
                 },
 
+                getProviderColorClass(providerKey) {
+                    const colors = {
+                        'anthropic': 'bg-orange-500',
+                        'openai': 'bg-green-500',
+                        'claude_code': 'bg-purple-500',
+                        'codex': 'bg-blue-500',
+                        'openai_compatible': 'bg-teal-500'
+                    };
+                    return colors[providerKey] || 'bg-gray-500';
+                },
+
                 selectAgent(agent, closeModal = true) {
                     if (!agent) return;
 
@@ -655,8 +669,39 @@
                         const response = await fetch('/api/conversations?working_directory=/var/www');
                         const data = await response.json();
                         this.conversations = data.data || [];
+                        this.conversationsPage = data.current_page || 1;
+                        this.conversationsLastPage = data.last_page || 1;
                     } catch (err) {
                         console.error('Failed to fetch conversations:', err);
+                    }
+                },
+
+                async fetchMoreConversations() {
+                    if (this.loadingMoreConversations || this.conversationsPage >= this.conversationsLastPage) {
+                        return;
+                    }
+                    this.loadingMoreConversations = true;
+                    try {
+                        const nextPage = this.conversationsPage + 1;
+                        const response = await fetch(`/api/conversations?working_directory=/var/www&page=${nextPage}`);
+                        const data = await response.json();
+                        if (data.data && data.data.length > 0) {
+                            this.conversations = [...this.conversations, ...data.data];
+                            this.conversationsPage = data.current_page;
+                            this.conversationsLastPage = data.last_page;
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch more conversations:', err);
+                    } finally {
+                        this.loadingMoreConversations = false;
+                    }
+                },
+
+                handleConversationsScroll(event) {
+                    const el = event.target;
+                    const threshold = 50; // pixels from bottom
+                    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
+                        this.fetchMoreConversations();
                     }
                 },
 

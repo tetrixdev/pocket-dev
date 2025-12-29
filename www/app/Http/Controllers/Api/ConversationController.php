@@ -132,6 +132,7 @@ class ConversationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Conversation::query()
+            ->with(['agent:id,name'])
             ->when($request->input('status'), fn($q, $s) => $q->where('status', $s))
             ->when($request->input('provider_type'), fn($q, $t) => $q->where('provider_type', $t))
             ->when($request->input('working_directory'), fn($q, $d) => $q->where('working_directory', $d))
