@@ -11,6 +11,33 @@
     @else
         <script src="https://cdn.tailwindcss.com"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+        <script>
+            // Define Alpine store for CDN mode (before Alpine starts)
+            document.addEventListener('alpine:init', () => {
+                Alpine.store('debug', {
+                    logs: [],
+                    showPanel: false,
+                    maxLogs: 100,
+                    log(message, data = null) {
+                        const timestamp = new Date().toISOString().substr(11, 12);
+                        const entry = { timestamp, message, data };
+                        console.log(`[DEBUG ${timestamp}] ${message}`, data ?? '');
+                        this.logs.push(entry);
+                        if (this.logs.length > this.maxLogs) this.logs.shift();
+                    },
+                    clear() { this.logs = []; },
+                    copy() {
+                        const text = this.logs.map(log => {
+                            const dataStr = log.data !== null ? ' ' + (typeof log.data === 'object' ? JSON.stringify(log.data) : log.data) : '';
+                            return `[${log.timestamp}] ${log.message}${dataStr}`;
+                        }).join('\n');
+                        navigator.clipboard.writeText(text);
+                    },
+                    toggle() { this.showPanel = !this.showPanel; }
+                });
+                window.debugLog = (message, data = null) => Alpine.store('debug').log(message, data);
+            });
+        </script>
     @endif
 
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
@@ -26,6 +53,9 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
 
     <style>
+        /* Hide elements until Alpine.js initializes */
+        [x-cloak] { display: none !important; }
+
         .markdown-content { line-height: 1.6; }
         .markdown-content h1 { font-size: 1.5em; font-weight: bold; margin: 1em 0 0.5em; }
         .markdown-content h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.5em; }
@@ -122,7 +152,8 @@
                  class="p-4 space-y-4 overflow-y-auto bg-gray-900
                         fixed top-[60px] left-0 right-0 z-0
                         md:static md:pt-4 md:pb-4 md:flex-1"
-                 :style="'bottom: ' + mobileInputHeight + 'px'">
+                 :style="'bottom: ' + mobileInputHeight + 'px'"
+                 @scroll="handleMessagesScroll($event)">
 
                 {{-- Empty State --}}
                 <template x-if="messages.length === 0">
@@ -144,6 +175,29 @@
                     </div>
                 </template>
             </div>
+
+            {{-- Scroll to Bottom Button (mobile) --}}
+            <button @click="autoScrollEnabled = true; scrollToBottom()"
+                    :class="(!isAtBottom && messages.length > 0) ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'"
+                    class="md:hidden fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 right-4"
+                    :style="'bottom: ' + (parseInt(mobileInputHeight) + 16) + 'px'"
+                    title="Scroll to bottom">
+                <i class="fas fa-arrow-down"></i>
+            </button>
+            {{-- Scroll to Bottom Button (desktop) --}}
+            <button x-cloak
+                    x-show="!isAtBottom && messages.length > 0"
+                    x-transition:enter="transition ease-out duration-200"
+                    x-transition:enter-start="opacity-0 scale-75"
+                    x-transition:enter-end="opacity-100 scale-100"
+                    x-transition:leave="transition ease-in duration-150"
+                    x-transition:leave-start="opacity-100 scale-100"
+                    x-transition:leave-end="opacity-0 scale-75"
+                    @click="autoScrollEnabled = true; scrollToBottom()"
+                    class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 right-8 bottom-24"
+                    title="Scroll to bottom">
+                <i class="fas fa-arrow-down"></i>
+            </button>
 
             {{-- Desktop Input (hidden on mobile) --}}
             <div class="hidden md:block">
@@ -182,6 +236,10 @@
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
                 _justCompletedStream: false,
+                autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
+                isAtBottom: true, // Track if user is at bottom of messages
+                ignoreScrollEvents: false, // Ignore scroll events during conversation loading
+                _initDone: false, // Guard against double initialization
                 sessionCost: 0,
                 totalTokens: 0,
 
@@ -279,6 +337,14 @@
                 },
 
                 async init() {
+                    // Guard against double initialization
+                    if (this._initDone) {
+                        this.debugLog('init() SKIPPED (already done)');
+                        return;
+                    }
+                    this._initDone = true;
+                    this.debugLog('init() started');
+
                     // Fetch pricing from database
                     await this.fetchPricing();
 
@@ -641,6 +707,11 @@
                         // Update URL to reflect loaded conversation
                         this.updateUrl(uuid);
                         this.messages = [];
+                        this.isAtBottom = true; // Hide scroll button during load
+                        this.debugLog('SET isAtBottom = true (loadConversation reset)');
+                        this.autoScrollEnabled = true;
+                        this.ignoreScrollEvents = true; // Ignore scroll events until load complete
+                        this.debugLog('loadConversation: reset state, ignoreScrollEvents=true');
 
                         // Reset token counters
                         this.inputTokens = 0;
@@ -692,6 +763,7 @@
                             for (const msg of data.conversation.messages) {
                                 this.addMessageFromDb(msg);
                             }
+                            this.debugLog('loadConversation: messages loaded', { count: this.messages.length });
                         }
 
                         // Update provider/model from conversation
@@ -728,6 +800,12 @@
                         this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
 
                         this.scrollToBottom();
+
+                        // Re-enable scroll event handling after scroll completes
+                        this.$nextTick(() => {
+                            this.ignoreScrollEvents = false;
+                            this.debugLog('loadConversation: $nextTick completed');
+                        });
 
                         // Check if there's an active stream for this conversation
                         await this.checkAndReconnectStream(uuid);
@@ -931,6 +1009,7 @@
                         timestamp: new Date().toISOString(),
                         collapsed: false
                     });
+                    this.autoScrollEnabled = true; // Re-enable auto-scroll on new message
                     this.scrollToBottom();
 
                     // Reset stream state
@@ -1124,6 +1203,7 @@
                                 timestamp: new Date().toISOString(),
                                 collapsed: false
                             });
+                            this.scrollToBottom();
                             break;
 
                         case 'thinking_delta':
@@ -1133,6 +1213,7 @@
                                     ...this.messages[state.thinkingMsgIndex],
                                     content: state.thinkingContent
                                 };
+                                this.scrollToBottom();
                             }
                             break;
 
@@ -1210,6 +1291,7 @@
                                 timestamp: new Date().toISOString(),
                                 collapsed: false
                             });
+                            this.scrollToBottom();
                             break;
 
                         case 'tool_use_delta':
@@ -1220,6 +1302,7 @@
                                     toolInput: state.toolInput,
                                     content: state.toolInput
                                 };
+                                this.scrollToBottom();
                             }
                             break;
 
@@ -1427,12 +1510,101 @@
                 },
 
                 scrollToBottom() {
+                    this.debugLog('scrollToBottom called', { autoScrollEnabled: this.autoScrollEnabled });
+                    if (!this.autoScrollEnabled) return;
                     this.$nextTick(() => {
                         const container = document.getElementById('messages');
                         if (container) {
                             container.scrollTop = container.scrollHeight;
+                            this.isAtBottom = true;
+                            this.debugLog('SET isAtBottom = true (scrollToBottom)', { scrollTop: container.scrollTop, scrollHeight: container.scrollHeight });
                         }
                     });
+                },
+
+                handleMessagesScroll(event) {
+                    // Ignore scroll events during conversation loading
+                    if (this.ignoreScrollEvents) {
+                        this.debugLog('handleMessagesScroll IGNORED (ignoreScrollEvents=true)');
+                        return;
+                    }
+
+                    const container = event.target;
+                    // Check if user is at bottom (within 50px threshold)
+                    const diff = container.scrollHeight - container.scrollTop - container.clientHeight;
+                    const atBottom = diff < 50;
+
+                    // Always log scroll events for debugging
+                    this.debugLog('handleMessagesScroll', {
+                        atBottom,
+                        wasAtBottom: this.isAtBottom,
+                        changed: this.isAtBottom !== atBottom,
+                        diff: Math.round(diff),
+                        scrollTop: Math.round(container.scrollTop),
+                        scrollHeight: container.scrollHeight,
+                        clientHeight: container.clientHeight
+                    });
+
+                    this.isAtBottom = atBottom;
+
+                    // Only disable auto-scroll during streaming when user scrolls up
+                    if (this.isStreaming && !atBottom) {
+                        this.autoScrollEnabled = false;
+                    }
+                },
+
+                debugLog(message, data = null) {
+                    // Use global debug logger (defined in app.js)
+                    if (typeof debugLog === 'function') {
+                        debugLog(message, data);
+                    } else {
+                        console.log(`[DEBUG] ${message}`, data ?? '');
+                    }
+                },
+
+                copyDebugWithState() {
+                    // Get current state
+                    const state = {
+                        isAtBottom: this.isAtBottom,
+                        autoScrollEnabled: this.autoScrollEnabled,
+                        ignoreScrollEvents: this.ignoreScrollEvents,
+                        isStreaming: this.isStreaming,
+                        messagesCount: this.messages.length
+                    };
+
+                    // Get scroll container info
+                    const container = document.getElementById('messages');
+                    const scrollInfo = container ? {
+                        scrollTop: Math.round(container.scrollTop),
+                        scrollHeight: container.scrollHeight,
+                        clientHeight: container.clientHeight,
+                        diff: Math.round(container.scrollHeight - container.scrollTop - container.clientHeight)
+                    } : null;
+
+                    // Build output
+                    let text = `=== Current State ===\n`;
+                    text += `isAtBottom: ${state.isAtBottom}\n`;
+                    text += `autoScrollEnabled: ${state.autoScrollEnabled}\n`;
+                    text += `ignoreScrollEvents: ${state.ignoreScrollEvents}\n`;
+                    text += `isStreaming: ${state.isStreaming}\n`;
+                    text += `messagesCount: ${state.messagesCount}\n`;
+                    if (scrollInfo) {
+                        text += `\n=== Scroll Info ===\n`;
+                        text += `scrollTop: ${scrollInfo.scrollTop}\n`;
+                        text += `scrollHeight: ${scrollInfo.scrollHeight}\n`;
+                        text += `clientHeight: ${scrollInfo.clientHeight}\n`;
+                        text += `diff (from bottom): ${scrollInfo.diff}\n`;
+                    }
+                    text += `\n=== Debug Logs ===\n`;
+
+                    // Add logs from store
+                    const logs = Alpine.store('debug').logs;
+                    text += logs.map(log => {
+                        const dataStr = log.data !== null ? ' ' + (typeof log.data === 'object' ? JSON.stringify(log.data) : log.data) : '';
+                        return `[${log.timestamp}] ${log.message}${dataStr}`;
+                    }).join('\n');
+
+                    navigator.clipboard.writeText(text);
                 },
 
                 renderMarkdown(text) {

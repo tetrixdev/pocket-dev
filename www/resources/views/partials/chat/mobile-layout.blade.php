@@ -95,6 +95,11 @@
                       ::disabled="messages.length === 0">
                 <span x-text="copyingConversation ? 'Copied!' : 'Copy Chat'"></span>
             </x-button>
+@if(config('app.debug'))
+            <x-button @click="$store.debug.toggle(); showMobileDrawer = false" variant="ghost" size="sm">
+                Debug Log
+            </x-button>
+@endif
         </div>
     </div>
 </div>
