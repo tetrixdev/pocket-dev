@@ -161,7 +161,7 @@ services:
       - pocketdev-storage:/var/www/storage/pocketdev
       - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
       - ./docker-laravel/local/php/queue-entrypoint.sh:/queue-entrypoint.sh
-      - ./docker-laravel/local/php/supervisord.conf:/etc/supervisor/conf.d/queue-workers.conf:ro
+      - ./docker-laravel/shared/supervisor/queue-workers.conf:/etc/supervisor/conf.d/queue-workers.conf:ro
     networks:
       - pocket-dev
     depends_on:
