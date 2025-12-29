@@ -52,7 +52,7 @@
     </div>
 
     {{-- Conversations List --}}
-    <div class="flex-1 overflow-y-auto p-2">
+    <div class="flex-1 overflow-y-auto p-2" @scroll="handleConversationsScroll($event)">
         <template x-if="conversations.length === 0">
             <div class="text-center text-gray-500 text-xs mt-4">No conversations yet</div>
         </template>
@@ -61,9 +61,17 @@
                  :class="{'bg-gray-700': currentConversationUuid === conv.uuid}"
                  class="p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors">
                 <div class="text-xs text-gray-300 truncate" x-text="conv.title || 'New Conversation'"></div>
-                <div class="text-xs text-gray-500 mt-1" x-text="formatDate(conv.last_activity_at || conv.created_at)"></div>
+                <div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                    <span x-text="formatDate(conv.last_activity_at || conv.created_at)"></span>
+                    <span class="w-1 h-1 rounded-full shrink-0" :class="getProviderColorClass(conv.provider_type)"></span>
+                    <span class="truncate" x-text="conv.agent?.name || getProviderDisplayName(conv.provider_type)"></span>
+                </div>
             </div>
         </template>
+        {{-- Loading indicator --}}
+        <div x-show="loadingMoreConversations" class="text-center py-2">
+            <span class="text-xs text-gray-500">Loading...</span>
+        </div>
     </div>
 
     {{-- Footer --}}
