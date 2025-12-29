@@ -4,11 +4,14 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
+use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Claude Code CLI provider.
@@ -18,8 +21,12 @@ use Illuminate\Support\Facades\Log;
  */
 class ClaudeCodeProvider implements AIProviderInterface
 {
+    use InjectsInterruptionReminder;
+
     private ModelRepository $models;
     private AppSettingsService $appSettings;
+    /** @var resource|null */
+    private $activeProcess = null;
 
     public function __construct(ModelRepository $models, AppSettingsService $appSettings)
     {
@@ -117,6 +124,11 @@ class ClaudeCodeProvider implements AIProviderInterface
             return;
         }
 
+        // Inject interruption reminder if previous response was interrupted
+        if (!empty($options['interruption_reminder'])) {
+            $latestMessage = $options['interruption_reminder'] . "\n\n" . $latestMessage;
+        }
+
         // Build CLI command (user message is passed via stdin, not in command)
         $command = $this->buildCommand($conversation, $options);
 
@@ -149,9 +161,18 @@ class ClaudeCodeProvider implements AIProviderInterface
                 continue;
             }
 
+            $content = $message->content;
+
+            // Filter out 'interrupted' blocks (UI-only marker)
+            if (is_array($content)) {
+                $content = array_values(array_filter($content, fn($block) =>
+                    ($block['type'] ?? '') !== 'interrupted'
+                ));
+            }
+
             $messages[] = [
                 'role' => $message->role,
-                'content' => $message->content,
+                'content' => $content,
             ];
         }
 
@@ -310,9 +331,11 @@ class ClaudeCodeProvider implements AIProviderInterface
             return;
         }
 
+        $this->activeProcess = $process;
+
         // Write user message to stdin (required for --tools flag to work correctly)
         fwrite($pipes[0], $userMessage);
-        fclose($pipes[0]);
+        fclose($pipes[0]); // Close stdin to signal EOF - CLI needs this to start processing
 
         // Set stdout to non-blocking
         stream_set_blocking($pipes[1], false);
@@ -347,6 +370,16 @@ class ClaudeCodeProvider implements AIProviderInterface
                         }
 
                         yield from $this->parseJsonLine($line, $state);
+
+                        // Save session ID immediately when captured (for abort sync support)
+                        // This ensures the session ID is available even if stream is aborted
+                        if ($state['sessionId'] && !$conversation->claude_session_id) {
+                            $conversation->claude_session_id = $state['sessionId'];
+                            $conversation->save();
+                            Log::channel('api')->info('ClaudeCodeProvider: Session ID captured early', [
+                                'session_id' => $state['sessionId'],
+                            ]);
+                        }
                     }
                 }
 
@@ -393,6 +426,7 @@ class ClaudeCodeProvider implements AIProviderInterface
 
             // Check exit code
             $exitCode = proc_close($process);
+            $this->activeProcess = null;
 
             if ($exitCode !== 0) {
                 Log::channel('api')->warning('ClaudeCodeProvider: CLI exited with non-zero code', [
@@ -420,7 +454,260 @@ class ClaudeCodeProvider implements AIProviderInterface
             if (is_resource($process)) {
                 proc_terminate($process);
             }
+            $this->activeProcess = null;
         }
+    }
+
+    /**
+     * Abort the current streaming operation.
+     *
+     * Uses SIGINT (like Ctrl+C) first, then SIGKILL if needed.
+     */
+    public function abort(): void
+    {
+        if ($this->activeProcess !== null && is_resource($this->activeProcess)) {
+            // Step 1: Try SIGINT (like Ctrl+C) - signal 2
+            proc_terminate($this->activeProcess, 2);
+            usleep(200000); // 200ms for graceful shutdown
+
+            $status = proc_get_status($this->activeProcess);
+            if (!$status['running']) {
+                try {
+                    proc_close($this->activeProcess);
+                } catch (\Exception $e) {
+                    Log::warning('ClaudeCodeProvider: Error closing process after SIGINT', ['error' => $e->getMessage()]);
+                }
+                $this->activeProcess = null;
+                return;
+            }
+
+            // Step 2: Force kill with SIGKILL (signal 9) as last resort
+            proc_terminate($this->activeProcess, 9);
+
+            try {
+                proc_close($this->activeProcess);
+            } catch (\Exception $e) {
+                Log::warning('ClaudeCodeProvider: Error closing process after SIGKILL', ['error' => $e->getMessage()]);
+            }
+
+            $this->activeProcess = null;
+        }
+    }
+
+    /**
+     * Sync aborted message to Claude Code's native JSONL session file.
+     *
+     * When a stream is aborted, Claude Code's internal session may not have
+     * the completed content blocks. This method writes the missing messages
+     * to the JSONL session file so the next --resume has full context.
+     */
+    public function syncAbortedMessage(
+        Conversation $conversation,
+        Message $userMessage,
+        Message $assistantMessage
+    ): bool {
+        $sessionId = $conversation->claude_session_id;
+
+        if (empty($sessionId)) {
+            Log::warning('ClaudeCodeProvider: No session ID for sync', [
+                'conversation' => $conversation->uuid,
+            ]);
+            return false;
+        }
+
+        $workingDir = $conversation->working_directory ?? '/var/www';
+        $sessionFile = $this->getSessionFilePath($workingDir, $sessionId);
+
+        if (!$sessionFile) {
+            Log::warning('ClaudeCodeProvider: Could not determine session file path', [
+                'session_id' => $sessionId,
+                'working_dir' => $workingDir,
+            ]);
+            return false;
+        }
+
+        Log::info('ClaudeCodeProvider: Syncing aborted message', [
+            'conversation' => $conversation->uuid,
+            'session_id' => $sessionId,
+            'session_file' => $sessionFile,
+        ]);
+
+        // Read existing file to find the last parentUuid
+        $lastUuid = $this->getLastUuidFromFile($sessionFile);
+
+        // Build the JSONL entries
+        $entries = [];
+
+        // 1. User message entry
+        $userUuid = (string) Str::uuid();
+        $entries[] = $this->buildUserSessionEntry(
+            $userMessage,
+            $sessionId,
+            $lastUuid,
+            $userUuid,
+            $workingDir
+        );
+
+        // 2. Assistant message entry (only completed blocks)
+        $assistantUuid = (string) Str::uuid();
+        $entries[] = $this->buildAssistantSessionEntry(
+            $assistantMessage,
+            $sessionId,
+            $userUuid,
+            $assistantUuid,
+            $workingDir,
+            $conversation->model ?? 'claude-sonnet-4-20250514'
+        );
+
+        // Append to session file
+        try {
+            $content = implode("\n", array_map('json_encode', $entries)) . "\n";
+            file_put_contents($sessionFile, $content, FILE_APPEND | LOCK_EX);
+
+            Log::info('ClaudeCodeProvider: Successfully synced aborted message', [
+                'session_file' => $sessionFile,
+                'entries_written' => count($entries),
+            ]);
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('ClaudeCodeProvider: Failed to write session file', [
+                'session_file' => $sessionFile,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Get the session file path for a given working directory and session ID.
+     * Claude Code stores sessions in ~/.claude/projects/{encoded-path}/{session_id}.jsonl
+     */
+    private function getSessionFilePath(string $workingDir, string $sessionId): ?string
+    {
+        $home = getenv('HOME') ?: '/home/appuser';
+        $claudeDir = $home . '/.claude/projects';
+
+        // Claude Code encodes paths by replacing / with -
+        $encodedPath = str_replace('/', '-', $workingDir);
+
+        $sessionFile = "{$claudeDir}/{$encodedPath}/{$sessionId}.jsonl";
+
+        // Create directory if it doesn't exist (for early abort scenarios)
+        $dir = dirname($sessionFile);
+        if (!is_dir($dir)) {
+            if (!mkdir($dir, 0755, true)) {
+                Log::warning('ClaudeCodeProvider: Failed to create session directory', [
+                    'dir' => $dir,
+                ]);
+                return null;
+            }
+            Log::info('ClaudeCodeProvider: Created session directory', [
+                'dir' => $dir,
+            ]);
+        }
+
+        return $sessionFile;
+    }
+
+    /**
+     * Get the last UUID from an existing session file.
+     */
+    private function getLastUuidFromFile(string $sessionFile): ?string
+    {
+        if (!file_exists($sessionFile)) {
+            return null;
+        }
+
+        // Read last line efficiently
+        $file = new \SplFileObject($sessionFile, 'r');
+        $file->seek(PHP_INT_MAX);
+        $lastLine = $file->key();
+
+        // Read backwards to find last non-empty line (including the last line)
+        for ($i = $lastLine; $i >= 0; $i--) {
+            $file->seek($i);
+            $line = trim($file->current());
+            if (!empty($line)) {
+                $data = json_decode($line, true);
+                return $data['uuid'] ?? null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build a user message JSONL entry for Claude Code session file.
+     */
+    private function buildUserSessionEntry(
+        Message $message,
+        string $sessionId,
+        ?string $parentUuid,
+        string $uuid,
+        string $cwd
+    ): array {
+        return [
+            'parentUuid' => $parentUuid,
+            'isSidechain' => false,
+            'userType' => 'external',
+            'cwd' => $cwd,
+            'sessionId' => $sessionId,
+            'version' => '2.0.76', // Claude Code version
+            'gitBranch' => '',
+            'type' => 'user',
+            'message' => [
+                'role' => 'user',
+                'content' => is_string($message->content) ? $message->content : json_encode($message->content),
+            ],
+            'uuid' => $uuid,
+            'timestamp' => $message->created_at->toISOString(),
+        ];
+    }
+
+    /**
+     * Build an assistant message JSONL entry for Claude Code session file.
+     */
+    private function buildAssistantSessionEntry(
+        Message $message,
+        string $sessionId,
+        string $parentUuid,
+        string $uuid,
+        string $cwd,
+        string $model
+    ): array {
+        // Use content blocks, filtering out UI-only markers
+        $content = is_array($message->content) ? $message->content : [];
+        $content = array_values(array_filter($content, fn($block) =>
+            ($block['type'] ?? '') !== 'interrupted'
+        ));
+
+        return [
+            'parentUuid' => $parentUuid,
+            'isSidechain' => false,
+            'userType' => 'external',
+            'cwd' => $cwd,
+            'sessionId' => $sessionId,
+            'version' => '2.0.76',
+            'gitBranch' => '',
+            'message' => [
+                'model' => $model,
+                'id' => 'msg_' . Str::random(24),
+                'type' => 'message',
+                'role' => 'assistant',
+                'content' => $content,
+                'stop_reason' => 'end_turn', // Mark as completed for Claude Code
+                'stop_sequence' => null,
+                'usage' => [
+                    'input_tokens' => $message->input_tokens ?? 0,
+                    'output_tokens' => $message->output_tokens ?? 0,
+                ],
+            ],
+            'requestId' => 'req_' . Str::random(24),
+            'type' => 'assistant',
+            'uuid' => $uuid,
+            'timestamp' => $message->created_at->toISOString(),
+        ];
     }
 
     /**
@@ -589,6 +876,12 @@ class ClaudeCodeProvider implements AIProviderInterface
                     if ($partialJson !== '' && $state['currentToolUse'] !== null) {
                         $state['currentToolUse']['inputJson'] .= $partialJson;
                         yield StreamEvent::toolUseDelta($state['blockIndex'], $partialJson);
+                    }
+                } elseif ($deltaType === 'signature_delta') {
+                    // Thinking block signature (required for multi-turn conversations)
+                    $signature = $delta['signature'] ?? '';
+                    if ($signature !== '') {
+                        yield StreamEvent::thinkingSignature($state['blockIndex'], $signature);
                     }
                 }
                 break;

@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     lsb-release \
     build-essential \
     locales \
+    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PostgreSQL 17 client (for pg_dump/pg_restore with PG17 server)
@@ -119,9 +120,13 @@ RUN php artisan storage:link --no-interaction
 # Copy PHP configuration
 COPY docker-laravel/shared/php/local.ini /usr/local/etc/php/conf.d/local.ini
 
-# Copy production entrypoint
+# Copy supervisor configuration for queue workers
+COPY docker-laravel/shared/supervisor/queue-workers.conf /etc/supervisor/conf.d/queue-workers.conf
+
+# Copy production entrypoints
 COPY docker-laravel/production/php/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY docker-laravel/production/php/queue-entrypoint.sh /queue-entrypoint.sh
+RUN chmod +x /entrypoint.sh /queue-entrypoint.sh
 
 # Set proper permissions
 RUN chown -R www-data:www-data /var/www

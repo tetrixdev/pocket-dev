@@ -171,6 +171,7 @@
                         <x-chat.thinking-block />
                         <x-chat.tool-block />
                         <x-chat.system-block />
+                        <x-chat.interrupted-block />
                         <x-chat.empty-response />
                     </div>
                 </template>
@@ -327,13 +328,16 @@
                 _streamConnectNonce: 0,
                 _streamRetryTimeoutId: null,
                 _streamState: {
-                    thinkingMsgIndex: -1,
+                    // Maps block_index -> message array index (for interleaved thinking support)
+                    thinkingBlocks: {},        // { blockIndex: { msgIndex, content, complete } }
+                    currentThinkingBlock: -1,  // Latest thinking block_index (for abort)
                     textMsgIndex: -1,
                     toolMsgIndex: -1,
-                    thinkingContent: '',
                     textContent: '',
                     toolInput: '',
                     turnCost: 0,
+                    toolInProgress: false,
+                    abortPending: false,
                 },
 
                 async init() {
@@ -723,10 +727,10 @@
 
                         // Reset stream state for potential reconnection
                         this._streamState = {
-                            thinkingMsgIndex: -1,
+                            thinkingBlocks: {},
+                            currentThinkingBlock: -1,
                             textMsgIndex: -1,
                             toolMsgIndex: -1,
-                            thinkingContent: '',
                             textContent: '',
                             toolInput: '',
                             turnCost: 0,
@@ -734,6 +738,8 @@
                             turnOutputTokens: 0,
                             turnCacheCreationTokens: 0,
                             turnCacheReadTokens: 0,
+                            toolInProgress: false,
+                            abortPending: false,
                         };
 
                         // Calculate totals and sum costs from stored values
@@ -953,6 +959,14 @@
                                         toolResult: block.content
                                     };
                                 }
+                            } else if (block.type === 'interrupted') {
+                                // Interrupted marker - shown when response was aborted
+                                this.messages.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'interrupted',
+                                    content: 'Response interrupted',
+                                    timestamp: dbMsg.created_at,
+                                });
                             }
                         }
                     }
@@ -1016,10 +1030,11 @@
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
                     this._streamState = {
-                        thinkingMsgIndex: -1,
+                        // Maps block_index -> { msgIndex, content, complete }
+                        thinkingBlocks: {},
+                        currentThinkingBlock: -1,
                         textMsgIndex: -1,
                         toolMsgIndex: -1,
-                        thinkingContent: '',
                         textContent: '',
                         toolInput: '',
                         turnCost: 0,
@@ -1027,6 +1042,8 @@
                         turnOutputTokens: 0,
                         turnCacheCreationTokens: 0,
                         turnCacheReadTokens: 0,
+                        toolInProgress: false,
+                        abortPending: false,
                     };
 
                     try {
@@ -1183,8 +1200,93 @@
                     }
                 },
 
+                // Abort the current stream (user clicked stop button)
+                async abortStream() {
+                    if (!this.isStreaming || !this.currentConversationUuid) {
+                        return;
+                    }
+
+                    const state = this._streamState;
+
+                    // If a tool call is in progress, wait for it to complete before aborting
+                    // This prevents interrupting mid-tool-execution which can leave inconsistent state
+                    if (state.toolInProgress) {
+                        console.log('Abort requested while tool in progress - deferring until tool completes');
+                        state.abortPending = true;
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/abort`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            },
+                        });
+
+                        if (!response.ok) {
+                            console.error('Failed to abort stream:', await response.text());
+                        }
+
+                        // Clean up in-progress streaming messages
+                        // (state was already captured at the start of abortStream)
+
+                        // Remove incomplete thinking blocks (ones without signatures)
+                        // Must iterate in reverse order to maintain correct indices when splicing
+                        const incompleteThinkingIndices = [];
+                        for (const blockIdx in state.thinkingBlocks) {
+                            const block = state.thinkingBlocks[blockIdx];
+                            if (block && !block.complete && block.msgIndex >= 0 && block.msgIndex < this.messages.length) {
+                                incompleteThinkingIndices.push(block.msgIndex);
+                            }
+                        }
+                        // Sort descending so we remove from end first
+                        incompleteThinkingIndices.sort((a, b) => b - a);
+                        for (const idx of incompleteThinkingIndices) {
+                            this.messages.splice(idx, 1);
+                            // Adjust text/tool indices if they come after
+                            if (state.textMsgIndex > idx) state.textMsgIndex--;
+                            if (state.toolMsgIndex > idx) state.toolMsgIndex--;
+                        }
+
+                        // Remove empty text blocks (keep partial text - it's still useful)
+                        if (state.textMsgIndex >= 0 && state.textMsgIndex < this.messages.length) {
+                            const textMsg = this.messages[state.textMsgIndex];
+                            if (!textMsg.content || textMsg.content.trim() === '') {
+                                this.messages.splice(state.textMsgIndex, 1);
+                            }
+                        }
+
+                        // Add interrupted marker
+                        this.messages.push({
+                            id: 'msg-' + Date.now() + '-interrupted',
+                            role: 'interrupted',
+                            content: 'Response interrupted',
+                            timestamp: new Date().toISOString(),
+                        });
+
+                        // Scroll to show the interrupted marker
+                        this.scrollToBottom();
+
+                        // Disconnect from SSE - the done event from abort will handle cleanup
+                        this.disconnectFromStream();
+                        this.isStreaming = false;
+
+                    } catch (err) {
+                        console.error('Error aborting stream:', err);
+                        this.isStreaming = false;
+                    }
+                },
+
                 // Handle a single stream event
                 handleStreamEvent(event) {
+                    // Validate event belongs to current conversation (prevents cross-talk)
+                    if (event.conversation_uuid && event.conversation_uuid !== this.currentConversationUuid) {
+                        console.debug('Ignoring event for different conversation:', event.conversation_uuid);
+                        return;
+                    }
+
                     const state = this._streamState;
 
                     // Debug: log all events except usage
@@ -1194,10 +1296,16 @@
 
                     switch (event.type) {
                         case 'thinking_start':
-                            state.thinkingMsgIndex = this.messages.length;
-                            state.thinkingContent = '';
+                            // Support interleaved thinking - track by block_index
+                            const thinkingBlockIndex = event.block_index ?? 0;
+                            state.currentThinkingBlock = thinkingBlockIndex;
+                            state.thinkingBlocks[thinkingBlockIndex] = {
+                                msgIndex: this.messages.length,
+                                content: '',
+                                complete: false
+                            };
                             this.messages.push({
-                                id: 'msg-' + Date.now() + '-thinking',
+                                id: 'msg-' + Date.now() + '-thinking-' + thinkingBlockIndex,
                                 role: 'thinking',
                                 content: '',
                                 timestamp: new Date().toISOString(),
@@ -1207,36 +1315,53 @@
                             break;
 
                         case 'thinking_delta':
-                            if (state.thinkingMsgIndex >= 0 && event.content) {
-                                state.thinkingContent += event.content;
-                                this.messages[state.thinkingMsgIndex] = {
-                                    ...this.messages[state.thinkingMsgIndex],
-                                    content: state.thinkingContent
-                                };
-                                this.scrollToBottom();
+                            {
+                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block && event.content) {
+                                    block.content += event.content;
+                                    this.messages[block.msgIndex] = {
+                                        ...this.messages[block.msgIndex],
+                                        content: block.content
+                                    };
+                                    this.scrollToBottom();
+                                }
                             }
                             break;
 
                         case 'thinking_signature':
-                            // Signature is captured but not displayed
+                            {
+                                // Mark thinking as complete (has signature, safe to keep on abort)
+                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
+                                if (state.thinkingBlocks[blockIdx]) {
+                                    state.thinkingBlocks[blockIdx].complete = true;
+                                }
+                            }
                             break;
 
                         case 'thinking_stop':
-                            if (state.thinkingMsgIndex >= 0) {
-                                this.messages[state.thinkingMsgIndex] = {
-                                    ...this.messages[state.thinkingMsgIndex],
-                                    collapsed: true
-                                };
+                            {
+                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block) {
+                                    this.messages[block.msgIndex] = {
+                                        ...this.messages[block.msgIndex],
+                                        collapsed: true
+                                    };
+                                }
                             }
                             break;
 
                         case 'text_start':
-                            // Collapse thinking
-                            if (state.thinkingMsgIndex >= 0) {
-                                this.messages[state.thinkingMsgIndex] = {
-                                    ...this.messages[state.thinkingMsgIndex],
-                                    collapsed: true
-                                };
+                            // Collapse all thinking blocks
+                            for (const blockIdx in state.thinkingBlocks) {
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block && block.msgIndex >= 0) {
+                                    this.messages[block.msgIndex] = {
+                                        ...this.messages[block.msgIndex],
+                                        collapsed: true
+                                    };
+                                }
                             }
                             state.textMsgIndex = this.messages.length;
                             state.textContent = '';
@@ -1271,13 +1396,17 @@
                             break;
 
                         case 'tool_use_start':
-                            // Collapse thinking
-                            if (state.thinkingMsgIndex >= 0) {
-                                this.messages[state.thinkingMsgIndex] = {
-                                    ...this.messages[state.thinkingMsgIndex],
-                                    collapsed: true
-                                };
+                            // Collapse all thinking blocks
+                            for (const blockIdx in state.thinkingBlocks) {
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block && block.msgIndex >= 0) {
+                                    this.messages[block.msgIndex] = {
+                                        ...this.messages[block.msgIndex],
+                                        collapsed: true
+                                    };
+                                }
                             }
+                            state.toolInProgress = true;
                             state.toolMsgIndex = this.messages.length;
                             state.toolInput = '';
                             this.messages.push({
@@ -1307,6 +1436,7 @@
                             break;
 
                         case 'tool_use_stop':
+                            state.toolInProgress = false;
                             if (state.toolMsgIndex >= 0) {
                                 this.messages[state.toolMsgIndex] = {
                                     ...this.messages[state.toolMsgIndex],
@@ -1315,6 +1445,11 @@
                                 // Reset for next tool
                                 state.toolMsgIndex = -1;
                                 state.toolInput = '';
+                            }
+                            // If abort was deferred waiting for tool to complete, trigger it now
+                            if (state.abortPending) {
+                                state.abortPending = false;
+                                this.abortStream();
                             }
                             break;
 

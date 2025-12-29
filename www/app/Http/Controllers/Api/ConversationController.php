@@ -300,7 +300,10 @@ class ConversationController extends Controller
             $currentIndex = $fromIndex;
 
             foreach ($events as $event) {
-                $sse->writeRaw(json_encode(array_merge($event, ['index' => $currentIndex])));
+                $sse->writeRaw(json_encode(array_merge($event, [
+                    'index' => $currentIndex,
+                    'conversation_uuid' => $conversation->uuid,
+                ])));
                 $currentIndex++;
             }
 
@@ -313,6 +316,7 @@ class ConversationController extends Controller
                     'type' => 'stream_status',
                     'status' => $status ?? 'not_found',
                     'final_index' => $currentIndex - 1,
+                    'conversation_uuid' => $conversation->uuid,
                 ]));
                 return;
             }
@@ -332,7 +336,10 @@ class ConversationController extends Controller
                 $newEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
 
                 foreach ($newEvents as $event) {
-                    $sse->writeRaw(json_encode(array_merge($event, ['index' => $currentIndex])));
+                    $sse->writeRaw(json_encode(array_merge($event, [
+                        'index' => $currentIndex,
+                        'conversation_uuid' => $conversation->uuid,
+                    ])));
                     $currentIndex++;
                     $lastActivity = microtime(true); // Update activity time when data is sent
                 }
@@ -344,6 +351,7 @@ class ConversationController extends Controller
                         'type' => 'stream_status',
                         'status' => $status,
                         'final_index' => $currentIndex - 1,
+                        'conversation_uuid' => $conversation->uuid,
                     ]));
                     break;
                 }
@@ -354,6 +362,7 @@ class ConversationController extends Controller
                         'type' => 'timeout',
                         'message' => 'Connection timeout, please reconnect',
                         'last_index' => $currentIndex - 1,
+                        'conversation_uuid' => $conversation->uuid,
                     ]));
                     break;
                 }
@@ -410,6 +419,30 @@ class ConversationController extends Controller
         return response()->json([
             'success' => true,
             'status' => $conversation->status,
+        ]);
+    }
+
+    /**
+     * Abort an active stream.
+     *
+     * Sets the abort flag which the job will check and terminate gracefully.
+     */
+    public function abort(Conversation $conversation): JsonResponse
+    {
+        // Only allow aborting if actually streaming
+        if (!$this->streamManager->isStreaming($conversation->uuid)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Conversation is not currently streaming',
+            ], 400);
+        }
+
+        // Set abort flag - the job will pick this up
+        $this->streamManager->setAbortFlag($conversation->uuid);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Abort signal sent',
         ]);
     }
 

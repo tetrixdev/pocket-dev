@@ -69,6 +69,7 @@ Route::apiResource('conversations', ConversationController::class)
 Route::prefix('conversations/{conversation}')->group(function () {
     Route::get('status', [ConversationController::class, 'status']);
     Route::post('stream', [ConversationController::class, 'stream']);
+    Route::post('abort', [ConversationController::class, 'abort']);
     Route::get('stream-status', [ConversationController::class, 'streamStatus']);
     Route::get('stream-events', [ConversationController::class, 'streamEvents']);
     Route::post('archive', [ConversationController::class, 'archive']);

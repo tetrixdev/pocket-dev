@@ -23,14 +23,32 @@
                   x-effect="prompt; $nextTick(() => { $el.style.height = 'auto'; const sh = $el.scrollHeight; $el.style.height = Math.min(sh, 168) + 'px'; $el.style.overflowY = sh > 168 ? 'auto' : 'hidden'; if (prompt) $el.scrollTop = $el.scrollHeight; })"
                   @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); sendMessage(); }"></textarea>
 
-        {{-- Send Button --}}
-        <button type="button"
-                @click="handleSendClick($event); if(!isRecording && !isProcessing && !waitingForFinalTranscript) sendMessage()"
-                :disabled="isStreaming || isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
-                :class="isStreaming || isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600/80 text-gray-400' : 'bg-emerald-500/90 hover:bg-emerald-400 text-white'"
-                class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-pointer disabled:cursor-not-allowed"
-                title="Send message">
-            <i :class="isStreaming ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paper-plane'"></i>
-        </button>
+        {{-- Send/Stop Button --}}
+        <template x-if="isStreaming && _streamState.abortPending">
+            <button type="button"
+                    disabled
+                    class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-not-allowed bg-gray-600 text-gray-300"
+                    title="Aborting...">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+            </button>
+        </template>
+        <template x-if="isStreaming && !_streamState.abortPending">
+            <button type="button"
+                    @click="abortStream()"
+                    class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-pointer bg-rose-600/90 hover:bg-rose-500 text-white"
+                    title="Stop streaming">
+                <i class="fa-solid fa-stop"></i>
+            </button>
+        </template>
+        <template x-if="!isStreaming">
+            <button type="button"
+                    @click="handleSendClick($event); if(!isRecording && !isProcessing && !waitingForFinalTranscript) sendMessage()"
+                    :disabled="isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
+                    :class="isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600/80 text-gray-400' : 'bg-emerald-500/90 hover:bg-emerald-400 text-white'"
+                    class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-pointer disabled:cursor-not-allowed"
+                    title="Send message">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </template>
     </div>
 </div>

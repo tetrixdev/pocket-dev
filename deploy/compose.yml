@@ -107,7 +107,14 @@ services:
     container_name: pocket-dev-queue
     restart: unless-stopped
     working_dir: /var/www
-    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=1", "--timeout=600"]
+    entrypoint: ["/queue-entrypoint.sh"]
+    # Supervisor manages 10 parallel queue workers (configured in image)
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl status | grep -q RUNNING || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     volumes:
       - .env:/var/www/.env
       - user-data:/home/appuser
