@@ -328,10 +328,11 @@
                 _streamConnectNonce: 0,
                 _streamRetryTimeoutId: null,
                 _streamState: {
-                    thinkingMsgIndex: -1,
+                    // Maps block_index -> message array index (for interleaved thinking support)
+                    thinkingBlocks: {},        // { blockIndex: { msgIndex, content, complete } }
+                    currentThinkingBlock: -1,  // Latest thinking block_index (for abort)
                     textMsgIndex: -1,
                     toolMsgIndex: -1,
-                    thinkingContent: '',
                     textContent: '',
                     toolInput: '',
                     turnCost: 0,
@@ -726,10 +727,10 @@
 
                         // Reset stream state for potential reconnection
                         this._streamState = {
-                            thinkingMsgIndex: -1,
+                            thinkingBlocks: {},
+                            currentThinkingBlock: -1,
                             textMsgIndex: -1,
                             toolMsgIndex: -1,
-                            thinkingContent: '',
                             textContent: '',
                             toolInput: '',
                             turnCost: 0,
@@ -737,6 +738,8 @@
                             turnOutputTokens: 0,
                             turnCacheCreationTokens: 0,
                             turnCacheReadTokens: 0,
+                            toolInProgress: false,
+                            abortPending: false,
                         };
 
                         // Calculate totals and sum costs from stored values
@@ -1027,10 +1030,11 @@
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
                     this._streamState = {
-                        thinkingMsgIndex: -1,
+                        // Maps block_index -> { msgIndex, content, complete }
+                        thinkingBlocks: {},
+                        currentThinkingBlock: -1,
                         textMsgIndex: -1,
                         toolMsgIndex: -1,
-                        thinkingContent: '',
                         textContent: '',
                         toolInput: '',
                         turnCost: 0,
@@ -1228,12 +1232,22 @@
                         // Clean up in-progress streaming messages
                         // (state was already captured at the start of abortStream)
 
-                        // Remove in-progress thinking block (won't have signature, will be filtered on backend anyway)
-                        if (state.thinkingMsgIndex >= 0 && state.thinkingMsgIndex < this.messages.length) {
-                            this.messages.splice(state.thinkingMsgIndex, 1);
-                            // Adjust other indices if they come after
-                            if (state.textMsgIndex > state.thinkingMsgIndex) state.textMsgIndex--;
-                            if (state.toolMsgIndex > state.thinkingMsgIndex) state.toolMsgIndex--;
+                        // Remove incomplete thinking blocks (ones without signatures)
+                        // Must iterate in reverse order to maintain correct indices when splicing
+                        const incompleteThinkingIndices = [];
+                        for (const blockIdx in state.thinkingBlocks) {
+                            const block = state.thinkingBlocks[blockIdx];
+                            if (block && !block.complete && block.msgIndex >= 0 && block.msgIndex < this.messages.length) {
+                                incompleteThinkingIndices.push(block.msgIndex);
+                            }
+                        }
+                        // Sort descending so we remove from end first
+                        incompleteThinkingIndices.sort((a, b) => b - a);
+                        for (const idx of incompleteThinkingIndices) {
+                            this.messages.splice(idx, 1);
+                            // Adjust text/tool indices if they come after
+                            if (state.textMsgIndex > idx) state.textMsgIndex--;
+                            if (state.toolMsgIndex > idx) state.toolMsgIndex--;
                         }
 
                         // Remove empty text blocks (keep partial text - it's still useful)
@@ -1282,10 +1296,16 @@
 
                     switch (event.type) {
                         case 'thinking_start':
-                            state.thinkingMsgIndex = this.messages.length;
-                            state.thinkingContent = '';
+                            // Support interleaved thinking - track by block_index
+                            const thinkingBlockIndex = event.block_index ?? 0;
+                            state.currentThinkingBlock = thinkingBlockIndex;
+                            state.thinkingBlocks[thinkingBlockIndex] = {
+                                msgIndex: this.messages.length,
+                                content: '',
+                                complete: false
+                            };
                             this.messages.push({
-                                id: 'msg-' + Date.now() + '-thinking',
+                                id: 'msg-' + Date.now() + '-thinking-' + thinkingBlockIndex,
                                 role: 'thinking',
                                 content: '',
                                 timestamp: new Date().toISOString(),
@@ -1295,36 +1315,53 @@
                             break;
 
                         case 'thinking_delta':
-                            if (state.thinkingMsgIndex >= 0 && event.content) {
-                                state.thinkingContent += event.content;
-                                this.messages[state.thinkingMsgIndex] = {
-                                    ...this.messages[state.thinkingMsgIndex],
-                                    content: state.thinkingContent
-                                };
-                                this.scrollToBottom();
+                            {
+                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block && event.content) {
+                                    block.content += event.content;
+                                    this.messages[block.msgIndex] = {
+                                        ...this.messages[block.msgIndex],
+                                        content: block.content
+                                    };
+                                    this.scrollToBottom();
+                                }
                             }
                             break;
 
                         case 'thinking_signature':
-                            // Signature is captured but not displayed
+                            {
+                                // Mark thinking as complete (has signature, safe to keep on abort)
+                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
+                                if (state.thinkingBlocks[blockIdx]) {
+                                    state.thinkingBlocks[blockIdx].complete = true;
+                                }
+                            }
                             break;
 
                         case 'thinking_stop':
-                            if (state.thinkingMsgIndex >= 0) {
-                                this.messages[state.thinkingMsgIndex] = {
-                                    ...this.messages[state.thinkingMsgIndex],
-                                    collapsed: true
-                                };
+                            {
+                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block) {
+                                    this.messages[block.msgIndex] = {
+                                        ...this.messages[block.msgIndex],
+                                        collapsed: true
+                                    };
+                                }
                             }
                             break;
 
                         case 'text_start':
-                            // Collapse thinking
-                            if (state.thinkingMsgIndex >= 0) {
-                                this.messages[state.thinkingMsgIndex] = {
-                                    ...this.messages[state.thinkingMsgIndex],
-                                    collapsed: true
-                                };
+                            // Collapse all thinking blocks
+                            for (const blockIdx in state.thinkingBlocks) {
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block && block.msgIndex >= 0) {
+                                    this.messages[block.msgIndex] = {
+                                        ...this.messages[block.msgIndex],
+                                        collapsed: true
+                                    };
+                                }
                             }
                             state.textMsgIndex = this.messages.length;
                             state.textContent = '';
@@ -1359,12 +1396,15 @@
                             break;
 
                         case 'tool_use_start':
-                            // Collapse thinking
-                            if (state.thinkingMsgIndex >= 0) {
-                                this.messages[state.thinkingMsgIndex] = {
-                                    ...this.messages[state.thinkingMsgIndex],
-                                    collapsed: true
-                                };
+                            // Collapse all thinking blocks
+                            for (const blockIdx in state.thinkingBlocks) {
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block && block.msgIndex >= 0) {
+                                    this.messages[block.msgIndex] = {
+                                        ...this.messages[block.msgIndex],
+                                        collapsed: true
+                                    };
+                                }
                             }
                             state.toolInProgress = true;
                             state.toolMsgIndex = this.messages.length;

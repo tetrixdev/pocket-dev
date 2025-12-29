@@ -112,6 +112,12 @@ class AnthropicProvider implements AIProviderInterface
                 ));
             }
 
+            // Skip assistant messages with empty content (can happen if aborted before any content)
+            // Anthropic API requires all messages have non-empty content (except optional final assistant)
+            if ($message->role === 'assistant' && is_array($content) && empty($content)) {
+                continue;
+            }
+
             $messages[] = [
                 'role' => $message->role,
                 'content' => $content,
@@ -207,6 +213,9 @@ class AnthropicProvider implements AIProviderInterface
                     'Content-Type' => 'application/json',
                     'x-api-key' => $this->apiKey,
                     'anthropic-version' => $this->apiVersion,
+                    // Enable interleaved thinking for Claude 4 models
+                    // This allows thinking blocks between text and tool calls
+                    'anthropic-beta' => 'interleaved-thinking-2025-05-14',
                 ],
                 'json' => $body,
                 'stream' => true,
