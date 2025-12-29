@@ -1286,7 +1286,6 @@
                     // Determine if we should skip syncing to CLI session file
                     // skipSync=true when aborting after tools completed (CLI already has complete data)
                     const skipSync = state.abortSkipSync;
-                    state.abortSkipSync = false; // Reset for next time
 
                     try {
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/abort`, {
@@ -1297,6 +1296,9 @@
                             },
                             body: JSON.stringify({ skipSync }),
                         });
+
+                        // Reset skipSync only after successful request
+                        state.abortSkipSync = false;
 
                         if (!response.ok) {
                             console.error('Failed to abort stream:', await response.text());
