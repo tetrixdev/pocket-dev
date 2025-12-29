@@ -190,57 +190,64 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 // Terminate the provider's stream
                 $provider->abort();
 
-                // Save partial response - filter out incomplete blocks
-                // 1. Remove thinking blocks without signatures (required for multi-turn)
-                // 2. Remove in-progress blocks that weren't completed
-                $contentBlocks = array_values(array_filter($contentBlocks, function ($block) {
-                    $type = $block['type'] ?? '';
+                try {
+                    // Save partial response - filter out incomplete blocks
+                    // 1. Remove thinking blocks without signatures (required for multi-turn)
+                    // 2. Remove in-progress blocks that weren't completed
+                    $contentBlocks = array_values(array_filter($contentBlocks, function ($block) {
+                        $type = $block['type'] ?? '';
 
-                    // Filter out thinking blocks without signatures
-                    if ($type === 'thinking' && empty($block['signature'])) {
-                        return false;
+                        // Filter out thinking blocks without signatures
+                        if ($type === 'thinking' && empty($block['signature'])) {
+                            return false;
+                        }
+
+                        // Keep all complete blocks
+                        return true;
+                    }));
+
+                    // Add an "interrupted" marker for UI display (filtered out when sent to API)
+                    $contentBlocks[] = [
+                        'type' => 'interrupted',
+                        'reason' => 'user_abort',
+                    ];
+
+                    $assistantMessage = null;
+                    if (!empty($contentBlocks)) {
+                        $assistantMessage = $this->saveAssistantMessage(
+                            $conversation,
+                            $contentBlocks,
+                            $inputTokens,
+                            $outputTokens,
+                            $cacheCreationTokens,
+                            $cacheReadTokens,
+                            'aborted',
+                            $turnCost > 0 ? $turnCost : null
+                        );
+
+                        // Sync aborted message to provider's native storage (if applicable)
+                        // This allows CLI providers to maintain session continuity on next resume
+                        $userMessage = $conversation->messages()
+                            ->where('role', 'user')
+                            ->latest('id')
+                            ->first();
+
+                        if ($userMessage && $assistantMessage) {
+                            $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
+                        }
                     }
-
-                    // Keep all complete blocks
-                    return true;
-                }));
-
-                // Add an "interrupted" marker for UI display (filtered out when sent to API)
-                $contentBlocks[] = [
-                    'type' => 'interrupted',
-                    'reason' => 'user_abort',
-                ];
-
-                $assistantMessage = null;
-                if (!empty($contentBlocks)) {
-                    $assistantMessage = $this->saveAssistantMessage(
-                        $conversation,
-                        $contentBlocks,
-                        $inputTokens,
-                        $outputTokens,
-                        $cacheCreationTokens,
-                        $cacheReadTokens,
-                        'aborted',
-                        $turnCost > 0 ? $turnCost : null
-                    );
-
-                    // Sync aborted message to provider's native storage (if applicable)
-                    // This allows CLI providers to maintain session continuity on next resume
-                    $userMessage = $conversation->messages()
-                        ->where('role', 'user')
-                        ->latest('id')
-                        ->first();
-
-                    if ($userMessage && $assistantMessage) {
-                        $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
-                    }
+                } catch (\Throwable $e) {
+                    Log::error('ProcessConversationStream: Error during abort save', [
+                        'conversation' => $this->conversationUuid,
+                        'error' => $e->getMessage(),
+                    ]);
+                } finally {
+                    // Always complete stream and cleanup, even if save failed
+                    $conversation->completeProcessing();
+                    $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
+                    $streamManager->completeStream($this->conversationUuid, 'aborted');
+                    $streamManager->clearAbortFlag($this->conversationUuid);
                 }
-
-                // Complete stream with aborted status
-                $conversation->completeProcessing();
-                $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
-                $streamManager->completeStream($this->conversationUuid, 'aborted');
-                $streamManager->clearAbortFlag($this->conversationUuid);
 
                 return; // Exit the method entirely
             }
