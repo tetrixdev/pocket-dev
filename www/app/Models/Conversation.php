@@ -153,7 +153,8 @@ class Conversation extends Model
 
     public function scopeActive($query)
     {
-        return $query->whereIn('status', [self::STATUS_IDLE, self::STATUS_PROCESSING]);
+        // Include STATUS_FAILED so users can continue conversations after errors
+        return $query->whereIn('status', [self::STATUS_IDLE, self::STATUS_PROCESSING, self::STATUS_FAILED]);
     }
 
     public function scopeArchived($query)

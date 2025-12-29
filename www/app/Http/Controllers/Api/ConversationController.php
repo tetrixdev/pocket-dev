@@ -428,7 +428,7 @@ class ConversationController extends Controller
      *
      * Sets the abort flag which the job will check and terminate gracefully.
      */
-    public function abort(Conversation $conversation): JsonResponse
+    public function abort(Request $request, Conversation $conversation): JsonResponse
     {
         // Only allow aborting if actually streaming
         if (!$this->streamManager->isStreaming($conversation->uuid)) {
@@ -438,8 +438,13 @@ class ConversationController extends Controller
             ], 400);
         }
 
+        // skipSync=true means the abort happened after tool execution completed,
+        // so CLI providers already have complete data in their session file.
+        // We should not sync partial data that might create duplicates.
+        $skipSync = (bool) $request->input('skipSync', false);
+
         // Set abort flag - the job will pick this up
-        $this->streamManager->setAbortFlag($conversation->uuid);
+        $this->streamManager->setAbortFlag($conversation->uuid, $skipSync);
 
         return response()->json([
             'success' => true,

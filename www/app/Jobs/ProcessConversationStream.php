@@ -34,8 +34,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 600; // 10 minutes max
-    public int $tries = 1;     // Don't retry failed streams
+    public int $timeout = 1800;    // 30 minutes max (agentic AI can take a while)
+    public int $retryAfter = 1860; // 31 minutes - Redis won't re-queue until after timeout
+    public int $tries = 1;         // Don't retry failed streams
 
     public function __construct(
         public string $conversationUuid,
@@ -103,6 +104,43 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $conversation->markFailed();
             $streamManager->failStream($this->conversationUuid, $e->getMessage());
         }
+    }
+
+    /**
+     * Handle job failure (called by Laravel when job fails outside handle()).
+     *
+     * This catches failures like timeouts, worker restarts, or MaxAttemptsExceededException.
+     * Creates an error block in the conversation so the user knows what happened.
+     */
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('ProcessConversationStream: Job failed', [
+            'conversation' => $this->conversationUuid,
+            'error' => $exception->getMessage(),
+            'exception_class' => get_class($exception),
+        ]);
+
+        $streamManager = app(StreamManager::class);
+
+        $conversation = Conversation::where('uuid', $this->conversationUuid)->first();
+        if ($conversation) {
+            // Create error message so user sees what happened
+            Message::create([
+                'conversation_id' => $conversation->id,
+                'role' => Message::ROLE_ASSISTANT,
+                'content' => [[
+                    'type' => 'error',
+                    'message' => $exception->getMessage(),
+                ]],
+                'stop_reason' => 'error',
+            ]);
+
+            $conversation->markFailed();
+        }
+
+        // Send error event (shows popup if SSE connected) and cleanup
+        $streamManager->failStream($this->conversationUuid, $exception->getMessage());
+        $streamManager->clearAbortFlag($this->conversationUuid);
     }
 
     private const MAX_TOOL_ITERATIONS = 25;
@@ -236,13 +274,23 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
                         // Sync aborted message to provider's native storage (if applicable)
                         // This allows CLI providers to maintain session continuity on next resume
-                        $userMessage = $conversation->messages()
-                            ->where('role', 'user')
-                            ->latest('id')
-                            ->first();
+                        // BUT skip if the abort happened after tool execution completed
+                        // (in that case, CLI already has complete data)
+                        $shouldSkipSync = $streamManager->shouldSkipSyncOnAbort($this->conversationUuid);
 
-                        if ($userMessage && $assistantMessage) {
-                            $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
+                        if (!$shouldSkipSync) {
+                            $userMessage = $conversation->messages()
+                                ->where('role', 'user')
+                                ->latest('id')
+                                ->first();
+
+                            if ($userMessage && $assistantMessage) {
+                                $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
+                            }
+                        } else {
+                            Log::info('ProcessConversationStream: Skipping sync (abort after tool completion)', [
+                                'conversation' => $this->conversationUuid,
+                            ]);
                         }
                     }
                 } catch (\Throwable $e) {
