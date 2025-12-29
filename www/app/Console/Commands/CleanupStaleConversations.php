@@ -6,6 +6,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\StreamManager;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -39,34 +40,48 @@ class CleanupStaleConversations extends Command
         $this->info("Found {$staleConversations->count()} stale conversation(s).");
 
         foreach ($staleConversations as $conversation) {
-            // Double-check: is the stream actually still active in Redis?
-            if ($streamManager->isStreaming($conversation->uuid)) {
-                $this->warn("Skipping {$conversation->uuid}: stream still active in Redis");
-                continue;
+            try {
+                // Double-check: is the stream actually still active in Redis?
+                if ($streamManager->isStreaming($conversation->uuid)) {
+                    $this->warn("Skipping {$conversation->uuid}: stream still active in Redis");
+                    continue;
+                }
+
+                $this->info("Cleaning up stale conversation: {$conversation->uuid}");
+
+                Log::warning('CleanupStaleConversations: Marking conversation as failed', [
+                    'conversation' => $conversation->uuid,
+                    'stuck_since' => $conversation->updated_at,
+                ]);
+
+                // Wrap DB operations in transaction for consistency
+                DB::transaction(function () use ($conversation) {
+                    // Add an error block - use ROLE_ERROR so it renders as expandable error block
+                    Message::create([
+                        'conversation_id' => $conversation->id,
+                        'role' => Message::ROLE_ERROR,
+                        'content' => [[
+                            'type' => 'error',
+                            'message' => 'Stream interrupted unexpectedly. The AI worker may have restarted.',
+                        ]],
+                        'stop_reason' => 'error',
+                    ]);
+
+                    // Mark as failed
+                    $conversation->markFailed();
+                });
+
+                // Redis cleanup (outside transaction - not critical if these fail)
+                $streamManager->failStream($conversation->uuid, 'Stream interrupted unexpectedly');
+                $streamManager->cleanup($conversation->uuid);
+            } catch (\Exception $e) {
+                Log::error('CleanupStaleConversations: Failed to cleanup conversation', [
+                    'conversation' => $conversation->uuid,
+                    'error' => $e->getMessage(),
+                ]);
+                $this->error("Failed to cleanup {$conversation->uuid}: {$e->getMessage()}");
+                // Continue to next conversation
             }
-
-            $this->info("Cleaning up stale conversation: {$conversation->uuid}");
-
-            Log::warning('CleanupStaleConversations: Marking conversation as failed', [
-                'conversation' => $conversation->uuid,
-                'stuck_since' => $conversation->updated_at,
-            ]);
-
-            // Simply add an error block - no complex reconstruction
-            Message::create([
-                'conversation_id' => $conversation->id,
-                'role' => Message::ROLE_ASSISTANT,
-                'content' => [[
-                    'type' => 'error',
-                    'message' => 'Stream interrupted unexpectedly. The AI worker may have restarted.',
-                ]],
-                'stop_reason' => 'error',
-            ]);
-
-            // Mark as failed and cleanup
-            $conversation->markFailed();
-            $streamManager->failStream($conversation->uuid, 'Stream interrupted unexpectedly');
-            $streamManager->cleanup($conversation->uuid);
         }
 
         $this->info('Cleanup complete.');

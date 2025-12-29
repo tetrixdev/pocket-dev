@@ -125,9 +125,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $conversation = Conversation::where('uuid', $this->conversationUuid)->first();
         if ($conversation) {
             // Create error message so user sees what happened
+            // Use ROLE_ERROR so it renders as expandable error block in UI
             Message::create([
                 'conversation_id' => $conversation->id,
-                'role' => Message::ROLE_ASSISTANT,
+                'role' => Message::ROLE_ERROR,
                 'content' => [[
                     'type' => 'error',
                     'message' => $exception->getMessage(),

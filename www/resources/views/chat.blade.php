@@ -1297,7 +1297,7 @@
                             body: JSON.stringify({ skipSync }),
                         });
 
-                        // Reset skipSync only after successful request
+                        // Reset skipSync flag (even if request fails, don't carry over to next abort)
                         state.abortSkipSync = false;
 
                         if (!response.ok) {
@@ -1488,6 +1488,8 @@
                             const toolId = event.metadata?.tool_id;
                             if (toolId) {
                                 state.waitingForToolResults.add(toolId);
+                            } else {
+                                console.warn('tool_use_start event missing tool_id in metadata');
                             }
                             this.messages.push({
                                 id: 'msg-' + Date.now() + '-tool',
@@ -1544,6 +1546,8 @@
                                 }
                                 // Remove from pending set - tool execution is complete
                                 state.waitingForToolResults.delete(toolResultId);
+                            } else {
+                                console.warn('tool_result event missing tool_id in metadata');
                             }
                             // If abort was deferred and all tools have results, trigger it now
                             // Use skipSync=true since CLI already has the complete tool_use + tool_result
