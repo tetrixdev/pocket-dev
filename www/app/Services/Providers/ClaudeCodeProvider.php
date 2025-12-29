@@ -624,12 +624,8 @@ class ClaudeCodeProvider implements AIProviderInterface
         $file->seek(PHP_INT_MAX);
         $lastLine = $file->key();
 
-        if ($lastLine === 0) {
-            return null;
-        }
-
-        // Read backwards to find last non-empty line
-        for ($i = $lastLine - 1; $i >= 0; $i--) {
+        // Read backwards to find last non-empty line (including the last line)
+        for ($i = $lastLine; $i >= 0; $i--) {
             $file->seek($i);
             $line = trim($file->current());
             if (!empty($line)) {

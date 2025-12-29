@@ -193,13 +193,22 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 try {
                     // Save partial response - filter out incomplete blocks
                     // 1. Remove thinking blocks without signatures (required for multi-turn)
-                    // 2. Remove in-progress blocks that weren't completed
+                    // 2. Remove incomplete tool_use blocks (empty input)
                     $contentBlocks = array_values(array_filter($contentBlocks, function ($block) {
                         $type = $block['type'] ?? '';
 
                         // Filter out thinking blocks without signatures
                         if ($type === 'thinking' && empty($block['signature'])) {
                             return false;
+                        }
+
+                        // Filter out incomplete tool_use blocks (never received TOOL_USE_STOP)
+                        if ($type === 'tool_use') {
+                            $input = $block['input'] ?? null;
+                            // Check if input is an empty stdClass (has no properties)
+                            if ($input instanceof \stdClass && empty((array) $input)) {
+                                return false;
+                            }
                         }
 
                         // Keep all complete blocks
