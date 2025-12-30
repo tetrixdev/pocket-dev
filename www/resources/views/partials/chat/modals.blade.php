@@ -7,6 +7,7 @@
 @include('partials.chat.modals.cost-breakdown')
 @include('partials.chat.modals.shortcuts')
 @include('partials.chat.modals.error')
+@include('partials.chat.modals.conversation-search')
 
 {{-- Debug Panel with chat-specific state display --}}
 <x-debug-panel>

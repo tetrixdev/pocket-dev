@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\ConversationSearchController;
 use App\Http\Controllers\Api\PricingController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\TranscriptionController;
@@ -60,6 +61,9 @@ Route::get('providers', [ConversationController::class, 'providers']);
 | Conversation resource and related actions.
 |
 */
+
+// Search conversations semantically (must be before resource route)
+Route::get('conversations/search', [ConversationSearchController::class, 'search']);
 
 // Resource routes: index, store, show, destroy
 Route::apiResource('conversations', ConversationController::class)

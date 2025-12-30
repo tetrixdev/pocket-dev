@@ -54,19 +54,60 @@
     <div class="p-4 border-b border-gray-700">
         <div class="flex items-center justify-between mb-3">
             <h2 class="text-lg font-semibold">Conversations</h2>
-            <button @click="showMobileDrawer = false" class="text-gray-400 hover:text-white">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {{-- Close drawer --}}
+            <button @click="showMobileDrawer = false" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                 </svg>
             </button>
         </div>
-        <x-button @click="newConversation(); showMobileDrawer = false" variant="primary" full-width>
-            New Conversation
-        </x-button>
+        <div class="flex items-center gap-2">
+            {{-- New conversation button (green) --}}
+            <button @click="newConversation(); showMobileDrawer = false"
+                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors bg-emerald-600/90 hover:bg-emerald-500 text-white"
+                    title="New conversation">
+                <i class="fa-solid fa-comment-medical"></i>
+            </button>
+            {{-- Filter/Search button (blue) --}}
+            <button @click="showSearchInput = !showSearchInput; if(showSearchInput) $nextTick(() => $refs.mobileSearchInput?.focus())"
+                    :class="showSearchInput ? 'bg-blue-500' : 'bg-blue-600/90 hover:bg-blue-500'"
+                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors text-white"
+                    title="Search conversations">
+                <i class="fa-solid fa-filter"></i>
+            </button>
+            {{-- Clear filters button (red, only visible when filters active) --}}
+            <button x-show="conversationSearchQuery"
+                    x-cloak
+                    @click="clearConversationSearch()"
+                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors bg-rose-600/90 hover:bg-rose-500 text-white"
+                    title="Clear search">
+                <i class="fa-solid fa-filter-circle-xmark"></i>
+            </button>
+        </div>
     </div>
 
-    {{-- Conversations List --}}
-    <div class="flex-1 overflow-y-auto p-2" @scroll="handleConversationsScroll($event)">
+    {{-- Search Input (shown when filter button clicked) --}}
+    <div x-show="showSearchInput" x-cloak class="px-4 pt-3 pb-3 border-b border-gray-700">
+        <div class="relative">
+            <input type="text"
+                   x-model="conversationSearchQuery"
+                   x-ref="mobileSearchInput"
+                   @input.debounce.400ms="searchConversations()"
+                   @keydown.escape="showSearchInput = false; conversationSearchQuery = ''; conversationSearchResults = []"
+                   placeholder="Describe what you're looking for..."
+                   class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+            <div x-show="conversationSearchLoading" class="absolute right-3 top-1/2 -translate-y-1/2">
+                <svg class="w-4 h-4 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 mt-1">Search by meaning, not keywords</p>
+    </div>
+
+    {{-- Conversations List (normal mode) --}}
+    <div x-show="!conversationSearchQuery" class="flex-1 overflow-y-auto p-2" @scroll="handleConversationsScroll($event)">
         <template x-if="conversations.length === 0">
             <div class="text-center text-gray-500 text-xs mt-4">No conversations yet</div>
         </template>
@@ -86,6 +127,36 @@
         <div x-show="loadingMoreConversations" class="text-center py-2">
             <span class="text-xs text-gray-500">Loading...</span>
         </div>
+    </div>
+
+    {{-- Search Results (search mode) --}}
+    <div x-show="conversationSearchQuery" x-cloak class="flex-1 overflow-y-auto p-2">
+        {{-- No Results --}}
+        <template x-if="!conversationSearchLoading && conversationSearchResults.length === 0 && conversationSearchQuery">
+            <div class="text-center text-gray-500 text-xs mt-4">
+                <p>No matching conversations</p>
+                <p class="mt-1 text-gray-600">Try rephrasing your search</p>
+            </div>
+        </template>
+
+        {{-- Results List --}}
+        <template x-for="result in conversationSearchResults" :key="result.conversation_uuid + '-' + result.turn_number">
+            <div @click="loadSearchResult(result); showMobileDrawer = false"
+                 class="p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors">
+                {{-- Score + Title --}}
+                <div class="flex items-center gap-1.5 text-xs">
+                    <span class="shrink-0 px-1 py-0.5 bg-blue-600/30 text-blue-300 rounded text-[10px]" x-text="result.similarity"></span>
+                    <span class="text-gray-300 truncate" x-text="result.conversation_title || 'Untitled'"></span>
+                </div>
+                {{-- User Question --}}
+                <div class="text-xs text-gray-500 mt-0.5 line-clamp-2" x-text="result.user_question || result.content_preview"></div>
+                {{-- Date + Turn --}}
+                <div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                    <span x-text="formatDate(result.conversation_updated_at)"></span>
+                    <span class="text-gray-600">Turn <span x-text="result.turn_number"></span></span>
+                </div>
+            </div>
+        </template>
     </div>
 
     {{-- Footer --}}

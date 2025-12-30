@@ -136,6 +136,15 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Dedicated channel for embedding operations
+        'embeddings' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/embeddings.log'),
+            'level' => 'debug',
+            'days' => env('LOG_EMBEDDINGS_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

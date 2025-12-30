@@ -36,7 +36,7 @@ class EmbeddingService
     public function embed(string $text): ?array
     {
         if (empty($this->apiKey)) {
-            Log::warning('EmbeddingService: No API key configured');
+            Log::channel('embeddings')->warning('EmbeddingService: No API key configured');
             return null;
         }
 
@@ -63,7 +63,7 @@ class EmbeddingService
                 ->post($this->baseUrl . '/v1/embeddings', $payload);
 
             if (!$response->successful()) {
-                Log::error('EmbeddingService: API error', [
+                Log::channel('embeddings')->error('EmbeddingService: API error', [
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
@@ -73,7 +73,7 @@ class EmbeddingService
             $data = $response->json();
             return $data['data'][0]['embedding'] ?? null;
         } catch (\Exception $e) {
-            Log::error('EmbeddingService: Exception', [
+            Log::channel('embeddings')->error('EmbeddingService: Exception', [
                 'message' => $e->getMessage(),
             ]);
             return null;
@@ -89,7 +89,7 @@ class EmbeddingService
     public function embedBatch(array $texts): ?array
     {
         if (empty($this->apiKey)) {
-            Log::warning('EmbeddingService: No API key configured');
+            Log::channel('embeddings')->warning('EmbeddingService: No API key configured');
             return null;
         }
 
@@ -118,9 +118,10 @@ class EmbeddingService
                 ->post($this->baseUrl . '/v1/embeddings', $payload);
 
             if (!$response->successful()) {
-                Log::error('EmbeddingService: API error', [
+                Log::channel('embeddings')->error('EmbeddingService: Batch API error', [
                     'status' => $response->status(),
                     'body' => $response->body(),
+                    'batch_size' => count($nonEmptyTexts),
                 ]);
                 return null;
             }
@@ -145,8 +146,9 @@ class EmbeddingService
 
             return $result;
         } catch (\Exception $e) {
-            Log::error('EmbeddingService: Exception', [
+            Log::channel('embeddings')->error('EmbeddingService: Batch exception', [
                 'message' => $e->getMessage(),
+                'batch_size' => count($texts),
             ]);
             return null;
         }
