@@ -145,6 +145,31 @@
         {{-- Main Content Area --}}
         <div class="flex-1 flex flex-col">
 
+            {{-- Desktop Header (hidden on mobile) --}}
+            <div class="hidden md:flex bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
+                <div class="flex items-center gap-3 pl-2">
+                    <h2 class="text-base font-semibold">PocketDev</h2>
+                    <button @click="showAgentSelector = true"
+                            class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200"
+                            aria-label="Select AI agent">
+                        <span class="w-1.5 h-1.5 rounded-full shrink-0"
+                              :class="{
+                                  'bg-orange-500': currentAgent?.provider === 'anthropic',
+                                  'bg-green-500': currentAgent?.provider === 'openai',
+                                  'bg-purple-500': currentAgent?.provider === 'claude_code',
+                                  'bg-gray-500': !currentAgent
+                              }"></span>
+                        <span x-text="currentAgent?.name || 'Select Agent'" class="underline decoration-gray-600 hover:decoration-gray-400"></span>
+                    </button>
+                </div>
+                <a href="{{ route('config.index') }}" class="text-gray-300 hover:text-white p-2" title="Settings">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </a>
+            </div>
+
             {{-- Messages Container --}}
             {{-- Mobile: fixed position between header and input, contained scroll --}}
             {{-- Desktop: flex container scroll with overflow-y-auto --}}

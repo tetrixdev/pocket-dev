@@ -1,7 +1,7 @@
 {{-- Desktop Sidebar --}}
 <div class="w-64 h-full bg-gray-800 border-r border-gray-700 flex flex-col">
     <div class="p-4 border-b border-gray-700">
-        <h2 class="text-lg font-semibold">PocketDev</h2>
+        <h2 class="text-lg font-semibold">Conversations</h2>
         <button @click="newConversation()" class="mt-2 w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">New Conversation</button>
     </div>
 
@@ -47,29 +47,9 @@
                 <span x-text="totalTokens.toLocaleString() + ' tokens'">0 tokens</span>
             </div>
         </div>
-        {{-- Current Agent Display --}}
-        {{-- TODO: Refactor to use <x-button variant="ghost"> for consistency with coding guidelines --}}
-        <div class="mb-2">
-            <button @click="showAgentSelector = true" class="text-left w-full group">
-                <div class="text-gray-300 font-medium flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full shrink-0"
-                          :class="{
-                              'bg-orange-500': currentAgent?.provider === 'anthropic',
-                              'bg-green-500': currentAgent?.provider === 'openai',
-                              'bg-purple-500': currentAgent?.provider === 'claude_code',
-                              'bg-gray-500': !currentAgent
-                          }"></span>
-                    <span x-text="currentAgent?.name || 'Select Agent'" class="truncate"></span>
-                    <svg class="w-3 h-3 text-gray-500 group-hover:text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
-                </div>
-                <div class="text-gray-500 text-xs mt-0.5 truncate" x-text="currentAgent?.model || 'No agent selected'"></div>
-            </button>
-        </div>
         <div>Working Dir: /var/www</div>
         <div class="flex flex-wrap gap-2 mt-2">
-            <a href="/config" class="text-blue-400 hover:text-blue-300">Config</a>
+            <a href="{{ route('config.index') }}" class="text-blue-400 hover:text-blue-300">Settings</a>
             <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300">Shortcuts</button>
             <button @click="copyConversationToClipboard()"
                     :disabled="messages.length === 0"
