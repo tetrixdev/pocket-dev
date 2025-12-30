@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'Configuration') - PocketDev</title>
+    <title>@yield('title', 'Settings') - PocketDev</title>
 
     @if (file_exists(public_path('build/manifest.json')))
         @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -116,26 +116,21 @@
 </head>
 <body class="bg-gray-900 text-white" x-data="{ showMobileDrawer: false }">
     <!-- Desktop Layout -->
-    <div class="desktop-layout flex flex-col" style="height: 100dvh;">
+    @php
+        $lastConversationUuid = session('last_conversation_uuid');
+        $backToChatUrl = $lastConversationUuid ? '/chat/' . $lastConversationUuid : '/';
+    @endphp
+    <div class="desktop-layout flex" style="height: 100dvh;">
 
-        <!-- Header -->
-        @php
-            $lastConversationUuid = session('last_conversation_uuid');
-            $backToChatUrl = $lastConversationUuid ? '/chat/' . $lastConversationUuid : '/';
-        @endphp
-        <div class="bg-gray-800 border-b border-gray-700 p-4 flex justify-between items-center">
-            <h1 class="text-2xl font-bold">⚙️ Configuration</h1>
-            <a href="{{ $backToChatUrl }}" class="text-blue-400 hover:text-blue-300 text-sm"
-               onclick="localStorage.setItem('pocketdev_returning_from_settings', 'true')">
-                ← Back to Chat
-            </a>
-        </div>
-
-        <!-- Main Content: Sidebar + Content Area -->
-        <div class="flex-1 flex overflow-hidden">
-
-            <!-- Sidebar (Categories) -->
-            <div class="w-64 bg-gray-800 border-r border-gray-700 overflow-y-auto">
+        <!-- Sidebar (Categories) -->
+        <div class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
+            <!-- Sidebar Header -->
+            <div class="p-4 border-b border-gray-700">
+                <h2 class="text-lg font-semibold">Menu</h2>
+            </div>
+            {{-- TODO: Extract navigation to <x-config.navigation> component to reduce duplication with mobile drawer --}}
+            <!-- Sidebar Navigation -->
+            <div class="flex-1 overflow-y-auto">
 
                 <!-- System Prompt (Primary Setting) -->
                 <div class="border-b border-gray-700">
@@ -243,35 +238,52 @@
                 </div>
 
             </div>
+        </div>
 
-            <!-- Content Area -->
+        <!-- Content Area -->
+        <div class="flex-1 flex flex-col">
+
+            <!-- Desktop Header -->
+            <div class="bg-gray-800 border-b border-gray-700 p-2 flex items-center justify-between">
+                <div class="flex items-center gap-3 pl-2">
+                    <h2 class="text-base font-semibold">Settings</h2>
+                </div>
+                <a href="{{ $backToChatUrl }}" class="text-gray-300 hover:text-white p-2" title="Back to Chat"
+                   onclick="localStorage.setItem('pocketdev_returning_from_settings', 'true')">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </a>
+            </div>
+
+            <!-- Content -->
             <div class="flex-1 overflow-y-auto p-6">
 
-                <!-- Notifications -->
-                @if(session('success'))
-                    <div class="notification success">
-                        {{ session('success') }}
-                    </div>
-                @endif
+            <!-- Notifications -->
+            @if(session('success'))
+                <div class="notification success">
+                    {{ session('success') }}
+                </div>
+            @endif
 
-                @if(session('error'))
-                    <div class="notification error">
-                        {{ session('error') }}
-                    </div>
-                @endif
+            @if(session('error'))
+                <div class="notification error">
+                    {{ session('error') }}
+                </div>
+            @endif
 
-                @if($errors->any())
-                    <div class="notification error">
-                        <ul class="list-disc list-inside">
-                            @foreach($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
+            @if($errors->any())
+                <div class="notification error">
+                    <ul class="list-disc list-inside">
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
 
-                <!-- Page Content -->
-                @yield('content')
+            <!-- Page Content -->
+            @yield('content')
             </div>
         </div>
     </div>
@@ -279,14 +291,14 @@
     <!-- Mobile Layout -->
     <div class="mobile-layout min-h-screen flex flex-col">
         <!-- Mobile Header (Sticky) -->
-        <div class="sticky top-0 z-10 bg-gray-800 border-b border-gray-700 p-4 flex items-center justify-between">
-            <button @click="showMobileDrawer = true" class="text-gray-300 hover:text-white">
+        <div class="sticky top-0 z-10 bg-gray-800 border-b border-gray-700 p-2 flex items-center justify-between">
+            <button @click="showMobileDrawer = true" class="text-gray-300 hover:text-white p-2">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
                 </svg>
             </button>
-            <h2 class="text-lg font-semibold">⚙️ Configuration</h2>
-            <a href="{{ $backToChatUrl }}" class="text-gray-300 hover:text-white"
+            <h2 class="text-lg font-semibold">Settings</h2>
+            <a href="{{ $backToChatUrl }}" class="text-gray-300 hover:text-white p-2"
                onclick="localStorage.setItem('pocketdev_returning_from_settings', 'true')">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
