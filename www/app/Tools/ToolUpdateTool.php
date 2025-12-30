@@ -53,17 +53,27 @@ class ToolUpdateTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use ToolUpdate to modify an existing user-created tool.
 
+## Important
+- Only user-created tools can be modified
+- PocketDev built-in tools cannot be changed
+
+## Valid Categories
+- memory: Memory-related tools
+- tools: Tool management
+- file_ops: File operations
+- custom: Custom tools (default)
+INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
 ## CLI Example
 
 ```bash
 php artisan tool:update --slug=my-tool --name="Updated Name" --description="New description"
 ```
+CLI;
 
-## Important
-- Only user-created tools can be modified
-- PocketDev built-in tools cannot be changed
-
-## Example
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
 
 Update a tool's script:
 ```json
@@ -81,13 +91,7 @@ Update name and description:
   "description": "An updated description"
 }
 ```
-
-## Valid Categories
-- memory: Memory-related tools
-- tools: Tool management
-- file_ops: File operations
-- custom: Custom tools (default)
-INSTRUCTIONS;
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

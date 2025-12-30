@@ -38,14 +38,6 @@ class MemorySchemaListTablesTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemorySchemaListTables to see what tables exist in the memory schema.
 
-## CLI Example
-
-```bash
-php artisan memory:schema:list-tables
-php artisan memory:schema:list-tables --table=characters
-php artisan memory:schema:list-tables --show-columns=false
-```
-
 ## Output Includes
 
 For each table:
@@ -59,6 +51,32 @@ For each table:
 - **memory.embeddings**: Central storage for semantic search vectors
 - **memory.schema_registry**: Tracks table metadata and embeddable fields
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan memory:schema:list-tables
+php artisan memory:schema:list-tables --table=characters
+php artisan memory:schema:list-tables --show-columns=false
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+List all tables:
+```json
+{}
+```
+
+Show specific table:
+```json
+{
+  "table": "characters"
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

@@ -203,7 +203,7 @@ class ToolSelector
                 foreach ($systemTools as $tool) {
                     $artisanCommand = $tool->getArtisanCommand();
                     $sections[] = "### {$artisanCommand}\n";
-                    $sections[] = $tool->instructions ?? $tool->description;
+                    $sections[] = $this->getToolInstructions($tool, true);
                     $sections[] = $this->formatToolParameters($tool);
                     $sections[] = "";
                 }
@@ -216,7 +216,7 @@ class ToolSelector
                 foreach ($customTools as $tool) {
                     $artisanCommand = $tool->getArtisanCommand();
                     $sections[] = "### {$artisanCommand}\n";
-                    $sections[] = $tool->instructions ?? $tool->description;
+                    $sections[] = $this->getToolInstructions($tool, true);
                     $sections[] = $this->formatToolParameters($tool);
                     $sections[] = "";
                 }
@@ -231,7 +231,7 @@ class ToolSelector
 
                 foreach ($categoryTools as $tool) {
                     $sections[] = "### {$tool->name}\n";
-                    $sections[] = $tool->instructions ?? $tool->description;
+                    $sections[] = $this->getToolInstructions($tool, false);
                     $sections[] = $this->formatToolParameters($tool);
                     $sections[] = "";
                 }
@@ -351,6 +351,25 @@ MD;
             PocketTool::CATEGORY_CUSTOM => 'Custom Tools',
             default => ucfirst(str_replace('_', ' ', $category)),
         };
+    }
+
+    /**
+     * Get tool instructions with CLI or API examples appended.
+     *
+     * @param Tool $tool The tool
+     * @param bool $isCli Whether to use CLI examples (true) or API examples (false)
+     * @return string The combined instructions
+     */
+    private function getToolInstructions(Tool $tool, bool $isCli): string
+    {
+        $base = $tool->instructions ?? $tool->description;
+        $examples = $isCli ? $tool->cliExamples : $tool->apiExamples;
+
+        if ($examples) {
+            return $base . "\n\n" . $examples;
+        }
+
+        return $base;
     }
 
     /**

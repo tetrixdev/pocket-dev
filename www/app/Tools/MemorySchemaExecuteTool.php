@@ -41,32 +41,13 @@ Use MemorySchemaExecute for DDL operations other than CREATE TABLE:
 - UPDATE memory.embeddings (for table renames)
 - Other memory schema operations
 
-## CLI Example
-
-```bash
-php artisan memory:schema:execute --sql="CREATE INDEX idx_characters_name ON memory.characters(name)"
-php artisan memory:schema:execute --sql="DROP TABLE IF EXISTS memory.old_table"
-```
-
 ## ALTER TABLE
 
 ALTER TABLE is supported for modifying existing tables:
-
-```bash
-# Add a column
-php artisan memory:schema:execute --sql="ALTER TABLE memory.session_logs ADD COLUMN in_game_date_start TEXT"
-
-# Drop a column
-php artisan memory:schema:execute --sql="ALTER TABLE memory.characters DROP COLUMN old_field"
-
-# Rename a column
-php artisan memory:schema:execute --sql="ALTER TABLE memory.characters RENAME COLUMN old_name TO new_name"
-
-# Rename a table (also update embeddings and schema_registry)
-php artisan memory:schema:execute --sql="ALTER TABLE memory.old_name RENAME TO new_name"
-php artisan memory:schema:execute --sql="UPDATE memory.embeddings SET source_table = 'new_name' WHERE source_table = 'old_name'"
-php artisan memory:update --table=schema_registry --data='{"table_name":"new_name"}' --where="table_name = 'old_name'"
-```
+- Add a column: `ALTER TABLE memory.X ADD COLUMN new_col TEXT`
+- Drop a column: `ALTER TABLE memory.X DROP COLUMN old_col`
+- Rename a column: `ALTER TABLE memory.X RENAME COLUMN old TO new`
+- Rename a table: Also update embeddings and schema_registry (see examples)
 
 ## Protected Tables
 
@@ -74,7 +55,7 @@ Cannot DROP, TRUNCATE, or ALTER:
 - memory.embeddings
 - memory.schema_registry
 
-## Index Examples
+## Index Types
 
 ```sql
 -- Standard B-tree index
@@ -90,6 +71,25 @@ CREATE INDEX idx_tablename_geo ON memory.tablename USING GIST (coordinates);
 CREATE INDEX idx_tablename_data ON memory.tablename USING GIN (data);
 ```
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan memory:schema:execute --sql="CREATE INDEX idx_characters_name ON memory.characters(name)"
+php artisan memory:schema:execute --sql="DROP TABLE IF EXISTS memory.old_table"
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+```json
+{
+  "sql": "CREATE INDEX idx_characters_name ON memory.characters(name)"
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

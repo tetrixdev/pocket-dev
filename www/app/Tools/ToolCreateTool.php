@@ -57,42 +57,95 @@ class ToolCreateTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use ToolCreate to create custom tools with bash scripts.
 
-## Example
+## Why This Tool Matters
 
-```bash
-php artisan tool:create --slug=git-status --name="Git Status" \
-  --description="Check git branch and status" \
-  --system_prompt="Returns current git branch and working tree status." \
-  --script='#!/bin/bash
-echo "{\"branch\": \"$(git branch --show-current)\"}"'
+Custom tools extend AI capabilities. When you create a tool, the `system_prompt` you provide gets injected into the AI's context whenever that tool is enabled. This means the system_prompt IS the documentation - write it for AI consumption, not human developers.
+
+## How Parameters Work
+
+When the tool is invoked, parameters become environment variables in the script:
+- `--location=Paris` (CLI) or `{"location": "Paris"}` (API) → `$TOOL_LOCATION` in script
+
+Parameter names are uppercased and prefixed with `TOOL_`.
+
+## The system_prompt Field
+
+This is the most important field. It gets injected into the AI's context. Write it as if explaining to an AI:
+
+**Required elements:**
+1. What the tool does (1-2 sentences)
+2. Example invocation
+3. Parameter descriptions
+
+**Example of a good system_prompt:**
+```
+Checks health status of deployed services. Returns JSON with status, uptime, and errors.
+
+## CLI Example
+\`\`\`bash
+php artisan tool:run health-check -- --service=api --environment=production
+\`\`\`
+
+## Parameters
+- service: Service name (api, web, worker, database)
+- environment: Target environment (development, staging, production)
 ```
 
-## Best Practices
+## input_schema Best Practices
 
-**1. Always add descriptions in input_schema** - These are shown to AI in the system prompt:
+Always include descriptions - these appear in the tool's parameter documentation:
 ```json
-"input_schema": {
+{
   "type": "object",
   "properties": {
-    "query": {"type": "string", "description": "The search query to execute"}
+    "query": {"type": "string", "description": "The search query to execute"},
+    "limit": {"type": "integer", "description": "Maximum results (default: 10)"}
   },
   "required": ["query"]
 }
 ```
 
-**2. Script receives TOOL_* environment variables:**
-- `--name=John` → `$TOOL_NAME` in script
-- `--my-param=value` → `$TOOL_MY_PARAM` in script
+## Script Best Practices
 
-**3. Write a clear system_prompt** - This is what AI sees. Include:
-- What the tool does
-- Example invocation: `php artisan tool:run my-tool -- --param=value`
+1. **Output JSON** for structured responses
+2. **Handle errors gracefully** - check for required params
+3. **Use jq** for JSON manipulation
 
 ## Notes
-- Scripts should output JSON for structured responses
 - Scripts have a 5-minute timeout
 - Use `tool:show <slug>` to inspect a tool's details
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan tool:create --slug=git-status --name="Git Status" \
+  --description="Check git branch and status" \
+  --system_prompt="Returns current git branch and working tree status.
+
+## CLI Example
+\`\`\`bash
+php artisan tool:run git-status
+\`\`\`" \
+  --script='#!/bin/bash
+echo "{\"branch\": \"$(git branch --show-current)\"}"'
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+```json
+{
+  "slug": "git-status",
+  "name": "Git Status",
+  "description": "Check git branch and status",
+  "system_prompt": "Returns current git branch and working tree status.",
+  "script": "#!/bin/bash\necho \"{\\\"branch\\\": \\\"$(git branch --show-current)\\\"}\""
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

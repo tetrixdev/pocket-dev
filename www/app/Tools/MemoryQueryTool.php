@@ -46,13 +46,6 @@ class MemoryQueryTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryQuery to search and retrieve data from memory tables. This is your primary read tool for the memory system.
 
-## CLI Example
-
-```bash
-php artisan memory:query --sql="SELECT * FROM memory.characters LIMIT 10"
-php artisan memory:query --sql="SELECT * FROM memory.schema_registry"
-```
-
 ## System Tables
 
 - **memory.schema_registry**: Table metadata (table_name, description, embeddable_fields)
@@ -118,6 +111,34 @@ ORDER BY distance_m
 - Use :search_embedding placeholder with search_text parameter for vector searches
 - Tables are in memory schema (memory.tablename)
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan memory:query --sql="SELECT * FROM memory.characters LIMIT 10"
+php artisan memory:query --sql="SELECT * FROM memory.schema_registry"
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+Basic query:
+```json
+{
+  "sql": "SELECT * FROM memory.characters LIMIT 10"
+}
+```
+
+Semantic search:
+```json
+{
+  "sql": "SELECT e.source_table, e.content, 1 - (e.embedding <=> :search_embedding) as similarity FROM memory.embeddings e WHERE 1 - (e.embedding <=> :search_embedding) > 0.6 ORDER BY similarity DESC LIMIT 5",
+  "search_text": "dwarf warrior revenge"
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
