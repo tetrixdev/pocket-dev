@@ -1,6 +1,6 @@
 {{-- System info block - for /context, /usage, etc. --}}
 <template x-if="msg.role === 'system'">
-    <div class="max-w-[85%] md:max-w-3xl w-full">
+    <div class="max-w-[calc(100%-1rem)] md:max-w-3xl w-full">
         <div class="border border-gray-600/30 rounded-lg bg-gray-800/50 overflow-hidden">
             {{-- Header --}}
             <div class="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-700/30 border-b border-gray-600/20">

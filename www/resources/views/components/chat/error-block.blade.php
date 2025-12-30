@@ -1,6 +1,6 @@
 {{-- Error block - expandable, shows when job failed unexpectedly --}}
 <template x-if="msg.role === 'error'">
-    <div class="max-w-[85%] md:max-w-3xl w-full">
+    <div class="max-w-[calc(100%-1rem)] md:max-w-3xl w-full">
         <div class="border border-red-500/30 rounded-lg bg-red-900/30 overflow-hidden">
             {{-- Header --}}
             <div class="flex items-center flex-wrap md:flex-nowrap gap-2 px-3 md:px-4 py-2 bg-red-900/30 md:border-b md:border-red-500/20 cursor-pointer"
