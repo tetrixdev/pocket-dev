@@ -22,8 +22,14 @@ abstract class Tool
     /** JSON Schema for input parameters */
     public array $inputSchema = [];
 
-    /** Detailed instructions for system prompt (what Claude sees) */
+    /** Detailed instructions for system prompt (what Claude sees) - shared content */
     public ?string $instructions = null;
+
+    /** CLI-specific examples (appended for CLI providers like Claude Code) */
+    public ?string $cliExamples = null;
+
+    /** API/JSON-specific examples (appended for API providers) */
+    public ?string $apiExamples = null;
 
     /** Tool category for grouping: memory, tools, file_ops, custom */
     public string $category = 'custom';
@@ -77,6 +83,8 @@ abstract class Tool
             'description' => $this->description,
             'category' => $this->category,
             'instructions' => $this->instructions,
+            'cli_examples' => $this->cliExamples,
+            'api_examples' => $this->apiExamples,
             'input_schema' => $this->inputSchema,
         ];
     }

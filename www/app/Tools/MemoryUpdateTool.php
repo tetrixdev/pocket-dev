@@ -70,12 +70,6 @@ php artisan memory:update --table=characters --data='{"backstory":"New content o
 
 **Note:** For relationship tracking, prefer using the append-only `relationship_events` table instead of updating `entity_relationships`. See dm_system_prompt.md for the pattern.
 
-## CLI Example
-
-```bash
-php artisan memory:update --table=characters --data='{"backstory":"Updated backstory with new details..."}' --where="id = '123e4567-e89b-12d3-a456-426614174000'"
-```
-
 ## WHERE Clause
 
 The WHERE clause is **required** to prevent accidental updates of all rows:
@@ -99,7 +93,24 @@ When you update embeddable fields:
 3. Regenerates embeddings only for changed embeddable fields
 4. Updates the hash to track the new content
 
-## Example: Update character backstory
+## Notes
+
+- WHERE clause is required (no bulk updates without filter)
+- Only specified columns are updated (others remain unchanged)
+- Returns count of affected rows
+- Embeddings only regenerated for fields that actually changed
+INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan memory:update --table=characters --data='{"backstory":"Updated backstory with new details..."}' --where="id = '123e4567-e89b-12d3-a456-426614174000'"
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
 
 ```json
 {
@@ -112,14 +123,7 @@ When you update embeddable fields:
 ```
 
 The backstory embedding will be regenerated automatically if `backstory` is an embed field.
-
-## Notes
-
-- WHERE clause is required (no bulk updates without filter)
-- Only specified columns are updated (others remain unchanged)
-- Returns count of affected rows
-- Embeddings only regenerated for fields that actually changed
-INSTRUCTIONS;
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

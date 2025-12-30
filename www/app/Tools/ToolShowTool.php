@@ -32,15 +32,19 @@ class ToolShowTool extends Tool
 
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use ToolShow to get detailed information about a tool.
+INSTRUCTIONS;
 
+    public ?string $cliExamples = <<<'CLI'
 ## CLI Example
 
 ```bash
 php artisan tool:show --slug=my-tool
 php artisan tool:show --slug=my-tool --include_script
 ```
+CLI;
 
-## Example
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
 
 Show basic info:
 ```json
@@ -56,7 +60,7 @@ Show info including script:
   "include_script": true
 }
 ```
-INSTRUCTIONS;
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

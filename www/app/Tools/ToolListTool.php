@@ -45,6 +45,13 @@ class ToolListTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use ToolList to see all available tools.
 
+## Filters
+- enabled/disabled: Filter by status
+- pocketdev/user: Filter by source
+- category: Filter by category
+INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
 ## CLI Example
 
 ```bash
@@ -52,13 +59,10 @@ php artisan tool:list
 php artisan tool:list --enabled --user
 php artisan tool:list --category=memory
 ```
+CLI;
 
-## Filters
-- enabled/disabled: Filter by status
-- pocketdev/user: Filter by source
-- category: Filter by category
-
-## Example
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
 
 List all tools:
 ```json
@@ -79,7 +83,7 @@ List memory tools:
   "category": "memory"
 }
 ```
-INSTRUCTIONS;
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

@@ -39,12 +39,6 @@ class MemoryDeleteTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryDelete to remove rows from memory tables. Associated embeddings are automatically deleted.
 
-## CLI Example
-
-```bash
-php artisan memory:delete --table=characters --where="id = '123e4567-e89b-12d3-a456-426614174000'"
-```
-
 ## WHERE Clause
 
 The WHERE clause is **required** to prevent accidental deletion of all rows:
@@ -91,6 +85,25 @@ Deleting from schema_registry has special validation to prevent metadata corrupt
 - The table must NOT exist (only orphaned entries can be deleted)
 - Use this to clean up registry entries after dropping a table
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan memory:delete --table=characters --where="id = '123e4567-e89b-12d3-a456-426614174000'"
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+```json
+{
+  "table": "characters",
+  "where": "name = 'Thorin Ironforge'"
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

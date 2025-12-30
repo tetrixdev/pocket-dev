@@ -50,23 +50,16 @@ class MemorySchemaCreateTableTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemorySchemaCreateTable to create new tables in the memory schema.
 
-## CLI Example
+## Why This Matters: AI-Consumable Documentation
 
-```bash
-php artisan memory:schema:create-table \
-    --name=characters \
-    --description="Player and NPC characters" \
-    --embed-fields="backstory,description" \
-    --column-descriptions='{"name":"Full character name","backstory":"Character history and motivations"}' \
-    --sql="CREATE TABLE memory.characters (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name TEXT NOT NULL,
-        class TEXT,
-        backstory TEXT,
-        description TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
-    )"
-```
+Memory tables are NOT traditional database tables with separate documentation. The table description and column descriptions ARE the documentation - they get injected directly into the AI's system prompt.
+
+When a future AI uses this table, it will ONLY see:
+1. The table description you write here
+2. Column names, types, and descriptions
+3. Which fields are auto-embedded (added automatically)
+
+A well-documented table enables AI to use it correctly; a poorly-documented table leads to misuse and data inconsistency.
 
 ## Important Rules
 
@@ -74,29 +67,33 @@ php artisan memory:schema:create-table \
 2. **SQL must use memory. prefix**: `CREATE TABLE memory.tablename (...)`
 3. **Always include id column**: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
 4. **embed_fields is required**: List text fields to auto-embed, or empty string for none
-5. **Column descriptions are optional but recommended**: Helps AI understand the schema
+5. **Column descriptions are strongly recommended**: See guidance below
 
-## Table Description Requirements (6 Mandatory Elements)
+## Table Description Format
 
-The `--description` parameter must include these 6 elements for complete documentation:
+The description should enable any AI to use this table correctly:
 
-1. **What data is stored** - Primary purpose of the table
-2. **Which fields are auto-embedded** - List the embed_fields and what they're used for
-3. **What queries are typical** - Common access patterns
-4. **Relationships to other tables** - Foreign keys and join patterns
-5. **Append vs. Replace guidelines** - Which fields accumulate content vs. get replaced
-6. **Example insert** - A sample insert command
-
-**Example description:**
 ```
-Tracks relationships between entities (NPCs, PCs, creatures). Store both directions in a single row.
-**Auto-embed:** notes, relationship_from_entity, relationship_from_related
-**Typical queries:** Find all relationships for an entity, find relationship between two specific entities
-**Relationships:** entity_id and related_entity_id reference memory.entities(id)
-**Append fields:** relationship_from_entity, relationship_from_related, notes - ALWAYS read before update
-**Replace fields:** relationship_type, status
-**Example:** php artisan memory:insert --table=entity_relationships --data='{"entity_id":"...", "related_entity_id":"...", "relationship_type":"ally"}'
+[1-2 sentence purpose: What data is stored and why]
+**Typical queries:** [Common access patterns]
+**Relationships:** [Foreign keys and table connections]
+**Append fields:** [Fields to read-before-update] - ALWAYS read before update
+**Replace fields:** [Fields that can be overwritten directly]
+**Example:** php artisan memory:insert --table=X --data='{...}'
 ```
+
+**Do NOT include `**Auto-embed:**`** - this is automatically added from embed_fields.
+
+## Column Description Guidelines
+
+**Length guidance:**
+- **Simple fields** (name, status): 2-10 words
+- **Complex text fields** (backstory, notes): 1-3 sentences explaining structure
+- **Structured fields**: Detailed format guidance
+
+**Always describe:**
+- Text fields that will be embedded (these need the most guidance)
+- Fields with specific formats (dates, enums, JSON structure)
 
 ## Supported Column Types
 
@@ -107,21 +104,8 @@ Tracks relationships between entities (NPCs, PCs, creatures). Store both directi
 - UUID - unique identifiers
 - TIMESTAMP, DATE, TIME - temporal
 - JSONB - structured data
-- TEXT[] - text arrays
+- TEXT[], UUID[] - arrays
 - GEOGRAPHY(Point, 4326) - PostGIS coordinates
-
-## PostGIS Example (Coordinates)
-
-```sql
-CREATE TABLE memory.locations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    description TEXT,
-    coordinates GEOGRAPHY(Point, 4326),
-    created_at TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX idx_locations_geo ON memory.locations USING GIST (coordinates);
-```
 
 ## Fuzzy Search Index (pg_trgm)
 
@@ -130,6 +114,46 @@ After creating the table, add a trigram index for fuzzy text search:
 CREATE INDEX idx_tablename_name_trgm ON memory.tablename USING GIN (name gin_trgm_ops);
 ```
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan memory:schema:create-table \
+    --name=tasks \
+    --description="Individual tasks belonging to projects.
+**Typical queries:** Get tasks by project, find overdue tasks
+**Relationships:** project_id references projects(id)
+**Append fields:** notes - read before update
+**Replace fields:** status, priority, due_date
+**Example:** php artisan memory:insert --table=tasks --data='{\"title\":\"...\", \"status\":\"todo\"}'" \
+    --embed-fields="title,description" \
+    --column-descriptions='{"title":"Brief task name (5-10 words)","description":"Detailed requirements and context","status":"todo, in_progress, review, done, or blocked","priority":"low, medium, high, or critical"}' \
+    --sql="CREATE TABLE memory.tasks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title TEXT NOT NULL,
+        description TEXT,
+        status TEXT DEFAULT 'todo',
+        priority TEXT DEFAULT 'medium',
+        project_id UUID,
+        created_at TIMESTAMP DEFAULT NOW()
+    )"
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+```json
+{
+  "name": "tasks",
+  "description": "Individual tasks belonging to projects.\n**Typical queries:** Get tasks by project\n**Relationships:** project_id references projects(id)\n**Example:** ...",
+  "embed_fields": "title,description",
+  "column_descriptions": "{\"title\":\"Brief task name\",\"status\":\"todo, in_progress, done\"}",
+  "sql": "CREATE TABLE memory.tasks (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT NOT NULL, status TEXT DEFAULT 'todo', created_at TIMESTAMP DEFAULT NOW())"
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

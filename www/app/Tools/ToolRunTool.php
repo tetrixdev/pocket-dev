@@ -34,17 +34,9 @@ class ToolRunTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use ToolRun to execute a user-created tool.
 
-## CLI Example
-
-```bash
-php artisan tool:run greet -- --name=World
-```
-
-**Important:** The `--` separator is REQUIRED for `tool:run` only, before any `--arguments`.
-
 ## How Arguments Work
 
-Arguments passed via CLI become environment variables in the script:
+Arguments passed become environment variables in the script:
 - `--name=John` → `$TOOL_NAME` in script
 - `--my-param=value` → `$TOOL_MY_PARAM` in script
 
@@ -54,6 +46,29 @@ Arguments passed via CLI become environment variables in the script:
 - Scripts have a 5-minute timeout
 - Use `tool:list` to see available tools and their slugs
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan tool:run greet -- --name=World
+```
+
+**Important:** The `--` separator is REQUIRED for `tool:run` only, before any `--arguments`.
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+```json
+{
+  "slug": "greet",
+  "arguments": {
+    "name": "World"
+  }
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

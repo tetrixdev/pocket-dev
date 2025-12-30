@@ -38,12 +38,6 @@ class MemoryInsertTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryInsert to add rows to memory tables. Embeddings are automatically generated based on the table's configured embed_fields.
 
-## CLI Example
-
-```bash
-php artisan memory:insert --table=characters --data='{"name":"Thorin Ironforge","class":"fighter","backstory":"A dwarf warrior seeking revenge for his fallen clan."}'
-```
-
 ## Auto-Embedding
 
 When you insert data, fields configured in the table's `embed_fields` are automatically embedded:
@@ -77,6 +71,29 @@ If the table has `backstory` and `relationships` as embed_fields, both will be e
 - created_at/updated_at are auto-generated if columns exist
 - Returns the new row's UUID
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan memory:insert --table=characters --data='{"name":"Thorin Ironforge","class":"fighter","backstory":"A dwarf warrior seeking revenge for his fallen clan."}'
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+```json
+{
+  "table": "characters",
+  "data": {
+    "name": "Gandalf the Grey",
+    "class": "wizard",
+    "backstory": "A Maia spirit sent to Middle-earth..."
+  }
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {

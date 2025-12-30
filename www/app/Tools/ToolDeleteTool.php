@@ -29,17 +29,29 @@ class ToolDeleteTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use ToolDelete to permanently remove a user-created tool.
 
-## CLI Example
-
-```bash
-php artisan tool:delete --slug=my-tool
-```
-
 ## Important
 - Only user-created tools can be deleted
 - PocketDev built-in tools cannot be deleted
 - This action cannot be undone
 INSTRUCTIONS;
+
+    public ?string $cliExamples = <<<'CLI'
+## CLI Example
+
+```bash
+php artisan tool:delete --slug=my-tool
+```
+CLI;
+
+    public ?string $apiExamples = <<<'API'
+## API Example (JSON input)
+
+```json
+{
+  "slug": "my-tool"
+}
+```
+API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
