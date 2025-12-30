@@ -8,7 +8,8 @@
     <div class="flex flex-col items-center">
         <h2 class="text-base font-semibold leading-tight">PocketDev</h2>
         <button @click="showAgentSelector = true"
-                class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 underline decoration-gray-600 hover:decoration-gray-400">
+                class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 underline decoration-gray-600 hover:decoration-gray-400"
+                aria-label="Select AI agent">
             <span class="w-1.5 h-1.5 rounded-full shrink-0"
                   :class="{
                       'bg-orange-500': currentAgent?.provider === 'anthropic',
