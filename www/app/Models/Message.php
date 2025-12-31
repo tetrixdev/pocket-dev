@@ -28,6 +28,7 @@ class Message extends Model
         'cost',
         'sequence',
         'created_at',
+        'turn_number',
     ];
 
     protected $casts = [
@@ -38,6 +39,7 @@ class Message extends Model
         'cache_read_tokens' => 'integer',
         'cost' => 'float',
         'created_at' => 'datetime',
+        'turn_number' => 'integer',
     ];
 
     protected static function boot(): void

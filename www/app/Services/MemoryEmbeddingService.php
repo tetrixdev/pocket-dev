@@ -110,7 +110,7 @@ class MemoryEmbeddingService
                 $embedded[] = $fieldName;
             } catch (\Exception $e) {
                 $errors[] = "Failed to store embedding for {$fieldName}: " . $e->getMessage();
-                Log::error('Failed to store embedding', [
+                Log::channel('embeddings')->error('MemoryEmbeddingService: Failed to store embedding', [
                     'table' => $tableName,
                     'row_id' => $rowId,
                     'field' => $fieldName,

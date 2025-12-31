@@ -190,7 +190,9 @@
 
                 {{-- Messages List --}}
                 <template x-for="(msg, index) in messages" :key="msg.id">
-                    <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                    <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'"
+                         x-bind:data-turn="Number.isInteger(msg.turn_number) ? msg.turn_number : null"
+                         class="transition-colors duration-500">
                         <x-chat.user-message />
                         <x-chat.assistant-message />
                         <x-chat.thinking-block />
@@ -304,8 +306,16 @@
                 showOpenAiModal: false,
                 showClaudeCodeAuthModal: false,
                 showErrorModal: false,
+                showSearchModal: false,
                 errorMessage: '',
                 openAiKeyInput: '',
+
+                // Conversation search
+                showSearchInput: false,
+                conversationSearchQuery: '',
+                conversationSearchResults: [],
+                conversationSearchLoading: false,
+                pendingScrollToTurn: null, // Set when loading from search result
 
                 // Pricing settings (per-model) - loaded from API via fetchPricing()
                 modelPricing: {},
@@ -407,16 +417,38 @@
                     // Check URL for conversation UUID and load if present
                     const urlConversationUuid = this.getConversationUuidFromUrl();
                     if (urlConversationUuid) {
+                        // Check for ?turn= query parameter to scroll to specific turn
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const turnParam = urlParams.get('turn');
+                        if (turnParam) {
+                            const turnNumber = parseInt(turnParam, 10);
+                            if (!isNaN(turnNumber)) {
+                                this.pendingScrollToTurn = turnNumber;
+                                this.autoScrollEnabled = false;
+                            }
+                        }
+
                         await this.loadConversation(urlConversationUuid);
 
-                        // Scroll to bottom if returning from settings
-                        if (returningFromSettings) {
+                        // Scroll to bottom if returning from settings (only if not scrolling to turn)
+                        if (returningFromSettings && this.pendingScrollToTurn === null) {
                             this.$nextTick(() => this.scrollToBottom());
                         }
                     }
 
                     // Handle browser back/forward navigation
                     window.addEventListener('popstate', (event) => {
+                        // Check for turn parameter in URL
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const turnParam = urlParams.get('turn');
+                        if (turnParam) {
+                            const turnNumber = parseInt(turnParam, 10);
+                            if (!isNaN(turnNumber)) {
+                                this.pendingScrollToTurn = turnNumber;
+                                this.autoScrollEnabled = false;
+                            }
+                        }
+
                         if (event.state && event.state.conversationUuid) {
                             this.loadConversation(event.state.conversationUuid);
                         } else {
@@ -733,6 +765,47 @@
                     }
                 },
 
+                // Conversation search
+                async searchConversations() {
+                    if (!this.conversationSearchQuery.trim()) {
+                        this.conversationSearchResults = [];
+                        return;
+                    }
+
+                    this.conversationSearchLoading = true;
+                    try {
+                        const response = await fetch(`/api/conversations/search?query=${encodeURIComponent(this.conversationSearchQuery)}&limit=20`);
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const data = await response.json();
+                        this.conversationSearchResults = data.results || [];
+                    } catch (err) {
+                        console.error('Failed to search conversations:', err);
+                        this.conversationSearchResults = [];
+                    } finally {
+                        this.conversationSearchLoading = false;
+                    }
+                },
+
+                clearConversationSearch() {
+                    this.conversationSearchQuery = '';
+                    this.conversationSearchResults = [];
+                    this.showSearchInput = false;
+                },
+
+                async loadSearchResult(result) {
+                    // Close mobile drawer but keep search input visible while search is active
+                    this.showMobileDrawer = false;
+
+                    // Set pending scroll target - loadConversation will scroll to this turn
+                    this.pendingScrollToTurn = result.turn_number;
+
+                    // Disable auto-scroll to prevent other code from scrolling to bottom
+                    this.autoScrollEnabled = false;
+
+                    // Load the conversation (will scroll to turn instead of bottom)
+                    await this.loadConversation(result.conversation_uuid);
+                },
+
                 async newConversation() {
                     // Disconnect from any active stream
                     this.disconnectFromStream();
@@ -786,7 +859,10 @@
                         this.messages = [];
                         this.isAtBottom = true; // Hide scroll button during load
                         this.debugLog('SET isAtBottom = true (loadConversation reset)');
-                        this.autoScrollEnabled = true;
+                        // Only enable auto-scroll if not coming from search result
+                        if (this.pendingScrollToTurn === null) {
+                            this.autoScrollEnabled = true;
+                        }
                         this.ignoreScrollEvents = true; // Ignore scroll events until load complete
                         this.debugLog('loadConversation: reset state, ignoreScrollEvents=true');
 
@@ -880,7 +956,13 @@
                         this.openaiCompatibleReasoningEffort = data.conversation?.openai_compatible_reasoning_effort ?? 'none';
                         this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
 
-                        this.scrollToBottom();
+                        // Scroll to turn if coming from search, otherwise scroll to bottom
+                        if (this.pendingScrollToTurn !== null) {
+                            this.scrollToTurn(this.pendingScrollToTurn);
+                            this.pendingScrollToTurn = null;
+                        } else {
+                            this.scrollToBottom();
+                        }
 
                         // Re-enable scroll event handling after scroll completes
                         this.$nextTick(() => {
@@ -947,7 +1029,8 @@
                             inputTokens: msgInputTokens,
                             outputTokens: msgOutputTokens,
                             cacheCreationTokens: msgCacheCreation,
-                            cacheReadTokens: msgCacheRead
+                            cacheReadTokens: msgCacheRead,
+                            turn_number: dbMsg.turn_number
                         });
                     } else if (Array.isArray(content)) {
                         // Handle empty content arrays (e.g., assistant stopped after tool call)
@@ -965,7 +1048,8 @@
                                     inputTokens: msgInputTokens,
                                     outputTokens: msgOutputTokens,
                                     cacheCreationTokens: msgCacheCreation,
-                                    cacheReadTokens: msgCacheRead
+                                    cacheReadTokens: msgCacheRead,
+                                    turn_number: dbMsg.turn_number
                                 });
                             }
                             return;
@@ -991,7 +1075,8 @@
                                     inputTokens: isLast ? msgInputTokens : null,
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'thinking') {
                                 this.messages.push({
@@ -1005,7 +1090,8 @@
                                     inputTokens: isLast ? msgInputTokens : null,
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'tool_use') {
                                 this.messages.push({
@@ -1023,7 +1109,8 @@
                                     inputTokens: isLast ? msgInputTokens : null,
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'tool_result' && block.tool_use_id) {
                                 // Link result to the corresponding tool message
@@ -1041,6 +1128,7 @@
                                     role: 'interrupted',
                                     content: 'Response interrupted',
                                     timestamp: dbMsg.created_at,
+                                    turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'error') {
                                 // Error marker - shown when job failed unexpectedly
@@ -1049,6 +1137,7 @@
                                     role: 'error',
                                     content: block.message || 'An unexpected error occurred',
                                     timestamp: dbMsg.created_at,
+                                    turn_number: dbMsg.turn_number
                                 });
                             }
                         }
@@ -1771,6 +1860,65 @@
                             this.isAtBottom = true;
                             this.debugLog('SET isAtBottom = true (scrollToBottom)', { scrollTop: container.scrollTop, scrollHeight: container.scrollHeight });
                         }
+                    });
+                },
+
+                scrollToTurn(turnNumber) {
+                    this.debugLog('scrollToTurn called', { turnNumber, type: typeof turnNumber });
+
+                    // Debug: Check what turn_numbers exist in messages
+                    const turnNumbers = this.messages.map(m => m.turn_number);
+                    this.debugLog('scrollToTurn: available turn_numbers in messages', { turnNumbers });
+
+                    this.$nextTick(() => {
+                        // Small delay to ensure DOM is fully rendered
+                        setTimeout(() => {
+                            // Debug: Check what data-turn values exist in DOM
+                            const allTurnElements = document.querySelectorAll('[data-turn]');
+                            const domTurns = Array.from(allTurnElements).map(el => el.getAttribute('data-turn'));
+                            this.debugLog('scrollToTurn: data-turn values in DOM', { domTurns, count: allTurnElements.length });
+
+                            const selector = `[data-turn="${turnNumber}"]`;
+                            this.debugLog('scrollToTurn: using selector', { selector });
+
+                            const turnElement = document.querySelector(selector);
+                            this.debugLog('scrollToTurn: element found?', { found: !!turnElement });
+
+                            if (turnElement) {
+                                const container = document.getElementById('messages');
+                                if (container) {
+                                    // Calculate scroll position to put element at top (with small offset)
+                                    const containerRect = container.getBoundingClientRect();
+                                    const elementRect = turnElement.getBoundingClientRect();
+                                    const currentScrollTop = container.scrollTop;
+                                    const topOffset = 16; // Small padding from top
+                                    const newScrollTop = currentScrollTop + (elementRect.top - containerRect.top) - topOffset;
+                                    const finalScrollTop = Math.max(0, newScrollTop);
+
+                                    this.debugLog('scrollToTurn: scroll calculation', {
+                                        currentScrollTop,
+                                        containerHeight: containerRect.height,
+                                        elementTop: elementRect.top,
+                                        containerTop: containerRect.top,
+                                        newScrollTop,
+                                        finalScrollTop
+                                    });
+
+                                    container.scrollTop = finalScrollTop;
+                                    this.debugLog('scrollToTurn: scrollTop set to', { scrollTop: container.scrollTop });
+                                }
+                                // Brief highlight effect
+                                turnElement.classList.add('bg-blue-900/30');
+                                setTimeout(() => turnElement.classList.remove('bg-blue-900/30'), 2000);
+                                this.isAtBottom = false;
+                                this.debugLog('scrollToTurn: SUCCESS - scrolled to turn', { turnNumber });
+                            } else {
+                                // Fallback to bottom if turn not found
+                                this.debugLog('scrollToTurn: FAILED - turn not found', { turnNumber, selector });
+                                this.autoScrollEnabled = true;
+                                this.scrollToBottom();
+                            }
+                        }, 100);
                     });
                 },
 

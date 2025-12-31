@@ -42,3 +42,19 @@ Schedule::command('conversations:cleanup-stale')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Conversation Embedding Backfill
+|--------------------------------------------------------------------------
+|
+| Backfill turn numbers and embeddings for any conversations that may have
+| been missed (e.g., due to embedding service downtime or job failure).
+| New conversations are embedded automatically via GenerateConversationEmbeddings.
+|
+*/
+
+Schedule::command('conversation:backfill-embeddings')
+    ->daily()
+    ->withoutOverlapping()
+    ->runInBackground();

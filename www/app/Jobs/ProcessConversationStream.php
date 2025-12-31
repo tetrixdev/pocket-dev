@@ -90,9 +90,18 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $this->options
             );
 
-            // Mark conversation as completed
-            $conversation->completeProcessing();
-            $streamManager->completeStream($this->conversationUuid);
+            // Only finalize if not already completed/aborted inside streamWithToolLoop
+            if ($conversation->fresh()->status === Conversation::STATUS_PROCESSING) {
+                // Calculate and store turns while still locked
+                $this->calculateAndStoreTurns($conversation);
+
+                // Mark conversation as completed (releases lock)
+                $conversation->completeProcessing();
+                $streamManager->completeStream($this->conversationUuid);
+
+                // Dispatch async embedding job (runs after lock released)
+                GenerateConversationEmbeddings::dispatch($conversation);
+            }
 
         } catch (\Throwable $e) {
             Log::error('ProcessConversationStream failed', [
@@ -300,11 +309,17 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                         'error' => $e->getMessage(),
                     ]);
                 } finally {
+                    // Calculate turns while still locked (even for aborted streams)
+                    $this->calculateAndStoreTurns($conversation);
+
                     // Always complete stream and cleanup, even if save failed
                     $conversation->completeProcessing();
                     $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
                     $streamManager->completeStream($this->conversationUuid, 'aborted');
                     $streamManager->clearAbortFlag($this->conversationUuid);
+
+                    // Dispatch async embedding job
+                    GenerateConversationEmbeddings::dispatch($conversation);
                 }
 
                 return; // Exit the method entirely
@@ -604,5 +619,89 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         }
 
         return null;
+    }
+
+    /**
+     * Calculate turns and update turn_number on messages.
+     * A turn = real user message → all messages until next real user message (with response).
+     */
+    private function calculateAndStoreTurns(Conversation $conversation): void
+    {
+        $turns = $this->calculateTurns($conversation);
+
+        if (empty($turns)) {
+            return;
+        }
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($turns) {
+            foreach ($turns as $turnNumber => $messages) {
+                $messageIds = collect($messages)->pluck('id');
+                Message::whereIn('id', $messageIds)
+                    ->update(['turn_number' => $turnNumber]);
+            }
+        });
+    }
+
+    /**
+     * Calculate turns from conversation messages.
+     * Returns array of turn_number => messages[]
+     */
+    private function calculateTurns(Conversation $conversation): array
+    {
+        $messages = $conversation->messages()->orderBy('sequence')->get();
+        $turns = [];
+        $currentTurn = null;
+        $turnNumber = 0;
+        $hasResponse = false;
+
+        foreach ($messages as $message) {
+            $isRealUserMessage = $message->role === 'user'
+                && $this->hasRealUserContent($message);
+
+            if ($isRealUserMessage) {
+                if ($currentTurn !== null && $hasResponse) {
+                    // Previous turn is complete, save it
+                    $turns[$turnNumber] = $currentTurn;
+                    $turnNumber++;
+                    $currentTurn = [];
+                    $hasResponse = false;
+                }
+
+                // Start or continue building current turn
+                $currentTurn = $currentTurn ?? [];
+                $currentTurn[] = $message;
+            } else {
+                // Assistant or tool_result message
+                if ($currentTurn !== null) {
+                    $currentTurn[] = $message;
+
+                    if ($message->role === 'assistant') {
+                        $hasResponse = true;
+                    }
+                }
+            }
+        }
+
+        // Don't forget the last turn (if it has a response)
+        if ($currentTurn !== null && $hasResponse) {
+            $turns[$turnNumber] = $currentTurn;
+        }
+
+        return $turns;
+    }
+
+    /**
+     * Check if message has real user text (not just tool_result).
+     */
+    private function hasRealUserContent(Message $message): bool
+    {
+        $content = $message->content;
+
+        if (!is_array($content)) {
+            return is_string($content) && !empty($content);
+        }
+
+        return collect($content)
+            ->contains(fn($block) => ($block['type'] ?? '') === 'text');
     }
 }

@@ -37,6 +37,8 @@ class Conversation extends Model
         'claude_session_id',
         // Codex session management
         'codex_session_id',
+        // Embedding tracking
+        'last_embedded_turn_number',
     ];
 
     protected $casts = [
@@ -46,6 +48,7 @@ class Conversation extends Model
         'anthropic_thinking_budget' => 'integer',
         'claude_code_thinking_tokens' => 'integer',
         'response_level' => 'integer',
+        'last_embedded_turn_number' => 'integer',
     ];
 
     protected static function boot(): void
@@ -62,6 +65,11 @@ class Conversation extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class)->orderBy('sequence');
+    }
+
+    public function turnEmbeddings(): HasMany
+    {
+        return $this->hasMany(ConversationTurnEmbedding::class);
     }
 
     public function agent(): BelongsTo
