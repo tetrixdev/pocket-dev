@@ -69,8 +69,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $conversation->startProcessing();
 
         try {
-            // Save user message
-            $this->saveUserMessage($conversation, $this->prompt);
+            // Save user message and keep reference for abort sync
+            $userMessage = $this->saveUserMessage($conversation, $this->prompt);
 
             // Get provider
             $provider = $providerFactory->make($conversation->provider_type);
@@ -87,7 +87,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $toolRegistry,
                 $systemPromptBuilder,
                 $modelRepository,
-                $this->options
+                $this->options,
+                userMessage: $userMessage
             );
 
             // Only finalize if not already completed/aborted inside streamWithToolLoop
@@ -167,6 +168,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ModelRepository $modelRepository,
         array $options,
         int $iteration = 0,
+        ?Message $userMessage = null,
     ): void {
         // Safety guard against infinite tool loops
         if ($iteration >= self::MAX_TOOL_ITERATIONS) {
@@ -289,11 +291,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                         $shouldSkipSync = $streamManager->shouldSkipSyncOnAbort($this->conversationUuid);
 
                         if (!$shouldSkipSync) {
-                            $userMessage = $conversation->messages()
-                                ->where('role', 'user')
-                                ->latest('id')
-                                ->first();
-
+                            // Use the user message passed from handle() - no query needed
+                            // This avoids ordering issues with the messages() relationship
                             if ($userMessage && $assistantMessage) {
                                 $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
                             }
@@ -499,6 +498,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $this->saveToolResultMessage($conversation, $toolResults);
 
             // Continue with tool results (recursive)
+            // Pass the original user message for abort sync consistency
             $this->streamWithToolLoop(
                 $conversation,
                 $provider,
@@ -507,7 +507,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $systemPromptBuilder,
                 $modelRepository,
                 $options,
-                $iteration + 1
+                $iteration + 1,
+                $userMessage
             );
         }
     }
