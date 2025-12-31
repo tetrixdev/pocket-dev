@@ -133,17 +133,29 @@ class GenerateConversationEmbeddings implements ShouldQueue
         // Generate embedding
         $embedding = $embeddingService->embed($text);
 
+        // Build structured preview
+        $preview = $this->buildPreview($messages->all(), $prevContext);
+
         if ($embedding === null) {
             Log::channel('embeddings')->warning('GenerateConversationEmbeddings: Failed to generate embedding', [
                 'conversation_id' => $this->conversation->id,
                 'turn_number' => $turnNumber,
                 'text_length' => strlen($text),
             ]);
+
+            // Store failed record so we can query/retry later
+            DB::statement("
+                INSERT INTO conversation_turn_embeddings
+                (id, conversation_id, turn_number, chunk_number, embedding, content_preview, content_hash, failed_at, created_at)
+                VALUES (gen_random_uuid(), ?, ?, 0, NULL, ?, ?, NOW(), NOW())
+            ", [
+                $this->conversation->id,
+                $turnNumber,
+                $preview,
+                $hash,
+            ]);
             return;
         }
-
-        // Build structured preview
-        $preview = $this->buildPreview($messages->all(), $prevContext);
 
         // Store embedding using raw DB statement (PostgreSQL vector type)
         $vectorString = $this->formatEmbeddingForPostgres($embedding);

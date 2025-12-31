@@ -16,6 +16,7 @@ class ConversationTurnEmbedding extends Model
         'embedding',
         'content_preview',
         'content_hash',
+        'failed_at',
         'created_at',
     ];
 
@@ -24,6 +25,7 @@ class ConversationTurnEmbedding extends Model
         'chunk_number' => 'integer',
         // Note: embedding is stored as PostgreSQL vector type, not JSON array
         // Use raw DB queries for insert/update, not Eloquent
+        'failed_at' => 'datetime',
         'created_at' => 'datetime',
     ];
 
