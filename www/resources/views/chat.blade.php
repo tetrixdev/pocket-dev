@@ -191,7 +191,7 @@
                 {{-- Messages List --}}
                 <template x-for="(msg, index) in messages" :key="msg.id">
                     <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'"
-                         :data-turn="msg.turn_number"
+                         x-bind:data-turn="Number.isInteger(msg.turn_number) ? msg.turn_number : null"
                          class="transition-colors duration-500">
                         <x-chat.user-message />
                         <x-chat.assistant-message />

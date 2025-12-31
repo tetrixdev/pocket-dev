@@ -90,15 +90,18 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $this->options
             );
 
-            // Calculate and store turns while still locked
-            $this->calculateAndStoreTurns($conversation);
+            // Only finalize if not already completed/aborted inside streamWithToolLoop
+            if ($conversation->fresh()->status === Conversation::STATUS_PROCESSING) {
+                // Calculate and store turns while still locked
+                $this->calculateAndStoreTurns($conversation);
 
-            // Mark conversation as completed (releases lock)
-            $conversation->completeProcessing();
-            $streamManager->completeStream($this->conversationUuid);
+                // Mark conversation as completed (releases lock)
+                $conversation->completeProcessing();
+                $streamManager->completeStream($this->conversationUuid);
 
-            // Dispatch async embedding job (runs after lock released)
-            GenerateConversationEmbeddings::dispatch($conversation);
+                // Dispatch async embedding job (runs after lock released)
+                GenerateConversationEmbeddings::dispatch($conversation);
+            }
 
         } catch (\Throwable $e) {
             Log::error('ProcessConversationStream failed', [

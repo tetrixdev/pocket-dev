@@ -104,11 +104,12 @@ class GenerateConversationEmbeddings implements ShouldQueue
 
         // Truncate if too long for embedding API
         if (strlen($text) > self::MAX_EMBED_TEXT_LENGTH) {
+            $originalLength = strlen($text);
             $text = Str::limit($text, self::MAX_EMBED_TEXT_LENGTH, '...');
             Log::channel('embeddings')->info('GenerateConversationEmbeddings: Truncated long text', [
                 'conversation_id' => $this->conversation->id,
                 'turn_number' => $turnNumber,
-                'original_length' => strlen($text),
+                'original_length' => $originalLength,
             ]);
         }
 
@@ -257,8 +258,10 @@ class GenerateConversationEmbeddings implements ShouldQueue
             $content = $message->content;
 
             if ($message->role === 'user') {
-                if (is_string($content)) {
-                    $userText = $content;
+                // Use model helper so both string and block-array formats work
+                $text = $message->getTextContent();
+                if ($text !== '') {
+                    $userText = $text;
                 }
             } elseif ($message->role === 'assistant') {
                 if (is_string($content)) {

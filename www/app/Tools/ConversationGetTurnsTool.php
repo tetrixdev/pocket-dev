@@ -130,7 +130,11 @@ CLI;
 
             foreach ($messages as $message) {
                 if ($message->role === 'user') {
-                    $userText = is_string($message->content) ? $message->content : null;
+                    // Handle both string and block-array formats consistently
+                    $text = $message->getTextContent();
+                    if ($text !== '') {
+                        $userText = $text;
+                    }
                 } elseif ($message->role === 'assistant') {
                     $assistantContent[] = $this->formatAssistantContent($message->content);
                 }
