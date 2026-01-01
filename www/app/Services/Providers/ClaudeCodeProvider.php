@@ -365,6 +365,11 @@ class ClaudeCodeProvider implements AIProviderInterface
             'sessionId' => null,
             'totalCost' => null,
             'gotStreamEvents' => false, // Track if we got stream_events (to skip duplicate assistant message)
+            // Token tracking for context window calculation
+            'inputTokens' => 0,
+            'outputTokens' => 0,
+            'cacheCreationTokens' => 0,
+            'cacheReadTokens' => 0,
         ];
 
         try {
@@ -427,9 +432,16 @@ class ClaudeCodeProvider implements AIProviderInterface
                 $conversation->save();
             }
 
-            // Emit cost if available
-            if ($state['totalCost'] !== null) {
-                yield StreamEvent::usage(0, 0, null, null, $state['totalCost']);
+            // Emit usage event with tokens and cost
+            // Only emit if we have either cost or token data
+            if ($state['totalCost'] !== null || $state['inputTokens'] > 0) {
+                yield StreamEvent::usage(
+                    $state['inputTokens'],
+                    $state['outputTokens'],
+                    $state['cacheCreationTokens'] ?: null,
+                    $state['cacheReadTokens'] ?: null,
+                    $state['totalCost']
+                );
             }
 
             // Close pipes before proc_close (required order)
@@ -941,8 +953,24 @@ class ClaudeCodeProvider implements AIProviderInterface
 
             case 'message_start':
             case 'message_delta':
+                // Extract usage data from message events
+                // Claude Code reports: input_tokens (new) + cache_creation + cache_read = total context
+                $message = $event['message'] ?? [];
+                $usage = $message['usage'] ?? [];
+                if (!empty($usage)) {
+                    // Calculate total context tokens (all input types combined)
+                    // This includes: system prompt, CLAUDE.md, conversation history, tools
+                    $state['inputTokens'] = ($usage['input_tokens'] ?? 0)
+                        + ($usage['cache_creation_input_tokens'] ?? 0)
+                        + ($usage['cache_read_input_tokens'] ?? 0);
+                    $state['outputTokens'] = $usage['output_tokens'] ?? 0;
+                    $state['cacheCreationTokens'] = $usage['cache_creation_input_tokens'] ?? 0;
+                    $state['cacheReadTokens'] = $usage['cache_read_input_tokens'] ?? 0;
+                }
+                break;
+
             case 'message_stop':
-                // Message lifecycle events - ignore, we handle content blocks
+                // Message complete - no action needed
                 break;
         }
     }

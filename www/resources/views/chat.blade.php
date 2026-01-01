@@ -161,6 +161,8 @@
                               }"></span>
                         <span x-text="currentAgent?.name || 'Select Agent'" class="underline decoration-gray-600 hover:decoration-gray-400"></span>
                     </button>
+                    {{-- Context window progress bar --}}
+                    <x-chat.context-progress />
                 </div>
                 <a href="{{ route('config.index') }}" class="text-gray-300 hover:text-white p-2" title="Settings">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -332,6 +334,12 @@
                 outputTokens: 0,
                 cacheCreationTokens: 0,
                 cacheReadTokens: 0,
+
+                // Context window tracking
+                contextWindowSize: 0,
+                lastContextTokens: 0,
+                contextPercentage: 0,
+                contextWarningLevel: 'safe',
 
                 // Per-message breakdown
                 breakdownMessage: null,
@@ -854,6 +862,7 @@
                     this.cacheReadTokens = 0;
                     this.isStreaming = false;
                     this.lastEventIndex = 0;
+                    this.resetContextTracking();
 
                     // Clear URL to base path
                     this.updateUrl(null);
@@ -947,6 +956,16 @@
                         }
 
                         this.totalTokens = this.inputTokens + this.outputTokens;
+
+                        // Load context window tracking data
+                        if (data.context) {
+                            this.contextWindowSize = data.context.context_window_size || 0;
+                            this.lastContextTokens = data.context.last_context_tokens || 0;
+                            this.contextPercentage = data.context.usage_percentage || 0;
+                            this.contextWarningLevel = data.context.warning_level || 'safe';
+                        } else {
+                            this.resetContextTracking();
+                        }
 
                         // Parse messages for display
                         if (data.conversation?.messages) {
@@ -1739,6 +1758,16 @@
                                 // Use server-calculated cost
                                 this.sessionCost += cost;
 
+                                // Update context window tracking
+                                if (event.metadata.context_window_size) {
+                                    this.contextWindowSize = event.metadata.context_window_size;
+                                }
+                                if (event.metadata.context_percentage !== undefined) {
+                                    this.contextPercentage = event.metadata.context_percentage;
+                                    this.lastContextTokens = input + output;
+                                    this.updateContextWarningLevel();
+                                }
+
                                 // Store in turn state for message update on done
                                 state.turnCost = cost;
                                 state.turnInputTokens = input;
@@ -2063,6 +2092,39 @@
                     const d = new Date(ts);
                     return d.toLocaleDateString('en-GB').replace(/\//g, '-') + ' ' +
                            d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                },
+
+                // Context window tracking helpers
+                getContextBarColorClass() {
+                    switch (this.contextWarningLevel) {
+                        case 'danger': return 'bg-red-500';
+                        case 'warning': return 'bg-yellow-500';
+                        default: return 'bg-blue-500';
+                    }
+                },
+
+                formatContextUsage() {
+                    if (!this.contextWindowSize) return 'Context: --';
+                    const used = (this.lastContextTokens / 1000).toFixed(0);
+                    const total = (this.contextWindowSize / 1000).toFixed(0);
+                    return `${used}k / ${total}k tokens`;
+                },
+
+                updateContextWarningLevel() {
+                    if (this.contextPercentage >= 90) {
+                        this.contextWarningLevel = 'danger';
+                    } else if (this.contextPercentage >= 75) {
+                        this.contextWarningLevel = 'warning';
+                    } else {
+                        this.contextWarningLevel = 'safe';
+                    }
+                },
+
+                resetContextTracking() {
+                    this.contextWindowSize = 0;
+                    this.lastContextTokens = 0;
+                    this.contextPercentage = 0;
+                    this.contextWarningLevel = 'safe';
                 },
 
                 copyMessageContent(msg) {

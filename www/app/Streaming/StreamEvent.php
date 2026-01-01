@@ -99,15 +99,26 @@ class StreamEvent
         int $outputTokens,
         ?int $cacheCreation = null,
         ?int $cacheRead = null,
-        ?float $cost = null
+        ?float $cost = null,
+        ?int $contextWindowSize = null
     ): self {
-        return new self(self::USAGE, null, null, array_filter([
+        $metadata = array_filter([
             'input_tokens' => $inputTokens,
             'output_tokens' => $outputTokens,
             'cache_creation_tokens' => $cacheCreation,
             'cache_read_tokens' => $cacheRead,
             'cost' => $cost,
-        ], fn($v) => $v !== null));
+            'context_window_size' => $contextWindowSize,
+        ], fn($v) => $v !== null);
+
+        // Calculate context percentage if we have both tokens and window size
+        // Uses input + output for better estimate (slightly overestimates due to thinking tokens)
+        if ($inputTokens > 0 && $contextWindowSize > 0) {
+            $totalContext = $inputTokens + $outputTokens;
+            $metadata['context_percentage'] = min(100, round(($totalContext / $contextWindowSize) * 100, 1));
+        }
+
+        return new self(self::USAGE, null, null, $metadata);
     }
 
     public static function done(string $stopReason): self
