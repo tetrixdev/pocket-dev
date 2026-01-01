@@ -633,6 +633,13 @@
                                 return;
                             }
                             this.debugLog('Agent switched on backend', { agentId: agent.id, conversation: this.currentConversationUuid });
+
+                            // Update the conversations array so sidebar shows correct agent
+                            const convIndex = this.conversations.findIndex(c => c.uuid === this.currentConversationUuid);
+                            if (convIndex !== -1) {
+                                this.conversations[convIndex].agent = { id: agent.id, name: agent.name };
+                                this.conversations[convIndex].agent_id = agent.id;
+                            }
                         } catch (err) {
                             console.error('Error switching agent:', err);
                             this.errorMessage = 'Failed to switch agent. Please try again.';
