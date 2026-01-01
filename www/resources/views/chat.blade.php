@@ -2039,13 +2039,18 @@
                             content += `\n\nResult:\n${msg.toolResult}`;
                         }
                     }
-                    navigator.clipboard.writeText(content);
-                    this.copiedMessageId = msg.id;
-                    setTimeout(() => {
-                        if (this.copiedMessageId === msg.id) {
-                            this.copiedMessageId = null;
-                        }
-                    }, 1500);
+                    navigator.clipboard.writeText(content)
+                        .then(() => {
+                            this.copiedMessageId = msg.id;
+                            setTimeout(() => {
+                                if (this.copiedMessageId === msg.id) {
+                                    this.copiedMessageId = null;
+                                }
+                            }, 1500);
+                        })
+                        .catch(err => {
+                            console.error('Failed to copy:', err);
+                        });
                 },
 
                 formatToolContent(msg) {

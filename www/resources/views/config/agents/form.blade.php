@@ -583,13 +583,18 @@
             },
 
             copySectionContent(section, idx) {
-                navigator.clipboard.writeText(section.content);
-                this.copiedSectionIdx = idx;
-                setTimeout(() => {
-                    if (this.copiedSectionIdx === idx) {
-                        this.copiedSectionIdx = null;
-                    }
-                }, 1500);
+                navigator.clipboard.writeText(section.content)
+                    .then(() => {
+                        this.copiedSectionIdx = idx;
+                        setTimeout(() => {
+                            if (this.copiedSectionIdx === idx) {
+                                this.copiedSectionIdx = null;
+                            }
+                        }, 1500);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy:', err);
+                    });
             }
         };
     }
