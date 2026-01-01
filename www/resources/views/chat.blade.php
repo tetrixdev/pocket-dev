@@ -1033,6 +1033,7 @@
                             outputTokens: msgOutputTokens,
                             cacheCreationTokens: msgCacheCreation,
                             cacheReadTokens: msgCacheRead,
+                            agent: dbMsg.agent,
                             turn_number: dbMsg.turn_number
                         });
                     } else if (Array.isArray(content)) {
@@ -1052,6 +1053,7 @@
                                     outputTokens: msgOutputTokens,
                                     cacheCreationTokens: msgCacheCreation,
                                     cacheReadTokens: msgCacheRead,
+                                    agent: dbMsg.agent,
                                     turn_number: dbMsg.turn_number
                                 });
                             }
@@ -1079,6 +1081,7 @@
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
                                     cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
                                     turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'thinking') {
@@ -1094,6 +1097,7 @@
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
                                     cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
                                     turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'tool_use') {
@@ -1113,6 +1117,7 @@
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
                                     cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
                                     turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'tool_result' && block.tool_use_id) {
@@ -1722,7 +1727,8 @@
                                     outputTokens: state.turnOutputTokens,
                                     cacheCreationTokens: state.turnCacheCreationTokens,
                                     cacheReadTokens: state.turnCacheReadTokens,
-                                    model: this.model
+                                    model: this.model,
+                                    agent: this.currentAgent
                                 };
                             }
                             break;
