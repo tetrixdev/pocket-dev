@@ -621,11 +621,14 @@
 
                             if (!response.ok) {
                                 console.error('Failed to switch agent on backend:', response.status);
-                            } else {
-                                this.debugLog('Agent switched on backend', { agentId: agent.id, conversation: this.currentConversationUuid });
+                                this.errorMessage = 'Failed to switch agent. Please try again.';
+                                return;
                             }
+                            this.debugLog('Agent switched on backend', { agentId: agent.id, conversation: this.currentConversationUuid });
                         } catch (err) {
                             console.error('Error switching agent:', err);
+                            this.errorMessage = 'Failed to switch agent. Please try again.';
+                            return;
                         }
                     }
 
