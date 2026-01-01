@@ -113,9 +113,6 @@ class ToolRegistry
     public function getInstructions(?array $allowedTools = null): string
     {
         $instructions = [];
-        $allowedSlugs = $allowedTools !== null
-            ? array_map('strtolower', $allowedTools)
-            : null;
 
         foreach ($this->all() as $tool) {
             if ($tool->instructions === null) {
@@ -123,10 +120,8 @@ class ToolRegistry
             }
 
             // Filter by allowed tools if specified (case-insensitive)
-            if ($allowedSlugs !== null) {
-                if (!in_array(strtolower($tool->getSlug()), $allowedSlugs, true)) {
-                    continue;
-                }
+            if (!ToolFilterHelper::isAllowed($tool->getSlug(), $allowedTools)) {
+                continue;
             }
 
             $instructions[] = "## {$tool->name} Tool\n\n{$tool->instructions}";

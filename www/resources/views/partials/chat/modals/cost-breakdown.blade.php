@@ -1,7 +1,13 @@
 {{-- Message Details Modal (per-message) --}}
-<x-modal show="showCostBreakdown" title="Message Details" max-width="lg">
+<x-modal show="showMessageDetails" title="Message Details" max-width="lg">
     <template x-if="breakdownMessage">
-        <div x-data="{ msgModel: breakdownMessage.model || model, msgPricing: getPricing(breakdownMessage.model || model) }">
+        <div x-data="{
+            msgModel: breakdownMessage.model || model,
+            msgPricing: getPricing(breakdownMessage.model || model),
+            calcCost(tokens, rate) {
+                return ((tokens || 0) * rate / 1000000).toFixed(6);
+            }
+        }">
             {{-- Agent row (if exists) --}}
             <template x-if="breakdownMessage.agent">
                 <div class="mb-4">
@@ -18,7 +24,7 @@
                 <div class="text-gray-200 font-mono text-sm bg-gray-900 px-3 py-2 rounded flex justify-between items-center">
                     <span x-text="msgPricing.name || msgModel"></span>
                     <template x-if="breakdownMessage.cost">
-                        <button @click="openPricingForModel(msgModel); showCostBreakdown = false"
+                        <button @click="openPricingForModel(msgModel); showMessageDetails = false"
                                 class="text-xs text-blue-400 hover:text-blue-300">
                             Edit pricing
                         </button>
@@ -36,7 +42,7 @@
                         </span>
                         <div class="flex gap-4">
                             <span class="text-gray-200 font-mono" x-text="(breakdownMessage.inputTokens || 0).toLocaleString()"></span>
-                            <span class="text-green-400 font-mono min-w-[80px] text-right" x-text="'$' + (((breakdownMessage.inputTokens || 0) * msgPricing.input) / 1000000).toFixed(6)"></span>
+                            <span class="text-green-400 font-mono min-w-[80px] text-right" x-text="'$' + calcCost(breakdownMessage.inputTokens, msgPricing.input)"></span>
                         </div>
                     </div>
 
@@ -47,7 +53,7 @@
                         </span>
                         <div class="flex gap-4">
                             <span class="text-gray-200 font-mono" x-text="(breakdownMessage.cacheCreationTokens || 0).toLocaleString()"></span>
-                            <span class="text-green-400 font-mono min-w-[80px] text-right" x-text="'$' + (((breakdownMessage.cacheCreationTokens || 0) * msgPricing.cacheWrite) / 1000000).toFixed(6)"></span>
+                            <span class="text-green-400 font-mono min-w-[80px] text-right" x-text="'$' + calcCost(breakdownMessage.cacheCreationTokens, msgPricing.cacheWrite)"></span>
                         </div>
                     </div>
 
@@ -58,7 +64,7 @@
                         </span>
                         <div class="flex gap-4">
                             <span class="text-gray-200 font-mono" x-text="(breakdownMessage.cacheReadTokens || 0).toLocaleString()"></span>
-                            <span class="text-green-400 font-mono min-w-[80px] text-right" x-text="'$' + (((breakdownMessage.cacheReadTokens || 0) * msgPricing.cacheRead) / 1000000).toFixed(6)"></span>
+                            <span class="text-green-400 font-mono min-w-[80px] text-right" x-text="'$' + calcCost(breakdownMessage.cacheReadTokens, msgPricing.cacheRead)"></span>
                         </div>
                     </div>
 
@@ -69,7 +75,7 @@
                         </span>
                         <div class="flex gap-4">
                             <span class="text-gray-200 font-mono" x-text="(breakdownMessage.outputTokens || 0).toLocaleString()"></span>
-                            <span class="text-green-400 font-mono min-w-[80px] text-right" x-text="'$' + (((breakdownMessage.outputTokens || 0) * msgPricing.output) / 1000000).toFixed(6)"></span>
+                            <span class="text-green-400 font-mono min-w-[80px] text-right" x-text="'$' + calcCost(breakdownMessage.outputTokens, msgPricing.output)"></span>
                         </div>
                     </div>
 
@@ -107,7 +113,7 @@
         </div>
     </template>
 
-    <x-button variant="primary" full-width @click="showCostBreakdown = false">
+    <x-button variant="primary" full-width @click="showMessageDetails = false">
         Close
     </x-button>
 </x-modal>

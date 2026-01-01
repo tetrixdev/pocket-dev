@@ -346,6 +346,7 @@ class ConfigController extends Controller
                 'codex_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'allowed_tools' => 'nullable|array',
+                'allowed_tools.*' => 'string',
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
@@ -362,7 +363,7 @@ class ConfigController extends Controller
             // Normalize allowed_tools to lowercase for consistent matching
             $allowedTools = $validated['allowed_tools'] ?? null;
             if (is_array($allowedTools)) {
-                $allowedTools = array_map('strtolower', $allowedTools);
+                $allowedTools = array_map('mb_strtolower', $allowedTools);
             }
 
             Agent::create([
@@ -427,6 +428,7 @@ class ConfigController extends Controller
                 'codex_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'allowed_tools' => 'nullable|array',
+                'allowed_tools.*' => 'string',
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
@@ -443,7 +445,7 @@ class ConfigController extends Controller
             // Normalize allowed_tools to lowercase for consistent matching
             $allowedTools = $validated['allowed_tools'] ?? null;
             if (is_array($allowedTools)) {
-                $allowedTools = array_map('strtolower', $allowedTools);
+                $allowedTools = array_map('mb_strtolower', $allowedTools);
             }
 
             $agent->update([

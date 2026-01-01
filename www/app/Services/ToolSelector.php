@@ -173,12 +173,7 @@ class ToolSelector
         $tools = $this->getToolsForSystemPrompt($provider);
 
         // Filter by agent's allowed tools if specified (case-insensitive)
-        if ($allowedTools !== null) {
-            $allowedSlugs = array_map('strtolower', $allowedTools);
-            $tools = $tools->filter(function (Tool $tool) use ($allowedSlugs) {
-                return in_array(strtolower($tool->getSlug()), $allowedSlugs, true);
-            });
-        }
+        $tools = ToolFilterHelper::filterCollection($tools, $allowedTools);
 
         if ($tools->isEmpty()) {
             return '';

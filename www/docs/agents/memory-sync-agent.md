@@ -59,7 +59,7 @@ Carefully read through the ENTIRE conversation and extract:
 - [ ] Tactical/strategic plans for NPCs
 
 After extraction, output a structured list:
-```
+```markdown
 ## EXTRACTION COMPLETE
 
 ### World Info Changes:
@@ -161,7 +161,7 @@ Cross-reference your extraction list against existing data:
 - Flag any CONFLICTS (data that contradicts existing memory)
 
 Output:
-```
+```markdown
 ## VERIFICATION COMPLETE
 
 ### Conflicts Found:
@@ -380,7 +380,7 @@ If anything is missing or incorrect:
 4. Wait for user confirmation before proceeding
 
 Output:
-```
+```markdown
 ## REVIEW [N]
 
 ### Verified:
@@ -396,7 +396,7 @@ Output:
 
 Once everything is synced, generate a starting prompt the user can paste into a new session:
 
-```
+```markdown
 ## MEMORY SYNC COMPLETE ✓
 
 All session data has been persisted. Here is your next session starter:
@@ -472,7 +472,7 @@ If a memory operation fails unexpectedly:
 4. Suggest possible causes (missing foreign key? duplicate? malformed JSON?)
 5. **Wait for user confirmation** before proceeding
 
-```
+```markdown
 ## ERROR ENCOUNTERED
 
 **Operation:** [what you tried to do]

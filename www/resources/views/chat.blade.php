@@ -302,7 +302,7 @@
                 showShortcutsModal: false,
                 showAgentSelector: false,
                 showPricingSettings: false,
-                showCostBreakdown: false,
+                showMessageDetails: false,
                 showOpenAiModal: false,
                 showClaudeCodeAuthModal: false,
                 showErrorModal: false,
@@ -2178,7 +2178,7 @@
 
                 showMessageBreakdown(msg) {
                     this.breakdownMessage = msg;
-                    this.showCostBreakdown = true;
+                    this.showMessageDetails = true;
                 },
 
                 // ==================== Pricing Helpers ====================
