@@ -164,10 +164,16 @@ class ToolSelector
     /**
      * Build system prompt section for PocketDev tools.
      * For CLI providers, these are artisan commands to run via Bash.
+     *
+     * @param string $provider The provider type
+     * @param array|null $allowedTools Tool slugs to allow (null = all, [] = none, [...] = specific)
      */
-    public function buildSystemPrompt(string $provider): string
+    public function buildSystemPrompt(string $provider, ?array $allowedTools = null): string
     {
         $tools = $this->getToolsForSystemPrompt($provider);
+
+        // Filter by agent's allowed tools if specified (case-insensitive)
+        $tools = ToolFilterHelper::filterCollection($tools, $allowedTools);
 
         if ($tools->isEmpty()) {
             return '';

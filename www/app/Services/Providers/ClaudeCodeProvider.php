@@ -220,22 +220,34 @@ class ClaudeCodeProvider implements AIProviderInterface
     ): string {
         $model = $conversation->model ?? config('ai.providers.claude_code.default_model', 'opus');
 
-        // Get allowed tools from settings (Setting::get already decodes JSON)
-        $allowedTools = \App\Models\Setting::get('chat.claude_code_allowed_tools', []);
-        if (!is_array($allowedTools)) {
-            $allowedTools = [];
+        // Get global allowed tools setting (Setting::get already decodes JSON)
+        $globalAllowedTools = \App\Models\Setting::get('chat.claude_code_allowed_tools', []);
+        if (!is_array($globalAllowedTools)) {
+            $globalAllowedTools = [];
         }
+
+        // Get agent's allowed tools (if agent exists)
+        $agent = $conversation->agent;
+        $agentAllowedTools = $agent?->allowed_tools; // null = all, array = specific
 
         // Get enabled tools from NativeToolService (respects global disabled state)
         $nativeToolService = app(\App\Services\NativeToolService::class);
         $enabledToolNames = $nativeToolService->getEnabledToolNames('claude_code');
 
-        // Filter tools: if specific tools selected, intersect with enabled; otherwise use all enabled
-        if (!empty($allowedTools)) {
-            $allowedTools = array_values(array_intersect($allowedTools, $enabledToolNames));
-        } else {
-            // "All tools" means all enabled tools (excludes globally disabled)
-            $allowedTools = $enabledToolNames;
+        // Start with enabled tools (excludes globally disabled)
+        $allowedTools = $enabledToolNames;
+
+        // Filter by global setting if specified
+        if (!empty($globalAllowedTools)) {
+            $allowedTools = array_values(array_intersect($allowedTools, $globalAllowedTools));
+        }
+
+        // Filter by agent's allowed tools if specified (case-insensitive)
+        if ($agentAllowedTools !== null) {
+            $agentAllowedLower = array_map('strtolower', $agentAllowedTools);
+            $allowedTools = array_values(array_filter($allowedTools, function ($tool) use ($agentAllowedLower) {
+                return in_array(strtolower($tool), $agentAllowedLower, true);
+            }));
         }
 
         // Base command with streaming JSON output
@@ -270,8 +282,12 @@ class ClaudeCodeProvider implements AIProviderInterface
         }
 
         // Add system prompt if provided
+        // Using --system-prompt instead of --append-system-prompt because:
+        // 1. --append-system-prompt has a bug where it sends as user message (issue #4523)
+        // 2. --system-prompt correctly sets the system prompt, enabling agent switching
+        // Note: CLAUDE.md is still read separately by Claude Code
         if (!empty($options['system'])) {
-            $parts[] = '--append-system-prompt';
+            $parts[] = '--system-prompt';
             $parts[] = escapeshellarg($options['system']);
         }
 

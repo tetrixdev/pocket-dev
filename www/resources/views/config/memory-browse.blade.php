@@ -261,7 +261,9 @@
         Copied to clipboard!
     </div>
 </div>
+@endsection
 
+@push('scripts')
 <script>
 function updateQueryParam(key, value) {
     const url = new URL(window.location.href);
@@ -309,4 +311,4 @@ function tableBrowser() {
 [x-cloak] { display: none !important; }
 .bg-gray-750 { background-color: #2d3748; }
 </style>
-@endsection
+@endpush

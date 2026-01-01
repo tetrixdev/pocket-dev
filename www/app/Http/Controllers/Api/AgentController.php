@@ -213,27 +213,15 @@ class AgentController extends Controller
         }
 
         // 4. Tool instructions (for PocketDev tools)
-        $toolPrompt = $this->toolSelector->buildSystemPrompt($provider);
+        // Pass allowedTools to filter (null = all tools, array = specific tools)
+        $toolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools);
         if (!empty($toolPrompt)) {
-            // If specific tools are selected, filter the prompt
-            if ($allowedTools !== null && is_array($allowedTools)) {
-                $filteredToolPrompt = $this->filterToolPrompt($allowedTools, $provider);
-                if (!empty($filteredToolPrompt)) {
-                    $sections[] = [
-                        'title' => 'PocketDev Tools',
-                        'content' => $filteredToolPrompt,
-                        'source' => 'Dynamic (based on selected tools)',
-                        'collapsible' => true,
-                    ];
-                }
-            } else {
-                $sections[] = [
-                    'title' => 'PocketDev Tools',
-                    'content' => $toolPrompt,
-                    'source' => 'Dynamic (all tools enabled)',
-                    'collapsible' => true,
-                ];
-            }
+            $sections[] = [
+                'title' => 'PocketDev Tools',
+                'content' => $toolPrompt,
+                'source' => $allowedTools === null ? 'Dynamic (all tools enabled)' : 'Dynamic (based on selected tools)',
+                'collapsible' => true,
+            ];
         }
 
         // 5. Working directory context (example)
@@ -257,59 +245,4 @@ class AgentController extends Controller
         ]);
     }
 
-    /**
-     * Filter tool prompt to only include selected tools.
-     */
-    private function filterToolPrompt(array $allowedTools, string $provider): string
-    {
-        // Get the tool slugs that are allowed
-        $allowedSlugs = collect($allowedTools)->map(fn($t) => strtolower($t))->toArray();
-
-        // Get tools for the provider (excluding file_ops for Claude Code)
-        $tools = $this->toolSelector->getToolsForSystemPrompt($provider);
-
-        // Filter to only allowed tools
-        $filteredTools = $tools->filter(function (Tool $tool) use ($allowedSlugs) {
-            return in_array(strtolower($tool->getSlug()), $allowedSlugs);
-        });
-
-        if ($filteredTools->isEmpty()) {
-            return '';
-        }
-
-        // Build filtered system prompt
-        $lines = ["# PocketDev Tools\n"];
-
-        $providerEnum = Provider::tryFrom($provider);
-        if ($providerEnum?->isCliProvider()) {
-            $lines[] = "The following tools are available as artisan commands. Use your Bash tool to execute them.\n";
-        }
-
-        $grouped = $filteredTools->groupBy('category');
-
-        foreach ($grouped as $category => $categoryTools) {
-            $categoryTitle = match ($category) {
-                'memory' => 'Memory System',
-                'tools' => 'Tool Management',
-                'file_ops' => 'File Operations',
-                'custom' => 'Custom Tools',
-                default => ucfirst(str_replace('_', ' ', $category)),
-            };
-
-            $lines[] = "## {$categoryTitle}\n";
-
-            foreach ($categoryTools as $tool) {
-                if ($providerEnum?->isCliProvider()) {
-                    $artisanCommand = $tool->getArtisanCommand();
-                    $lines[] = "### {$artisanCommand}\n";
-                } else {
-                    $lines[] = "### {$tool->name}\n";
-                }
-                $lines[] = $tool->instructions ?? $tool->description;
-                $lines[] = "";
-            }
-        }
-
-        return implode("\n", $lines);
-    }
 }

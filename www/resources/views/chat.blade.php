@@ -302,7 +302,7 @@
                 showShortcutsModal: false,
                 showAgentSelector: false,
                 showPricingSettings: false,
-                showCostBreakdown: false,
+                showMessageDetails: false,
                 showOpenAiModal: false,
                 showClaudeCodeAuthModal: false,
                 showErrorModal: false,
@@ -599,8 +599,38 @@
                     return colors[providerKey] || 'bg-gray-500';
                 },
 
-                selectAgent(agent, closeModal = true) {
+                async selectAgent(agent, closeModal = true) {
                     if (!agent) return;
+
+                    // If we have an active conversation AND we're switching to a different agent,
+                    // update the backend first. This ensures the next message uses the new agent's
+                    // system prompt and tools.
+                    if (this.currentConversationUuid && agent.id !== this.currentAgentId) {
+                        try {
+                            const response = await fetch(`/api/conversations/${this.currentConversationUuid}/agent`, {
+                                method: 'PATCH',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                                },
+                                body: JSON.stringify({
+                                    agent_id: agent.id,
+                                    sync_settings: true
+                                })
+                            });
+
+                            if (!response.ok) {
+                                console.error('Failed to switch agent on backend:', response.status);
+                                this.errorMessage = 'Failed to switch agent. Please try again.';
+                                return;
+                            }
+                            this.debugLog('Agent switched on backend', { agentId: agent.id, conversation: this.currentConversationUuid });
+                        } catch (err) {
+                            console.error('Error switching agent:', err);
+                            this.errorMessage = 'Failed to switch agent. Please try again.';
+                            return;
+                        }
+                    }
 
                     this.currentAgentId = agent.id;
                     this.provider = agent.provider;
@@ -946,7 +976,7 @@
 
                             const agent = this.agents.find(a => a.id === data.conversation.agent_id);
                             if (agent) {
-                                this.selectAgent(agent, false);
+                                await this.selectAgent(agent, false);
                             } else {
                                 console.warn(`Agent ${data.conversation.agent_id} not found in available agents`);
                             }
@@ -1033,6 +1063,7 @@
                             outputTokens: msgOutputTokens,
                             cacheCreationTokens: msgCacheCreation,
                             cacheReadTokens: msgCacheRead,
+                            agent: dbMsg.agent,
                             turn_number: dbMsg.turn_number
                         });
                     } else if (Array.isArray(content)) {
@@ -1052,6 +1083,7 @@
                                     outputTokens: msgOutputTokens,
                                     cacheCreationTokens: msgCacheCreation,
                                     cacheReadTokens: msgCacheRead,
+                                    agent: dbMsg.agent,
                                     turn_number: dbMsg.turn_number
                                 });
                             }
@@ -1079,6 +1111,7 @@
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
                                     cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
                                     turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'thinking') {
@@ -1094,6 +1127,7 @@
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
                                     cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
                                     turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'tool_use') {
@@ -1113,6 +1147,7 @@
                                     outputTokens: isLast ? msgOutputTokens : null,
                                     cacheCreationTokens: isLast ? msgCacheCreation : null,
                                     cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
                                     turn_number: dbMsg.turn_number
                                 });
                             } else if (block.type === 'tool_result' && block.tool_use_id) {
@@ -1722,7 +1757,8 @@
                                     outputTokens: state.turnOutputTokens,
                                     cacheCreationTokens: state.turnCacheCreationTokens,
                                     cacheReadTokens: state.turnCacheReadTokens,
-                                    model: this.model
+                                    model: this.model,
+                                    agent: this.currentAgent
                                 };
                             }
                             break;
@@ -2145,7 +2181,7 @@
 
                 showMessageBreakdown(msg) {
                     this.breakdownMessage = msg;
-                    this.showCostBreakdown = true;
+                    this.showMessageDetails = true;
                 },
 
                 // ==================== Pricing Helpers ====================

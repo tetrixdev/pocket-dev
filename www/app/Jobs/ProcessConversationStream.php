@@ -186,11 +186,18 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Reload messages
         $conversation->load('messages');
 
-        // Check if previous assistant response was interrupted (for context injection)
-        $interruptionReminder = null;
+        // Check for context reminders (interruption, agent change) on first iteration only
+        $contextReminders = [];
         if ($iteration === 0) {
-            $interruptionReminder = $this->getInterruptionReminder($conversation);
+            if ($reminder = $this->getInterruptionReminder($conversation)) {
+                $contextReminders[] = $reminder;
+            }
+            if ($reminder = $this->getAgentChangeReminder($conversation)) {
+                $contextReminders[] = $reminder;
+            }
         }
+        // Combine all reminders into one string for injection
+        $combinedReminder = !empty($contextReminders) ? implode("\n\n", $contextReminders) : null;
 
         // Build system prompt with tool instructions
         // CLI providers (Claude Code, Codex) use artisan commands instead of native tools
@@ -206,7 +213,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $providerOptions = array_merge($options, [
             'system' => $systemPrompt,
             'tools' => $toolRegistry->getDefinitions(),
-            'interruption_reminder' => $interruptionReminder,
+            'interruption_reminder' => $combinedReminder,
         ]);
 
         // Track state for this turn
@@ -542,6 +549,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             'cache_read_tokens' => $cacheReadTokens,
             'stop_reason' => $stopReason,
             'model' => $conversation->model,
+            'agent_id' => $conversation->agent_id,
             'cost' => $cost,
         ]);
 
@@ -620,6 +628,41 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         }
 
         return null;
+    }
+
+    /**
+     * Check if the agent has changed since the last assistant message.
+     *
+     * Returns a system reminder if the conversation's current agent differs
+     * from the agent that produced the last assistant response.
+     */
+    private function getAgentChangeReminder(Conversation $conversation): ?string
+    {
+        // Get the last assistant message
+        $lastAssistantMessage = $conversation->messages()
+            ->where('role', 'assistant')
+            ->orderBy('created_at', 'desc')
+            ->first();
+
+        // No previous assistant message - nothing to compare
+        if (!$lastAssistantMessage) {
+            return null;
+        }
+
+        // Compare agent IDs
+        $previousAgentId = $lastAssistantMessage->agent_id;
+        $currentAgentId = $conversation->agent_id;
+
+        // No change if both null or same ID
+        if ($previousAgentId === $currentAgentId) {
+            return null;
+        }
+
+        // Agent has changed - build reminder with new agent name
+        $newAgent = $conversation->agent;
+        $agentName = $newAgent?->name ?? 'a different agent';
+
+        return "<system-reminder>The user has switched to the '{$agentName}' agent. Your system prompt and available tools may have changed. Briefly acknowledge this context shift and proceed with your new instructions. If you're unsure how to apply your instructions to the current context, ask the user what is expected of you.</system-reminder>";
     }
 
     /**

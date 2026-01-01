@@ -44,6 +44,7 @@ services:
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
       - GH_TOKEN=${GIT_TOKEN:-}
+      - HOST_PROJECT_PATH=${PWD}
       - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
     entrypoint: ["/entrypoint.sh"]
     ports:

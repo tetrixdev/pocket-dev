@@ -402,7 +402,9 @@
         </div>
     </div>
 </div>
+@endsection
 
+@push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
         integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
         crossorigin="anonymous"></script>
@@ -628,4 +630,4 @@
     .prose-preview blockquote { border-left: 3px solid #4b5563; padding-left: 1rem; margin: 0.5rem 0; color: #9ca3af; }
     .prose-preview hr { border-color: #374151; margin: 1rem 0; }
 </style>
-@endsection
+@endpush

@@ -133,7 +133,9 @@
     </x-tools.section>
 
 </div>
+@endsection
 
+@push('scripts')
 <script>
 function toolsManager() {
     return {
@@ -166,4 +168,4 @@ function toolsManager() {
     };
 }
 </script>
-@endsection
+@endpush
