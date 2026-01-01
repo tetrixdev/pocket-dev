@@ -312,6 +312,9 @@
 
                 // Conversation search
                 showSearchInput: false,
+
+                // Copy message state
+                copiedMessageId: null,
                 conversationSearchQuery: '',
                 conversationSearchResults: [],
                 conversationSearchLoading: false,
@@ -2024,6 +2027,25 @@
                     const d = new Date(ts);
                     return d.toLocaleDateString('en-GB').replace(/\//g, '-') + ' ' +
                            d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                },
+
+                copyMessageContent(msg) {
+                    let content = msg.content || '';
+                    if (msg.role === 'tool' && msg.toolInput) {
+                        // For tools, include tool name and input
+                        const input = typeof msg.toolInput === 'string' ? msg.toolInput : JSON.stringify(msg.toolInput, null, 2);
+                        content = `Tool: ${msg.toolName || 'Unknown'}\n\nInput:\n${input}`;
+                        if (msg.toolResult) {
+                            content += `\n\nResult:\n${msg.toolResult}`;
+                        }
+                    }
+                    navigator.clipboard.writeText(content);
+                    this.copiedMessageId = msg.id;
+                    setTimeout(() => {
+                        if (this.copiedMessageId === msg.id) {
+                            this.copiedMessageId = null;
+                        }
+                    }, 1500);
                 },
 
                 formatToolContent(msg) {

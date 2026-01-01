@@ -9,6 +9,14 @@
                 <x-icon.lightbulb class="hidden md:block w-4 h-4 text-purple-400" />
                 <span class="text-xs md:text-sm font-semibold text-purple-300">Thinking</span>
                 <span class="text-xs text-gray-500" x-text="formatTimestamp(msg.timestamp)"></span>
+                <button @click.stop="copyMessageContent(msg)" class="text-gray-500 hover:text-purple-300 transition-colors flex items-center" title="Copy thinking">
+                    <template x-if="copiedMessageId !== msg.id">
+                        <i class="fa-regular fa-copy text-xs"></i>
+                    </template>
+                    <template x-if="copiedMessageId === msg.id">
+                        <span class="text-green-400 text-xs font-medium">Copied!</span>
+                    </template>
+                </button>
                 <template x-if="msg.cost">
                     <span class="flex items-center gap-1 md:ml-2">
                         <span class="text-xs text-green-400" x-text="'$' + msg.cost.toFixed(4)"></span>

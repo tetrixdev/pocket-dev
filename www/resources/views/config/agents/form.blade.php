@@ -366,7 +366,22 @@
                                     <span class="font-medium text-white" x-text="section.title"></span>
                                     <span class="text-xs text-gray-500 ml-2" x-text="section.source"></span>
                                 </div>
-                                <span class="text-xs text-gray-400" x-text="section.content.length + ' chars'"></span>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs text-gray-400" x-text="section.content.length + ' chars'"></span>
+                                    <button
+                                        type="button"
+                                        @click="copySectionContent(section, idx)"
+                                        class="text-gray-400 hover:text-white transition-colors"
+                                        title="Copy section"
+                                    >
+                                        <template x-if="copiedSectionIdx !== idx">
+                                            <i class="fa-regular fa-copy text-sm"></i>
+                                        </template>
+                                        <template x-if="copiedSectionIdx === idx">
+                                            <span class="text-green-400 text-xs font-medium">Copied!</span>
+                                        </template>
+                                    </button>
+                                </div>
                             </div>
                             <div class="p-4 max-h-96 overflow-y-auto prose-preview" x-html="parseMarkdown(section.content)"></div>
                         </div>
@@ -421,6 +436,7 @@
             promptLoading: false,
             showPromptPreview: false,
             estimatedTokens: 0,
+            copiedSectionIdx: null,
 
             get availableModels() {
                 return this.modelsPerProvider[this.provider] || [];
@@ -564,6 +580,16 @@
                     console.error('Markdown parse error:', e);
                     return content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 }
+            },
+
+            copySectionContent(section, idx) {
+                navigator.clipboard.writeText(section.content);
+                this.copiedSectionIdx = idx;
+                setTimeout(() => {
+                    if (this.copiedSectionIdx === idx) {
+                        this.copiedSectionIdx = null;
+                    }
+                }, 1500);
             }
         };
     }

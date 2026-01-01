@@ -9,6 +9,14 @@
                 <x-icon.cog class="hidden md:block w-4 h-4 text-blue-400" />
                 <span class="text-xs md:text-sm font-semibold text-blue-300" x-text="msg.toolName || 'Tool'"></span>
                 <span class="text-xs text-gray-500" x-text="formatTimestamp(msg.timestamp)"></span>
+                <button @click.stop="copyMessageContent(msg)" class="text-gray-500 hover:text-blue-300 transition-colors flex items-center" title="Copy tool call">
+                    <template x-if="copiedMessageId !== msg.id">
+                        <i class="fa-regular fa-copy text-xs"></i>
+                    </template>
+                    <template x-if="copiedMessageId === msg.id">
+                        <span class="text-green-400 text-xs font-medium">Copied!</span>
+                    </template>
+                </button>
                 <template x-if="msg.cost">
                     <span class="flex items-center gap-1 md:ml-2">
                         <span class="text-xs text-blue-400" x-text="getModelDisplayName(msg.model)"></span>
