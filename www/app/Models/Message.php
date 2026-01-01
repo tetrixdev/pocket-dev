@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\Agent;
 
 class Message extends Model
 {
@@ -25,6 +26,7 @@ class Message extends Model
         'cache_read_tokens',
         'stop_reason',
         'model',
+        'agent_id',
         'cost',
         'sequence',
         'created_at',
@@ -61,6 +63,11 @@ class Message extends Model
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);
+    }
+
+    public function agent(): BelongsTo
+    {
+        return $this->belongsTo(Agent::class);
     }
 
     public function isUser(): bool

@@ -33,13 +33,17 @@ class SystemPromptBuilder
         $sections[] = $this->systemPromptService->get();
 
         // 3: Agent-specific system prompt (if conversation has an agent with custom prompt)
-        $agentPrompt = $this->getAgentSystemPrompt($conversation);
+        // Also fetch agent for tool filtering
+        $agent = $conversation->agent()->first();
+        $agentPrompt = $agent?->system_prompt;
         if (!empty($agentPrompt)) {
             $sections[] = $this->buildAgentSection($agentPrompt);
         }
 
         // 4: Tool instructions (from tools that have them)
-        $toolInstructions = $toolRegistry->getInstructions();
+        // Filter by agent's allowed_tools if specified
+        $allowedTools = $agent?->allowed_tools;
+        $toolInstructions = $toolRegistry->getInstructions($allowedTools);
         if (!empty($toolInstructions)) {
             $sections[] = $this->buildToolSection($toolInstructions);
         }
@@ -62,14 +66,18 @@ class SystemPromptBuilder
         $sections[] = $this->systemPromptService->get();
 
         // 3: Agent-specific system prompt (if conversation has an agent with custom prompt)
-        $agentPrompt = $this->getAgentSystemPrompt($conversation);
+        // Also fetch agent for tool filtering
+        $agent = $conversation->agent()->first();
+        $agentPrompt = $agent?->system_prompt;
         if (!empty($agentPrompt)) {
             $sections[] = $this->buildAgentSection($agentPrompt);
         }
 
         // 4: PocketDev tools (memory, tool management, user tools)
         // These are tools that don't have native CLI provider equivalents
-        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider);
+        // Filter by agent's allowed_tools if specified
+        $allowedTools = $agent?->allowed_tools;
+        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools);
         if (!empty($pocketDevToolPrompt)) {
             $sections[] = $pocketDevToolPrompt;
         }
@@ -78,22 +86,6 @@ class SystemPromptBuilder
         $sections[] = $this->buildContextSection($conversation);
 
         return implode("\n\n", array_filter($sections));
-    }
-
-    /**
-     * Get the agent's custom system prompt, if any.
-     * Fetches fresh from database to ensure latest agent settings are used.
-     */
-    private function getAgentSystemPrompt(Conversation $conversation): ?string
-    {
-        // Reload the agent relationship to get fresh data
-        $agent = $conversation->agent()->first();
-
-        if (!$agent) {
-            return null;
-        }
-
-        return $agent->system_prompt;
     }
 
     private function buildAgentSection(string $prompt): string

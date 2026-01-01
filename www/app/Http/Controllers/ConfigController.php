@@ -359,6 +359,12 @@ class ConfigController extends Controller
                     ->with('error', 'An agent with this name already exists');
             }
 
+            // Normalize allowed_tools to lowercase for consistent matching
+            $allowedTools = $validated['allowed_tools'] ?? null;
+            if (is_array($allowedTools)) {
+                $allowedTools = array_map('strtolower', $allowedTools);
+            }
+
             Agent::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
@@ -369,7 +375,7 @@ class ConfigController extends Controller
                 'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
                 'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
                 'response_level' => $validated['response_level'] ?? 1,
-                'allowed_tools' => $validated['allowed_tools'] ?? null,
+                'allowed_tools' => $allowedTools,
                 'system_prompt' => $validated['system_prompt'] ?? null,
                 'is_default' => $validated['is_default'] ?? false,
                 'enabled' => $validated['enabled'] ?? true,
@@ -434,6 +440,12 @@ class ConfigController extends Controller
                     ->with('error', 'An agent with this name already exists');
             }
 
+            // Normalize allowed_tools to lowercase for consistent matching
+            $allowedTools = $validated['allowed_tools'] ?? null;
+            if (is_array($allowedTools)) {
+                $allowedTools = array_map('strtolower', $allowedTools);
+            }
+
             $agent->update([
                 'name' => $validated['name'],
                 'slug' => $slug,
@@ -445,7 +457,7 @@ class ConfigController extends Controller
                 'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
                 'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
                 'response_level' => $validated['response_level'] ?? 1,
-                'allowed_tools' => $validated['allowed_tools'] ?? null,
+                'allowed_tools' => $allowedTools,
                 'system_prompt' => $validated['system_prompt'] ?? null,
                 'is_default' => $validated['is_default'] ?? false,
                 'enabled' => $validated['enabled'] ?? true,

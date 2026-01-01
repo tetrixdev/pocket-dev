@@ -78,6 +78,7 @@ Route::prefix('conversations/{conversation}')->group(function () {
     Route::get('stream-events', [ConversationController::class, 'streamEvents']);
     Route::post('archive', [ConversationController::class, 'archive']);
     Route::post('unarchive', [ConversationController::class, 'unarchive']);
+    Route::patch('agent', [ConversationController::class, 'switchAgent']);
 });
 
 /*

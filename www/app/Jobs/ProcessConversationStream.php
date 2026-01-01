@@ -542,6 +542,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             'cache_read_tokens' => $cacheReadTokens,
             'stop_reason' => $stopReason,
             'model' => $conversation->model,
+            'agent_id' => $conversation->agent_id,
             'cost' => $cost,
         ]);
 

@@ -119,7 +119,7 @@ class ConversationController extends Controller
      */
     public function show(Request $request, Conversation $conversation): JsonResponse
     {
-        $conversation->load(['messages', 'agent']);
+        $conversation->load(['messages.agent', 'agent']);
 
         return response()->json([
             'conversation' => $conversation,
@@ -139,7 +139,7 @@ class ConversationController extends Controller
             ->orderByDesc('last_activity_at');
 
         if ($request->boolean('include_messages')) {
-            $query->with('messages');
+            $query->with('messages.agent');
         }
 
         return response()->json($query->paginate(20));
@@ -449,6 +449,81 @@ class ConversationController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Abort signal sent',
+        ]);
+    }
+
+    /**
+     * Switch the agent for a conversation mid-conversation.
+     *
+     * Validates that the new agent uses the same provider as the current conversation.
+     * Optionally syncs agent settings (model, reasoning config) to the conversation.
+     */
+    public function switchAgent(Request $request, Conversation $conversation): JsonResponse
+    {
+        $validated = $request->validate([
+            'agent_id' => 'required|uuid|exists:agents,id',
+            'sync_settings' => 'nullable|boolean',
+        ]);
+
+        // Block if currently streaming
+        if ($this->streamManager->isStreaming($conversation->uuid)) {
+            return response()->json([
+                'error' => 'Cannot switch agent while conversation is streaming',
+            ], 409);
+        }
+
+        $newAgent = Agent::find($validated['agent_id']);
+
+        if (!$newAgent) {
+            return response()->json([
+                'error' => 'Agent not found',
+            ], 404);
+        }
+
+        if (!$newAgent->enabled) {
+            return response()->json([
+                'error' => 'Agent is disabled',
+            ], 400);
+        }
+
+        // Enforce same provider
+        if ($newAgent->provider !== $conversation->provider_type) {
+            return response()->json([
+                'error' => 'Cannot switch to agent with different provider',
+                'current_provider' => $conversation->provider_type,
+                'agent_provider' => $newAgent->provider,
+            ], 400);
+        }
+
+        $oldAgentId = $conversation->agent_id;
+        $oldAgent = $oldAgentId ? Agent::find($oldAgentId) : null;
+
+        // Update conversation
+        $updates = ['agent_id' => $newAgent->id];
+
+        // Optionally sync settings from new agent
+        if ($request->boolean('sync_settings', false)) {
+            $updates['model'] = $newAgent->model;
+            $updates['response_level'] = $newAgent->response_level;
+            $updates['anthropic_thinking_budget'] = $newAgent->anthropic_thinking_budget;
+            $updates['openai_reasoning_effort'] = $newAgent->openai_reasoning_effort;
+            $updates['openai_compatible_reasoning_effort'] = $newAgent->openai_compatible_reasoning_effort;
+            $updates['claude_code_thinking_tokens'] = $newAgent->claude_code_thinking_tokens;
+        }
+
+        $conversation->update($updates);
+
+        return response()->json([
+            'success' => true,
+            'old_agent' => $oldAgent ? [
+                'id' => $oldAgent->id,
+                'name' => $oldAgent->name,
+            ] : null,
+            'new_agent' => [
+                'id' => $newAgent->id,
+                'name' => $newAgent->name,
+            ],
+            'settings_synced' => $request->boolean('sync_settings', false),
         ]);
     }
 

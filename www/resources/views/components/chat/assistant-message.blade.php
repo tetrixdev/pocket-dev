@@ -13,9 +13,7 @@
                         <span class="text-green-400 text-xs font-medium">Copied!</span>
                     </template>
                 </button>
-                <template x-if="msg.cost">
-                    <x-chat.cost-badge />
-                </template>
+                <x-chat.cost-badge />
             </div>
         </div>
     </div>

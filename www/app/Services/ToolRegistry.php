@@ -107,15 +107,29 @@ class ToolRegistry
     /**
      * Get combined instructions from all tools.
      * Only includes tools that have instructions.
+     *
+     * @param array|null $allowedTools Tool slugs to allow (null = all, [] = none, [...] = specific)
      */
-    public function getInstructions(): string
+    public function getInstructions(?array $allowedTools = null): string
     {
         $instructions = [];
+        $allowedSlugs = $allowedTools !== null
+            ? array_map('strtolower', $allowedTools)
+            : null;
 
         foreach ($this->all() as $tool) {
-            if ($tool->instructions !== null) {
-                $instructions[] = "## {$tool->name} Tool\n\n{$tool->instructions}";
+            if ($tool->instructions === null) {
+                continue;
             }
+
+            // Filter by allowed tools if specified (case-insensitive)
+            if ($allowedSlugs !== null) {
+                if (!in_array(strtolower($tool->getSlug()), $allowedSlugs, true)) {
+                    continue;
+                }
+            }
+
+            $instructions[] = "## {$tool->name} Tool\n\n{$tool->instructions}";
         }
 
         return implode("\n\n", $instructions);
