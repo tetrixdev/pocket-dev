@@ -976,7 +976,7 @@
 
                             const agent = this.agents.find(a => a.id === data.conversation.agent_id);
                             if (agent) {
-                                this.selectAgent(agent, false);
+                                await this.selectAgent(agent, false);
                             } else {
                                 console.warn(`Agent ${data.conversation.agent_id} not found in available agents`);
                             }
