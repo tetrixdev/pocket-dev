@@ -999,6 +999,9 @@
                             } else {
                                 console.warn(`Agent ${data.conversation.agent_id} not found in available agents`);
                             }
+                        } else {
+                            // Conversation has no agent - reset agent state
+                            this.currentAgentId = null;
                         }
 
                         // Load provider-specific reasoning settings from conversation
