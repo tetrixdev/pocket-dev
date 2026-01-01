@@ -282,8 +282,12 @@ class ClaudeCodeProvider implements AIProviderInterface
         }
 
         // Add system prompt if provided
+        // Using --system-prompt instead of --append-system-prompt because:
+        // 1. --append-system-prompt has a bug where it sends as user message (issue #4523)
+        // 2. --system-prompt correctly sets the system prompt, enabling agent switching
+        // Note: CLAUDE.md is still read separately by Claude Code
         if (!empty($options['system'])) {
-            $parts[] = '--append-system-prompt';
+            $parts[] = '--system-prompt';
             $parts[] = escapeshellarg($options['system']);
         }
 
