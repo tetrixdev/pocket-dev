@@ -570,7 +570,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     $contextWindow = $provider->getContextWindow($conversation->model);
                     $conversation->updateContextWindowSize($contextWindow);
                 } catch (\Exception $e) {
-                    // Model not found - skip
+                    // Model not found or provider error - skip (will retry on next turn)
+                    Log::debug('ProcessConversationStream: Failed to get context window', [
+                        'conversation' => $this->conversationUuid,
+                        'model' => $conversation->model,
+                        'provider' => $conversation->provider_type,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
             }
         }

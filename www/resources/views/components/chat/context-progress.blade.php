@@ -6,7 +6,9 @@
 
 @if($compact)
 {{-- Compact version for mobile --}}
-<div class="flex items-center gap-1.5" x-show="contextWindowSize > 0" x-cloak>
+<div class="flex items-center gap-1.5" x-show="contextWindowSize > 0" x-cloak
+     role="progressbar" :aria-valuenow="contextPercentage" aria-valuemin="0" aria-valuemax="100"
+     :aria-label="'Context window usage: ' + contextPercentage.toFixed(0) + '%'">
     <div class="relative w-16 h-3 bg-gray-700 rounded-full overflow-hidden"
          :title="formatContextUsage()">
         {{-- Progress fill --}}
@@ -20,7 +22,9 @@
 </div>
 @else
 {{-- Standard version for desktop --}}
-<div class="flex items-center gap-2" x-show="contextWindowSize > 0" x-cloak>
+<div class="flex items-center gap-2" x-show="contextWindowSize > 0" x-cloak
+     role="progressbar" :aria-valuenow="contextPercentage" aria-valuemin="0" aria-valuemax="100"
+     :aria-label="'Context window usage: ' + contextPercentage.toFixed(0) + '%'">
     <div class="relative w-20 h-4 bg-gray-700 rounded-full overflow-hidden cursor-help"
          :title="formatContextUsage()">
         {{-- Progress fill --}}

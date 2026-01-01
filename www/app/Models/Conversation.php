@@ -169,7 +169,7 @@ class Conversation extends Model
      */
     public function getContextUsagePercentage(): ?float
     {
-        if (!$this->last_context_tokens || !$this->context_window_size) {
+        if ($this->last_context_tokens === null || $this->context_window_size === null || $this->context_window_size === 0) {
             return null;
         }
 

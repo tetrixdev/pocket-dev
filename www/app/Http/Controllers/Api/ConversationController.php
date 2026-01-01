@@ -109,7 +109,13 @@ class ConversationController extends Controller
             $contextWindow = $provider->getContextWindow($conversation->model);
             $conversation->updateContextWindowSize($contextWindow);
         } catch (\Exception $e) {
-            // Model not found in config - use default (will be updated when we get actual token data)
+            // Model not found or config error - will be updated when we get actual token data
+            \Log::debug('ConversationController: Failed to initialize context window', [
+                'conversation' => $conversation->uuid,
+                'model' => $conversation->model,
+                'provider' => $conversation->provider_type,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return response()->json([
@@ -241,7 +247,13 @@ class ConversationController extends Controller
                     $contextWindow = $provider->getContextWindow($updates['model']);
                     $conversation->updateContextWindowSize($contextWindow);
                 } catch (\Exception $e) {
-                    // Model not found in config - will be updated when we get actual token data
+                    // Model not found or config error - will be updated when we get actual token data
+                    \Log::debug('ConversationController: Failed to update context window on model change', [
+                        'conversation' => $conversation->uuid,
+                        'model' => $updates['model'],
+                        'provider' => $conversation->provider_type,
+                        'error' => $e->getMessage(),
+                    ]);
                 }
             }
         }

@@ -1764,7 +1764,7 @@
                                 }
                                 if (event.metadata.context_percentage !== undefined) {
                                     this.contextPercentage = event.metadata.context_percentage;
-                                    this.lastContextTokens = input;
+                                    this.lastContextTokens = input + output;
                                     this.updateContextWarningLevel();
                                 }
 
