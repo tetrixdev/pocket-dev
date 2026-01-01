@@ -992,8 +992,7 @@
                             this.model = data.conversation.model;
                         }
 
-                        // If conversation has an agent, select it
-                        // Defensive check: ensure agents are loaded before looking up
+                        // Set agent from conversation (don't use selectAgent which would PATCH backend)
                         if (data.conversation?.agent_id) {
                             // If agents not yet loaded, fetch them first
                             if (this.agents.length === 0) {
@@ -1002,9 +1001,13 @@
 
                             const agent = this.agents.find(a => a.id === data.conversation.agent_id);
                             if (agent) {
-                                await this.selectAgent(agent, false);
+                                // Set agent state directly - don't call selectAgent() as that
+                                // would try to PATCH the backend (designed for user-initiated switches)
+                                this.currentAgentId = agent.id;
+                                this.claudeCodeAllowedTools = agent.allowed_tools || [];
                             } else {
                                 console.warn(`Agent ${data.conversation.agent_id} not found in available agents`);
+                                this.currentAgentId = null;
                             }
                         } else {
                             // Conversation has no agent - reset agent state
