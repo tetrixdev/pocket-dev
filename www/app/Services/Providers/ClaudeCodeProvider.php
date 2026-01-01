@@ -624,13 +624,17 @@ class ClaudeCodeProvider implements AIProviderInterface
         $file->seek(PHP_INT_MAX);
         $lastLine = $file->key();
 
-        // Read backwards to find last non-empty line (including the last line)
+        // Read backwards to find last entry with a uuid field
+        // (skip queue-operation and other metadata entries that don't have uuid)
         for ($i = $lastLine; $i >= 0; $i--) {
             $file->seek($i);
             $line = trim($file->current());
             if (!empty($line)) {
                 $data = json_decode($line, true);
-                return $data['uuid'] ?? null;
+                if (isset($data['uuid'])) {
+                    return $data['uuid'];
+                }
+                // Continue searching if this entry has no uuid (e.g., queue-operation)
             }
         }
 
