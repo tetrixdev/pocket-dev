@@ -460,6 +460,12 @@ class ConversationController extends Controller
      */
     public function switchAgent(Request $request, Conversation $conversation): JsonResponse
     {
+        \Log::info('[switchAgent] Called', [
+            'conversation_uuid' => $conversation->uuid,
+            'current_agent_id' => $conversation->agent_id,
+            'request_data' => $request->all(),
+        ]);
+
         $validated = $request->validate([
             'agent_id' => 'required|uuid|exists:agents,id',
             'sync_settings' => 'nullable|boolean',
@@ -512,6 +518,13 @@ class ConversationController extends Controller
         }
 
         $conversation->update($updates);
+
+        \Log::info('[switchAgent] Updated', [
+            'conversation_uuid' => $conversation->uuid,
+            'old_agent_id' => $oldAgentId,
+            'new_agent_id' => $newAgent->id,
+            'updates' => $updates,
+        ]);
 
         return response()->json([
             'success' => true,

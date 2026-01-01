@@ -112,3 +112,9 @@ Route::post("/config/memory/snapshots/{filename}/restore", [MemoryController::cl
 Route::delete("/config/memory/snapshots/{filename}", [MemoryController::class, "deleteSnapshot"])->name("config.memory.snapshots.delete");
 Route::get("/config/memory/export", [MemoryController::class, "export"])->name("config.memory.export");
 Route::post("/config/memory/import", [MemoryController::class, "import"])->name("config.memory.import");
+
+// Developer tools (only available in local environment)
+if (app()->environment('local')) {
+    Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");
+    Route::post("/config/developer/force-recreate", [ConfigController::class, "forceRecreate"])->name("config.developer.force-recreate");
+}

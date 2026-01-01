@@ -599,8 +599,35 @@
                     return colors[providerKey] || 'bg-gray-500';
                 },
 
-                selectAgent(agent, closeModal = true) {
+                async selectAgent(agent, closeModal = true) {
                     if (!agent) return;
+
+                    // If we have an active conversation AND we're switching to a different agent,
+                    // update the backend first. This ensures the next message uses the new agent's
+                    // system prompt and tools.
+                    if (this.currentConversationUuid && agent.id !== this.currentAgentId) {
+                        try {
+                            const response = await fetch(`/api/conversations/${this.currentConversationUuid}/agent`, {
+                                method: 'PATCH',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                                },
+                                body: JSON.stringify({
+                                    agent_id: agent.id,
+                                    sync_settings: true
+                                })
+                            });
+
+                            if (!response.ok) {
+                                console.error('Failed to switch agent on backend:', response.status);
+                            } else {
+                                this.debugLog('Agent switched on backend', { agentId: agent.id, conversation: this.currentConversationUuid });
+                            }
+                        } catch (err) {
+                            console.error('Error switching agent:', err);
+                        }
+                    }
 
                     this.currentAgentId = agent.id;
                     this.provider = agent.provider;

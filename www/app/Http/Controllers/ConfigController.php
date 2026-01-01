@@ -1619,4 +1619,61 @@ class ConfigController extends Controller
             ], 500);
         }
     }
+
+    // =========================================================================
+    // DEVELOPER TOOLS (Local Environment Only)
+    // =========================================================================
+
+    /**
+     * Show developer tools page
+     */
+    public function showDeveloper(Request $request)
+    {
+        $request->session()->put('config_last_section', 'developer');
+
+        // Check for any conversations currently processing
+        $processingCount = \App\Models\Conversation::where('status', \App\Models\Conversation::STATUS_PROCESSING)->count();
+
+        return view('config.developer', [
+            'processingCount' => $processingCount,
+        ]);
+    }
+
+    /**
+     * Force recreate all Docker containers
+     */
+    public function forceRecreate(Request $request)
+    {
+        try {
+            $hostProjectPath = env('HOST_PROJECT_PATH');
+
+            if (empty($hostProjectPath)) {
+                throw new \RuntimeException('HOST_PROJECT_PATH environment variable is not set');
+            }
+
+            // Spawn a helper container that survives container restarts
+            $command = sprintf(
+                'docker run --rm -d ' .
+                '-v /var/run/docker.sock:/var/run/docker.sock ' .
+                '-v "%s:%s" ' .
+                '-w "%s" ' .
+                'docker:27-cli ' .
+                'docker compose up -d --force-recreate 2>&1',
+                $hostProjectPath,
+                $hostProjectPath,
+                $hostProjectPath
+            );
+
+            exec($command, $output, $returnCode);
+
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
+            }
+
+            return redirect()->back()->with('success', 'Force recreate initiated. Containers will restart shortly.');
+        } catch (\Exception $e) {
+            Log::error('Failed to force recreate containers', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to force recreate: ' . $e->getMessage());
+        }
+    }
 }
