@@ -65,6 +65,9 @@ Route::get('providers', [ConversationController::class, 'providers']);
 // Search conversations semantically (must be before resource route)
 Route::get('conversations/search', [ConversationSearchController::class, 'search']);
 
+// Latest activity timestamp for sidebar polling (must be before resource route)
+Route::get('conversations/latest-activity', [ConversationController::class, 'latestActivity']);
+
 // Resource routes: index, store, show, destroy
 Route::apiResource('conversations', ConversationController::class)
     ->only(['index', 'store', 'show', 'destroy']);

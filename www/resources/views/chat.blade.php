@@ -266,6 +266,8 @@
                 conversationsPage: 1,
                 conversationsLastPage: 1,
                 loadingMoreConversations: false,
+                cachedLatestActivity: null, // For sidebar polling
+                sidebarPollInterval: null, // Polling interval ID
                 currentConversationUuid: null,
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
@@ -412,6 +414,9 @@
 
                     // Load conversations list
                     await this.fetchConversations();
+
+                    // Start polling for sidebar updates
+                    this.startSidebarPolling();
 
                     // Check OpenAI key for voice transcription
                     await this.checkOpenAiKey();
@@ -779,8 +784,77 @@
                         this.conversations = data.data || [];
                         this.conversationsPage = data.current_page || 1;
                         this.conversationsLastPage = data.last_page || 1;
+
+                        // Update cached latest activity from first conversation
+                        if (this.conversations.length > 0) {
+                            this.cachedLatestActivity = this.conversations[0].last_activity_at;
+                        }
                     } catch (err) {
                         console.error('Failed to fetch conversations:', err);
+                    }
+                },
+
+                // Start polling for sidebar updates (every 30s)
+                startSidebarPolling() {
+                    // Clear any existing interval
+                    if (this.sidebarPollInterval) {
+                        clearInterval(this.sidebarPollInterval);
+                    }
+
+                    this.sidebarPollInterval = setInterval(() => {
+                        this.checkForSidebarUpdates();
+                    }, 30000); // 30 seconds
+                },
+
+                // Stop polling (e.g., on page unload)
+                stopSidebarPolling() {
+                    if (this.sidebarPollInterval) {
+                        clearInterval(this.sidebarPollInterval);
+                        this.sidebarPollInterval = null;
+                    }
+                },
+
+                // Check if sidebar needs refreshing
+                async checkForSidebarUpdates() {
+                    // Skip if search filter is active
+                    if (this.conversationSearchQuery) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/conversations/latest-activity');
+                        const data = await response.json();
+
+                        // If there's new activity, refresh the first page
+                        if (data.latest_activity_at && data.latest_activity_at !== this.cachedLatestActivity) {
+                            this.debugLog('Sidebar: new activity detected, refreshing');
+                            await this.refreshSidebar();
+                        }
+                    } catch (err) {
+                        console.error('Failed to check for sidebar updates:', err);
+                    }
+                },
+
+                // Refresh sidebar without losing scroll position or current selection
+                async refreshSidebar() {
+                    try {
+                        const response = await fetch('/api/conversations?working_directory=/var/www');
+                        const data = await response.json();
+                        const newConversations = data.data || [];
+
+                        // Update cached latest activity
+                        if (newConversations.length > 0) {
+                            this.cachedLatestActivity = newConversations[0].last_activity_at;
+                        }
+
+                        // Merge new conversations with existing (preserve any extra pages loaded)
+                        const existingUuids = new Set(newConversations.map(c => c.uuid));
+                        const extraConversations = this.conversations.filter(c => !existingUuids.has(c.uuid));
+
+                        // Replace first page, keep any extras from infinite scroll
+                        this.conversations = [...newConversations, ...extraConversations];
+                    } catch (err) {
+                        console.error('Failed to refresh sidebar:', err);
                     }
                 },
 
@@ -1288,6 +1362,7 @@
                         waitingForToolResults: new Set(),
                         abortPending: false,
                         abortSkipSync: false,
+                        startedAt: null, // Will be set from stream response
                     };
 
                     try {
@@ -1311,6 +1386,11 @@
                         if (!data.success) {
                             this.showError(data.error || 'Failed to start streaming');
                             return;
+                        }
+
+                        // Capture the stream start timestamp for accurate message times
+                        if (data.started_at) {
+                            this._streamState.startedAt = data.started_at;
                         }
 
                         // Connect to stream events SSE endpoint
@@ -1567,7 +1647,7 @@
                                 id: 'msg-' + Date.now() + '-thinking-' + thinkingBlockIndex,
                                 role: 'thinking',
                                 content: '',
-                                timestamp: new Date().toISOString(),
+                                timestamp: state.startedAt || new Date().toISOString(),
                                 collapsed: false
                             });
                             this.scrollToBottom();
@@ -1633,7 +1713,7 @@
                                 id: 'msg-' + Date.now() + '-text',
                                 role: 'assistant',
                                 content: '',
-                                timestamp: new Date().toISOString(),
+                                timestamp: state.startedAt || new Date().toISOString(),
                                 collapsed: false
                             });
                             this.scrollToBottom();
@@ -1683,7 +1763,7 @@
                                 toolInput: '',
                                 toolResult: null,
                                 content: '',
-                                timestamp: new Date().toISOString(),
+                                timestamp: state.startedAt || new Date().toISOString(),
                                 collapsed: false
                             });
                             this.scrollToBottom();
