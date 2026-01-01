@@ -351,13 +351,14 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     $turnCost = $cost;
                 }
 
-                // Emit enriched usage event with cost
+                // Emit enriched usage event with cost and context info
                 $enrichedEvent = StreamEvent::usage(
                     $inputTokens,
                     $outputTokens,
                     $cacheCreationTokens,
                     $cacheReadTokens,
-                    $cost
+                    $cost,
+                    $conversation->context_window_size
                 );
                 $streamManager->appendEvent($this->conversationUuid, $enrichedEvent);
                 continue;
@@ -554,6 +555,25 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ]);
 
         $conversation->addTokenUsage($inputTokens, $outputTokens);
+
+        // Update context window tracking
+        // Context estimate = input_tokens + output_tokens
+        // This slightly overestimates because thinking tokens (in output) are stripped
+        // from previous turns. But overestimating is safer than underestimating.
+        if ($inputTokens > 0) {
+            $conversation->updateContextUsage($inputTokens, $outputTokens);
+
+            // Ensure context_window_size is set (for existing conversations that don't have it)
+            if (!$conversation->context_window_size) {
+                $provider = app(\App\Services\ProviderFactory::class)->make($conversation->provider_type);
+                try {
+                    $contextWindow = $provider->getContextWindow($conversation->model);
+                    $conversation->updateContextWindowSize($contextWindow);
+                } catch (\Exception $e) {
+                    // Model not found - skip
+                }
+            }
+        }
 
         return $message;
     }

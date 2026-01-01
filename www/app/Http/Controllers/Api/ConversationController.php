@@ -104,6 +104,14 @@ class ConversationController extends Controller
 
         $conversation = Conversation::create($conversationData);
 
+        // Set initial context window size for the model
+        try {
+            $contextWindow = $provider->getContextWindow($conversation->model);
+            $conversation->updateContextWindowSize($contextWindow);
+        } catch (\Exception $e) {
+            // Model not found in config - use default (will be updated when we get actual token data)
+        }
+
         return response()->json([
             'conversation' => $conversation,
             'provider' => [
@@ -123,6 +131,12 @@ class ConversationController extends Controller
 
         return response()->json([
             'conversation' => $conversation,
+            'context' => [
+                'last_context_tokens' => $conversation->last_context_tokens,
+                'context_window_size' => $conversation->context_window_size,
+                'usage_percentage' => $conversation->getContextUsagePercentage(),
+                'warning_level' => $conversation->getContextWarningLevel(),
+            ],
         ]);
     }
 
@@ -219,6 +233,17 @@ class ConversationController extends Controller
         // Apply updates to conversation
         if (!empty($updates)) {
             $conversation->update($updates);
+
+            // If model changed, update cached context window size
+            if (isset($updates['model'])) {
+                $provider = $this->providerFactory->make($conversation->provider_type);
+                try {
+                    $contextWindow = $provider->getContextWindow($updates['model']);
+                    $conversation->updateContextWindowSize($contextWindow);
+                } catch (\Exception $e) {
+                    // Model not found in config - will be updated when we get actual token data
+                }
+            }
         }
 
         $provider = $this->providerFactory->make($conversation->provider_type);

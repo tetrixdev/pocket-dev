@@ -7,18 +7,22 @@
     </button>
     <div class="flex flex-col items-center">
         <h2 class="text-base font-semibold leading-tight">PocketDev</h2>
-        <button @click="showAgentSelector = true"
-                class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 underline decoration-gray-600 hover:decoration-gray-400"
-                aria-label="Select AI agent">
-            <span class="w-1.5 h-1.5 rounded-full shrink-0"
-                  :class="{
-                      'bg-orange-500': currentAgent?.provider === 'anthropic',
-                      'bg-green-500': currentAgent?.provider === 'openai',
-                      'bg-purple-500': currentAgent?.provider === 'claude_code',
-                      'bg-gray-500': !currentAgent
-                  }"></span>
-            <span x-text="currentAgent?.name || 'Select Agent'"></span>
-        </button>
+        <div class="flex items-center gap-2">
+            <button @click="showAgentSelector = true"
+                    class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 underline decoration-gray-600 hover:decoration-gray-400"
+                    aria-label="Select AI agent">
+                <span class="w-1.5 h-1.5 rounded-full shrink-0"
+                      :class="{
+                          'bg-orange-500': currentAgent?.provider === 'anthropic',
+                          'bg-green-500': currentAgent?.provider === 'openai',
+                          'bg-purple-500': currentAgent?.provider === 'claude_code',
+                          'bg-gray-500': !currentAgent
+                      }"></span>
+                <span x-text="currentAgent?.name || 'Select Agent'"></span>
+            </button>
+            {{-- Context progress bar (compact) --}}
+            <x-chat.context-progress :compact="true" />
+        </div>
     </div>
     <a href="/config" class="text-gray-300 hover:text-white p-2">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

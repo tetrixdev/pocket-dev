@@ -24,6 +24,9 @@ class Conversation extends Model
         'working_directory',
         'total_input_tokens',
         'total_output_tokens',
+        // Context window tracking
+        'last_context_tokens',
+        'context_window_size',
         'status',
         'last_activity_at',
         // Provider-specific reasoning settings
@@ -45,6 +48,8 @@ class Conversation extends Model
         'last_activity_at' => 'datetime',
         'total_input_tokens' => 'integer',
         'total_output_tokens' => 'integer',
+        'last_context_tokens' => 'integer',
+        'context_window_size' => 'integer',
         'anthropic_thinking_budget' => 'integer',
         'claude_code_thinking_tokens' => 'integer',
         'response_level' => 'integer',
@@ -130,6 +135,68 @@ class Conversation extends Model
     {
         $this->increment('total_input_tokens', $inputTokens);
         $this->increment('total_output_tokens', $outputTokens);
+    }
+
+    /**
+     * Update context usage after an assistant response.
+     *
+     * Context estimate = input_tokens + output_tokens
+     * This slightly overestimates because thinking tokens (included in output)
+     * are stripped from previous turns. But it's safer to overestimate.
+     *
+     * @param int $inputTokens The total input tokens from the response.
+     * @param int $outputTokens The output tokens (includes thinking).
+     */
+    public function updateContextUsage(int $inputTokens, int $outputTokens = 0): void
+    {
+        $this->update(['last_context_tokens' => $inputTokens + $outputTokens]);
+    }
+
+    /**
+     * Update the cached context window size for the current model.
+     *
+     * Called when model changes or conversation is created.
+     */
+    public function updateContextWindowSize(int $contextWindow): void
+    {
+        $this->update(['context_window_size' => $contextWindow]);
+    }
+
+    /**
+     * Get context usage percentage (0-100).
+     *
+     * Returns null if context info not available.
+     */
+    public function getContextUsagePercentage(): ?float
+    {
+        if (!$this->last_context_tokens || !$this->context_window_size) {
+            return null;
+        }
+
+        return min(100, ($this->last_context_tokens / $this->context_window_size) * 100);
+    }
+
+    /**
+     * Get context usage warning level.
+     *
+     * @return string|null 'safe' (0-74%), 'warning' (75-89%), 'danger' (90-100%), or null if unavailable
+     */
+    public function getContextWarningLevel(): ?string
+    {
+        $percentage = $this->getContextUsagePercentage();
+
+        if ($percentage === null) {
+            return null;
+        }
+
+        if ($percentage >= 90) {
+            return 'danger';
+        }
+        if ($percentage >= 75) {
+            return 'warning';
+        }
+
+        return 'safe';
     }
 
     /**
