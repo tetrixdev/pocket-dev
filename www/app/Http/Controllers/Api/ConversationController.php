@@ -166,6 +166,19 @@ class ConversationController extends Controller
     }
 
     /**
+     * Get the latest activity timestamp for polling.
+     * Used by frontend to check if sidebar needs refreshing.
+     */
+    public function latestActivity(): JsonResponse
+    {
+        $latest = Conversation::max('last_activity_at');
+
+        return response()->json([
+            'latest_activity_at' => $latest,
+        ]);
+    }
+
+    /**
      * Start streaming a message to the conversation.
      *
      * Dispatches a background job to handle the actual streaming.
@@ -296,6 +309,7 @@ class ConversationController extends Controller
         return response()->json([
             'success' => true,
             'conversation_uuid' => $conversation->uuid,
+            'started_at' => now()->toIso8601String(),
             'message' => 'Streaming started. Connect to /stream-events to receive updates.',
         ]);
     }
