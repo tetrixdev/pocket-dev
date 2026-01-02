@@ -309,10 +309,12 @@ class MemoryDataService
         }
 
         try {
-            // Use transaction to prevent TOCTOU race condition
-            return $this->connection()->transaction(function () use ($tableName, $quotedTable, $whereClause, $whereParams) {
+            // Use privileged connection for transaction to ensure embedding deletes
+            // (which also use 'pgsql') are within the same transactional scope.
+            // This is safe because the method validates table exists in memory schema.
+            return DB::connection('pgsql')->transaction(function () use ($tableName, $quotedTable, $whereClause, $whereParams) {
                 // Delete rows and get their IDs in one atomic operation using RETURNING
-                $deletedRows = $this->connection()->select(
+                $deletedRows = DB::connection('pgsql')->select(
                     "DELETE FROM memory.{$quotedTable} WHERE {$whereClause} RETURNING id",
                     $whereParams
                 );
