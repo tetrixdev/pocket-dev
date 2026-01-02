@@ -90,9 +90,11 @@
                                 this.sizeFormatted = data.size_formatted;
                                 this.isMarkdown = data.is_markdown;
 
-                                // Render content
+                                // Render content (with linkification for nested file paths)
                                 if (this.isMarkdown) {
-                                    this.renderedContent = DOMPurify.sanitize(marked.parse(this.content));
+                                    let html = marked.parse(this.content);
+                                    html = window.linkifyFilePaths(html);
+                                    this.renderedContent = DOMPurify.sanitize(html);
                                 } else {
                                     // Try to detect language from extension for syntax highlighting
                                     const ext = data.extension;
@@ -102,7 +104,7 @@
                                     } else {
                                         highlighted = hljs.highlightAuto(this.content).value;
                                     }
-                                    this.highlightedContent = highlighted;
+                                    this.highlightedContent = window.linkifyFilePaths(highlighted);
                                 }
                             }
                         } catch (err) {
