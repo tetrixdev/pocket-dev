@@ -130,13 +130,18 @@ class MemoryEmbeddingService
     /**
      * Delete all embeddings for a specific row.
      *
+     * Note: Uses privileged 'pgsql' connection because 'memory_ai' user
+     * intentionally lacks DELETE permission on embeddings table.
+     * This ensures AI cannot delete embeddings via raw SQL, but controlled
+     * service methods still work.
+     *
      * @param string $tableName Table name (without schema prefix)
      * @param string $rowId UUID of the row
      * @return int Number of embeddings deleted
      */
     public function deleteRowEmbeddings(string $tableName, string $rowId): int
     {
-        return DB::connection('pgsql_memory_ai')->delete("
+        return DB::connection('pgsql')->delete("
             DELETE FROM memory.embeddings
             WHERE source_table = ? AND source_id = ?
         ", [$tableName, $rowId]);
@@ -144,6 +149,8 @@ class MemoryEmbeddingService
 
     /**
      * Delete embeddings for specific fields of a row.
+     *
+     * Note: Uses privileged 'pgsql' connection (see deleteRowEmbeddings).
      *
      * @param string $tableName Table name (without schema prefix)
      * @param string $rowId UUID of the row
@@ -158,7 +165,7 @@ class MemoryEmbeddingService
 
         $placeholders = implode(',', array_fill(0, count($fieldNames), '?'));
 
-        return DB::connection('pgsql_memory_ai')->delete("
+        return DB::connection('pgsql')->delete("
             DELETE FROM memory.embeddings
             WHERE source_table = ? AND source_id = ? AND field_name IN ({$placeholders})
         ", array_merge([$tableName, $rowId], $fieldNames));
@@ -183,12 +190,14 @@ class MemoryEmbeddingService
     /**
      * Delete all embeddings for a table (used when dropping a table).
      *
+     * Note: Uses privileged 'pgsql' connection (see deleteRowEmbeddings).
+     *
      * @param string $tableName Table name (without schema prefix)
      * @return int Number of embeddings deleted
      */
     public function deleteTableEmbeddings(string $tableName): int
     {
-        return DB::connection('pgsql_memory_ai')->delete("
+        return DB::connection('pgsql')->delete("
             DELETE FROM memory.embeddings WHERE source_table = ?
         ", [$tableName]);
     }
