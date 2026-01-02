@@ -44,9 +44,11 @@ Use MemoryUpdate to modify existing rows. Embeddings are automatically regenerat
 
 ## CRITICAL: Read Before Write
 
-**You MUST read the existing row before updating text fields to avoid data loss.**
+**You MUST read the existing row before updating ANY text field to avoid data loss.**
 
 Updates REPLACE field values, they do not append. If you update a field without reading it first, you will lose the existing content.
+
+**Rule of thumb:** Always query the row first. Only numeric/boolean fields (hp_current, danger_level, is_alive) can be set directly without reading.
 
 **Correct pattern:**
 ```bash
