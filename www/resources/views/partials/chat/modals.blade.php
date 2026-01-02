@@ -9,6 +9,9 @@
 @include('partials.chat.modals.error')
 @include('partials.chat.modals.conversation-search')
 
+{{-- File Preview Modal --}}
+<x-file-preview-modal />
+
 {{-- Debug Panel with chat-specific state display --}}
 <x-debug-panel>
     <x-slot:stateDisplay>

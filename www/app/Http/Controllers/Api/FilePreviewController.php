@@ -1,0 +1,186 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class FilePreviewController extends Controller
+{
+    /**
+     * Maximum file size for preview (2MB).
+     * Larger files will return a warning.
+     */
+    private const MAX_FILE_SIZE = 2 * 1024 * 1024;
+
+    /**
+     * Preview a file's contents.
+     */
+    public function preview(Request $request): JsonResponse
+    {
+        $request->validate([
+            'path' => 'required|string',
+        ]);
+
+        $path = $request->input('path');
+
+        // Normalize path (resolve . and ..)
+        $realPath = realpath($path);
+
+        // Check if file exists
+        if ($realPath === false || !file_exists($realPath)) {
+            return response()->json([
+                'exists' => false,
+                'error' => 'File not found',
+            ], 404);
+        }
+
+        // Check if it's a file (not directory)
+        if (is_dir($realPath)) {
+            return response()->json([
+                'exists' => true,
+                'error' => 'Path is a directory, not a file',
+            ], 400);
+        }
+
+        // Check if readable
+        if (!is_readable($realPath)) {
+            return response()->json([
+                'exists' => true,
+                'readable' => false,
+                'error' => 'File is not readable',
+            ], 403);
+        }
+
+        // Get file info
+        $fileSize = filesize($realPath);
+        $extension = strtolower(pathinfo($realPath, PATHINFO_EXTENSION));
+        $filename = basename($realPath);
+
+        // Check file size
+        if ($fileSize > self::MAX_FILE_SIZE) {
+            return response()->json([
+                'exists' => true,
+                'readable' => true,
+                'size' => $fileSize,
+                'size_formatted' => $this->formatBytes($fileSize),
+                'extension' => $extension,
+                'filename' => $filename,
+                'path' => $path,
+                'too_large' => true,
+                'error' => 'File too large for preview (max ' . $this->formatBytes(self::MAX_FILE_SIZE) . ')',
+            ], 200);
+        }
+
+        // Read file content
+        $content = file_get_contents($realPath);
+
+        if ($content === false) {
+            return response()->json([
+                'exists' => true,
+                'readable' => false,
+                'error' => 'Failed to read file',
+            ], 500);
+        }
+
+        // Detect if content is binary
+        $isBinary = $this->isBinaryContent($content);
+
+        if ($isBinary) {
+            return response()->json([
+                'exists' => true,
+                'readable' => true,
+                'size' => $fileSize,
+                'size_formatted' => $this->formatBytes($fileSize),
+                'extension' => $extension,
+                'filename' => $filename,
+                'path' => $path,
+                'binary' => true,
+                'error' => 'Binary file cannot be previewed as text',
+            ], 200);
+        }
+
+        return response()->json([
+            'exists' => true,
+            'readable' => true,
+            'size' => $fileSize,
+            'size_formatted' => $this->formatBytes($fileSize),
+            'extension' => $extension,
+            'filename' => $filename,
+            'path' => $path,
+            'content' => $content,
+            'is_markdown' => in_array($extension, ['md', 'markdown']),
+        ]);
+    }
+
+    /**
+     * Check if a path exists and is readable (quick check without content).
+     */
+    public function check(Request $request): JsonResponse
+    {
+        $request->validate([
+            'path' => 'required|string',
+        ]);
+
+        $path = $request->input('path');
+        $realPath = realpath($path);
+
+        if ($realPath === false || !file_exists($realPath)) {
+            return response()->json(['exists' => false]);
+        }
+
+        return response()->json([
+            'exists' => true,
+            'is_file' => is_file($realPath),
+            'readable' => is_readable($realPath),
+        ]);
+    }
+
+    /**
+     * Format bytes to human readable string.
+     */
+    private function formatBytes(int $bytes): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $unitIndex = 0;
+        $size = $bytes;
+
+        while ($size >= 1024 && $unitIndex < count($units) - 1) {
+            $size /= 1024;
+            $unitIndex++;
+        }
+
+        return round($size, 2) . ' ' . $units[$unitIndex];
+    }
+
+    /**
+     * Check if content appears to be binary.
+     */
+    private function isBinaryContent(string $content): bool
+    {
+        // Check first 8KB for null bytes or high concentration of non-printable chars
+        $sample = substr($content, 0, 8192);
+
+        // Null bytes are a strong indicator of binary
+        if (strpos($sample, "\0") !== false) {
+            return true;
+        }
+
+        // Count non-printable characters (excluding common whitespace)
+        $nonPrintable = 0;
+        $length = strlen($sample);
+
+        for ($i = 0; $i < $length; $i++) {
+            $ord = ord($sample[$i]);
+            // Allow: tab (9), newline (10), carriage return (13), and printable ASCII (32-126)
+            // Also allow UTF-8 continuation bytes (128-255)
+            if ($ord < 9 || ($ord > 13 && $ord < 32) || $ord === 127) {
+                $nonPrintable++;
+            }
+        }
+
+        // If more than 10% non-printable, consider it binary
+        return ($nonPrintable / max(1, $length)) > 0.1;
+    }
+}
