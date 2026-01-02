@@ -15,6 +15,16 @@ class FilePreviewController extends Controller
     private const MAX_FILE_SIZE = 2 * 1024 * 1024;
 
     /**
+     * Allowed base directories for file access.
+     * Paths outside these directories will be rejected.
+     */
+    private const ALLOWED_BASE_PATHS = [
+        '/var/www',
+        '/home',
+        '/pocketdev-source',
+    ];
+
+    /**
      * Preview a file's contents.
      */
     public function preview(Request $request): JsonResponse
@@ -25,16 +35,13 @@ class FilePreviewController extends Controller
 
         $path = $request->input('path');
 
-        // Normalize path (resolve . and ..)
-        $realPath = realpath($path);
-
-        // Check if file exists
-        if ($realPath === false || !file_exists($realPath)) {
-            return response()->json([
-                'exists' => false,
-                'error' => 'File not found',
-            ], 404);
+        // Validate path is within allowed directories
+        $validation = $this->validatePath($path);
+        if ($validation['error']) {
+            return response()->json($validation['response'], $validation['status']);
         }
+
+        $realPath = $validation['realPath'];
 
         // Check if it's a file (not directory)
         if (is_dir($realPath)) {
@@ -124,17 +131,63 @@ class FilePreviewController extends Controller
         ]);
 
         $path = $request->input('path');
-        $realPath = realpath($path);
 
-        if ($realPath === false || !file_exists($realPath)) {
+        // Validate path is within allowed directories
+        $validation = $this->validatePath($path);
+        if ($validation['error']) {
+            // Don't reveal whether file exists outside allowed paths
             return response()->json(['exists' => false]);
         }
+
+        $realPath = $validation['realPath'];
 
         return response()->json([
             'exists' => true,
             'is_file' => is_file($realPath),
             'readable' => is_readable($realPath),
         ]);
+    }
+
+    /**
+     * Validate that a path exists and is within allowed directories.
+     *
+     * @return array{error: bool, realPath?: string, response?: array, status?: int}
+     */
+    private function validatePath(string $path): array
+    {
+        // Normalize path (resolve . and ..)
+        $realPath = realpath($path);
+
+        // Check if file exists
+        if ($realPath === false || !file_exists($realPath)) {
+            return [
+                'error' => true,
+                'response' => ['exists' => false, 'error' => 'File not found'],
+                'status' => 404,
+            ];
+        }
+
+        // Security: Restrict to allowed base directories
+        $isAllowed = false;
+        foreach (self::ALLOWED_BASE_PATHS as $basePath) {
+            if (str_starts_with($realPath, $basePath . '/') || $realPath === $basePath) {
+                $isAllowed = true;
+                break;
+            }
+        }
+
+        if (!$isAllowed) {
+            return [
+                'error' => true,
+                'response' => ['exists' => false, 'error' => 'Access denied'],
+                'status' => 403,
+            ];
+        }
+
+        return [
+            'error' => false,
+            'realPath' => $realPath,
+        ];
     }
 
     /**

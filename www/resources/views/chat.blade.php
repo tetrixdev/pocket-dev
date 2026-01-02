@@ -143,7 +143,12 @@
         // Global helper to linkify file paths in HTML content
         window.linkifyFilePaths = function(html) {
             const filePathPattern = /((?:^|[^"'=\w])((?:\/(?:var|home|etc|usr|tmp|pocketdev-source)|\.\.?\/|~\/)[^\s<>"'`\)]+\.[a-zA-Z0-9]+))/g;
-            const escapeHtml = (text) => String(text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const escapeHtml = (text) => String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
 
             return html.replace(filePathPattern, (match, fullMatch, path) => {
                 const prefix = fullMatch.startsWith(path) ? '' : fullMatch[0];
