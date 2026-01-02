@@ -142,7 +142,8 @@
     <script>
         // Global helper to linkify file paths in HTML content
         window.linkifyFilePaths = function(html) {
-            const filePathPattern = /((?:^|[^"'=\w])((?:\/(?:var|home|etc|usr|tmp|pocketdev-source)|\.\.?\/|~\/)[^\s<>"'`\)]+\.[a-zA-Z0-9]+))/g;
+            // Only match paths the backend allows: /var/www, /home, /pocketdev-source
+            const filePathPattern = /((?:^|[^"'=\w])((?:\/(?:var\/www|home|pocketdev-source)|\.\.?\/|~\/)[^\s<>"'`\)]+\.[a-zA-Z0-9]+))/g;
             const escapeHtml = (text) => String(text)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
