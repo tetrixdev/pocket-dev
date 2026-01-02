@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AgentController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\ConversationSearchController;
+use App\Http\Controllers\Api\FilePreviewController;
 use App\Http\Controllers\Api\PricingController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\TranscriptionController;
@@ -114,3 +115,17 @@ Route::get('agents/default/{provider}', [AgentController::class, 'defaultForProv
 Route::get('agents/{agent}', [AgentController::class, 'show']);
 Route::get('tools/for-provider/{provider}', [AgentController::class, 'availableTools']);
 Route::post('agents/preview-system-prompt', [AgentController::class, 'previewSystemPrompt']);
+
+/*
+|--------------------------------------------------------------------------
+| File Preview Routes
+|--------------------------------------------------------------------------
+|
+| Preview file contents for clickable file paths in chat.
+|
+*/
+
+Route::prefix('file')->group(function () {
+    Route::post('preview', [FilePreviewController::class, 'preview']);
+    Route::post('check', [FilePreviewController::class, 'check']);
+});

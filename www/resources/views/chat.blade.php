@@ -36,9 +36,261 @@
                     toggle() { this.showPanel = !this.showPanel; }
                 });
                 window.debugLog = (message, data = null) => Alpine.store('debug').log(message, data);
+
+                // File preview store for viewing files linked in chat messages
+                Alpine.store('filePreview', {
+                    isOpen: false,
+                    loading: false,
+                    path: '',
+                    filename: '',
+                    content: '',
+                    error: null,
+                    isMarkdown: false,
+                    sizeFormatted: '',
+                    copied: false,
+                    renderedContent: '',
+                    highlightedContent: '',
+
+                    async open(filePath) {
+                        debugLog('filePreview.open() called', { filePath });
+                        this.isOpen = true;
+                        this.loading = true;
+                        this.error = null;
+                        this.content = '';
+                        this.path = filePath;
+                        this.filename = filePath.split('/').pop();
+                        this.copied = false;
+
+                        try {
+                            debugLog('filePreview: fetching file content');
+                            const response = await fetch('/api/file/preview', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                },
+                                body: JSON.stringify({ path: filePath }),
+                            });
+
+                            const data = await response.json();
+                            debugLog('filePreview: response received', { exists: data.exists, error: data.error, size: data.size_formatted });
+
+                            if (!data.exists) {
+                                this.error = 'File not found';
+                            } else if (data.too_large) {
+                                this.error = data.error;
+                                this.sizeFormatted = data.size_formatted;
+                            } else if (data.binary) {
+                                this.error = data.error;
+                            } else if (data.error) {
+                                this.error = data.error;
+                            } else {
+                                this.content = data.content;
+                                this.filename = data.filename;
+                                this.sizeFormatted = data.size_formatted;
+                                this.isMarkdown = data.is_markdown;
+
+                                // Render content (with linkification for nested file paths)
+                                if (this.isMarkdown) {
+                                    let html = marked.parse(this.content);
+                                    html = window.linkifyFilePaths(html);
+                                    this.renderedContent = DOMPurify.sanitize(html);
+                                } else {
+                                    // Try to detect language from extension for syntax highlighting
+                                    const ext = data.extension;
+                                    let highlighted;
+                                    if (ext && hljs.getLanguage(ext)) {
+                                        highlighted = hljs.highlight(this.content, { language: ext }).value;
+                                    } else {
+                                        highlighted = hljs.highlightAuto(this.content).value;
+                                    }
+                                    this.highlightedContent = window.linkifyFilePaths(highlighted);
+                                }
+                            }
+                        } catch (err) {
+                            console.error('File preview error:', err);
+                            this.error = 'Failed to load file';
+                        } finally {
+                            this.loading = false;
+                        }
+                    },
+
+                    close() {
+                        this.isOpen = false;
+                        this.content = '';
+                        this.renderedContent = '';
+                        this.highlightedContent = '';
+                    },
+
+                    async copyContent() {
+                        if (!this.content) return;
+                        try {
+                            await navigator.clipboard.writeText(this.content);
+                            this.copied = true;
+                            setTimeout(() => { this.copied = false; }, 1500);
+                        } catch (err) {
+                            console.error('Copy failed:', err);
+                        }
+                    }
+                });
+
+                // Global helper for opening file preview
+                window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
             });
         </script>
     @endif
+
+    {{-- File preview store - always register regardless of Vite/CDN mode --}}
+    <script>
+        // Global helper to linkify file paths in HTML content
+        window.linkifyFilePaths = function(html) {
+            // Only match paths the backend allows: /var/www, /home, /pocketdev-source
+            const filePathPattern = /((?:^|[^"'=\w])((?:\/(?:var\/www|home|pocketdev-source)|\.\.?\/|~\/)[^\s<>"'`\)]+\.[a-zA-Z0-9]+))/g;
+            const escapeHtml = (text) => String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+
+            return html.replace(filePathPattern, (match, fullMatch, path) => {
+                const prefix = fullMatch.startsWith(path) ? '' : fullMatch[0];
+                return `${prefix}<a href="#" class="file-path-link" data-file-path="${escapeHtml(path)}"><i class="fa-regular fa-file-lines"></i>${escapeHtml(path)}</a>`;
+            });
+        };
+
+        document.addEventListener('alpine:init', () => {
+            // Only register if not already defined (CDN mode defines it above)
+            if (!Alpine.store('filePreview')) {
+                Alpine.store('filePreview', {
+                    // Stack of open files for nested navigation
+                    stack: [],
+                    loading: false,
+                    copied: false,
+
+                    // Computed-like getters for current file
+                    get isOpen() { return this.stack.length > 0; },
+                    get current() { return this.stack[this.stack.length - 1] || {}; },
+                    get path() { return this.current.path || ''; },
+                    get filename() { return this.current.filename || ''; },
+                    get content() { return this.current.content || ''; },
+                    get error() { return this.current.error || null; },
+                    get isMarkdown() { return this.current.isMarkdown || false; },
+                    get sizeFormatted() { return this.current.sizeFormatted || ''; },
+                    get renderedContent() { return this.current.renderedContent || ''; },
+                    get highlightedContent() { return this.current.highlightedContent || ''; },
+                    get stackDepth() { return this.stack.length; },
+
+                    async open(filePath) {
+                        if (window.debugLog) debugLog('filePreview.open() called', { filePath, stackDepth: this.stack.length });
+                        this.loading = true;
+                        this.copied = false;
+
+                        // Create new stack entry (placeholder while loading)
+                        const entry = {
+                            path: filePath,
+                            filename: filePath.split('/').pop(),
+                            content: '',
+                            error: null,
+                            isMarkdown: false,
+                            sizeFormatted: '',
+                            renderedContent: '',
+                            highlightedContent: '',
+                        };
+                        this.stack.push(entry);
+                        const entryIndex = this.stack.length - 1;
+
+                        try {
+                            if (window.debugLog) debugLog('filePreview: fetching file content');
+                            const response = await fetch('/api/file/preview', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                },
+                                body: JSON.stringify({ path: filePath }),
+                            });
+
+                            const data = await response.json();
+                            if (window.debugLog) debugLog('filePreview: response received', { exists: data.exists, error: data.error, size: data.size_formatted });
+
+                            // Build the updated entry
+                            const updatedEntry = { ...entry };
+
+                            if (!data.exists) {
+                                updatedEntry.error = 'File not found';
+                            } else if (data.too_large) {
+                                updatedEntry.error = data.error;
+                                updatedEntry.sizeFormatted = data.size_formatted;
+                            } else if (data.binary) {
+                                updatedEntry.error = data.error;
+                            } else if (data.error) {
+                                updatedEntry.error = data.error;
+                            } else {
+                                updatedEntry.content = data.content;
+                                updatedEntry.filename = data.filename;
+                                updatedEntry.sizeFormatted = data.size_formatted;
+                                updatedEntry.isMarkdown = data.is_markdown;
+
+                                // Render content with linkified file paths
+                                if (updatedEntry.isMarkdown) {
+                                    let html = marked.parse(updatedEntry.content);
+                                    html = window.linkifyFilePaths(html);
+                                    updatedEntry.renderedContent = DOMPurify.sanitize(html);
+                                } else {
+                                    // Syntax highlight then linkify
+                                    const ext = data.extension;
+                                    let highlighted;
+                                    if (ext && hljs.getLanguage(ext)) {
+                                        highlighted = hljs.highlight(updatedEntry.content, { language: ext }).value;
+                                    } else {
+                                        highlighted = hljs.highlightAuto(updatedEntry.content).value;
+                                    }
+                                    updatedEntry.highlightedContent = window.linkifyFilePaths(highlighted);
+                                }
+                            }
+
+                            // Replace the entry in the stack to trigger Alpine reactivity
+                            this.stack.splice(entryIndex, 1, updatedEntry);
+
+                        } catch (err) {
+                            console.error('File preview error:', err);
+                            // Replace with error entry
+                            this.stack.splice(entryIndex, 1, { ...entry, error: 'Failed to load file' });
+                        } finally {
+                            this.loading = false;
+                        }
+                    },
+
+                    close() {
+                        // Pop the stack - if more items remain, show the previous file
+                        this.stack.pop();
+                        this.copied = false;
+                        if (window.debugLog) debugLog('filePreview.close()', { remainingStack: this.stack.length });
+                    },
+
+                    closeAll() {
+                        this.stack = [];
+                        this.copied = false;
+                    },
+
+                    async copyContent() {
+                        if (!this.content) return;
+                        try {
+                            await navigator.clipboard.writeText(this.content);
+                            this.copied = true;
+                            setTimeout(() => { this.copied = false; }, 1500);
+                        } catch (err) {
+                            console.error('Copy failed:', err);
+                        }
+                    }
+                });
+
+                // Global helper for opening file preview
+                window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
+            }
+        });
+    </script>
 
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
             integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
@@ -71,6 +323,25 @@
         .markdown-content table { border-collapse: collapse; margin: 1em 0; width: 100%; }
         .markdown-content th, .markdown-content td { border: 1px solid #4b5563; padding: 0.5em; text-align: left; }
         .markdown-content th { background: #374151; font-weight: bold; }
+
+        /* File path links - clickable paths that open file preview modal */
+        .file-path-link {
+            color: #60a5fa;
+            text-decoration: none;
+            background: rgba(59, 130, 246, 0.1);
+            padding: 0.1em 0.4em;
+            border-radius: 0.25em;
+            transition: background-color 0.15s ease;
+            white-space: nowrap;
+        }
+        .file-path-link:hover {
+            background: rgba(59, 130, 246, 0.25);
+            text-decoration: underline;
+        }
+        .file-path-link i {
+            margin-right: 0.35em;
+            opacity: 0.7;
+        }
 
         .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
@@ -482,6 +753,30 @@
                                 }
                             });
                             resizeObserver.observe(this.$refs.mobileInput);
+                        }
+                    });
+
+                    // Event delegation for file path links (DOMPurify strips onclick attributes)
+                    document.addEventListener('click', (e) => {
+                        const link = e.target.closest('.file-path-link');
+                        if (link) {
+                            e.preventDefault();
+                            const filePath = link.dataset.filePath;
+                            debugLog('File path link clicked', { path: filePath });
+                            if (filePath) {
+                                try {
+                                    const store = Alpine.store('filePreview');
+                                    debugLog('filePreview store accessed', { storeExists: !!store, isOpen: store?.isOpen });
+                                    if (store) {
+                                        store.open(filePath);
+                                    } else {
+                                        debugLog('ERROR: filePreview store is undefined');
+                                    }
+                                } catch (err) {
+                                    debugLog('ERROR accessing filePreview store', { error: err.message });
+                                    console.error('filePreview error:', err);
+                                }
+                            }
                         }
                     });
                 },
@@ -2170,7 +2465,11 @@
 
                 renderMarkdown(text) {
                     if (!text) return '';
-                    return DOMPurify.sanitize(marked.parse(text));
+
+                    // Parse markdown, linkify file paths, then sanitize
+                    let html = marked.parse(text);
+                    html = window.linkifyFilePaths(html);
+                    return DOMPurify.sanitize(html);
                 },
 
                 formatTimestamp(ts) {
