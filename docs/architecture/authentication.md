@@ -2,12 +2,30 @@
 
 PocketDev has two authentication layers:
 
-1. **Proxy Authentication** - Basic Auth for accessing the application
+1. **Network-level Security** - Tailscale private network (recommended) or Basic Auth
 2. **Claude Authentication** - OAuth credentials for Claude CLI
+
+> **Note**: Basic Auth is currently disabled in the proxy. For production deployments, use Tailscale for security. See `deployment/secure-server-setup.md`.
+
+---
+
+## Tailscale (Recommended)
+
+For production deployments, use Tailscale to create a private network. This makes PocketDev invisible to the public internet.
+
+**How it works:**
+- Install Tailscale on server and client devices
+- Server firewall blocks all public access
+- Only Tailscale-connected devices can reach PocketDev
+- No passwords or API keys exposed
+
+**Setup:** See `deployment/secure-server-setup.md`
 
 ---
 
 ## Proxy Authentication (Basic Auth)
+
+> **Status**: Currently disabled. The entrypoint sets `AUTH_ENABLED="off"`.
 
 ### How It Works
 
