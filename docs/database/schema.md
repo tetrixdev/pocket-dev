@@ -215,7 +215,7 @@ Failed job storage for debugging.
 
 ```sql
 SELECT * FROM conversations
-WHERE status = 'active'
+WHERE status IN ('idle', 'processing', 'failed')
 ORDER BY last_activity_at DESC;
 ```
 
