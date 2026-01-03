@@ -34,6 +34,9 @@
     {{-- Conversation Menu Dropdown --}}
     <div class="relative">
         <button @click="showConversationMenu = !showConversationMenu"
+                @keydown.escape="showConversationMenu = false"
+                :aria-expanded="showConversationMenu"
+                aria-haspopup="true"
                 class="text-gray-300 hover:text-white p-2"
                 title="Menu">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -45,6 +48,9 @@
         <div x-show="showConversationMenu"
              x-cloak
              @click.outside="showConversationMenu = false"
+             @keydown.escape="showConversationMenu = false"
+             role="menu"
+             aria-orientation="vertical"
              x-transition:enter="transition ease-out duration-100"
              x-transition:enter-start="transform opacity-0 scale-95"
              x-transition:enter-end="transform opacity-100 scale-100"
@@ -54,12 +60,14 @@
              class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
             {{-- Settings --}}
             <a href="/config"
+               role="menuitem"
                class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
                 <i class="fa-solid fa-cog w-4 text-center"></i>
                 Settings
             </a>
             {{-- Archive/Unarchive --}}
             <button @click="toggleArchiveConversation(); showConversationMenu = false"
+                    role="menuitem"
                     :disabled="!currentConversationUuid"
                     :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
                     class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
@@ -68,6 +76,7 @@
             </button>
             {{-- Delete --}}
             <button @click="deleteConversation(); showConversationMenu = false"
+                    role="menuitem"
                     :disabled="!currentConversationUuid"
                     :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600'"
                     class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">

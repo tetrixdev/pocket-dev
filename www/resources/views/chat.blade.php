@@ -739,6 +739,7 @@
                     const savedArchiveFilter = sessionStorage.getItem('pocketdev_showArchivedConversations');
                     if (savedArchiveFilter === 'true') {
                         this.showArchivedConversations = true;
+                        this.showSearchInput = true; // Show filter panel so user sees active filter
                     }
                     const savedSearchQuery = sessionStorage.getItem('pocketdev_conversationSearchQuery');
                     if (savedSearchQuery) {
@@ -1388,6 +1389,7 @@
                 },
 
                 async toggleArchiveConversation() {
+                    // Note: API routes don't use CSRF middleware - Laravel excludes it by design for stateless APIs
                     if (!this.currentConversationUuid) return;
 
                     const isArchived = this.currentConversationStatus === 'archived';
@@ -1398,7 +1400,8 @@
                         });
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-                        // Update local state
+                        // Update local state - 'idle' is intentional for unarchive since completed
+                        // conversations naturally rest at 'idle', and 'failed' ones can be retried
                         this.currentConversationStatus = isArchived ? 'idle' : 'archived';
 
                         // Refresh conversation list
@@ -1410,6 +1413,7 @@
                 },
 
                 async deleteConversation() {
+                    // Note: API routes don't use CSRF middleware - Laravel excludes it by design for stateless APIs
                     if (!this.currentConversationUuid) return;
 
                     if (!confirm('Are you sure you want to delete this conversation?\n\nThis is a soft delete - the conversation will be hidden but can be recovered directly through the database if needed.')) {
