@@ -18,6 +18,9 @@ Moving to `web.php` requires:
 1. Move routes (can keep `/api/` prefix if desired)
 2. Add CSRF token to all frontend `fetch()` calls
 3. ~32 routes affected
+4. **Verify functionality** - test thoroughly after migration
+
+**Note:** Some routes might need to stay in `api.php` due to the container structure (PHP + queue containers), but this is uncertain. It's possible all can be migrated - needs investigation.
 
 ### Guidelines
 
