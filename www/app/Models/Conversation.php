@@ -5,11 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class Conversation extends Model
 {
+    use SoftDeletes;
+
     public const STATUS_IDLE = 'idle';
     public const STATUS_PROCESSING = 'processing';
     public const STATUS_ARCHIVED = 'archived';

@@ -20,16 +20,71 @@
                       }"></span>
                 <span x-text="currentAgent?.name || 'Select Agent'"></span>
             </button>
+            {{-- Conversation status badge --}}
+            <span x-show="currentConversationUuid && currentConversationStatus"
+                  class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm"
+                  :class="getStatusColorClass(currentConversationStatus)"
+                  :title="'Status: ' + currentConversationStatus">
+                <i class="text-white text-[8px]" :class="getStatusIconClass(currentConversationStatus)"></i>
+            </span>
             {{-- Context progress bar (compact) --}}
             <x-chat.context-progress :compact="true" />
         </div>
     </div>
-    <a href="/config" class="text-gray-300 hover:text-white p-2">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-    </a>
+    {{-- Conversation Menu Dropdown --}}
+    <div class="relative">
+        <button @click="showConversationMenu = !showConversationMenu"
+                @keydown.escape="showConversationMenu = false"
+                :aria-expanded="showConversationMenu"
+                aria-haspopup="true"
+                class="text-gray-300 hover:text-white p-2"
+                title="Menu">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+        </button>
+        {{-- Dropdown Menu --}}
+        <div x-show="showConversationMenu"
+             x-cloak
+             @click.outside="showConversationMenu = false"
+             @keydown.escape="showConversationMenu = false"
+             role="menu"
+             aria-orientation="vertical"
+             x-transition:enter="transition ease-out duration-100"
+             x-transition:enter-start="transform opacity-0 scale-95"
+             x-transition:enter-end="transform opacity-100 scale-100"
+             x-transition:leave="transition ease-in duration-75"
+             x-transition:leave-start="transform opacity-100 scale-100"
+             x-transition:leave-end="transform opacity-0 scale-95"
+             class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
+            {{-- Settings --}}
+            <a href="/config"
+               role="menuitem"
+               class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
+                <i class="fa-solid fa-cog w-4 text-center"></i>
+                Settings
+            </a>
+            {{-- Archive/Unarchive --}}
+            <button @click="toggleArchiveConversation(); showConversationMenu = false"
+                    role="menuitem"
+                    :disabled="!currentConversationUuid"
+                    :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
+                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                <span x-text="currentConversationStatus === 'archived' ? 'Unarchive' : 'Archive'"></span>
+            </button>
+            {{-- Delete --}}
+            <button @click="deleteConversation(); showConversationMenu = false"
+                    role="menuitem"
+                    :disabled="!currentConversationUuid"
+                    :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600'"
+                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                <i class="fa-solid fa-trash w-4 text-center"></i>
+                Delete
+            </button>
+        </div>
+    </div>
 </div>
 
 {{-- Mobile Drawer Overlay --}}
@@ -80,34 +135,47 @@
                 <i class="fa-solid fa-filter"></i>
             </button>
             {{-- Clear filters button (red, only visible when filters active) --}}
-            <button x-show="conversationSearchQuery"
+            <button x-show="conversationSearchQuery || showArchivedConversations"
                     x-cloak
-                    @click="clearConversationSearch()"
+                    @click="clearAllFilters()"
                     class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors bg-rose-600/90 hover:bg-rose-500 text-white"
-                    title="Clear search">
+                    title="Clear all filters">
                 <i class="fa-solid fa-filter-circle-xmark"></i>
             </button>
         </div>
     </div>
 
-    {{-- Search Input (shown when filter button clicked) --}}
+    {{-- Filter Panel (shown when filter button clicked) --}}
     <div x-show="showSearchInput" x-cloak class="px-4 pt-3 pb-3 border-b border-gray-700">
-        <div class="relative">
-            <input type="text"
-                   x-model="conversationSearchQuery"
-                   x-ref="mobileSearchInput"
-                   @input.debounce.400ms="searchConversations()"
-                   @keydown.escape="showSearchInput = false; conversationSearchQuery = ''; conversationSearchResults = []"
-                   placeholder="Describe what you're looking for..."
-                   class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
-            <div x-show="conversationSearchLoading" class="absolute right-3 top-1/2 -translate-y-1/2">
-                <svg class="w-4 h-4 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
+        {{-- Archive Toggle --}}
+        <label class="flex items-center gap-2 text-sm text-gray-300 mb-3 cursor-pointer hover:text-white">
+            <input type="checkbox"
+                   x-model="showArchivedConversations"
+                   @change="fetchConversations(); if (conversationSearchQuery) searchConversations()"
+                   class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0">
+            <span>Show Archived Conversations</span>
+        </label>
+
+        {{-- Search Input --}}
+        <div class="border-t border-gray-600 pt-3">
+            <p class="text-xs text-gray-400 mb-2">Search in conversations</p>
+            <div class="relative">
+                <input type="text"
+                       x-model="conversationSearchQuery"
+                       x-ref="mobileSearchInput"
+                       @input.debounce.400ms="searchConversations()"
+                       @keydown.escape="showSearchInput = false; conversationSearchQuery = ''; conversationSearchResults = []"
+                       placeholder="Describe what you're looking for..."
+                       class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
+                <div x-show="conversationSearchLoading" class="absolute right-3 top-1/2 -translate-y-1/2">
+                    <svg class="w-4 h-4 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
             </div>
+            <p class="text-xs text-gray-500 mt-1">Search by meaning, not keywords</p>
         </div>
-        <p class="text-xs text-gray-500 mt-1">Search by meaning, not keywords</p>
     </div>
 
     {{-- Conversations List (normal mode) --}}
@@ -119,7 +187,13 @@
             <div @click="loadConversation(conv.uuid); showMobileDrawer = false"
                  :class="{'bg-gray-700': currentConversationUuid === conv.uuid}"
                  class="p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors">
-                <div class="text-xs text-gray-300 truncate" x-text="conv.title || 'New Conversation'"></div>
+                <div class="flex items-center gap-1.5">
+                    <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm shrink-0"
+                          :class="getStatusColorClass(conv.status)">
+                        <i class="text-white text-[8px]" :class="getStatusIconClass(conv.status)"></i>
+                    </span>
+                    <span class="text-xs text-gray-300 truncate" x-text="conv.title || 'New Conversation'"></span>
+                </div>
                 <div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                     <span x-text="formatDate(conv.last_activity_at || conv.created_at)"></span>
                     <span class="w-1 h-1 rounded-full shrink-0" :class="getProviderColorClass(conv.provider_type)"></span>

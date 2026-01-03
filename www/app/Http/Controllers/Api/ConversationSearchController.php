@@ -21,6 +21,7 @@ class ConversationSearchController extends Controller
         $validated = $request->validate([
             'query' => 'required|string|min:2|max:500',
             'limit' => 'nullable|integer|min:1|max:50',
+            // Note: include_archived is read via $request->boolean() which handles string "true"/"false"
         ]);
 
         if (!$this->searchService->isAvailable()) {
@@ -31,7 +32,8 @@ class ConversationSearchController extends Controller
 
         $results = $this->searchService->search(
             $validated['query'],
-            $validated['limit'] ?? 20
+            $validated['limit'] ?? 20,
+            $request->boolean('include_archived')
         );
 
         return response()->json([
