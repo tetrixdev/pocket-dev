@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PocketTool;
+use App\Models\Workspace;
 use App\Tools\ExecutionContext;
 use App\Tools\Tool;
 use App\Tools\ToolResult;
@@ -16,6 +17,11 @@ use Illuminate\Support\Facades\Log;
  * Built-in tools (from app/Tools) are cached in the singleton.
  * User tools (from database) are always fetched fresh to ensure
  * newly created tools are available without restarting the queue worker.
+ *
+ * Tool filtering follows a three-tier hierarchy:
+ * 1. Global enablement (PocketTool.enabled) - tool exists and is globally enabled
+ * 2. Workspace enablement (WorkspaceTool) - tool is enabled for the workspace (no entry = enabled)
+ * 3. Agent allowed tools - agent's allowed_tools list (optional per-agent filtering)
  */
 class ToolRegistry
 {
@@ -88,6 +94,79 @@ class ToolRegistry
     public function all(): array
     {
         return array_merge($this->builtInTools, $this->getUserTools());
+    }
+
+    /**
+     * Get all tools enabled for a workspace.
+     *
+     * Filtering:
+     * 1. Tool must be globally enabled (PocketTool.enabled = true or built-in)
+     * 2. Tool must be enabled in workspace (no WorkspaceTool entry = enabled, or entry with enabled = true)
+     *
+     * @param Workspace $workspace The workspace to filter by
+     * @return array<string, Tool>
+     */
+    public function allForWorkspace(Workspace $workspace): array
+    {
+        $allTools = $this->all();
+        $disabledSlugs = $workspace->getDisabledToolSlugs();
+
+        return array_filter($allTools, function (Tool $tool) use ($disabledSlugs) {
+            // Check workspace enablement (no entry = enabled by default)
+            $slug = $tool->getSlug();
+            if (in_array($slug, $disabledSlugs, true)) {
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    /**
+     * Get a tool by name, optionally filtered by workspace.
+     * Returns null if tool doesn't exist or is disabled in the workspace.
+     */
+    public function getForWorkspace(string $name, Workspace $workspace): ?Tool
+    {
+        $tool = $this->get($name);
+
+        if ($tool === null) {
+            return null;
+        }
+
+        // Check workspace enablement
+        if (!$workspace->isToolEnabled($tool->getSlug())) {
+            return null;
+        }
+
+        return $tool;
+    }
+
+    /**
+     * Get effective tools for an agent.
+     *
+     * Applies the full three-tier filter:
+     * 1. Global enablement (PocketTool.enabled = true or built-in)
+     * 2. Workspace enablement (workspace_tools, no entry = enabled)
+     * 3. Agent allowed tools (agent.allowed_tools, null = all)
+     *
+     * @param Workspace $workspace The workspace
+     * @param \App\Models\Agent $agent The agent
+     * @return array<string, Tool>
+     */
+    public function getEffectiveTools(Workspace $workspace, \App\Models\Agent $agent): array
+    {
+        // 1 & 2: Get workspace-enabled tools
+        $tools = $this->allForWorkspace($workspace);
+
+        // 3: Filter by agent's allowed tools if specified
+        if ($agent->allowed_tools !== null) {
+            $tools = array_filter($tools, function (Tool $tool) use ($agent) {
+                return ToolFilterHelper::isAllowed($tool->getSlug(), $agent->allowed_tools);
+            });
+        }
+
+        return $tools;
     }
 
     /**

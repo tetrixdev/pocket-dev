@@ -100,6 +100,16 @@ Route::delete("/config/tools/{slug}", [ConfigController::class, "deleteTool"])->
 // Native tools toggle (AJAX)
 Route::post("/config/tools/native/toggle", [ConfigController::class, "toggleNativeTool"])->name("config.tools.native.toggle");
 
+// Workspace management
+Route::get("/config/workspaces", [\App\Http\Controllers\WorkspaceController::class, "index"])->name("config.workspaces");
+Route::get("/config/workspaces/create", [\App\Http\Controllers\WorkspaceController::class, "create"])->name("config.workspaces.create");
+Route::post("/config/workspaces", [\App\Http\Controllers\WorkspaceController::class, "store"])->name("config.workspaces.store");
+Route::get("/config/workspaces/{workspace}/edit", [\App\Http\Controllers\WorkspaceController::class, "edit"])->name("config.workspaces.edit");
+Route::put("/config/workspaces/{workspace}", [\App\Http\Controllers\WorkspaceController::class, "update"])->name("config.workspaces.update");
+Route::delete("/config/workspaces/{workspace}", [\App\Http\Controllers\WorkspaceController::class, "destroy"])->name("config.workspaces.delete");
+Route::get("/config/workspaces/{workspace}/tools", [\App\Http\Controllers\WorkspaceController::class, "tools"])->name("config.workspaces.tools");
+Route::post("/config/workspaces/{workspace}/tools/toggle", [\App\Http\Controllers\WorkspaceController::class, "toggleTool"])->name("config.workspaces.tools.toggle");
+
 // Memory management
 Route::get("/config/memory", [MemoryController::class, "index"])->name("config.memory");
 Route::get("/config/memory/tables/{tableName}", [MemoryController::class, "browseTable"])->name("config.memory.browse");

@@ -162,6 +162,14 @@
                     </div>
                 </div>
 
+                <!-- Workspaces Category -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.workspaces') }}"
+                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.workspaces') ? 'active' : '' }}">
+                        📁 Workspaces
+                    </a>
+                </div>
+
                 <!-- Agents Category -->
                 <div class="border-b border-gray-700">
                     <a href="{{ route('config.agents') }}"
@@ -410,6 +418,15 @@
                         nginx.conf
                     </a>
                 </div>
+            </div>
+
+            <!-- Workspaces Category -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.workspaces') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.workspaces') ? 'active' : '' }}">
+                    📁 Workspaces
+                </a>
             </div>
 
             <!-- Agents Category -->

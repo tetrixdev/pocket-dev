@@ -101,6 +101,22 @@ Route::prefix('settings')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Workspace Routes
+|--------------------------------------------------------------------------
+|
+| Workspace management and selection.
+|
+*/
+
+Route::get('workspaces', [\App\Http\Controllers\Api\WorkspaceController::class, 'index']);
+Route::get('workspaces/active', [\App\Http\Controllers\Api\WorkspaceController::class, 'getActive']);
+Route::post('workspaces/active/{workspace}', [\App\Http\Controllers\Api\WorkspaceController::class, 'setActive']);
+Route::get('workspaces/{workspace}', [\App\Http\Controllers\Api\WorkspaceController::class, 'show']);
+Route::get('workspaces/{workspace}/agents', [\App\Http\Controllers\Api\WorkspaceController::class, 'agents']);
+Route::get('workspaces/{workspace}/memory-databases', [\App\Http\Controllers\Api\WorkspaceController::class, 'memoryDatabases']);
+
+/*
+|--------------------------------------------------------------------------
 | Agent Routes
 |--------------------------------------------------------------------------
 |

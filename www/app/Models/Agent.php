@@ -6,7 +6,10 @@ use App\Enums\Provider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class Agent extends Model
@@ -27,6 +30,7 @@ class Agent extends Model
     public const PROVIDER_CODEX = 'codex';
 
     protected $fillable = [
+        'workspace_id',
         'name',
         'slug',
         'description',
@@ -73,11 +77,91 @@ class Agent extends Model
     }
 
     /**
+     * Get the workspace this agent belongs to.
+     */
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
+    }
+
+    /**
      * Get conversations using this agent.
      */
     public function conversations(): HasMany
     {
         return $this->hasMany(Conversation::class);
+    }
+
+    /**
+     * Get memory databases this agent has access to.
+     */
+    public function memoryDatabases(): BelongsToMany
+    {
+        return $this->belongsToMany(MemoryDatabase::class, 'agent_memory_databases')
+            ->withPivot(['permission'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Get enabled memory databases for this agent.
+     *
+     * Only returns databases that are both:
+     * 1. Enabled in the agent's workspace
+     * 2. Explicitly granted to the agent
+     */
+    public function getEnabledMemoryDatabases(): Collection
+    {
+        if (!$this->workspace) {
+            return collect();
+        }
+
+        $workspaceEnabledIds = $this->workspace
+            ->enabledMemoryDatabases()
+            ->pluck('memory_databases.id');
+
+        return $this->memoryDatabases()
+            ->whereIn('memory_databases.id', $workspaceEnabledIds)
+            ->get();
+    }
+
+    /**
+     * Check if this agent has access to a specific memory database.
+     */
+    public function hasMemoryDatabaseAccess(MemoryDatabase $db): bool
+    {
+        if (!$this->workspace || !$db->isEnabledInWorkspace($this->workspace)) {
+            return false;
+        }
+
+        return $this->memoryDatabases()
+            ->where('memory_databases.id', $db->id)
+            ->exists();
+    }
+
+    /**
+     * Check if this agent can write to a specific memory database.
+     */
+    public function canWriteToMemoryDatabase(MemoryDatabase $db): bool
+    {
+        if (!$this->hasMemoryDatabaseAccess($db)) {
+            return false;
+        }
+
+        $permission = $this->memoryDatabases()
+            ->where('memory_databases.id', $db->id)
+            ->first()
+            ?->pivot
+            ?->permission;
+
+        return in_array($permission, ['write', 'admin'], true);
+    }
+
+    /**
+     * Scope to filter by workspace.
+     */
+    public function scopeForWorkspace(Builder $query, string $workspaceId): Builder
+    {
+        return $query->where('workspace_id', $workspaceId);
     }
 
     /**

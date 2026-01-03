@@ -2,12 +2,15 @@
 
 namespace App\Services;
 
+use App\Models\MemoryDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Service for data operations (INSERT, UPDATE, DELETE) on memory schema tables.
  * Handles auto-embedding based on schema_registry configuration.
+ *
+ * Uses the same memory database context as the injected MemorySchemaService.
  */
 class MemoryDataService
 {
@@ -17,11 +20,40 @@ class MemoryDataService
     ) {}
 
     /**
+     * Set the memory database to operate on.
+     * This is delegated to the schema service for consistency.
+     *
+     * @param MemoryDatabase $memoryDatabase The memory database to use
+     * @return $this
+     */
+    public function setMemoryDatabase(MemoryDatabase $memoryDatabase): self
+    {
+        $this->schemaService->setMemoryDatabase($memoryDatabase);
+        $this->embeddingService->setMemoryDatabase($memoryDatabase);
+        return $this;
+    }
+
+    /**
+     * Get the schema name from the schema service.
+     */
+    protected function getSchemaName(): string
+    {
+        return $this->schemaService->getMemoryDatabase()?->getFullSchemaName() ?? 'memory';
+    }
+
+    /**
      * Get the database connection for memory data operations.
+     * Sets the search_path to the appropriate schema.
      */
     protected function connection(): \Illuminate\Database\Connection
     {
-        return DB::connection('pgsql_memory_ai');
+        $conn = DB::connection('pgsql_memory_ai');
+        $schemaName = $this->getSchemaName();
+
+        // Set search_path for this connection
+        $conn->statement("SET search_path = {$schemaName}, public");
+
+        return $conn;
     }
 
     /**
@@ -33,6 +65,8 @@ class MemoryDataService
      */
     public function insert(string $tableName, array $data): array
     {
+        $schemaName = $this->getSchemaName();
+
         // Validate table name format
         $quotedTable = $this->quoteTableName($tableName);
         if ($quotedTable === null) {
@@ -48,7 +82,7 @@ class MemoryDataService
             return [
                 'success' => false,
                 'id' => null,
-                'message' => "Table memory.{$tableName} does not exist",
+                'message' => "Table {$schemaName}.{$tableName} does not exist",
             ];
         }
 
@@ -72,7 +106,7 @@ class MemoryDataService
         try {
             $rowId = null;
 
-            $this->connection()->transaction(function () use ($quotedTable, $data, $columnTypes, &$rowId) {
+            $this->connection()->transaction(function () use ($schemaName, $quotedTable, $data, $columnTypes, &$rowId) {
                 // Build and execute INSERT
                 $columns = array_keys($data);
                 $placeholders = array_map(fn($c) => $this->formatValue($data[$c], $columnTypes[$c] ?? null), $columns);
@@ -80,7 +114,7 @@ class MemoryDataService
                 $columnsSql = implode(', ', array_map(fn($c) => '"' . str_replace('"', '""', $c) . '"', $columns));
                 $valuesSql = implode(', ', $placeholders);
 
-                $sql = "INSERT INTO memory.{$quotedTable} ({$columnsSql}) VALUES ({$valuesSql}) RETURNING id";
+                $sql = "INSERT INTO {$schemaName}.{$quotedTable} ({$columnsSql}) VALUES ({$valuesSql}) RETURNING id";
 
                 $result = $this->connection()->selectOne($sql);
                 $rowId = $result->id ?? null;
@@ -107,6 +141,7 @@ class MemoryDataService
 
             Log::info('Memory row inserted', [
                 'table' => $tableName,
+                'schema' => $schemaName,
                 'id' => $rowId,
                 'embedded_fields' => $embeddedResult['embedded_fields'],
             ]);
@@ -114,12 +149,13 @@ class MemoryDataService
             return [
                 'success' => true,
                 'id' => $rowId,
-                'message' => "Row inserted into memory.{$tableName}",
+                'message' => "Row inserted into {$schemaName}.{$tableName}",
                 'embedded_fields' => $embeddedResult['embedded_fields'],
             ];
         } catch (\Exception $e) {
             Log::error('Failed to insert memory row', [
                 'table' => $tableName,
+                'schema' => $schemaName,
                 'error' => $e->getMessage(),
             ]);
 
@@ -142,6 +178,8 @@ class MemoryDataService
      */
     public function update(string $tableName, array $data, string $whereClause, array $whereParams = []): array
     {
+        $schemaName = $this->getSchemaName();
+
         // Validate table name format
         $quotedTable = $this->quoteTableName($tableName);
         if ($quotedTable === null) {
@@ -157,7 +195,7 @@ class MemoryDataService
             return [
                 'success' => false,
                 'affected_rows' => 0,
-                'message' => "Table memory.{$tableName} does not exist",
+                'message' => "Table {$schemaName}.{$tableName} does not exist",
             ];
         }
 
@@ -200,7 +238,7 @@ class MemoryDataService
             $affectedIds = [];
             if (!empty($updatedEmbedFields)) {
                 $idResults = $this->connection()->select(
-                    "SELECT id FROM memory.{$quotedTable} WHERE {$whereClause}",
+                    "SELECT id FROM {$schemaName}.{$quotedTable} WHERE {$whereClause}",
                     $whereParams
                 );
                 $affectedIds = array_map(fn($r) => $r->id, $idResults);
@@ -213,7 +251,7 @@ class MemoryDataService
             }
             $setSql = implode(', ', $setClauses);
 
-            $sql = "UPDATE memory.{$quotedTable} SET {$setSql} WHERE {$whereClause}";
+            $sql = "UPDATE {$schemaName}.{$quotedTable} SET {$setSql} WHERE {$whereClause}";
             $affectedRows = $this->connection()->update($sql, $whereParams);
 
             // Regenerate embeddings for affected rows
@@ -222,7 +260,7 @@ class MemoryDataService
                 foreach ($affectedIds as $rowId) {
                     // Get updated row data
                     $row = $this->connection()->selectOne(
-                        "SELECT * FROM memory.{$quotedTable} WHERE id = ?",
+                        "SELECT * FROM {$schemaName}.{$quotedTable} WHERE id = ?",
                         [$rowId]
                     );
 
@@ -244,6 +282,7 @@ class MemoryDataService
 
             Log::info('Memory rows updated', [
                 'table' => $tableName,
+                'schema' => $schemaName,
                 'affected_rows' => $affectedRows,
                 'embedded_rows' => $embeddedRows,
             ]);
@@ -251,12 +290,13 @@ class MemoryDataService
             return [
                 'success' => true,
                 'affected_rows' => $affectedRows,
-                'message' => "Updated {$affectedRows} row(s) in memory.{$tableName}",
+                'message' => "Updated {$affectedRows} row(s) in {$schemaName}.{$tableName}",
                 'embedded_rows' => $embeddedRows,
             ];
         } catch (\Exception $e) {
             Log::error('Failed to update memory rows', [
                 'table' => $tableName,
+                'schema' => $schemaName,
                 'error' => $e->getMessage(),
             ]);
 
@@ -278,6 +318,8 @@ class MemoryDataService
      */
     public function delete(string $tableName, string $whereClause, array $whereParams = []): array
     {
+        $schemaName = $this->getSchemaName();
+
         // Validate table name format
         $quotedTable = $this->quoteTableName($tableName);
         if ($quotedTable === null) {
@@ -295,7 +337,7 @@ class MemoryDataService
                 'success' => false,
                 'deleted_rows' => 0,
                 'deleted_embeddings' => 0,
-                'message' => "Table memory.{$tableName} does not exist",
+                'message' => "Table {$schemaName}.{$tableName} does not exist",
             ];
         }
 
@@ -312,10 +354,10 @@ class MemoryDataService
             // Use privileged connection for transaction to ensure embedding deletes
             // (which also use 'pgsql') are within the same transactional scope.
             // This is safe because the method validates table exists in memory schema.
-            return DB::connection('pgsql')->transaction(function () use ($tableName, $quotedTable, $whereClause, $whereParams) {
+            return DB::connection('pgsql')->transaction(function () use ($schemaName, $tableName, $quotedTable, $whereClause, $whereParams) {
                 // Delete rows and get their IDs in one atomic operation using RETURNING
                 $deletedRows = DB::connection('pgsql')->select(
-                    "DELETE FROM memory.{$quotedTable} WHERE {$whereClause} RETURNING id",
+                    "DELETE FROM {$schemaName}.{$quotedTable} WHERE {$whereClause} RETURNING id",
                     $whereParams
                 );
                 $ids = array_map(fn($r) => $r->id, $deletedRows);
@@ -337,6 +379,7 @@ class MemoryDataService
 
                 Log::info('Memory rows deleted', [
                     'table' => $tableName,
+                    'schema' => $schemaName,
                     'deleted_rows' => count($ids),
                     'deleted_embeddings' => $deletedEmbeddings,
                 ]);
@@ -345,12 +388,13 @@ class MemoryDataService
                     'success' => true,
                     'deleted_rows' => count($ids),
                     'deleted_embeddings' => $deletedEmbeddings,
-                    'message' => "Deleted " . count($ids) . " row(s) from memory.{$tableName}",
+                    'message' => "Deleted " . count($ids) . " row(s) from {$schemaName}.{$tableName}",
                 ];
             });
         } catch (\Exception $e) {
             Log::error('Failed to delete memory rows', [
                 'table' => $tableName,
+                'schema' => $schemaName,
                 'error' => $e->getMessage(),
             ]);
 
@@ -446,17 +490,21 @@ class MemoryDataService
      */
     protected function getColumnTypes(string $tableName): array
     {
-        static $cache = [];
+        $schemaName = $this->getSchemaName();
 
-        if (isset($cache[$tableName])) {
-            return $cache[$tableName];
+        // Cache key includes schema for multi-database support
+        static $cache = [];
+        $cacheKey = "{$schemaName}.{$tableName}";
+
+        if (isset($cache[$cacheKey])) {
+            return $cache[$cacheKey];
         }
 
         $columns = DB::connection('pgsql_readonly')->select("
             SELECT column_name, data_type, udt_name
             FROM information_schema.columns
-            WHERE table_schema = 'memory' AND table_name = ?
-        ", [$tableName]);
+            WHERE table_schema = ? AND table_name = ?
+        ", [$schemaName, $tableName]);
 
         $types = [];
         foreach ($columns as $col) {
@@ -471,7 +519,7 @@ class MemoryDataService
             }
         }
 
-        $cache[$tableName] = $types;
+        $cache[$cacheKey] = $types;
         return $types;
     }
 

@@ -2,15 +2,67 @@
 
 namespace App\Tools;
 
+use App\Models\Agent;
+use App\Models\MemoryDatabase;
+use App\Models\Workspace;
+
 class ExecutionContext
 {
     public function __construct(
         public string $workingDirectory,
+        public ?Workspace $workspace = null,
+        public ?MemoryDatabase $memoryDatabase = null,
+        public ?Agent $agent = null,
     ) {}
 
     public function getWorkingDirectory(): string
     {
         return $this->workingDirectory;
+    }
+
+    /**
+     * Get the agent for this context.
+     */
+    public function getAgent(): ?Agent
+    {
+        return $this->agent;
+    }
+
+    /**
+     * Get the workspace for this context.
+     * Falls back to agent's workspace if not explicitly set.
+     */
+    public function getWorkspace(): ?Workspace
+    {
+        if ($this->workspace !== null) {
+            return $this->workspace;
+        }
+
+        // Try to get from agent
+        if ($this->agent !== null) {
+            return $this->agent->workspace;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get the memory database to use for this context.
+     * Falls back to workspace's default memory database if not explicitly set.
+     */
+    public function getMemoryDatabase(): ?MemoryDatabase
+    {
+        if ($this->memoryDatabase !== null) {
+            return $this->memoryDatabase;
+        }
+
+        // Try to get default from workspace
+        $workspace = $this->getWorkspace();
+        if ($workspace !== null) {
+            return $workspace->getDefaultMemoryDatabase();
+        }
+
+        return null;
     }
 
     /**
