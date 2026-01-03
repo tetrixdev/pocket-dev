@@ -6,6 +6,18 @@ PocketDev is a **Docker-based Laravel development environment** with integrated 
 
 **Read `docs/README.md` first** - it has TLDR navigation to help you find relevant sections quickly. The docs/ folder is the single source of truth for architecture, implementation details, and design decisions.
 
+### Quick Topic Lookup
+
+| Looking for... | Go to |
+|----------------|-------|
+| Database schema, conversation statuses | `docs/database/schema.md` |
+| How SSE streaming works | `docs/modules/chat/streaming.md` |
+| Claude CLI integration | `docs/integrations/claude-cli.md` |
+| Container architecture | `docs/architecture/system-overview.md` |
+| Auth (Basic Auth, API keys) | `docs/architecture/authentication.md` |
+| Reasoning/thinking settings | `docs/architecture/provider-specific-reasoning-settings.md` |
+| Config files (.env, ai.php) | `docs/configuration/README.md` |
+
 ## Quick Reference
 
 ### Container Command Prefix

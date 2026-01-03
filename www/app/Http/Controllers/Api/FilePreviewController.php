@@ -9,22 +9,6 @@ use Illuminate\Http\Request;
 class FilePreviewController extends Controller
 {
     /**
-     * Maximum file size for preview (2MB).
-     * Larger files will return a warning.
-     */
-    private const MAX_FILE_SIZE = 2 * 1024 * 1024;
-
-    /**
-     * Allowed base directories for file access.
-     * Paths outside these directories will be rejected.
-     */
-    private const ALLOWED_BASE_PATHS = [
-        '/var/www',
-        '/home',
-        '/pocketdev-source',
-    ];
-
-    /**
      * Preview a file's contents.
      */
     public function preview(Request $request): JsonResponse
@@ -66,7 +50,8 @@ class FilePreviewController extends Controller
         $filename = basename($realPath);
 
         // Check file size
-        if ($fileSize > self::MAX_FILE_SIZE) {
+        $maxFileSize = config('ai.file_preview.max_file_size', 2 * 1024 * 1024);
+        if ($fileSize > $maxFileSize) {
             return response()->json([
                 'exists' => true,
                 'readable' => true,
@@ -76,7 +61,7 @@ class FilePreviewController extends Controller
                 'filename' => $filename,
                 'path' => $path,
                 'too_large' => true,
-                'error' => 'File too large for preview (max ' . $this->formatBytes(self::MAX_FILE_SIZE) . ')',
+                'error' => 'File too large for preview (max ' . $this->formatBytes($maxFileSize) . ')',
             ], 200);
         }
 
@@ -169,7 +154,8 @@ class FilePreviewController extends Controller
 
         // Security: Restrict to allowed base directories
         $isAllowed = false;
-        foreach (self::ALLOWED_BASE_PATHS as $basePath) {
+        $allowedPaths = config('ai.file_preview.allowed_paths', ['/var/www']);
+        foreach ($allowedPaths as $basePath) {
             if (str_starts_with($realPath, $basePath . '/') || $realPath === $basePath) {
                 $isAllowed = true;
                 break;

@@ -371,4 +371,28 @@ return [
     */
 
     'additional_system_prompt_file' => env('ADDITIONAL_SYSTEM_PROMPT_FILE', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | File Preview Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Settings for the file preview modal in the chat interface.
+    | Paths listed here can be previewed and will become clickable links.
+    |
+    */
+
+    'file_preview' => [
+        // Maximum file size for preview (bytes)
+        'max_file_size' => 2 * 1024 * 1024, // 2MB
+
+        // Allowed base directories for file access
+        // Paths outside these directories will be rejected
+        'allowed_paths' => [
+            '/var/www',
+            '/home',
+            '/pocketdev-source',
+            '/tmp',
+        ],
+    ],
 ];
