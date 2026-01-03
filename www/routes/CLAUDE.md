@@ -1,27 +1,26 @@
 # Routes Architecture
 
-## API Routes (`api.php`)
+## API Routes (`api.php`) - Technical Debt
 
-The routes in `api.php` are **browser-only internal endpoints**, not a public API. They're accessed via `fetch()` from the Blade frontend.
+The 32 routes in `api.php` are **browser-only internal endpoints**, not a public API. They're accessed via `fetch()` from the Blade frontend.
 
-### Why This Matters
+### The Problem
 
-API routes in Laravel skip CSRF protection (designed for stateless/token auth). Since these are same-origin browser requests, they'd typically belong in `web.php` for CSRF protection.
+API routes in Laravel skip CSRF protection (designed for stateless/token auth). Since these are same-origin browser requests using session cookies, they should be in `web.php` for CSRF protection.
 
-### Current Decision
+### Why They're Here
 
-**Keep as-is** for now because:
-- PocketDev is a local development tool with limited attack surface
-- CSRF attacks require a malicious site targeting your local instance
-- The `/api/` prefix convention is clean for JSON endpoints
-- Refactoring 32 routes + all frontend fetch calls is non-trivial
+No strong reason - likely just convention (`/api/` prefix for JSON endpoints). This is technical debt.
+
+### Migration Path
+
+Moving to `web.php` requires:
+1. Move routes (can keep `/api/` prefix if desired)
+2. Add CSRF token to all frontend `fetch()` calls
+3. ~32 routes affected
 
 ### Guidelines
 
-1. **Don't add new browser-only endpoints to `api.php`** - prefer `web.php` for new work
-2. **Consider gradual migration** - when touching existing API routes, consider moving them
+1. **New browser-only endpoints go in `web.php`**
+2. **When modifying existing API routes**, consider migrating them
 3. **True external APIs** (if ever needed) should stay in `api.php` with proper token auth
-
-### Container Architecture
-
-The PHP and queue containers share the same Laravel codebase. The queue container runs artisan commands and writes to the database directly - it doesn't make HTTP requests to the app. So the route file choice (`api.php` vs `web.php`) doesn't affect container communication.
