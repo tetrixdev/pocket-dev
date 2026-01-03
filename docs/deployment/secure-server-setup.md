@@ -6,17 +6,29 @@ This guide sets up PocketDev on a VPS with Tailscale-only access. After setup, y
 
 ---
 
+## Deployment Options
+
+After securing the server (Steps 1-7), you have two options for deploying PocketDev:
+
+| Option | For | Method |
+|--------|-----|--------|
+| **Standard Install** | Most users | Uses pre-built images, simple setup |
+| **From Source** | Contributors/developers | Clone repo, full source access |
+
+This guide covers both - follow the standard install unless you want to modify the code.
+
+---
+
 ## Prerequisites
 
-- A VPS provider account (Hetzner, DigitalOcean, Linode, etc.)
+- A VPS provider account (DigitalOcean, Linode, Vultr, etc.)
 - Tailscale account (free at [tailscale.com](https://tailscale.com))
-- Tailscale app installed on your phone/desktop
 
 ---
 
 ## Step 1: Create VPS
 
-Using Hetzner as example (similar for other providers):
+Example settings (similar across providers):
 
 | Setting | Value |
 |---------|-------|
@@ -50,21 +62,18 @@ adduser pocketdev
 usermod -aG sudo pocketdev
 ```
 
-Choose a password when prompted.
+When prompted for Full Name, Room Number, etc. - just press Enter to skip. Only the password matters.
 
 ---
 
-## Step 4: Install Tailscale
+## Step 4: Install Tailscale on Server
 
 ```bash
-# Install Tailscale
 curl -fsSL https://tailscale.com/install.sh | sh
-
-# Start Tailscale with SSH enabled
 sudo tailscale up --ssh
 ```
 
-A URL will appear - open it in your browser to authenticate.
+A URL will appear - open it in your browser to authenticate with your Tailscale account.
 
 After authenticating, get your Tailscale IP:
 
@@ -77,7 +86,26 @@ tailscale ip -4
 
 ---
 
-## Step 5: Switch to Tailscale Connection
+## Step 5: Install Tailscale on Your Devices
+
+Before you can connect via Tailscale, install it on your local machine:
+
+**Desktop:**
+1. Go to [tailscale.com/download](https://tailscale.com/download)
+2. Download and install for your OS (Windows/Mac/Linux)
+3. Open Tailscale and sign in with the same account you used on the server
+
+**Mobile:**
+1. Install "Tailscale" from App Store / Play Store
+2. Sign in with the same account
+
+Once signed in, all your devices can see each other via Tailscale IPs (100.x.x.x).
+
+---
+
+## Step 6: Switch to Tailscale Connection
+
+Disconnect from the public IP:
 
 ```bash
 exit
@@ -89,44 +117,58 @@ From your local machine, connect via Tailscale:
 ssh pocketdev@<tailscale-ip>
 ```
 
-This works without a password because Tailscale SSH handles authentication.
+This should work without a password because Tailscale SSH handles authentication.
 
 ---
 
-## Step 6: Run Security Setup Script
+## Step 7: Run Security Setup Script
 
 ```bash
-# Download the setup script
-curl -O https://raw.githubusercontent.com/YOUR_USERNAME/pocket-dev/main/server-setup.sh
+curl -O https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/server-setup.sh
 chmod +x server-setup.sh
-
-# Run it
 sudo ./server-setup.sh
 ```
 
+Type `yes` when prompted to confirm.
+
 This script:
-- Updates the system
+- Updates the system and installs git, nano
 - Enables automatic security updates
 - Installs Docker with log rotation
 - Configures iptables to block ALL public access
+- Creates a 2GB swap file
 - Only allows connections through Tailscale
 
 ---
 
-## Step 7: Deploy PocketDev
+## Step 8: Deploy PocketDev
 
-Log out and back in (required for Docker permissions):
+Log out and back in (required for Docker group permissions):
 
 ```bash
 exit
 ssh pocketdev@<tailscale-ip>
 ```
 
-Clone and start PocketDev:
+### Option A: Standard Install (Recommended)
+
+For most users - uses pre-built Docker images:
 
 ```bash
-cd ~/apps
-git clone https://github.com/YOUR_USERNAME/pocket-dev.git
+mkdir pocket-dev && cd pocket-dev
+curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/setup.sh -o setup.sh
+curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/compose.yml -o compose.yml
+curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/.env.example -o .env.example
+chmod +x setup.sh && ./setup.sh
+```
+
+### Option B: From Source (For Contributors)
+
+If you want to modify the code or contribute:
+
+```bash
+mkdir -p ~/docker-apps && cd ~/docker-apps
+git clone https://github.com/tetrixdev/pocket-dev.git
 cd pocket-dev
 
 # Configure environment
@@ -139,15 +181,15 @@ docker compose up -d
 
 ---
 
-## Step 8: Access PocketDev
+## Step 9: Access PocketDev
 
-Install the Tailscale app on your phone/other devices and log in with the same account.
-
-Then access PocketDev at:
+Open in your browser:
 
 ```
 http://<tailscale-ip>
 ```
+
+This works from any device where you've installed and signed into Tailscale.
 
 ---
 
@@ -166,21 +208,41 @@ The public IP returns nothing - not even a connection refused. The server is inv
 
 ---
 
+## Optional: Use a Custom Domain
+
+Instead of remembering the Tailscale IP, you can point a subdomain to it:
+
+1. In your DNS provider, add an A record:
+   ```
+   pocketdev.yourdomain.com → 100.64.x.x
+   ```
+
+2. Access via `http://pocketdev.yourdomain.com`
+
+The DNS is public, but only Tailscale devices can actually connect to that IP.
+
+Alternatively, Tailscale provides a free MagicDNS name:
+```
+http://<server-hostname>.<tailnet-name>.ts.net
+```
+
+---
+
 ## Troubleshooting
 
 ### Can't connect via Tailscale IP
 
 1. Check Tailscale is running on both devices: `tailscale status`
 2. Ensure both devices are logged into the same Tailscale account
-3. Check the Tailscale admin console for device status
+3. Check the [Tailscale admin console](https://login.tailscale.com/admin/machines) for device status
 
 ### Locked out of server
 
 If you ran the setup script while connected via public IP:
 
-1. Access via Hetzner/provider's web console
+1. Access via your provider's web console (VNC/Console option)
 2. Run: `sudo iptables -I INPUT -p tcp --dport 22 -j ACCEPT`
-3. Reconnect and fix Tailscale setup
+3. Reconnect via public IP and fix Tailscale setup
 
 ### Docker permission denied
 
@@ -191,14 +253,6 @@ exit
 ssh pocketdev@<tailscale-ip>
 ```
 
----
+### Script fails on non-Ubuntu
 
-## Optional: Custom Domain
-
-You can use Tailscale's MagicDNS for a friendly name:
-
-```
-http://pocketdev-prod01.<tailnet-name>.ts.net
-```
-
-Or set up a custom domain in the Tailscale admin console.
+The script supports Ubuntu and Debian. For other distributions, you'll need to adapt the package installation commands.

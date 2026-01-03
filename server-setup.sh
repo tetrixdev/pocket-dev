@@ -3,24 +3,15 @@
 # PocketDev Server Setup Script
 # =============================================================================
 #
-# This script sets up a fresh Linux server (Ubuntu/Debian) for running
+# This script secures a fresh Linux server (Ubuntu/Debian) for running
 # PocketDev with Tailscale-only access. After running this, your server
 # will be invisible to the public internet.
 #
-# BEFORE RUNNING THIS SCRIPT:
-# 1. Install Tailscale first:
-#      curl -fsSL https://tailscale.com/install.sh | sh
-#      sudo tailscale up
+# PREREQUISITES:
+# 1. Tailscale installed and connected
+# 2. SSH'd into server via Tailscale IP (not public IP)
 #
-# 2. Verify Tailscale is connected:
-#      tailscale status
-#
-# 3. SSH into the server via Tailscale IP (not public IP):
-#      ssh user@100.x.x.x
-#
-# 4. Then run this script:
-#      chmod +x server-setup.sh
-#      ./server-setup.sh
+# See docs/deployment/secure-server-setup.md for the full guide.
 #
 # =============================================================================
 
@@ -53,25 +44,43 @@ fi
 if ! command -v tailscale &> /dev/null; then
     log_error "Tailscale is not installed. Please install it first:"
     echo "  curl -fsSL https://tailscale.com/install.sh | sh"
-    echo "  sudo tailscale up"
+    echo "  sudo tailscale up --ssh"
     exit 1
 fi
 
 if ! tailscale status &> /dev/null; then
-    log_error "Tailscale is not connected. Please run: sudo tailscale up"
+    log_error "Tailscale is not connected. Please run: sudo tailscale up --ssh"
     exit 1
 fi
 
 TAILSCALE_IP=$(tailscale ip -4)
 log_info "Tailscale connected with IP: $TAILSCALE_IP"
 
+# Detect distro (ubuntu or debian)
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    DISTRO_ID="$ID"
+    DISTRO_CODENAME="$VERSION_CODENAME"
+else
+    log_error "Cannot detect Linux distribution. /etc/os-release not found."
+    exit 1
+fi
+
+if [ "$DISTRO_ID" != "ubuntu" ] && [ "$DISTRO_ID" != "debian" ]; then
+    log_error "This script only supports Ubuntu and Debian. Detected: $DISTRO_ID"
+    exit 1
+fi
+
+log_info "Detected distribution: $DISTRO_ID $DISTRO_CODENAME"
+
 # Confirm with user
 echo ""
 log_warn "This script will:"
-echo "  1. Update the system"
-echo "  2. Install Docker"
-echo "  3. Configure iptables to ONLY allow Tailscale access"
-echo "  4. Block ALL public internet access to this server"
+echo "  1. Update the system and install git, nano"
+echo "  2. Enable automatic security updates"
+echo "  3. Install Docker with log rotation"
+echo "  4. Configure iptables to ONLY allow Tailscale access"
+echo "  5. Create a 2GB swap file (if none exists)"
 echo ""
 log_warn "Make sure you're connected via Tailscale SSH (IP: $TAILSCALE_IP)"
 log_warn "If you're connected via public IP, you will be locked out!"
@@ -97,11 +106,17 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Configure needrestart to automatically restart services (no prompts)
 # This prevents the script from hanging on "Which services should be restarted?"
-mkdir -p /etc/needrestart/conf.d
-echo '$nrconf{restart} = "a";' > /etc/needrestart/conf.d/no-prompt.conf
+if [ -d /etc/needrestart ]; then
+    mkdir -p /etc/needrestart/conf.d
+    echo '$nrconf{restart} = "a";' > /etc/needrestart/conf.d/no-prompt.conf
+fi
 
 apt-get update
 apt-get upgrade -y
+
+# Install essential tools
+log_info "Installing essential tools (git, nano)..."
+apt-get install -y git nano
 
 # -----------------------------------------------------------------------------
 # Install unattended-upgrades for automatic security patches
@@ -146,14 +161,13 @@ apt-get install -y ca-certificates curl gnupg
 
 # Add Docker's official GPG key
 install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+curl -fsSL "https://download.docker.com/linux/$DISTRO_ID/gpg" -o /etc/apt/keyrings/docker.asc
 chmod a+r /etc/apt/keyrings/docker.asc
 
-# Add Docker repository
-# Note: This assumes Ubuntu. For Debian, change 'ubuntu' to 'debian'
+# Add Docker repository (uses detected distro)
 echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/$DISTRO_ID \
+  $DISTRO_CODENAME stable" | \
   tee /etc/apt/sources.list.d/docker.list > /dev/null
 
 apt-get update
@@ -328,19 +342,6 @@ else
 fi
 
 # =============================================================================
-# STEP 5: Create App Directory
-# =============================================================================
-
-log_info "Step 5: Creating application directory..."
-
-if [ -n "$SUDO_USER" ]; then
-    APP_DIR="/home/$SUDO_USER/apps"
-    mkdir -p "$APP_DIR"
-    chown "$SUDO_USER:$SUDO_USER" "$APP_DIR"
-    log_info "Created $APP_DIR for your applications"
-fi
-
-# =============================================================================
 # COMPLETE
 # =============================================================================
 
@@ -358,20 +359,22 @@ echo ""
 echo "Tailscale IP: $TAILSCALE_IP"
 echo ""
 echo "Next steps:"
-echo "  1. Log out and back in (for docker group permissions)"
-echo "  2. Clone PocketDev:"
-echo "       cd ~/apps"
-echo "       git clone <your-repo> pocket-dev"
-echo "       cd pocket-dev"
+echo "  1. Log out and back in (for docker group permissions):"
+echo "       exit"
+echo "       ssh <user>@$TAILSCALE_IP"
 echo ""
-echo "  3. Configure environment:"
-echo "       cp .env.example .env"
-echo "       nano .env"
+echo "  2. Deploy PocketDev (choose one):"
 echo ""
-echo "  4. Start PocketDev:"
+echo "     Standard install (recommended):"
+echo "       mkdir pocket-dev && cd pocket-dev"
+echo "       curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/setup.sh | bash"
+echo ""
+echo "     From source (for contributors):"
+echo "       git clone https://github.com/tetrixdev/pocket-dev.git"
+echo "       cd pocket-dev && cp .env.example .env && nano .env"
 echo "       docker compose up -d"
 echo ""
-echo "  5. Access from your phone/laptop via:"
+echo "  3. Access from your phone/laptop via:"
 echo "       http://$TAILSCALE_IP"
 echo ""
 echo "============================================================================="
