@@ -435,15 +435,61 @@
                               }"></span>
                         <span x-text="currentAgent?.name || 'Select Agent'" class="underline decoration-gray-600 hover:decoration-gray-400"></span>
                     </button>
+                    {{-- Conversation status badge --}}
+                    <span x-show="currentConversationUuid && currentConversationStatus"
+                          class="inline-flex items-center justify-center w-4 h-4 rounded-sm"
+                          :class="getStatusColorClass(currentConversationStatus)"
+                          :title="'Status: ' + currentConversationStatus">
+                        <i class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
+                    </span>
                     {{-- Context window progress bar --}}
                     <x-chat.context-progress />
                 </div>
-                <a href="{{ route('config.index') }}" class="text-gray-300 hover:text-white p-2" title="Settings">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                </a>
+                {{-- Conversation Menu Dropdown --}}
+                <div class="relative">
+                    <button @click="showConversationMenu = !showConversationMenu"
+                            class="text-gray-300 hover:text-white p-2"
+                            title="Menu">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </button>
+                    {{-- Dropdown Menu --}}
+                    <div x-show="showConversationMenu"
+                         x-cloak
+                         @click.outside="showConversationMenu = false"
+                         x-transition:enter="transition ease-out duration-100"
+                         x-transition:enter-start="transform opacity-0 scale-95"
+                         x-transition:enter-end="transform opacity-100 scale-100"
+                         x-transition:leave="transition ease-in duration-75"
+                         x-transition:leave-start="transform opacity-100 scale-100"
+                         x-transition:leave-end="transform opacity-0 scale-95"
+                         class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
+                        {{-- Settings --}}
+                        <a href="{{ route('config.index') }}"
+                           class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
+                            <i class="fa-solid fa-cog w-4 text-center"></i>
+                            Settings
+                        </a>
+                        {{-- Archive/Unarchive --}}
+                        <button @click="toggleArchiveConversation(); showConversationMenu = false"
+                                :disabled="!currentConversationUuid"
+                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
+                                class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                            <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                            <span x-text="currentConversationStatus === 'archived' ? 'Unarchive' : 'Archive'"></span>
+                        </button>
+                        {{-- Delete --}}
+                        <button @click="deleteConversation(); showConversationMenu = false"
+                                :disabled="!currentConversationUuid"
+                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600'"
+                                class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                            <i class="fa-solid fa-trash w-4 text-center"></i>
+                            Delete
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {{-- Messages Container --}}
@@ -543,6 +589,8 @@
                 cachedLatestActivity: null, // For sidebar polling
                 sidebarPollInterval: null, // Polling interval ID
                 currentConversationUuid: null,
+                currentConversationStatus: null, // Current conversation status (idle, processing, archived, failed)
+                showConversationMenu: false, // Dropdown menu visibility
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
                 _justCompletedStream: false,
@@ -596,6 +644,7 @@
                 conversationSearchQuery: '',
                 conversationSearchResults: [],
                 conversationSearchLoading: false,
+                showArchivedConversations: false, // Filter to include archived conversations
                 pendingScrollToTurn: null, // Set when loading from search result
 
                 // Pricing settings (per-model) - loaded from API via fetchPricing()
@@ -686,8 +735,40 @@
                     // Fetch available agents
                     await this.fetchAgents();
 
+                    // Restore filter states from sessionStorage
+                    const savedArchiveFilter = sessionStorage.getItem('pocketdev_showArchivedConversations');
+                    if (savedArchiveFilter === 'true') {
+                        this.showArchivedConversations = true;
+                    }
+                    const savedSearchQuery = sessionStorage.getItem('pocketdev_conversationSearchQuery');
+                    if (savedSearchQuery) {
+                        this.conversationSearchQuery = savedSearchQuery;
+                        this.showSearchInput = true; // Open filter panel if search was active
+                    }
+
                     // Load conversations list
                     await this.fetchConversations();
+
+                    // If search query was restored, perform the search
+                    if (this.conversationSearchQuery) {
+                        await this.searchConversations();
+                    }
+
+                    // Watch for filter changes to persist to sessionStorage
+                    this.$watch('showArchivedConversations', (value) => {
+                        if (value) {
+                            sessionStorage.setItem('pocketdev_showArchivedConversations', 'true');
+                        } else {
+                            sessionStorage.removeItem('pocketdev_showArchivedConversations');
+                        }
+                    });
+                    this.$watch('conversationSearchQuery', (value) => {
+                        if (value) {
+                            sessionStorage.setItem('pocketdev_conversationSearchQuery', value);
+                        } else {
+                            sessionStorage.removeItem('pocketdev_conversationSearchQuery');
+                        }
+                    });
 
                     // Start polling for sidebar updates
                     this.startSidebarPolling();
@@ -910,6 +991,26 @@
                     return colors[providerKey] || 'bg-gray-500';
                 },
 
+                getStatusColorClass(status) {
+                    const colors = {
+                        'idle': 'bg-green-600',
+                        'processing': 'bg-blue-600',
+                        'archived': 'bg-gray-600',
+                        'failed': 'bg-red-600'
+                    };
+                    return colors[status] || 'bg-gray-600';
+                },
+
+                getStatusIconClass(status) {
+                    const icons = {
+                        'idle': 'fa-solid fa-check',
+                        'processing': 'fa-solid fa-spinner fa-spin',
+                        'archived': 'fa-solid fa-box-archive',
+                        'failed': 'fa-solid fa-triangle-exclamation'
+                    };
+                    return icons[status] || 'fa-solid fa-check';
+                },
+
                 async selectAgent(agent, closeModal = true) {
                     if (!agent) return;
 
@@ -1077,7 +1178,11 @@
 
                 async fetchConversations() {
                     try {
-                        const response = await fetch('/api/conversations?working_directory=/var/www');
+                        let url = '/api/conversations?working_directory=/var/www';
+                        if (this.showArchivedConversations) {
+                            url += '&include_archived=true';
+                        }
+                        const response = await fetch(url);
                         const data = await response.json();
                         this.conversations = data.data || [];
                         this.conversationsPage = data.current_page || 1;
@@ -1136,7 +1241,11 @@
                 // Refresh sidebar without losing scroll position or current selection
                 async refreshSidebar() {
                     try {
-                        const response = await fetch('/api/conversations?working_directory=/var/www');
+                        let url = '/api/conversations?working_directory=/var/www';
+                        if (this.showArchivedConversations) {
+                            url += '&include_archived=true';
+                        }
+                        const response = await fetch(url);
                         const data = await response.json();
                         const newConversations = data.data || [];
 
@@ -1163,7 +1272,11 @@
                     this.loadingMoreConversations = true;
                     try {
                         const nextPage = this.conversationsPage + 1;
-                        const response = await fetch(`/api/conversations?working_directory=/var/www&page=${nextPage}`);
+                        let url = `/api/conversations?working_directory=/var/www&page=${nextPage}`;
+                        if (this.showArchivedConversations) {
+                            url += '&include_archived=true';
+                        }
+                        const response = await fetch(url);
                         const data = await response.json();
                         if (data.data && data.data.length > 0) {
                             this.conversations = [...this.conversations, ...data.data];
@@ -1194,7 +1307,11 @@
 
                     this.conversationSearchLoading = true;
                     try {
-                        const response = await fetch(`/api/conversations/search?query=${encodeURIComponent(this.conversationSearchQuery)}&limit=20`);
+                        let url = `/api/conversations/search?query=${encodeURIComponent(this.conversationSearchQuery)}&limit=20`;
+                        if (this.showArchivedConversations) {
+                            url += '&include_archived=true';
+                        }
+                        const response = await fetch(url);
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
                         const data = await response.json();
                         this.conversationSearchResults = data.results || [];
@@ -1210,6 +1327,17 @@
                     this.conversationSearchQuery = '';
                     this.conversationSearchResults = [];
                     this.showSearchInput = false;
+                },
+
+                clearAllFilters() {
+                    this.conversationSearchQuery = '';
+                    this.conversationSearchResults = [];
+                    this.showArchivedConversations = false;
+                    this.showSearchInput = false;
+                    // Clear sessionStorage (also done by $watch, but explicit for clarity)
+                    sessionStorage.removeItem('pocketdev_showArchivedConversations');
+                    sessionStorage.removeItem('pocketdev_conversationSearchQuery');
+                    this.fetchConversations(); // Refresh list without archived
                 },
 
                 async loadSearchResult(result) {
@@ -1231,6 +1359,7 @@
                     this.disconnectFromStream();
 
                     this.currentConversationUuid = null;
+                    this.currentConversationStatus = null; // Reset status for new conversation
                     this.conversationProvider = null; // Reset for new conversation
                     this.messages = [];
                     this.sessionCost = 0;
@@ -1255,6 +1384,52 @@
                         if (agent) {
                             this.selectAgent(agent, false);
                         }
+                    }
+                },
+
+                async toggleArchiveConversation() {
+                    if (!this.currentConversationUuid) return;
+
+                    const isArchived = this.currentConversationStatus === 'archived';
+                    const action = isArchived ? 'unarchive' : 'archive';
+                    try {
+                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/${action}`, {
+                            method: 'POST'
+                        });
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                        // Update local state
+                        this.currentConversationStatus = isArchived ? 'idle' : 'archived';
+
+                        // Refresh conversation list
+                        await this.fetchConversations();
+                    } catch (err) {
+                        console.error('Failed to toggle archive:', err);
+                        this.showError('Failed to ' + action + ' conversation');
+                    }
+                },
+
+                async deleteConversation() {
+                    if (!this.currentConversationUuid) return;
+
+                    if (!confirm('Are you sure you want to delete this conversation?\n\nThis is a soft delete - the conversation will be hidden but can be recovered directly through the database if needed.')) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}`, {
+                            method: 'DELETE'
+                        });
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                        // Reset to new conversation
+                        this.newConversation();
+
+                        // Refresh conversation list
+                        await this.fetchConversations();
+                    } catch (err) {
+                        console.error('Failed to delete conversation:', err);
+                        this.showError('Failed to delete conversation');
                     }
                 },
 
@@ -1363,6 +1538,9 @@
                         if (data.conversation?.model) {
                             this.model = data.conversation.model;
                         }
+
+                        // Update conversation status for header badge
+                        this.currentConversationStatus = data.conversation?.status || 'idle';
 
                         // Set agent from conversation (don't use selectAgent which would PATCH backend)
                         if (data.conversation?.agent_id) {
@@ -1716,6 +1894,9 @@
                     const myNonce = ++this._streamConnectNonce;
 
                     this.isStreaming = true;
+                    this.currentConversationStatus = 'processing'; // Update status badge
+                    // Refresh sidebar to show processing status and pick up any other updates
+                    this.fetchConversations();
                     this.streamAbortController = new AbortController();
 
                     try {
@@ -1762,12 +1943,17 @@
                                                 return;
                                             } else {
                                                 this.isStreaming = false;
+                                                this.currentConversationStatus = 'failed'; // Update status badge
+                                                // Refresh sidebar to show failed status
+                                                this.fetchConversations();
                                                 this.showError('Failed to connect to stream');
                                                 return;
                                             }
                                         }
                                         if (event.status === 'completed' || event.status === 'failed') {
                                             this.isStreaming = false;
+                                            // Update status badge
+                                            this.currentConversationStatus = event.status === 'failed' ? 'failed' : 'idle';
                                             // Prevent reconnection for a short period
                                             this._justCompletedStream = true;
                                             await this.fetchConversations();

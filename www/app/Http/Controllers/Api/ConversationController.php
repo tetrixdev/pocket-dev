@@ -158,6 +158,11 @@ class ConversationController extends Controller
             ->when($request->input('working_directory'), fn($q, $d) => $q->where('working_directory', $d))
             ->orderByDesc('last_activity_at');
 
+        // By default, exclude archived conversations unless include_archived=true
+        if (!$request->boolean('include_archived') && !$request->input('status')) {
+            $query->where('status', '!=', 'archived');
+        }
+
         if ($request->boolean('include_messages')) {
             $query->with('messages.agent');
         }

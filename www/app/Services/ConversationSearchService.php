@@ -19,9 +19,10 @@ class ConversationSearchService
      *
      * @param string $query Natural language search query
      * @param int $limit Maximum results to return
+     * @param bool $includeArchived Whether to include archived conversations
      * @return Collection Collection of search results
      */
-    public function search(string $query, int $limit = 20): Collection
+    public function search(string $query, int $limit = 20, bool $includeArchived = false): Collection
     {
         if (!$this->embeddingService->isAvailable()) {
             Log::warning('ConversationSearchService: Embedding service not available');
@@ -39,6 +40,12 @@ class ConversationSearchService
         // Format embedding for PostgreSQL
         $embeddingString = '[' . implode(',', $queryEmbedding) . ']';
 
+        // Build status filter - always exclude soft-deleted, optionally exclude archived
+        $statusFilter = $includeArchived ? '' : 'AND c.status != ?';
+        $params = $includeArchived
+            ? [$embeddingString, $embeddingString, $limit * 3]
+            : [$embeddingString, Conversation::STATUS_ARCHIVED, $embeddingString, $limit * 3];
+
         // Search turn embeddings using cosine similarity
         // Fetch extra results to account for grouping by turn (best chunk per turn)
         $results = DB::select("
@@ -54,10 +61,11 @@ class ConversationSearchService
                 ROUND(((1 - (cte.embedding <=> ?::vector)) * 100)::numeric, 1) as similarity
             FROM conversation_turn_embeddings cte
             JOIN conversations c ON c.id = cte.conversation_id
-            WHERE c.status != ?
+            WHERE c.deleted_at IS NULL
+              {$statusFilter}
             ORDER BY cte.embedding <=> ?::vector
             LIMIT ?
-        ", [$embeddingString, Conversation::STATUS_ARCHIVED, $embeddingString, $limit * 3]);
+        ", $params);
 
         // Group by turn, take best chunk score per turn
         $grouped = collect($results)
