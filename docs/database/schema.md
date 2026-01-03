@@ -18,7 +18,7 @@ Multi-provider conversation storage with full message history.
 | working_directory | varchar | No | '/var/www' | Context directory |
 | provider_type | varchar | No | 'anthropic' | Provider: anthropic, openai, claude_code |
 | model | varchar | No | - | Model identifier |
-| status | varchar | No | 'active' | active/archived |
+| status | varchar | No | 'idle' | idle/processing/archived/failed (see below) |
 | anthropic_thinking_budget | int | Yes | null | Thinking tokens (Anthropic) |
 | openai_reasoning_effort | varchar | Yes | null | Reasoning level (OpenAI) |
 | claude_code_thinking_tokens | int | Yes | null | Thinking tokens (Claude Code) |
@@ -37,6 +37,19 @@ Multi-provider conversation storage with full message history.
 - `conversations_last_activity_at_index` on `last_activity_at`
 
 **Model:** `app/Models/Conversation.php`
+
+**Conversation Statuses:**
+
+| Status | When Active | Triggered By | Purpose |
+|--------|-------------|--------------|---------|
+| `idle` | Default state, ready for input | `completeProcessing()`, `unarchive()` | Conversation is available for new messages |
+| `processing` | AI is generating response | `startProcessing()` in job | Prevents concurrent requests, shows loading UI |
+| `archived` | User archived conversation | `archive()` | Hides from active list, preserves history |
+| `failed` | Error during processing | `markFailed()` when stream fails | Indicates error; user can still continue |
+
+**Lifecycle:** `idle` → `processing` → `idle` (or `failed` on error). Archived conversations return to `idle` when unarchived. The `CleanupStaleConversations` command marks conversations stuck in `processing` for >30 minutes as `failed`.
+
+**Scopes:** `scopeActive()` includes `idle`, `processing`, and `failed` (so users can retry after errors). `scopeArchived()` filters to only `archived`.
 
 ### messages
 

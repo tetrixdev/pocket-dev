@@ -144,8 +144,11 @@
     <script>
         // Global helper to linkify file paths in HTML content
         window.linkifyFilePaths = function(html) {
-            // Only match paths the backend allows: /var/www, /home, /pocketdev-source
-            const filePathPattern = /((?:^|[^"'=\w])((?:\/(?:var\/www|home|pocketdev-source)|\.\.?\/|~\/)[^\s<>"'`\)]+\.[a-zA-Z0-9]+))/g;
+            // Allowed paths from Laravel config (single source of truth)
+            const allowedPaths = @json(config('ai.file_preview.allowed_paths', ['/var/www']));
+            // Build regex: strip leading /, escape internal /, join with |
+            const pathsPattern = allowedPaths.map(p => p.replace(/^\//, '').replace(/\//g, '\\/')).join('|');
+            const filePathPattern = new RegExp(`((?:^|[^"'=\\w])((?:\\/(?:${pathsPattern})|\\.\\.\\/|\\.\\/|~\\/)[^\\s<>"'\`\\)]+\\.[a-zA-Z0-9]+))`, 'g');
             const escapeHtml = (text) => String(text)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')

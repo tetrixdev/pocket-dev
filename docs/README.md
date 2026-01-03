@@ -19,6 +19,34 @@ PocketDev is a Docker-based development environment that provides a multi-provid
 | Docker/container changes | `architecture/system-overview.md` |
 | Develop PocketDev itself | `development/self-development.md` |
 
+## Topic Index
+
+What are you looking for?
+
+| Topic | Location | Notes |
+|-------|----------|-------|
+| **Conversations** | | |
+| Conversation statuses (idle/processing/failed/archived) | `database/schema.md` | See "conversations" table |
+| How messages are streamed | `modules/chat/streaming.md` | SSE, chunk handling |
+| Chat UI components | `modules/chat/README.md` | Alpine.js, Blade |
+| **Providers** | | |
+| Anthropic/OpenAI/Claude Code setup | `architecture/system-overview.md` | Provider factory |
+| Reasoning/thinking token settings | `architecture/provider-specific-reasoning-settings.md` | Per-provider config |
+| **Infrastructure** | | |
+| Container architecture | `architecture/system-overview.md` | 6 containers, networking |
+| Job queue (Redis) | `architecture/system-overview.md` | Background processing |
+| Authentication (Basic Auth, IP whitelist) | `architecture/authentication.md` | Proxy layer |
+| API key storage | `architecture/authentication.md` | Encrypted in DB |
+| **Database** | | |
+| Full schema reference | `database/schema.md` | Tables, indexes, queries |
+| Model pricing/config | `database/schema.md` | ai_models table |
+| **Integrations** | | |
+| Claude CLI (proc_open, streaming) | `integrations/claude-cli.md` | Session management |
+| OpenAI Whisper (voice) | `integrations/openai-whisper.md` | Transcription API |
+| **Configuration** | | |
+| Environment variables | `configuration/README.md` | .env file |
+| AI provider config | `configuration/README.md` | config/ai.php |
+
 ---
 
 ## Documentation

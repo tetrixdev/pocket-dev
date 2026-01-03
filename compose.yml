@@ -60,6 +60,8 @@ services:
       - workspace-data:/workspace
       - pocketdev-storage:/var/www/storage/pocketdev
       - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
+      - .:/pocketdev-source
+      - shared-tmp:/tmp
     networks:
       - pocket-dev
     depends_on:
@@ -163,6 +165,7 @@ services:
       - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
       - ./docker-laravel/local/php/queue-entrypoint.sh:/queue-entrypoint.sh
       - ./docker-laravel/shared/supervisor/queue-workers.conf:/etc/supervisor/conf.d/queue-workers.conf:ro
+      - shared-tmp:/tmp
     networks:
       - pocket-dev
     depends_on:
@@ -197,4 +200,7 @@ volumes:
     driver: local
   pocketdev-storage:
     name: pocket-dev-storage
+    driver: local
+  shared-tmp:
+    name: pocket-dev-shared-tmp
     driver: local
