@@ -215,14 +215,16 @@ The `--bg` flag runs it persistently in the background, surviving reboots.
 nano .env
 ```
 
-Update `APP_URL` to use HTTPS with your full hostname:
+Update `APP_URL` and enable `FORCE_HTTPS`:
 ```text
 APP_URL=https://<server-name>.<tailnet-name>.ts.net
+FORCE_HTTPS=true
 ```
 
-**6. Restart containers:**
+**6. Clear config cache and restart:**
 
 ```bash
+docker compose exec pocket-dev-php php artisan config:cache
 docker compose restart
 ```
 
