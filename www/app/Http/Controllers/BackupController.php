@@ -212,8 +212,11 @@ class BackupController extends Controller
             // Cleanup
             exec("rm -rf \"{$tempDir}\"");
 
+            // 3. Restart containers to apply changes
+            $this->restartContainers();
+
             return redirect()->route('config.backup')
-                ->with('success', 'Backup restored successfully. You may need to restart containers for changes to take full effect.');
+                ->with('success', 'Backup restored successfully. Containers are restarting.');
 
         } catch (\Exception $e) {
             Log::error('Backup restore failed', ['error' => $e->getMessage()]);
@@ -438,6 +441,37 @@ class BackupController extends Controller
         exec('docker run --rm -v pocket-dev-redis:/data alpine chown -R 999:999 /data 2>&1', $output, $returnCode);
         if ($returnCode !== 0) {
             Log::warning('Failed to fix pocket-dev-redis permissions', ['output' => implode("\n", $output)]);
+        }
+    }
+
+    /**
+     * Restart containers after restore
+     */
+    protected function restartContainers(): void
+    {
+        $hostProjectPath = env('HOST_PROJECT_PATH');
+
+        if (empty($hostProjectPath)) {
+            Log::warning('HOST_PROJECT_PATH not set, skipping container restart');
+            return;
+        }
+
+        // Spawn a helper container that survives the PHP container restart
+        $command = sprintf(
+            'docker run --rm -d ' .
+            '-v /var/run/docker.sock:/var/run/docker.sock ' .
+            '-v "%s:%s" ' .
+            '-w "%s" ' .
+            'docker:27-cli ' .
+            'docker compose up -d --force-recreate 2>&1',
+            $hostProjectPath,
+            $hostProjectPath,
+            $hostProjectPath
+        );
+
+        exec($command, $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning('Failed to spawn restart container', ['output' => implode("\n", $output)]);
         }
     }
 
