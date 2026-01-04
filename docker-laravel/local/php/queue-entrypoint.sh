@@ -1,6 +1,17 @@
 #!/bin/bash
 set -e
 
+# Add www-data to the host's docker group for docker socket access
+# DOCKER_GID is passed from compose.yml and matches the host's docker group
+if [ -n "$DOCKER_GID" ]; then
+    # Check if a group with this GID already exists
+    if ! getent group "$DOCKER_GID" > /dev/null 2>&1; then
+        groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
+    fi
+    # Add www-data to this group
+    usermod -aG "$DOCKER_GID" www-data 2>/dev/null || true
+fi
+
 # Set HOME for Claude Code CLI, Codex CLI, and other tools that expect a writable home directory
 # www-data is in group 1000 (appgroup) which owns /home/appuser with 775 permissions
 export HOME=/home/appuser
