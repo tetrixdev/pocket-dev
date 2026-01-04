@@ -21,7 +21,7 @@ This guide covers both - follow the standard install unless you want to modify t
 
 ## Prerequisites
 
-- A VPS provider account (DigitalOcean, Linode, Vultr, etc.)
+- A VPS provider account (Hetzner, DigitalOcean, Linode, Vultr, etc.)
 - Tailscale account (free at [tailscale.com](https://tailscale.com))
 
 ---
@@ -33,7 +33,7 @@ Example settings (similar across providers):
 | Setting | Value |
 |---------|-------|
 | OS | Ubuntu 24.04 LTS |
-| Type | CX22 (2 vCPU, 4GB RAM) or smallest |
+| Minimum specs | 2 vCPU, 4GB RAM |
 | Location | Closest to you |
 | SSH Key | Skip (use password) |
 | Firewall | Skip (we use iptables) |
