@@ -128,14 +128,30 @@ This script:
 
 ---
 
-## Step 7: Deploy PocketDev
+## Step 7: Create Non-Root User
 
-Log out and back in (required for Docker group permissions):
+**Important:** PocketDev must run as a non-root user. The Claude CLI refuses to run with dangerous permissions when executed as root for security reasons.
 
 ```bash
-exit
-ssh root@<tailscale-ip>
+# Create a dedicated user
+useradd -m -s /bin/bash pocketdev
+
+# Add to docker group (created by setup script)
+usermod -aG docker pocketdev
+
+# Switch to the new user
+su - pocketdev
 ```
+
+Verify you're now the pocketdev user:
+```bash
+whoami
+# Should output: pocketdev
+```
+
+---
+
+## Step 8: Deploy PocketDev
 
 ### Option A: Standard Install (Recommended)
 
@@ -167,7 +183,7 @@ docker compose up -d
 
 ---
 
-## Step 8: Enable HTTPS (Required for Voice Input)
+## Step 9: Enable HTTPS (Required for Voice Input)
 
 Voice input on mobile requires HTTPS. Tailscale provides free automatic SSL certificates for your `.ts.net` domain.
 
@@ -230,9 +246,9 @@ docker compose restart
 
 ---
 
-## Step 9: Access PocketDev
+## Step 10: Access PocketDev
 
-Open in your browser (using the hostname from Step 8):
+Open in your browser (using the hostname from Step 9):
 
 ```text
 https://<server-name>.<tailnet-name>.ts.net
@@ -304,3 +320,31 @@ ssh root@<tailscale-ip>
 ### Script fails on non-Ubuntu
 
 The script supports Ubuntu and Debian. For other distributions, you'll need to adapt the package installation commands.
+
+### Conversations return empty responses
+
+If you send a message and get no response (SSE stream ends immediately with no content), check the logs:
+
+```bash
+docker exec pocket-dev-php tail -20 /var/www/storage/logs/api-*.log | grep -i "dangerously-skip-permissions"
+```
+
+If you see `--dangerously-skip-permissions cannot be used with root/sudo privileges`, you're running the containers as root. The Claude CLI refuses this for security reasons.
+
+**Fix:** Create a non-root user and redeploy (see Step 7). If you already deployed as root:
+
+```bash
+# As root, create the user
+useradd -m -s /bin/bash pocketdev
+usermod -aG docker pocketdev
+
+# Move the project
+mv /root/pocket-dev /home/pocketdev/
+chown -R pocketdev:pocketdev /home/pocketdev/pocket-dev
+
+# Switch to pocketdev and redeploy
+su - pocketdev
+cd pocket-dev
+./setup.sh  # This will set correct USER_ID/GROUP_ID
+docker compose down && docker compose up -d --build
+```
