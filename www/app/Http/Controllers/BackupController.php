@@ -413,26 +413,34 @@ class BackupController extends Controller
      */
     protected function fixVolumePermissions(): void
     {
-        // user-data: needs www-data (33:33) ownership for CLI tools
-        exec('docker run --rm -v pocket-dev-user:/data alpine chown -R 33:33 /data 2>&1', $output, $returnCode);
+        // Get the host user/group IDs from environment (containers run as this user, not www-data)
+        $userId = env('USER_ID');
+        $groupId = env('GROUP_ID');
+
+        if (!$userId || !$groupId) {
+            throw new \RuntimeException('USER_ID and GROUP_ID must be set in .env for volume permission fixes');
+        }
+
+        // user-data: needs host user ownership for CLI tools (Claude, Codex, etc.)
+        exec("docker run --rm -v pocket-dev-user:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
             Log::warning('Failed to fix pocket-dev-user permissions', ['output' => implode("\n", $output)]);
         }
 
-        // storage: needs www-data (33:33) ownership for Laravel
-        exec('docker run --rm -v pocket-dev-storage:/data alpine chown -R 33:33 /data 2>&1', $output, $returnCode);
+        // storage: needs host user ownership for Laravel
+        exec("docker run --rm -v pocket-dev-storage:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
             Log::warning('Failed to fix pocket-dev-storage permissions', ['output' => implode("\n", $output)]);
         }
 
-        // workspace: needs www-data (33:33) ownership
-        exec('docker run --rm -v pocket-dev-workspace:/data alpine chown -R 33:33 /data 2>&1', $output, $returnCode);
+        // workspace: needs host user ownership
+        exec("docker run --rm -v pocket-dev-workspace:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
             Log::warning('Failed to fix pocket-dev-workspace permissions', ['output' => implode("\n", $output)]);
         }
 
-        // proxy-config: needs to be writable by www-data (group 1001 hostdocker)
-        exec('docker run --rm -v pocket-dev-proxy-config:/data alpine sh -c "chown -R root:1001 /data && chmod -R 775 /data" 2>&1', $output, $returnCode);
+        // proxy-config: needs to be writable by host user group
+        exec("docker run --rm -v pocket-dev-proxy-config:/data alpine sh -c \"chown -R root:{$groupId} /data && chmod -R 775 /data\" 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
             Log::warning('Failed to fix pocket-dev-proxy-config permissions', ['output' => implode("\n", $output)]);
         }
