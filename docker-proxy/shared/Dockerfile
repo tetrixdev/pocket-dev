@@ -1,7 +1,7 @@
 FROM nginx:alpine
 
 # Install apache2-utils for htpasswd command, certbot for SSL certificates
-RUN apk add --no-cache apache2-utils envsubst certbot certbot-nginx
+RUN apk add --no-cache apache2-utils gettext certbot certbot-nginx
 
 # Copy nginx configuration template
 COPY docker-proxy/shared/nginx.conf.template /etc/nginx/nginx.conf.template

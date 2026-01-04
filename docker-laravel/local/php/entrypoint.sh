@@ -69,6 +69,11 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
         find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
     fi
 
+    # Install composer dependencies (must run before any artisan commands)
+    echo "Installing composer dependencies..."
+    composer install
+    composer dump-autoload -o
+
     # Generate Laravel application key if not set
     if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
         echo "Generating Laravel application key..."
@@ -94,8 +99,6 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
         echo "ℹ️  To start Vite dev server: docker compose exec pocket-dev-php npm run dev"
     fi
 
-    composer install
-    composer dump-autoload -o
     php artisan migrate --force
     php artisan optimize:clear
     php artisan config:cache

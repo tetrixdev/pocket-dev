@@ -39,6 +39,10 @@ All configuration is done through the web UI.
 docker compose pull && docker compose up -d
 ```
 
+## Deploy to a Server
+
+Want to run PocketDev on a VPS instead of locally? See the [Secure Server Setup Guide](docs/deployment/secure-server-setup.md) for a Tailscale-based deployment that keeps your instance private and invisible to the public internet.
+
 ## Contributing
 
 Want to contribute to PocketDev? See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.

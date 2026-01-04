@@ -17,6 +17,7 @@ PocketDev is a Docker-based development environment that provides a multi-provid
 | Add voice features | `integrations/openai-whisper.md` |
 | Database changes | `database/schema.md` |
 | Docker/container changes | `architecture/system-overview.md` |
+| Deploy to a server | `deployment/secure-server-setup.md` |
 | Develop PocketDev itself | `development/self-development.md` |
 
 ## Topic Index
@@ -99,6 +100,15 @@ What are you looking for?
 
 **Contents:**
 - `README.md` - Configuration files overview
+
+### 🚀 Deployment (`deployment/`)
+
+**TLDR:** Secure deployment using Tailscale for private network access. Server is invisible to public internet - only your Tailscale-connected devices can reach it. Includes iptables firewall, automatic security updates, Docker setup.
+
+**Read level:** 📖 Full read recommended - Follow step-by-step for secure deployment.
+
+**Contents:**
+- `secure-server-setup.md` - Complete VPS deployment guide with Tailscale
 
 ### 🛠️ Development (`development/`)
 
