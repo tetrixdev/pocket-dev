@@ -72,6 +72,35 @@
                 @else
                     <p class="text-sm text-gray-400 mb-3">Select memory schemas to make available for agents in this workspace:</p>
 
+                    <!-- Warning about affected agents -->
+                    <div
+                        x-show="schemaWarning.show"
+                        x-cloak
+                        class="p-3 bg-yellow-900/50 border border-yellow-700 rounded mb-3"
+                    >
+                        <div class="flex items-start gap-2">
+                            <svg class="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-yellow-200 text-sm font-medium">
+                                    Disabling "<span x-text="schemaWarning.schemaName"></span>" will affect <span x-text="schemaWarning.affectedCount"></span> agent<span x-show="schemaWarning.affectedCount !== 1">s</span>:
+                                </p>
+                                <p class="text-yellow-300/80 text-xs mt-1" x-text="schemaWarning.agentNames"></p>
+                                <p class="text-yellow-400/70 text-xs mt-1">These agents will lose access to this schema when you save.</p>
+                            </div>
+                            <button
+                                type="button"
+                                @click="schemaWarning.show = false"
+                                class="text-yellow-400 hover:text-yellow-200"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="space-y-2">
                         @foreach($memoryDatabases as $db)
                             @php
@@ -84,6 +113,7 @@
                                     value="{{ $db->id }}"
                                     {{ old('memory_databases') ? (in_array($db->id, old('memory_databases', [])) ? 'checked' : '') : ($isEnabled ? 'checked' : '') }}
                                     class="w-4 h-4 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                    @change="onSchemaChange('{{ $db->id }}', '{{ addslashes($db->name) }}', $event.target.checked)"
                                 >
                                 <div class="flex-1">
                                     <span class="text-white font-medium">{{ $db->name }}</span>
@@ -130,13 +160,86 @@
                         </div>
                     </div>
 
-                    <!-- Tool categories (shown when not all tools) -->
+                    <!-- Tool groups (shown when not all tools) -->
                     <div x-show="!allToolsEnabled" class="space-y-4">
-                        <template x-for="(categoryTools, category) in groupedTools" :key="category">
+                        <!-- Native Tools: Claude Code -->
+                        <div x-show="toolGroups.claudeCode.length > 0">
+                            <div class="flex items-center gap-2 mb-2">
+                                <input
+                                    type="checkbox"
+                                    :checked="isGroupFullyEnabled('claudeCode')"
+                                    x-effect="$el.indeterminate = isGroupPartiallyEnabled('claudeCode')"
+                                    @change="toggleGroup('claudeCode')"
+                                    class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                >
+                                <h4 class="text-sm font-semibold text-gray-300">
+                                    Native Tools: Claude Code
+                                    <span class="text-gray-500 font-normal" x-text="'(' + getGroupEnabledCount('claudeCode') + '/' + toolGroups.claudeCode.length + ')'"></span>
+                                </h4>
+                            </div>
+                            <div class="flex flex-wrap gap-2 ml-5">
+                                <template x-for="tool in toolGroups.claudeCode" :key="tool.slug">
+                                    <label class="flex items-center gap-1.5 px-2 py-1 bg-gray-800 border border-gray-700 rounded cursor-pointer hover:border-gray-600" :title="tool.description">
+                                        <input
+                                            type="checkbox"
+                                            :checked="isToolEnabled(tool.slug)"
+                                            @change="toggleTool(tool.slug)"
+                                            class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                        >
+                                        <span class="text-sm text-gray-200" x-text="tool.name"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Native Tools: Codex -->
+                        <div x-show="toolGroups.codex.length > 0">
+                            <div class="flex items-center gap-2 mb-2">
+                                <input
+                                    type="checkbox"
+                                    :checked="isGroupFullyEnabled('codex')"
+                                    x-effect="$el.indeterminate = isGroupPartiallyEnabled('codex')"
+                                    @change="toggleGroup('codex')"
+                                    class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                >
+                                <h4 class="text-sm font-semibold text-gray-300">
+                                    Native Tools: Codex
+                                    <span class="text-gray-500 font-normal" x-text="'(' + getGroupEnabledCount('codex') + '/' + toolGroups.codex.length + ')'"></span>
+                                </h4>
+                            </div>
+                            <div class="flex flex-wrap gap-2 ml-5">
+                                <template x-for="tool in toolGroups.codex" :key="tool.slug">
+                                    <label class="flex items-center gap-1.5 px-2 py-1 bg-gray-800 border border-gray-700 rounded cursor-pointer hover:border-gray-600" :title="tool.description">
+                                        <input
+                                            type="checkbox"
+                                            :checked="isToolEnabled(tool.slug)"
+                                            @change="toggleTool(tool.slug)"
+                                            class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                        >
+                                        <span class="text-sm text-gray-200" x-text="tool.name"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- PocketDev Tools (grouped by category) -->
+                        <template x-for="(tools, category) in groupedPocketdevTools" :key="category">
                             <div>
-                                <h4 class="text-sm font-semibold text-gray-300 mb-2" x-text="getCategoryTitle(category)"></h4>
-                                <div class="flex flex-wrap gap-2">
-                                    <template x-for="tool in categoryTools" :key="tool.slug">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <input
+                                        type="checkbox"
+                                        :checked="isCategoryFullyEnabled(category)"
+                                        x-effect="$el.indeterminate = isCategoryPartiallyEnabled(category)"
+                                        @change="toggleCategory(category)"
+                                        class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                    >
+                                    <h4 class="text-sm font-semibold text-gray-300">
+                                        <span x-text="getCategoryTitle(category)"></span>
+                                        <span class="text-gray-500 font-normal" x-text="'(' + getCategoryEnabledCount(category) + '/' + tools.length + ')'"></span>
+                                    </h4>
+                                </div>
+                                <div class="flex flex-wrap gap-2 ml-5">
+                                    <template x-for="tool in tools" :key="tool.slug">
                                         <label class="flex items-center gap-1.5 px-2 py-1 bg-gray-800 border border-gray-700 rounded cursor-pointer hover:border-gray-600" :title="tool.description">
                                             <input
                                                 type="checkbox"
@@ -150,6 +253,36 @@
                                 </div>
                             </div>
                         </template>
+
+                        <!-- User Tools -->
+                        <div x-show="toolGroups.user.length > 0">
+                            <div class="flex items-center gap-2 mb-2">
+                                <input
+                                    type="checkbox"
+                                    :checked="isGroupFullyEnabled('user')"
+                                    x-effect="$el.indeterminate = isGroupPartiallyEnabled('user')"
+                                    @change="toggleGroup('user')"
+                                    class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                >
+                                <h4 class="text-sm font-semibold text-gray-300">
+                                    User Tools
+                                    <span class="text-gray-500 font-normal" x-text="'(' + getGroupEnabledCount('user') + '/' + toolGroups.user.length + ')'"></span>
+                                </h4>
+                            </div>
+                            <div class="flex flex-wrap gap-2 ml-5">
+                                <template x-for="tool in toolGroups.user" :key="tool.slug">
+                                    <label class="flex items-center gap-1.5 px-2 py-1 bg-gray-800 border border-gray-700 rounded cursor-pointer hover:border-gray-600" :title="tool.description">
+                                        <input
+                                            type="checkbox"
+                                            :checked="isToolEnabled(tool.slug)"
+                                            @change="toggleTool(tool.slug)"
+                                            class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                                        >
+                                        <span class="text-sm text-gray-200" x-text="tool.name"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
                     </div>
 
                     <p class="text-xs text-gray-400 mt-2" x-text="allToolsEnabled ? 'All tools are enabled for this workspace.' : 'Select which tools are available for agents in this workspace.'"></p>
@@ -193,10 +326,23 @@
     function workspaceForm() {
         return {
             toolsLoading: true,
-            allTools: [],
-            groupedTools: {},
+            toolGroups: {
+                claudeCode: [],
+                codex: [],
+                user: [],
+            },
+            groupedPocketdevTools: {},
             disabledTools: @js($disabledToolSlugs ?? []),
             allToolsEnabled: @js(empty($disabledToolSlugs ?? [])),
+
+            // Schema warning state
+            workspaceId: @js($workspace->id ?? null),
+            schemaWarning: {
+                show: false,
+                schemaName: '',
+                affectedCount: 0,
+                agentNames: '',
+            },
 
             categoryTitles: {
                 'memory_data': 'Memory Data',
@@ -204,6 +350,7 @@
                 'tools': 'Tool Management',
                 'file_ops': 'File Operations',
                 'custom': 'Custom Tools',
+                'conversation': 'Conversation',
             },
 
             async init() {
@@ -215,10 +362,17 @@
                 try {
                     const response = await fetch('/api/tools');
                     const data = await response.json();
-                    this.allTools = data.tools || [];
 
-                    // Group tools by category
-                    this.groupedTools = this.allTools.reduce((acc, tool) => {
+                    // Native tools
+                    this.toolGroups.claudeCode = data.native?.claude_code || [];
+                    this.toolGroups.codex = data.native?.codex || [];
+
+                    // User tools
+                    this.toolGroups.user = data.user || [];
+
+                    // PocketDev tools grouped by category
+                    const pocketdevTools = data.pocketdev || [];
+                    this.groupedPocketdevTools = pocketdevTools.reduce((acc, tool) => {
                         const category = tool.category || 'custom';
                         if (!acc[category]) acc[category] = [];
                         acc[category].push(tool);
@@ -232,7 +386,7 @@
             },
 
             getCategoryTitle(category) {
-                return this.categoryTitles[category] || category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                return this.categoryTitles[category] || category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
             },
 
             isToolEnabled(slug) {
@@ -250,10 +404,133 @@
                 }
             },
 
+            // Group toggle functions
+            getGroupTools(groupName) {
+                return this.toolGroups[groupName] || [];
+            },
+
+            getGroupEnabledCount(groupName) {
+                const tools = this.getGroupTools(groupName);
+                return tools.filter(t => this.isToolEnabled(t.slug)).length;
+            },
+
+            isGroupFullyEnabled(groupName) {
+                const tools = this.getGroupTools(groupName);
+                if (tools.length === 0) return false;
+                return tools.every(t => this.isToolEnabled(t.slug));
+            },
+
+            isGroupPartiallyEnabled(groupName) {
+                const tools = this.getGroupTools(groupName);
+                if (tools.length === 0) return false;
+                const enabledCount = this.getGroupEnabledCount(groupName);
+                return enabledCount > 0 && enabledCount < tools.length;
+            },
+
+            toggleGroup(groupName) {
+                const tools = this.getGroupTools(groupName);
+                const isFullyEnabled = this.isGroupFullyEnabled(groupName);
+
+                tools.forEach(tool => {
+                    const idx = this.disabledTools.indexOf(tool.slug);
+                    if (isFullyEnabled) {
+                        // Disable all tools in group
+                        if (idx === -1) {
+                            this.disabledTools.push(tool.slug);
+                        }
+                    } else {
+                        // Enable all tools in group
+                        if (idx > -1) {
+                            this.disabledTools.splice(idx, 1);
+                        }
+                    }
+                });
+            },
+
+            // Category toggle functions (for PocketDev tools)
+            getCategoryTools(category) {
+                return this.groupedPocketdevTools[category] || [];
+            },
+
+            getCategoryEnabledCount(category) {
+                const tools = this.getCategoryTools(category);
+                return tools.filter(t => this.isToolEnabled(t.slug)).length;
+            },
+
+            isCategoryFullyEnabled(category) {
+                const tools = this.getCategoryTools(category);
+                if (tools.length === 0) return false;
+                return tools.every(t => this.isToolEnabled(t.slug));
+            },
+
+            isCategoryPartiallyEnabled(category) {
+                const tools = this.getCategoryTools(category);
+                if (tools.length === 0) return false;
+                const enabledCount = this.getCategoryEnabledCount(category);
+                return enabledCount > 0 && enabledCount < tools.length;
+            },
+
+            toggleCategory(category) {
+                const tools = this.getCategoryTools(category);
+                const isFullyEnabled = this.isCategoryFullyEnabled(category);
+
+                tools.forEach(tool => {
+                    const idx = this.disabledTools.indexOf(tool.slug);
+                    if (isFullyEnabled) {
+                        // Disable all tools in category
+                        if (idx === -1) {
+                            this.disabledTools.push(tool.slug);
+                        }
+                    } else {
+                        // Enable all tools in category
+                        if (idx > -1) {
+                            this.disabledTools.splice(idx, 1);
+                        }
+                    }
+                });
+            },
+
             onAllToolsChange() {
                 if (this.allToolsEnabled) {
                     // Clear all disabled tools
                     this.disabledTools = [];
+                }
+            },
+
+            async onSchemaChange(schemaId, schemaName, isChecked) {
+                // Only check for affected agents when unchecking on an existing workspace
+                if (isChecked || !this.workspaceId) {
+                    this.schemaWarning.show = false;
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/agents/check-schema-affected', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                        },
+                        body: JSON.stringify({
+                            workspace_id: this.workspaceId,
+                            schema_id: schemaId,
+                        }),
+                    });
+
+                    const data = await response.json();
+
+                    if (data.affected_count > 0) {
+                        this.schemaWarning = {
+                            show: true,
+                            schemaName: schemaName,
+                            affectedCount: data.affected_count,
+                            agentNames: data.agents.map(a => a.name).join(', '),
+                        };
+                    } else {
+                        this.schemaWarning.show = false;
+                    }
+                } catch (error) {
+                    console.error('Failed to check affected agents:', error);
                 }
             }
         };

@@ -110,20 +110,61 @@ class AgentController extends Controller
 
     /**
      * Get all tools (for workspace tool selection).
+     * Includes native tools from CLI providers and PocketDev/user tools.
      */
     public function allTools(): JsonResponse
     {
-        $tools = $this->toolSelector->getAllTools()
+        $nativeToolService = app(NativeToolService::class);
+
+        // Get native tools from both CLI providers
+        $claudeCodeNative = collect($nativeToolService->getToolsForProvider('claude_code'))
+            ->map(fn($tool) => [
+                'slug' => 'native:claude_code:' . $tool['name'],
+                'name' => $tool['name'],
+                'description' => $tool['description'] ?? '',
+                'category' => 'native',
+                'provider' => 'claude_code',
+            ]);
+
+        $codexNative = collect($nativeToolService->getToolsForProvider('codex'))
+            ->map(fn($tool) => [
+                'slug' => 'native:codex:' . $tool['name'],
+                'name' => $tool['name'],
+                'description' => $tool['description'] ?? '',
+                'category' => 'native',
+                'provider' => 'codex',
+            ]);
+
+        // Get PocketDev tools (built-in)
+        $pocketdevTools = $this->toolSelector->getAllTools()
+            ->filter(fn(Tool $tool) => !($tool instanceof UserTool))
             ->map(fn(Tool $tool) => [
                 'slug' => $tool->getSlug(),
                 'name' => $tool->name,
                 'description' => $tool->description,
                 'category' => $tool->category,
+                'source' => 'pocketdev',
+            ])
+            ->values();
+
+        // Get user-created tools
+        $userTools = $this->toolSelector->getUserTools()
+            ->map(fn(Tool $tool) => [
+                'slug' => $tool->getSlug(),
+                'name' => $tool->name,
+                'description' => $tool->description,
+                'category' => 'custom',
+                'source' => 'user',
             ])
             ->values();
 
         return response()->json([
-            'tools' => $tools,
+            'native' => [
+                'claude_code' => $claudeCodeNative->values(),
+                'codex' => $codexNative->values(),
+            ],
+            'pocketdev' => $pocketdevTools,
+            'user' => $userTools,
         ]);
     }
 
@@ -275,6 +316,36 @@ class AgentController extends Controller
             'full_prompt' => $fullPrompt,
             'total_length' => strlen($fullPrompt),
             'estimated_tokens' => (int) ceil(strlen($fullPrompt) / 4), // Rough estimate
+        ]);
+    }
+
+    /**
+     * Check which agents would be affected by disabling a memory schema in a workspace.
+     *
+     * Used by the workspace form to warn before disabling schemas that agents depend on.
+     */
+    public function checkSchemaAffectedAgents(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'workspace_id' => 'required|uuid|exists:workspaces,id',
+            'schema_id' => 'required|uuid|exists:memory_databases,id',
+        ]);
+
+        // Find agents in this workspace that have this schema enabled
+        $affectedAgents = Agent::where('workspace_id', $validated['workspace_id'])
+            ->whereHas('memoryDatabases', function ($query) use ($validated) {
+                $query->where('memory_databases.id', $validated['schema_id']);
+            })
+            ->select(['id', 'name'])
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'affected_count' => $affectedAgents->count(),
+            'agents' => $affectedAgents->map(fn($agent) => [
+                'id' => $agent->id,
+                'name' => $agent->name,
+            ]),
         ]);
     }
 
