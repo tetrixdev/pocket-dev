@@ -59,7 +59,12 @@ class BackupController extends Controller
             $tempDir = "/tmp/{$backupName}";
 
             // Ensure backup directory exists
-            Storage::disk('local')->makeDirectory($this->backupDir);
+            $backupDir = storage_path("app/{$this->backupDir}");
+            if (!is_dir($backupDir)) {
+                if (!mkdir($backupDir, 0775, true)) {
+                    throw new \RuntimeException("Failed to create backup directory: {$backupDir}");
+                }
+            }
 
             // Create temp directory for backup contents
             exec("mkdir -p {$tempDir}", $output, $returnCode);
