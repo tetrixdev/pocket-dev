@@ -94,6 +94,7 @@ Voice input on mobile requires HTTPS.
 
 First, in your browser:
 - Go to [Tailscale Admin Console → DNS](https://login.tailscale.com/admin/dns)
+- Enable **MagicDNS** if not already enabled
 - (Optional) Click **Rename tailnet...** if you want a custom name
 - Under **HTTPS Certificates**, click **Enable HTTPS**
 
@@ -101,6 +102,7 @@ Then back in the terminal:
 
 ```bash
 tailscale status  # Note your machine name
+tailscale cert <machine-name>.<tailnet-name>.ts.net  # Provision TLS certificate
 tailscale serve --bg http://localhost:80
 tailscale serve status
 ```
