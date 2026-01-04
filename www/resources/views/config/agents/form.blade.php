@@ -293,6 +293,51 @@
             </template>
         </div>
 
+        <!-- Memory Schemas Selection (full width) -->
+        <div class="mt-6 space-y-4">
+            <div class="border-b border-gray-700 pb-2">
+                <h3 class="text-lg font-semibold text-white">Memory Schemas</h3>
+                <p class="text-xs text-gray-400 mt-1">Select which memory schemas this agent can access. Schemas must be enabled in the workspace first.</p>
+            </div>
+
+            <div x-show="schemasLoading" class="text-gray-400 text-sm py-4">
+                Loading schemas...
+            </div>
+
+            <div x-show="!schemasLoading">
+                <div x-show="availableSchemas.length === 0" class="text-gray-500 text-sm py-4">
+                    No memory schemas available. Enable schemas in the workspace settings first.
+                </div>
+
+                <div x-show="availableSchemas.length > 0" class="space-y-2">
+                    <template x-for="schema in availableSchemas" :key="schema.id">
+                        <label class="flex items-center gap-3 p-3 bg-gray-800 border border-gray-700 rounded cursor-pointer hover:bg-gray-750">
+                            <input
+                                type="checkbox"
+                                :checked="isSchemaSelected(schema.id)"
+                                @change="toggleSchema(schema.id)"
+                                class="w-4 h-4 rounded border-gray-700 bg-gray-900 text-blue-500 focus:ring-blue-500"
+                            >
+                            <div class="flex-1">
+                                <span class="text-white font-medium" x-text="schema.name"></span>
+                                <code class="text-gray-500 text-xs ml-2 bg-gray-700 px-1.5 py-0.5 rounded" x-text="schema.schema_name"></code>
+                                <p x-show="schema.description" class="text-xs text-gray-400 mt-0.5" x-text="schema.description"></p>
+                            </div>
+                        </label>
+                    </template>
+
+                    <p class="text-xs text-gray-400 mt-2">
+                        All memory tools will require <code class="bg-gray-700 px-1 rounded">--schema</code> parameter specifying the short schema name.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Hidden inputs for selected schemas -->
+            <template x-for="schemaId in selectedSchemas" :key="schemaId">
+                <input type="hidden" name="memory_schemas[]" :value="schemaId">
+            </template>
+        </div>
+
         <!-- System Prompt (full width) -->
         <div class="mt-6">
             <label for="system_prompt" class="block text-sm font-medium mb-2">Additional System Prompt</label>
@@ -433,6 +478,11 @@
             userTools: [],
             toolsLoading: false,
 
+            // Memory schemas
+            availableSchemas: [],
+            selectedSchemas: @js(old('memory_schemas', isset($agent) ? $agent->memoryDatabases->pluck('id')->toArray() : []) ?? []),
+            schemasLoading: false,
+
             // System prompt preview
             promptSections: [],
             promptLoading: false,
@@ -449,8 +499,11 @@
                 if (!this.model && this.availableModels.length > 0) {
                     this.model = this.availableModels[0];
                 }
-                // Fetch tools for initial provider
-                await this.fetchTools();
+                // Fetch tools and schemas
+                await Promise.all([
+                    this.fetchTools(),
+                    this.fetchSchemas(),
+                ]);
             },
 
             async onProviderChange() {
@@ -488,6 +541,40 @@
                 }
             },
 
+            async fetchSchemas() {
+                this.schemasLoading = true;
+                try {
+                    const agentId = @js(isset($agent) ? $agent->id : null);
+                    const url = agentId
+                        ? `/api/agents/${agentId}/available-schemas`
+                        : '/api/agents/available-schemas';
+                    const response = await fetch(url);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const data = await response.json();
+                    this.availableSchemas = data.schemas || [];
+                } catch (error) {
+                    console.error('Failed to fetch schemas:', error);
+                    this.availableSchemas = [];
+                } finally {
+                    this.schemasLoading = false;
+                }
+            },
+
+            isSchemaSelected(schemaId) {
+                return this.selectedSchemas.includes(schemaId);
+            },
+
+            toggleSchema(schemaId) {
+                const idx = this.selectedSchemas.indexOf(schemaId);
+                if (idx > -1) {
+                    this.selectedSchemas.splice(idx, 1);
+                } else {
+                    this.selectedSchemas.push(schemaId);
+                }
+            },
+
             async fetchPromptPreview() {
                 this.promptLoading = true;
                 try {
@@ -502,6 +589,7 @@
                             provider: this.provider,
                             agent_system_prompt: this.agentSystemPrompt,
                             allowed_tools: this.allToolsSelected ? null : this.selectedTools,
+                            memory_schemas: this.selectedSchemas,
                         }),
                     });
                     if (!response.ok) {

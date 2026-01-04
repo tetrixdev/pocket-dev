@@ -466,6 +466,13 @@
                          x-transition:leave-start="transform opacity-100 scale-100"
                          x-transition:leave-end="transform opacity-0 scale-95"
                          class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
+                        {{-- Workspace --}}
+                        <button @click="openWorkspaceSelector(); showConversationMenu = false"
+                                class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left">
+                            <i class="fa-solid fa-folder w-4 text-center"></i>
+                            <span class="flex-1">Workspace</span>
+                            <span class="text-xs text-gray-400 truncate max-w-[80px]" x-text="currentWorkspace?.name || 'Default'"></span>
+                        </button>
                         {{-- Settings --}}
                         <a href="{{ route('config.index') }}"
                            class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
@@ -627,6 +634,7 @@
                 showMobileDrawer: false,
                 showShortcutsModal: false,
                 showAgentSelector: false,
+                showWorkspaceSelector: false,
                 showPricingSettings: false,
                 showMessageDetails: false,
                 showOpenAiModal: false,
@@ -635,6 +643,12 @@
                 showSearchModal: false,
                 errorMessage: '',
                 openAiKeyInput: '',
+
+                // Workspace state
+                workspaces: [],
+                workspacesLoading: false,
+                currentWorkspace: null,
+                currentWorkspaceId: null,
 
                 // Conversation search
                 showSearchInput: false,
@@ -732,7 +746,11 @@
                     // Fetch providers
                     await this.fetchProviders();
 
-                    // Fetch available agents
+                    // Fetch workspaces and active workspace (must happen before agents/conversations)
+                    await this.fetchWorkspaces();
+                    await this.fetchActiveWorkspace();
+
+                    // Fetch available agents (filtered by workspace)
                     await this.fetchAgents();
 
                     // Restore filter states from sessionStorage
@@ -933,13 +951,30 @@
 
                 async fetchAgents() {
                     try {
-                        const response = await fetch('/api/agents');
+                        let url = '/api/agents';
+                        if (this.currentWorkspaceId) {
+                            url += '?workspace_id=' + this.currentWorkspaceId;
+                        }
+                        const response = await fetch(url);
                         const data = await response.json();
                         this.agents = data.data || [];
 
-                        // Auto-select default agent if none selected
-                        if (!this.currentAgentId && this.agents.length > 0) {
-                            // Find default agent, or first available
+                        // Check if current agent still exists in fetched agents
+                        const currentAgentExists = this.currentAgentId && this.agents.some(a => a.id === this.currentAgentId);
+
+                        // If current agent doesn't exist in this workspace
+                        if (this.currentAgentId && !currentAgentExists) {
+                            if (this.agents.length > 0) {
+                                // Auto-select default agent or first available
+                                const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+                                this.selectAgent(defaultAgent, false);
+                            } else {
+                                // No agents in this workspace - clear selection
+                                this.currentAgentId = null;
+                                this.claudeCodeAllowedTools = [];
+                            }
+                        } else if (!this.currentAgentId && this.agents.length > 0) {
+                            // No agent selected but agents available - auto-select
                             const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
                             this.selectAgent(defaultAgent, false);
                         }
@@ -1070,6 +1105,89 @@
                     }
                 },
 
+                // ==================== Workspace Methods ====================
+
+                async fetchWorkspaces() {
+                    try {
+                        const response = await fetch('/api/workspaces');
+                        if (response.ok) {
+                            this.workspaces = await response.json();
+                            this.debugLog('Workspaces loaded', { count: this.workspaces.length });
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch workspaces:', err);
+                    }
+                },
+
+                async fetchActiveWorkspace() {
+                    try {
+                        const response = await fetch('/api/workspaces/active');
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.workspace) {
+                                this.currentWorkspace = data.workspace;
+                                this.currentWorkspaceId = data.workspace.id;
+                                this.debugLog('Active workspace loaded', { workspace: data.workspace.name });
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch active workspace:', err);
+                    }
+                },
+
+                async openWorkspaceSelector() {
+                    this.showWorkspaceSelector = true;
+                    if (this.workspaces.length === 0) {
+                        this.workspacesLoading = true;
+                        await this.fetchWorkspaces();
+                        this.workspacesLoading = false;
+                    }
+                },
+
+                async selectWorkspace(workspace) {
+                    if (!workspace || workspace.id === this.currentWorkspaceId) {
+                        this.showWorkspaceSelector = false;
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/workspaces/active/${workspace.id}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        });
+
+                        if (response.ok) {
+                            this.currentWorkspace = workspace;
+                            this.currentWorkspaceId = workspace.id;
+                            this.showWorkspaceSelector = false;
+                            this.debugLog('Workspace switched', { workspace: workspace.name });
+
+                            // Reload conversations and agents for the new workspace
+                            await this.fetchConversations();
+                            await this.fetchAgents();
+
+                            // Reset to new conversation if current one doesn't belong to this workspace
+                            if (this.currentConversationUuid) {
+                                const currentConvo = this.conversations.find(c => c.uuid === this.currentConversationUuid);
+                                if (!currentConvo) {
+                                    this.newConversation();
+                                }
+                            }
+                        } else {
+                            console.error('Failed to switch workspace:', response.status);
+                            this.errorMessage = 'Failed to switch workspace. Please try again.';
+                        }
+                    } catch (err) {
+                        console.error('Error switching workspace:', err);
+                        this.errorMessage = 'Failed to switch workspace. Please try again.';
+                    }
+                },
+
+                // ==================== End Workspace Methods ====================
+
                 async fetchSettings() {
                     try {
                         const response = await fetch('/api/settings/chat-defaults');
@@ -1180,6 +1298,9 @@
                 async fetchConversations() {
                     try {
                         let url = '/api/conversations?working_directory=/var/www';
+                        if (this.currentWorkspaceId) {
+                            url += '&workspace_id=' + this.currentWorkspaceId;
+                        }
                         if (this.showArchivedConversations) {
                             url += '&include_archived=true';
                         }
@@ -1774,18 +1895,27 @@
                     const userPrompt = this.prompt;
                     this.prompt = '';
 
+                    // Validate agent exists in current workspace
+                    const agentValid = this.currentAgentId && this.agents.some(a => a.id === this.currentAgentId);
+                    if (!agentValid) {
+                        if (this.agents.length > 0) {
+                            // Agents available but none/invalid selected - show selector
+                            this.showAgentSelector = true;
+                        } else {
+                            // No agents in this workspace
+                            this.showError('No agents available in this workspace. Please switch workspaces or create an agent.');
+                        }
+                        this.prompt = userPrompt; // Restore prompt
+                        return;
+                    }
+
                     // Create conversation if needed
                     if (!this.currentConversationUuid) {
-                        // Require agent selection
-                        if (!this.currentAgentId) {
-                            this.showAgentSelector = true;
-                            this.prompt = userPrompt; // Restore prompt
-                            return;
-                        }
 
                         try {
                             const createBody = {
                                 working_directory: '/var/www',
+                                workspace_id: this.currentWorkspaceId,
                                 agent_id: this.currentAgentId,
                                 title: userPrompt.substring(0, 50),
                             };

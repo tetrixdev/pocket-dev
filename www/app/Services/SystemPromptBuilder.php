@@ -81,8 +81,10 @@ class SystemPromptBuilder
         // 4: PocketDev tools (memory, tool management, user tools)
         // These are tools that don't have native CLI provider equivalents
         // Filter by agent's allowed_tools if specified
+        // Pass agent for memory schema access
         $allowedTools = $agent?->allowed_tools;
-        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools);
+        $workspace = $agent?->workspace;
+        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, $workspace, $agent);
         if (!empty($pocketDevToolPrompt)) {
             $sections[] = $pocketDevToolPrompt;
         }

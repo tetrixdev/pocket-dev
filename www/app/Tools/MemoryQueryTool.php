@@ -22,9 +22,13 @@ class MemoryQueryTool extends Tool
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
+            'schema' => [
+                'type' => 'string',
+                'description' => 'Memory schema short name (e.g., "default", "my_campaign"). Required - check your available schemas in the system prompt.',
+            ],
             'sql' => [
                 'type' => 'string',
-                'description' => 'SQL SELECT query. Tables are in memory schema (memory.tablename). For semantic search, use: embedding <=> :search_embedding. Use 1 - (embedding <=> :search_embedding) for similarity score (0-1).',
+                'description' => 'SQL SELECT query. Tables use the schema prefix (e.g., memory_default.tablename). For semantic search, use: embedding <=> :search_embedding. Use 1 - (embedding <=> :search_embedding) for similarity score (0-1).',
             ],
             'search_text' => [
                 'type' => 'string',
@@ -35,7 +39,7 @@ class MemoryQueryTool extends Tool
                 'description' => 'Maximum number of results to return. Default: 50, Max: 100.',
             ],
         ],
-        'required' => ['sql'],
+        'required' => ['schema', 'sql'],
     ];
 
     public function getArtisanCommand(): ?string
@@ -46,78 +50,61 @@ class MemoryQueryTool extends Tool
     public ?string $instructions = <<<'INSTRUCTIONS'
 Use MemoryQuery to search and retrieve data from memory tables. This is your primary read tool for the memory system.
 
-## System Tables
+**IMPORTANT**: The `--schema` parameter is REQUIRED. Use the short schema name from your available schemas (e.g., "default", "my_campaign").
 
-- **memory.schema_registry**: Table metadata (table_name, description, embeddable_fields)
-- **memory.embeddings**: Vector embeddings (source_table, source_id, field_name, embedding, content)
+## System Tables (in each schema)
+
+- **{schema}.schema_registry**: Table metadata (table_name, description, embeddable_fields)
+- **{schema}.embeddings**: Vector embeddings (source_table, source_id, field_name, embedding, content)
 
 ## Common Query Patterns
 
+Replace `{schema}` with your actual schema name (e.g., `memory_default`, `memory_my_campaign`).
+
 ### List all tables
 ```sql
-SELECT table_name, description, embeddable_fields FROM memory.schema_registry
+SELECT table_name, description, embeddable_fields FROM {schema}.schema_registry
 ```
 
 ### Query a user table
 ```sql
-SELECT id, name, class FROM memory.characters WHERE class = 'wizard'
+SELECT id, name, class FROM {schema}.characters WHERE class = 'wizard'
 ```
 
 ### Semantic search (requires search_text parameter)
 ```sql
 SELECT c.id, c.name, c.backstory, 1 - (e.embedding <=> :search_embedding) as similarity
-FROM memory.characters c
-JOIN memory.embeddings e ON e.source_id = c.id AND e.source_table = 'characters'
+FROM {schema}.characters c
+JOIN {schema}.embeddings e ON e.source_id = c.id AND e.source_table = 'characters'
 WHERE e.field_name = 'backstory'
   AND 1 - (e.embedding <=> :search_embedding) > 0.5
 ORDER BY similarity DESC
 ```
 
-### Cross-table semantic search
-```sql
-SELECT e.source_table, e.source_id, e.field_name, e.content,
-       1 - (e.embedding <=> :search_embedding) as similarity
-FROM memory.embeddings e
-WHERE 1 - (e.embedding <=> :search_embedding) > 0.6
-ORDER BY similarity DESC
-LIMIT 10
-```
-
 ### Fuzzy text search (pg_trgm)
 ```sql
-SELECT * FROM memory.characters WHERE name % 'Gandolf'
-```
-
-### Spatial query (PostGIS)
-```sql
-SELECT name, ST_Distance(coordinates, ST_MakePoint(-122.4, 37.8)::geography) as distance_m
-FROM memory.locations
-WHERE ST_DWithin(coordinates, ST_MakePoint(-122.4, 37.8)::geography, 50000)
-ORDER BY distance_m
+SELECT * FROM {schema}.characters WHERE name % 'Gandolf'
 ```
 
 ## Important: Embedding Columns
 
 - **Never SELECT the embedding column directly** - it's a 1536-dimension vector array
 - Use `1 - (e.embedding <=> :search_embedding) as similarity` to get a 0-1 similarity score
-- Filter with `WHERE 1 - (e.embedding <=> :search_embedding) > 0.5` (adjust threshold as needed)
-- ORDER BY similarity DESC to get best matches first
-- The `content` column in memory.embeddings contains the original text that was embedded
+- The `content` column in embeddings contains the original text that was embedded
 
 ## Notes
 - Only SELECT queries allowed
 - If no LIMIT specified, results are limited to 50 rows (max 100)
 - Output is JSON format with full text (no truncation)
 - Use :search_embedding placeholder with search_text parameter for vector searches
-- Tables are in memory schema (memory.tablename)
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
 ## CLI Example
 
 ```bash
-php artisan memory:query --sql="SELECT * FROM memory.characters LIMIT 10"
-php artisan memory:query --sql="SELECT * FROM memory.schema_registry"
+php artisan memory:query --schema=default --sql="SELECT * FROM memory_default.characters LIMIT 10"
+php artisan memory:query --schema=default --sql="SELECT * FROM memory_default.schema_registry"
 ```
 CLI;
 
@@ -127,14 +114,16 @@ CLI;
 Basic query:
 ```json
 {
-  "sql": "SELECT * FROM memory.characters LIMIT 10"
+  "schema": "default",
+  "sql": "SELECT * FROM memory_default.characters LIMIT 10"
 }
 ```
 
 Semantic search:
 ```json
 {
-  "sql": "SELECT e.source_table, e.content, 1 - (e.embedding <=> :search_embedding) as similarity FROM memory.embeddings e WHERE 1 - (e.embedding <=> :search_embedding) > 0.6 ORDER BY similarity DESC LIMIT 5",
+  "schema": "default",
+  "sql": "SELECT e.source_table, e.content, 1 - (e.embedding <=> :search_embedding) as similarity FROM memory_default.embeddings e WHERE 1 - (e.embedding <=> :search_embedding) > 0.6 ORDER BY similarity DESC LIMIT 5",
   "search_text": "dwarf warrior revenge"
 }
 ```
@@ -142,9 +131,26 @@ API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
+        $schemaName = trim($input['schema'] ?? '');
         $sql = trim($input['sql'] ?? '');
         $searchText = $input['search_text'] ?? null;
         $limit = min(100, max(1, $input['limit'] ?? 50));
+
+        // Validate schema parameter
+        if (empty($schemaName)) {
+            return ToolResult::error('schema is required. Specify the short schema name (e.g., "default", "my_campaign"). Check your available schemas in the system prompt.');
+        }
+
+        // Validate schema exists
+        $memoryDb = \App\Models\MemoryDatabase::where('schema_name', $schemaName)->first();
+        if (!$memoryDb) {
+            return ToolResult::error("Schema '{$schemaName}' not found. Check your available schemas in the system prompt.");
+        }
+
+        // Validate agent has access to this schema (if agent context available)
+        if ($context->agent && !$context->agent->hasMemoryDatabaseAccess($memoryDb)) {
+            return ToolResult::error("Agent does not have access to schema '{$schemaName}'. Enable it in agent settings.");
+        }
 
         if (empty($sql)) {
             return ToolResult::error('sql is required');

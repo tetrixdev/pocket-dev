@@ -58,6 +58,14 @@
              x-transition:leave-start="transform opacity-100 scale-100"
              x-transition:leave-end="transform opacity-0 scale-95"
              class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
+            {{-- Workspace --}}
+            <button @click="openWorkspaceSelector(); showConversationMenu = false"
+                    role="menuitem"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left">
+                <i class="fa-solid fa-folder w-4 text-center"></i>
+                <span class="flex-1">Workspace</span>
+                <span class="text-xs text-gray-400 truncate max-w-[80px]" x-text="currentWorkspace?.name || 'Default'"></span>
+            </button>
             {{-- Settings --}}
             <a href="/config"
                role="menuitem"

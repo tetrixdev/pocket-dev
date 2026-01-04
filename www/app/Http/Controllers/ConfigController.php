@@ -347,6 +347,8 @@ class ConfigController extends Controller
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'allowed_tools' => 'nullable|array',
                 'allowed_tools.*' => 'string',
+                'memory_schemas' => 'nullable|array',
+                'memory_schemas.*' => 'uuid|exists:memory_databases,id',
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
@@ -366,7 +368,7 @@ class ConfigController extends Controller
                 $allowedTools = array_map('mb_strtolower', $allowedTools);
             }
 
-            Agent::create([
+            $agent = Agent::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'provider' => $validated['provider'],
@@ -381,6 +383,10 @@ class ConfigController extends Controller
                 'is_default' => $validated['is_default'] ?? false,
                 'enabled' => $validated['enabled'] ?? true,
             ]);
+
+            // Sync memory schemas
+            $memorySchemaIds = $validated['memory_schemas'] ?? [];
+            $agent->memoryDatabases()->sync($memorySchemaIds);
 
             return redirect()->route('config.agents')
                 ->with('success', 'Agent created successfully');
@@ -429,6 +435,8 @@ class ConfigController extends Controller
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'allowed_tools' => 'nullable|array',
                 'allowed_tools.*' => 'string',
+                'memory_schemas' => 'nullable|array',
+                'memory_schemas.*' => 'uuid|exists:memory_databases,id',
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
@@ -464,6 +472,10 @@ class ConfigController extends Controller
                 'is_default' => $validated['is_default'] ?? false,
                 'enabled' => $validated['enabled'] ?? true,
             ]);
+
+            // Sync memory schemas
+            $memorySchemaIds = $validated['memory_schemas'] ?? [];
+            $agent->memoryDatabases()->sync($memorySchemaIds);
 
             return redirect()->route('config.agents')
                 ->with('success', 'Agent saved successfully');

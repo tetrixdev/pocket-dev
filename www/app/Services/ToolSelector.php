@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Provider;
+use App\Models\Agent;
 use App\Models\MemoryDatabase;
 use App\Models\PocketTool;
 use App\Models\ToolConflict;
@@ -187,13 +188,13 @@ class ToolSelector
      * @param string $provider The provider type
      * @param array|null $allowedTools Tool slugs to allow (null = all, [] = none, [...] = specific)
      * @param Workspace|null $workspace Workspace for tool filtering
-     * @param MemoryDatabase|null $memoryDatabase Memory database for tables section
+     * @param Agent|null $agent Agent for memory schema access (uses agent's enabled schemas)
      */
     public function buildSystemPrompt(
         string $provider,
         ?array $allowedTools = null,
         ?Workspace $workspace = null,
-        ?MemoryDatabase $memoryDatabase = null
+        ?Agent $agent = null
     ): string {
         $tools = $this->getToolsForSystemPrompt($provider, $workspace);
 
@@ -217,10 +218,10 @@ class ToolSelector
             $sections[] = "# PocketDev Tools\n";
         }
 
-        // Add available memory tables from schema registry
-        $tablesSection = $this->buildTablesSection($memoryDatabase);
-        if ($tablesSection) {
-            $sections[] = $tablesSection;
+        // Add available memory schemas for this agent
+        $schemasSection = $this->buildAvailableSchemasSection($agent);
+        if ($schemasSection) {
+            $sections[] = $schemasSection;
         }
 
         if ($isCliProvider) {
@@ -273,66 +274,51 @@ class ToolSelector
     }
 
     /**
-     * Build the memory tables section for the system prompt.
-     * Reads from schema_registry to show available user tables.
+     * Build the available memory schemas section for the system prompt.
+     * Shows which schemas the agent has access to.
      *
-     * @param MemoryDatabase|null $memoryDatabase The memory database to use (null = default 'memory' schema)
+     * @param Agent|null $agent The agent to get schemas for
      */
-    private function buildTablesSection(?MemoryDatabase $memoryDatabase = null): ?string
+    private function buildAvailableSchemasSection(?Agent $agent): ?string
     {
-        try {
-            $schemaService = app(MemorySchemaService::class);
+        // Get available schemas for this agent
+        $schemas = $this->getAvailableSchemas($agent);
 
-            // Set the memory database context if provided
-            if ($memoryDatabase) {
-                $schemaService->setMemoryDatabase($memoryDatabase);
-            }
-
-            $tables = $schemaService->listTables();
-        } catch (\Exception $e) {
-            // Database not ready or memory schema doesn't exist yet
+        if ($schemas->isEmpty()) {
             return null;
         }
-
-        // Filter out system tables - they're documented in tool instructions
-        $userTables = array_filter($tables, fn($t) => !in_array($t['table_name'], ['embeddings', 'schema_registry']));
-
-        if (empty($userTables)) {
-            return null;
-        }
-
-        // Get the schema name for display
-        $schemaName = $memoryDatabase?->getFullSchemaName() ?? 'memory';
 
         $lines = [];
-        $lines[] = "## Memory Tables\n";
-        $lines[] = "The following tables exist in the `{$schemaName}` schema. Use `memory:query` to read, `memory:insert` to create rows.\n";
+        $lines[] = "## Available Memory Schemas\n";
+        $lines[] = "You have access to the following memory schemas. Use `--schema=<name>` with all memory tools.\n";
 
-        foreach ($userTables as $table) {
-            $lines[] = "### {$schemaName}.{$table['table_name']}";
-            if ($table['description']) {
-                $lines[] = $table['description'];
-            }
-
-            // Show embeddable fields if any
-            if (!empty($table['embeddable_fields'])) {
-                $lines[] = "**Auto-embed:** " . implode(', ', $table['embeddable_fields']);
-            }
-
-            // Show columns
-            if (!empty($table['columns'])) {
-                $lines[] = "\n**Columns:**";
-                foreach ($table['columns'] as $col) {
-                    $nullable = $col['nullable'] ? '' : ' NOT NULL';
-                    $desc = $col['description'] ? ": {$col['description']}" : '';
-                    $lines[] = "- `{$col['name']}` ({$col['type']}{$nullable}){$desc}";
-                }
-            }
-
-            $lines[] = "";
+        foreach ($schemas as $schema) {
+            $shortName = $schema->schema_name;
+            $lines[] = "- **{$shortName}**" . ($schema->description ? ": {$schema->description}" : "");
         }
 
+        $lines[] = "\nExample: `php artisan memory:query --schema={$schemas->first()->schema_name} --sql=\"SELECT * FROM {$schemas->first()->getFullSchemaName()}.schema_registry\"`";
+        $lines[] = "";
+
         return implode("\n", $lines);
+    }
+
+    /**
+     * Get available memory schemas for an agent.
+     * If no agent, returns all schemas. If agent has workspace, filters by workspace then agent access.
+     */
+    private function getAvailableSchemas(?Agent $agent): Collection
+    {
+        if (!$agent) {
+            // No agent context - return all schemas
+            return MemoryDatabase::orderBy('name')->get();
+        }
+
+        // Get schemas the agent has explicitly enabled
+        $agentSchemas = $agent->memoryDatabases()->orderBy('name')->get();
+
+        // If agent has no schemas selected, return empty (explicit opt-in required)
+        return $agentSchemas;
     }
 
     /**

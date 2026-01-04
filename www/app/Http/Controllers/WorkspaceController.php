@@ -45,6 +45,7 @@ class WorkspaceController extends Controller
 
         return view('config.workspaces.form', [
             'memoryDatabases' => $memoryDatabases,
+            'disabledToolSlugs' => [], // New workspace has all tools enabled
         ]);
     }
 
@@ -61,6 +62,8 @@ class WorkspaceController extends Controller
                 'memory_databases' => 'nullable|array',
                 'memory_databases.*' => 'uuid|exists:memory_databases,id',
                 'default_memory_database' => 'nullable|uuid|exists:memory_databases,id',
+                'disabled_tools' => 'nullable|array',
+                'disabled_tools.*' => 'string|max:100',
             ]);
 
             // Check for duplicate directory
@@ -91,6 +94,15 @@ class WorkspaceController extends Controller
                 }
             }
 
+            // Save disabled tools
+            $disabledTools = $validated['disabled_tools'] ?? [];
+            foreach ($disabledTools as $toolSlug) {
+                $workspace->workspaceTools()->create([
+                    'tool_slug' => $toolSlug,
+                    'enabled' => false,
+                ]);
+            }
+
             DB::commit();
 
             return redirect()->route('config.workspaces')
@@ -114,12 +126,14 @@ class WorkspaceController extends Controller
         $memoryDatabases = MemoryDatabase::orderBy('name')->get();
         $enabledDbIds = $workspace->memoryDatabases()->pluck('memory_databases.id')->toArray();
         $defaultDb = $workspace->defaultMemoryDatabase();
+        $disabledToolSlugs = $workspace->getDisabledToolSlugs();
 
         return view('config.workspaces.form', [
             'workspace' => $workspace,
             'memoryDatabases' => $memoryDatabases,
             'enabledDbIds' => $enabledDbIds,
             'defaultDbId' => $defaultDb?->id,
+            'disabledToolSlugs' => $disabledToolSlugs,
         ]);
     }
 
@@ -136,6 +150,8 @@ class WorkspaceController extends Controller
                 'memory_databases' => 'nullable|array',
                 'memory_databases.*' => 'uuid|exists:memory_databases,id',
                 'default_memory_database' => 'nullable|uuid|exists:memory_databases,id',
+                'disabled_tools' => 'nullable|array',
+                'disabled_tools.*' => 'string|max:100',
             ]);
 
             // Check for duplicate directory (excluding current workspace)
@@ -171,6 +187,17 @@ class WorkspaceController extends Controller
                 $workspace->memoryDatabases()->attach($dbId, [
                     'enabled' => true,
                     'is_default' => $dbId === $defaultId,
+                ]);
+            }
+
+            // Sync disabled tools
+            // Delete all existing entries and recreate disabled ones
+            $workspace->workspaceTools()->delete();
+            $disabledTools = $validated['disabled_tools'] ?? [];
+            foreach ($disabledTools as $toolSlug) {
+                $workspace->workspaceTools()->create([
+                    'tool_slug' => $toolSlug,
+                    'enabled' => false,
                 ]);
             }
 

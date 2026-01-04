@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\Provider;
 use App\Http\Controllers\Controller;
 use App\Models\Agent;
+use App\Models\MemoryDatabase;
 use App\Models\PocketTool;
 use App\Services\NativeToolService;
 use App\Services\SystemPromptService;
@@ -21,7 +22,7 @@ class AgentController extends Controller
     ) {}
 
     /**
-     * List all agents, optionally filtered by provider.
+     * List all agents, optionally filtered by provider and workspace.
      */
     public function index(Request $request): JsonResponse
     {
@@ -32,6 +33,11 @@ class AgentController extends Controller
             // Show all agents
         } else {
             $query->enabled();
+        }
+
+        // Filter by workspace
+        if ($request->has('workspace_id')) {
+            $query->forWorkspace($request->input('workspace_id'));
         }
 
         // Filter by provider
@@ -99,6 +105,25 @@ class AgentController extends Controller
 
         return response()->json([
             'data' => $agent,
+        ]);
+    }
+
+    /**
+     * Get all tools (for workspace tool selection).
+     */
+    public function allTools(): JsonResponse
+    {
+        $tools = $this->toolSelector->getAllTools()
+            ->map(fn(Tool $tool) => [
+                'slug' => $tool->getSlug(),
+                'name' => $tool->name,
+                'description' => $tool->description,
+                'category' => $tool->category,
+            ])
+            ->values();
+
+        return response()->json([
+            'tools' => $tools,
         ]);
     }
 
@@ -214,7 +239,15 @@ class AgentController extends Controller
 
         // 4. Tool instructions (for PocketDev tools)
         // Pass allowedTools to filter (null = all tools, array = specific tools)
-        $toolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools);
+        // Create a temporary agent model to preview memory schemas
+        $memorySchemas = $request->input('memory_schemas', []);
+        $previewAgent = null;
+        if (!empty($memorySchemas)) {
+            $previewAgent = new Agent(['name' => 'preview']);
+            // Attach memory databases without saving (for preview purposes)
+            $previewAgent->setRelation('memoryDatabases', MemoryDatabase::whereIn('id', $memorySchemas)->get());
+        }
+        $toolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, null, $previewAgent);
         if (!empty($toolPrompt)) {
             $sections[] = [
                 'title' => 'PocketDev Tools',
@@ -245,4 +278,38 @@ class AgentController extends Controller
         ]);
     }
 
+    /**
+     * Get available memory schemas for an agent.
+     *
+     * For existing agents: returns schemas enabled in their workspace.
+     * For new agents: returns all schemas (since workspace isn't set yet).
+     */
+    public function availableSchemas(Request $request, ?Agent $agent = null): JsonResponse
+    {
+        if ($agent && $agent->workspace) {
+            // Get schemas enabled in the agent's workspace
+            $schemas = $agent->workspace->enabledMemoryDatabases()
+                ->get()
+                ->map(fn($db) => [
+                    'id' => $db->id,
+                    'name' => $db->name,
+                    'schema_name' => $db->schema_name,
+                    'description' => $db->description,
+                ]);
+        } else {
+            // For new agents without workspace, show all schemas
+            $schemas = MemoryDatabase::orderBy('name')
+                ->get()
+                ->map(fn($db) => [
+                    'id' => $db->id,
+                    'name' => $db->name,
+                    'schema_name' => $db->schema_name,
+                    'description' => $db->description,
+                ]);
+        }
+
+        return response()->json([
+            'schemas' => $schemas,
+        ]);
+    }
 }

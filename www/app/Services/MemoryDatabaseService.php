@@ -42,7 +42,7 @@ class MemoryDatabaseService
         }
 
         try {
-            DB::connection('pgsql')->transaction(function () use ($fullSchemaName) {
+            DB::connection('pgsql')->transaction(function () use ($fullSchemaName, $schemaName) {
                 // Create the PostgreSQL schema
                 DB::connection('pgsql')->statement("CREATE SCHEMA {$fullSchemaName}");
 

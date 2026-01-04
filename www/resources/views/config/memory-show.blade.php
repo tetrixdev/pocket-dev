@@ -8,10 +8,10 @@
     <div class="flex items-center justify-between">
         <div>
             <div class="flex items-center gap-3 mb-2">
-                <a href="{{ route('config.memory.browse', $tableName) }}" class="text-gray-400 hover:text-white transition-colors">
+                <a href="{{ route('config.memory.browse', $tableName) }}{{ $selectedDatabase ? '?db=' . $selectedDatabase->id : '' }}" class="text-gray-400 hover:text-white transition-colors">
                     <x-icon.chevron-left class="w-5 h-5" />
                 </a>
-                <h1 class="text-2xl font-bold text-white">memory.{{ $tableName }}</h1>
+                <h1 class="text-2xl font-bold text-white">{{ $selectedDatabase ? $selectedDatabase->getFullSchemaName() : 'memory' }}.{{ $tableName }}</h1>
             </div>
             <p class="text-gray-400 ml-8 font-mono text-sm">
                 id: {{ $rowId }}

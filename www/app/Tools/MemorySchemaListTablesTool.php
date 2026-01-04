@@ -18,6 +18,10 @@ class MemorySchemaListTablesTool extends Tool
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
+            'schema' => [
+                'type' => 'string',
+                'description' => 'Memory schema short name (e.g., "default", "my_campaign"). Required - check your available schemas in the system prompt.',
+            ],
             'table' => [
                 'type' => 'string',
                 'description' => 'Optional: Show details for a specific table only.',
@@ -27,7 +31,7 @@ class MemorySchemaListTablesTool extends Tool
                 'description' => 'Include column details. Default: true.',
             ],
         ],
-        'required' => [],
+        'required' => ['schema'],
     ];
 
     public function getArtisanCommand(): ?string
@@ -48,17 +52,17 @@ For each table:
 
 ## System Tables (DO NOT DROP)
 
-- **memory.embeddings**: Central storage for semantic search vectors
-- **memory.schema_registry**: Tracks table metadata and embeddable fields
+- **{schema}.embeddings**: Central storage for semantic search vectors
+- **{schema}.schema_registry**: Tracks table metadata and embeddable fields
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
 ## CLI Example
 
 ```bash
-php artisan memory:schema:list-tables
-php artisan memory:schema:list-tables --table=characters
-php artisan memory:schema:list-tables --show-columns=false
+php artisan memory:schema:list-tables --schema=default
+php artisan memory:schema:list-tables --schema=default --table=characters
+php artisan memory:schema:list-tables --schema=default --show-columns=false
 ```
 CLI;
 
@@ -80,10 +84,28 @@ API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
+        $schemaName = trim($input['schema'] ?? '');
         $specificTable = $input['table'] ?? null;
         $showColumns = $input['show_columns'] ?? true;
 
+        // Validate schema parameter
+        if (empty($schemaName)) {
+            return ToolResult::error('schema is required. Specify the short schema name (e.g., "default", "my_campaign"). Check your available schemas in the system prompt.');
+        }
+
+        // Validate schema exists
+        $memoryDb = \App\Models\MemoryDatabase::where('schema_name', $schemaName)->first();
+        if (!$memoryDb) {
+            return ToolResult::error("Schema '{$schemaName}' not found. Check your available schemas in the system prompt.");
+        }
+
+        // Validate agent has access to this schema (if agent context available)
+        if ($context->agent && !$context->agent->hasMemoryDatabaseAccess($memoryDb)) {
+            return ToolResult::error("Agent does not have access to schema '{$schemaName}'. Enable it in agent settings.");
+        }
+
         $service = app(MemorySchemaService::class);
+        $service->setMemoryDatabase($memoryDb);
         $tables = $service->listTables();
 
         if (empty($tables)) {

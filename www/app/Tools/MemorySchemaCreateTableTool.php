@@ -18,6 +18,10 @@ class MemorySchemaCreateTableTool extends Tool
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
+            'schema' => [
+                'type' => 'string',
+                'description' => 'Memory schema short name (e.g., "default", "my_campaign"). Required - check your available schemas in the system prompt.',
+            ],
             'name' => [
                 'type' => 'string',
                 'description' => 'Table name (without schema prefix). Must start with letter, contain only lowercase letters, numbers, underscores.',
@@ -28,7 +32,7 @@ class MemorySchemaCreateTableTool extends Tool
             ],
             'sql' => [
                 'type' => 'string',
-                'description' => 'CREATE TABLE SQL statement. Must include memory. schema prefix (e.g., CREATE TABLE memory.characters ...).',
+                'description' => 'CREATE TABLE SQL statement. Must include the full schema prefix (e.g., CREATE TABLE memory_default.characters ...).',
             ],
             'embed_fields' => [
                 'type' => 'string',
@@ -39,7 +43,7 @@ class MemorySchemaCreateTableTool extends Tool
                 'description' => 'JSON object mapping column names to their descriptions. These become COMMENT ON COLUMN for documentation.',
             ],
         ],
-        'required' => ['name', 'description', 'sql', 'embed_fields'],
+        'required' => ['schema', 'name', 'description', 'sql', 'embed_fields'],
     ];
 
     public function getArtisanCommand(): ?string
@@ -64,7 +68,7 @@ A well-documented table enables AI to use it correctly; a poorly-documented tabl
 ## Important Rules
 
 1. **Table name**: Must start with letter, lowercase only, underscores allowed
-2. **SQL must use memory. prefix**: `CREATE TABLE memory.tablename (...)`
+2. **SQL must use full schema prefix**: `CREATE TABLE memory_default.tablename (...)` (use your schema name)
 3. **Always include id column**: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
 4. **embed_fields is required**: List text fields to auto-embed, or empty string for none
 5. **Column descriptions are strongly recommended**: See guidance below
@@ -111,8 +115,10 @@ The description should enable any AI to use this table correctly:
 
 After creating the table, add a trigram index for fuzzy text search:
 ```sql
-CREATE INDEX idx_tablename_name_trgm ON memory.tablename USING GIN (name gin_trgm_ops);
+CREATE INDEX idx_tablename_name_trgm ON memory_default.tablename USING GIN (name gin_trgm_ops);
 ```
+
+Replace `memory_default` with your actual schema name (e.g., `memory_my_campaign`).
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
@@ -120,14 +126,15 @@ INSTRUCTIONS;
 
 ```bash
 php artisan memory:schema:create-table \
+    --schema=default \
     --name=tasks \
     --description="Individual tasks belonging to projects.
 **Typical queries:** Get tasks by project, find overdue tasks
 **Relationships:** project_id references projects(id)
-**Example:** php artisan memory:insert --table=tasks --data='{\"title\":\"...\", \"status\":\"todo\"}'" \
+**Example:** php artisan memory:insert --schema=default --table=tasks --data='{\"title\":\"...\", \"status\":\"todo\"}'" \
     --embed-fields="title,description" \
     --column-descriptions='{"title":"Brief task name (5-10 words)","description":"Detailed requirements and context","status":"todo, in_progress, review, done, or blocked","priority":"low, medium, high, or critical"}' \
-    --sql="CREATE TABLE memory.tasks (
+    --sql="CREATE TABLE memory_default.tasks (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title TEXT NOT NULL,
         description TEXT,
@@ -155,11 +162,28 @@ API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
+        $schemaName = trim($input['schema'] ?? '');
         $name = trim($input['name'] ?? '');
         $description = trim($input['description'] ?? '');
         $sql = trim($input['sql'] ?? '');
         $embedFieldsStr = $input['embed_fields'] ?? '';
         $columnDescriptionsJson = $input['column_descriptions'] ?? '{}';
+
+        // Validate schema parameter
+        if (empty($schemaName)) {
+            return ToolResult::error('schema is required. Specify the short schema name (e.g., "default", "my_campaign"). Check your available schemas in the system prompt.');
+        }
+
+        // Validate schema exists
+        $memoryDb = \App\Models\MemoryDatabase::where('schema_name', $schemaName)->first();
+        if (!$memoryDb) {
+            return ToolResult::error("Schema '{$schemaName}' not found. Check your available schemas in the system prompt.");
+        }
+
+        // Validate agent has access to this schema (if agent context available)
+        if ($context->agent && !$context->agent->hasMemoryDatabaseAccess($memoryDb)) {
+            return ToolResult::error("Agent does not have access to schema '{$schemaName}'. Enable it in agent settings.");
+        }
 
         if (empty($name)) {
             return ToolResult::error('name is required');
@@ -191,6 +215,7 @@ API;
         }
 
         $service = app(MemorySchemaService::class);
+        $service->setMemoryDatabase($memoryDb);
         $result = $service->createTable($name, $sql, $description, $embedFields, $columnDescriptions);
 
         if ($result['success']) {
