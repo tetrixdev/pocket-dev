@@ -322,29 +322,34 @@ class BackupController extends Controller
         $dbName = config('database.connections.pgsql.database');
         $dbUser = config('database.connections.pgsql.username');
 
+        // Validate db name/user contain only safe characters (alphanumeric, underscore, hyphen)
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $dbName) || !preg_match('/^[a-zA-Z0-9_-]+$/', $dbUser)) {
+            throw new \RuntimeException('Invalid database name or username');
+        }
+
         // Drop and recreate the database, then restore
         // First terminate all connections
         $terminateCmd = sprintf(
-            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s AND pid <> pg_backend_pid();" 2>&1',
-            escapeshellarg($dbUser),
-            escapeshellarg($dbName)
+            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = \'%s\' AND pid <> pg_backend_pid();" 2>&1',
+            $dbUser,
+            $dbName
         );
         exec($terminateCmd);
 
         // Drop the database
         $dropCmd = sprintf(
-            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "DROP DATABASE IF EXISTS %s;" 2>&1',
-            escapeshellarg($dbUser),
-            escapeshellarg($dbName)
+            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "DROP DATABASE IF EXISTS \\"%s\\";" 2>&1',
+            $dbUser,
+            $dbName
         );
         exec($dropCmd, $output, $returnCode);
 
         // Create fresh database
         $createCmd = sprintf(
-            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "CREATE DATABASE %s OWNER %s;" 2>&1',
-            escapeshellarg($dbUser),
-            escapeshellarg($dbName),
-            escapeshellarg($dbUser)
+            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "CREATE DATABASE \\"%s\\" OWNER \\"%s\\";" 2>&1',
+            $dbUser,
+            $dbName,
+            $dbUser
         );
         exec($createCmd, $output, $returnCode);
         if ($returnCode !== 0) {
@@ -354,8 +359,8 @@ class BackupController extends Controller
         // Restore the dump
         $restoreCmd = sprintf(
             'docker exec -i pocket-dev-postgres psql -U %s %s < "%s" 2>&1',
-            escapeshellarg($dbUser),
-            escapeshellarg($dbName),
+            $dbUser,
+            $dbName,
             $dumpFile
         );
         exec($restoreCmd, $output, $returnCode);
