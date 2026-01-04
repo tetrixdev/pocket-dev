@@ -246,6 +246,14 @@
                     </a>
                 </div>
 
+                <!-- Backup & Restore -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.backup') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.backup' ? 'active' : '' }}">
+                        💾 Backup
+                    </a>
+                </div>
+
                 @if(app()->environment('local'))
                 <!-- Developer Tools (Local Only) -->
                 <div class="border-b border-gray-700">
@@ -512,6 +520,15 @@
                    @click="showMobileDrawer = false"
                    class="category-button w-full block {{ Route::currentRouteName() == 'config.credentials' ? 'active' : '' }}">
                     🔑 Credentials
+                </a>
+            </div>
+
+            <!-- Backup & Restore -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.backup') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.backup' ? 'active' : '' }}">
+                    💾 Backup
                 </a>
             </div>
 

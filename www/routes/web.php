@@ -123,6 +123,13 @@ Route::post("/config/memory/import", [MemoryController::class, "import"])->name(
 Route::patch("/config/memory/database/{memoryDatabase}", [MemoryController::class, "updateDatabase"])->name("config.memory.update-database");
 Route::post("/config/memory/database", [MemoryController::class, "createDatabase"])->name("config.memory.create-database");
 
+// Backup and restore
+Route::get("/config/backup", [\App\Http\Controllers\BackupController::class, "show"])->name("config.backup");
+Route::post("/config/backup/create", [\App\Http\Controllers\BackupController::class, "create"])->name("config.backup.create");
+Route::get("/config/backup/download/{filename}", [\App\Http\Controllers\BackupController::class, "download"])->name("config.backup.download");
+Route::delete("/config/backup/{filename}", [\App\Http\Controllers\BackupController::class, "delete"])->name("config.backup.delete");
+Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::class, "restore"])->name("config.backup.restore");
+
 // Developer tools (only available in local environment)
 if (app()->environment('local')) {
     Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");

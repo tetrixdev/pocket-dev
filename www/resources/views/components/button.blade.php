@@ -7,7 +7,7 @@
 ])
 
 @php
-    $baseClasses = 'rounded-lg font-medium transition-all disabled:cursor-not-allowed';
+    $baseClasses = 'rounded-lg font-medium transition-all disabled:cursor-not-allowed disabled:opacity-50';
 
     $variantClasses = match ($variant) {
         'primary' => 'bg-blue-600 hover:bg-blue-700 text-white',
