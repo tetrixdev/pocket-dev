@@ -67,7 +67,9 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Job reservation timeout - must be longer than the longest job duration.
+            // PocketDev AI jobs can run 30+ minutes. Default Laravel value (90s) is too short.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 1810),
             'block_for' => null,
             'after_commit' => false,
         ],
