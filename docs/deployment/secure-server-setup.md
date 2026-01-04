@@ -86,7 +86,7 @@ Type `yes` when prompted. This script:
 - Creates a 2GB swap file
 - Only allows connections through Tailscale
 
-> **Note:** After this runs, public IP access is blocked - but your current session stays open because Tailscale is already running.
+> **Note:** After this runs, public IP access is blocked - but your current session stays alive (established connections are preserved). If your connection drops for any reason, just reconnect via Tailscale IP instead.
 
 **3. Enable Tailscale HTTPS (Recommended):**
 
