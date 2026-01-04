@@ -56,6 +56,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Force HTTPS Scheme
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, all generated URLs will use HTTPS. Enable this when running
+    | behind a reverse proxy that terminates SSL (e.g., Tailscale Serve).
+    | This is not needed for local network access (192.168.x.x) as browsers
+    | treat those as secure contexts for features like voice input.
+    |
+    */
+
+    'force_https' => (bool) env('FORCE_HTTPS', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

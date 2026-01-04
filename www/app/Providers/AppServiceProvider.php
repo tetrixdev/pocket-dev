@@ -20,9 +20,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Force HTTPS scheme when APP_URL is configured with HTTPS
-        // This handles reverse proxies like Tailscale Serve that terminate SSL
-        if (str_starts_with(config('app.url'), 'https://')) {
+        // Force HTTPS scheme when behind a reverse proxy that terminates SSL
+        // Enable via FORCE_HTTPS=true in .env (e.g., when using Tailscale Serve)
+        if (config('app.force_https')) {
             URL::forceScheme('https');
         }
 
