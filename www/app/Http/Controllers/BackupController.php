@@ -417,7 +417,7 @@ class BackupController extends Controller
         $userId = env('USER_ID');
         $groupId = env('GROUP_ID');
 
-        if (!$userId || !$groupId) {
+        if ($userId === null || $groupId === null || $userId === '' || $groupId === '') {
             throw new \RuntimeException('USER_ID and GROUP_ID must be set in .env for volume permission fixes');
         }
 
