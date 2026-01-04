@@ -151,9 +151,14 @@
             <p class="text-yellow-500">
                 <strong>Not included:</strong> .env file (contains sensitive credentials)
             </p>
-            <p class="text-yellow-600/80 mt-1">
-                If restoring a backup from another instance, the <code class="bg-gray-800 px-1 rounded">APP_KEY</code> must match or API credentials will need to be re-entered.
+            <p class="text-yellow-600/80 mt-2">
+                <strong>When restoring to a different machine:</strong>
             </p>
+            <ul class="text-yellow-600/80 text-xs mt-1 list-disc list-inside space-y-1">
+                <li>Claude Code / Codex CLI credentials are device-bound and must be re-authenticated</li>
+                <li>Git credentials are set from .env variables on container start (not from backup)</li>
+                <li>APP_KEY must match or encrypted API credentials will need to be re-entered</li>
+            </ul>
         </div>
     </div>
 </div>

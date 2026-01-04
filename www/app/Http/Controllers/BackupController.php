@@ -400,6 +400,45 @@ class BackupController extends Controller
                 Log::warning("Failed to restore volume {$volume}", ['output' => implode("\n", $output)]);
             }
         }
+
+        // Fix ownership after restore - Alpine restores as root, but services need proper ownership
+        $this->fixVolumePermissions();
+    }
+
+    /**
+     * Fix volume permissions after restore
+     */
+    protected function fixVolumePermissions(): void
+    {
+        // user-data: needs www-data (33:33) ownership for CLI tools
+        exec('docker run --rm -v pocket-dev-user:/data alpine chown -R 33:33 /data 2>&1', $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning('Failed to fix pocket-dev-user permissions', ['output' => implode("\n", $output)]);
+        }
+
+        // storage: needs www-data (33:33) ownership for Laravel
+        exec('docker run --rm -v pocket-dev-storage:/data alpine chown -R 33:33 /data 2>&1', $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning('Failed to fix pocket-dev-storage permissions', ['output' => implode("\n", $output)]);
+        }
+
+        // workspace: needs www-data (33:33) ownership
+        exec('docker run --rm -v pocket-dev-workspace:/data alpine chown -R 33:33 /data 2>&1', $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning('Failed to fix pocket-dev-workspace permissions', ['output' => implode("\n", $output)]);
+        }
+
+        // proxy-config: needs to be writable by www-data (group 1001 hostdocker)
+        exec('docker run --rm -v pocket-dev-proxy-config:/data alpine sh -c "chown -R root:1001 /data && chmod -R 775 /data" 2>&1', $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning('Failed to fix pocket-dev-proxy-config permissions', ['output' => implode("\n", $output)]);
+        }
+
+        // redis: needs redis user (999:999)
+        exec('docker run --rm -v pocket-dev-redis:/data alpine chown -R 999:999 /data 2>&1', $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning('Failed to fix pocket-dev-redis permissions', ['output' => implode("\n", $output)]);
+        }
     }
 
     /**
