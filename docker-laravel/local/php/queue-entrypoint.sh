@@ -19,6 +19,28 @@ export HOME=/home/appuser
 # Ensure CLI config directories exist
 mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
+# Configure git and GitHub CLI if credentials are provided
+# This is critical for Claude Code agents that need git/gh access
+if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
+    echo "⚙️  Configuring git credentials for queue worker..."
+
+    # Configure git user information (continue on failure)
+    if git config --global user.name "$GIT_USER_NAME" 2>/dev/null && \
+       git config --global user.email "$GIT_USER_EMAIL" 2>/dev/null && \
+       git config --global credential.helper store 2>/dev/null; then
+
+        # Store GitHub credentials in standard format (username = "token" for GitHub tokens)
+        echo "https://token:$GIT_TOKEN@github.com" > ~/.git-credentials 2>/dev/null
+        chmod 600 ~/.git-credentials 2>/dev/null || true
+
+        echo "✅ Git and GitHub CLI configured for queue worker"
+    else
+        echo "⚠️  Could not configure git credentials (permission issue) - continuing without"
+    fi
+else
+    echo "ℹ️  Git credentials not provided - skipping git/GitHub CLI setup"
+fi
+
 # Wait for database migrations to complete (php container runs them)
 # Check for the cache table which is created early in migrations
 echo "⏳ Waiting for database migrations..."
