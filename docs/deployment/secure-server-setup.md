@@ -51,42 +51,28 @@ This is the only time you'll use the public IP:
 ssh root@<public-ip>
 ```
 
-Enter password from email. You'll be prompted to change it.
+Enter password from email. You'll be prompted to change it. Store the new one.
 
 ---
 
-## Step 3: Create Non-Root User
-
-```bash
-adduser pocketdev
-usermod -aG sudo pocketdev
-```
-
-When prompted for Full Name, Room Number, etc. - just press Enter to skip. Only the password matters.
-
----
-
-## Step 4: Install Tailscale on Server
+## Step 3: Install Tailscale on Server
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up --ssh
-```
-
-A URL will appear - open it in your browser to authenticate with your Tailscale account.
-
-After authenticating, get your Tailscale IP:
-
-```bash
 tailscale ip -4
 # Example output: 100.64.0.5
 ```
 
-**Write down this IP** - you'll use it from now on.
+A URL will appear - open it in your browser to authenticate with your Tailscale account.
+
+After authenticating, it should echo your Tailscale IP
+
+**Write down this IP** - you'll use it from now on. (Or don't. You can also find this on your phone/PC after connecting those)
 
 ---
 
-## Step 5: Install Tailscale on Your Devices
+## Step 4: Install Tailscale on Your Devices (If not already using Tailscale)
 
 Before you can connect via Tailscale, install it on your local machine:
 
@@ -103,7 +89,7 @@ Once signed in, all your devices can see each other via Tailscale IPs (100.x.x.x
 
 ---
 
-## Step 6: Switch to Tailscale Connection
+## Step 5: Switch to Tailscale Connection
 
 Disconnect from the public IP:
 
@@ -114,19 +100,20 @@ exit
 From your local machine, connect via Tailscale:
 
 ```bash
-ssh pocketdev@<tailscale-ip>
+ssh root@<tailscale-ip>
 ```
 
 This should work without a password because Tailscale SSH handles authentication.
 
 ---
 
-## Step 7: Run Security Setup Script
+## Step 6: Run Security Setup Script
 
 ```bash
 curl -O https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/server-setup.sh
 chmod +x server-setup.sh
 sudo ./server-setup.sh
+rm ./server-setup.sh
 ```
 
 Type `yes` when prompted to confirm.
@@ -141,13 +128,13 @@ This script:
 
 ---
 
-## Step 8: Deploy PocketDev
+## Step 7: Deploy PocketDev
 
 Log out and back in (required for Docker group permissions):
 
 ```bash
 exit
-ssh pocketdev@<tailscale-ip>
+ssh root@<tailscale-ip>
 ```
 
 ### Option A: Standard Install (Recommended)
@@ -167,29 +154,91 @@ chmod +x setup.sh && ./setup.sh
 If you want to modify the code or contribute:
 
 ```bash
-mkdir -p ~/docker-apps && cd ~/docker-apps
+# Clone the repository
 git clone https://github.com/tetrixdev/pocket-dev.git
 cd pocket-dev
 
-# Configure environment
-cp .env.example .env
-nano .env  # Edit settings as needed
+# Run setup (auto-detects USER_ID, GROUP_ID, DOCKER_GID)
+./setup.sh
 
-# Start containers
+# Start development environment
 docker compose up -d
+```
+
+---
+
+## Step 8: Enable HTTPS (Required for Voice Input)
+
+Voice input on mobile requires HTTPS. Tailscale provides free automatic SSL certificates for your `.ts.net` domain.
+
+> **Important:** Enabling HTTPS publishes your machine name and tailnet name to a public certificate transparency ledger. If your machine or tailnet names contain sensitive information, rename them first.
+
+For full details, see [Tailscale HTTPS documentation](https://tailscale.com/kb/1153/enabling-https).
+
+**1. (Optional) Rename your tailnet:**
+
+Your tailnet name (e.g., `tail1234.ts.net`) will be public. To rename it:
+- Go to [Tailscale Admin Console → DNS](https://login.tailscale.com/admin/dns)
+- Click **Rename tailnet...** at the top
+
+Do this **before** enabling HTTPS - changing it later requires re-provisioning certificates.
+
+**2. Enable HTTPS certificates:**
+
+In the same DNS settings page, under **HTTPS Certificates**, click **Enable HTTPS**.
+
+**3. Get your server's hostname:**
+
+```bash
+tailscale status
+```
+
+Note your server's machine name. You can also rename it in the [Machines page](https://login.tailscale.com/admin/machines) if needed.
+
+**4. Enable Tailscale Serve to proxy HTTPS:**
+
+```bash
+tailscale serve --bg http://localhost:80
+```
+
+This makes Tailscale handle HTTPS termination and forward requests to your HTTP containers. Verify it's running:
+
+```bash
+tailscale serve status
+```
+
+The `--bg` flag runs it persistently in the background, surviving reboots.
+
+**5. Update your `.env` file:**
+
+```bash
+nano .env
+```
+
+Update `APP_URL` to use HTTPS with your full hostname:
+```text
+APP_URL=https://<server-name>.<tailnet-name>.ts.net
+```
+
+**6. Restart containers:**
+
+```bash
+docker compose restart
 ```
 
 ---
 
 ## Step 9: Access PocketDev
 
-Open in your browser:
+Open in your browser (using the hostname from Step 8):
 
 ```text
-http://<tailscale-ip>
+https://<server-name>.<tailnet-name>.ts.net
 ```
 
-This works from any device where you've installed and signed into Tailscale.
+For example: `https://pocketdev-prod01.tail1234.ts.net`
+
+This works from any device where you've installed and signed into Tailscale. Voice input will now work on mobile.
 
 ---
 
@@ -210,21 +259,18 @@ The public IP returns nothing - not even a connection refused. The server is inv
 
 ## Optional: Use a Custom Domain
 
-Instead of remembering the Tailscale IP, you can point a subdomain to it:
+If you prefer your own domain instead of the `.ts.net` MagicDNS name:
 
-1. In your DNS provider, add an A record:
+1. In your DNS provider, add an A record pointing to your Tailscale IP:
    ```text
    pocketdev.yourdomain.com → 100.64.x.x
    ```
 
-2. Access via `http://pocketdev.yourdomain.com`
+2. Update `APP_URL` in your `.env` file
 
-The DNS is public, but only Tailscale devices can actually connect to that IP.
+3. For HTTPS with a custom domain, you'll need to set up your own SSL certificates (e.g., with Caddy or Let's Encrypt)
 
-Alternatively, Tailscale provides a free MagicDNS name:
-```text
-http://<server-hostname>.<tailnet-name>.ts.net
-```
+Note: The DNS record is public, but only Tailscale devices can actually connect to that IP.
 
 ---
 
@@ -250,7 +296,7 @@ Log out and back in after running the setup script:
 
 ```bash
 exit
-ssh pocketdev@<tailscale-ip>
+ssh root@<tailscale-ip>
 ```
 
 ### Script fails on non-Ubuntu
