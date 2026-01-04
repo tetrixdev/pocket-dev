@@ -225,29 +225,42 @@ class BackupController extends Controller
      */
     protected function backupDatabase(string $tempDir): void
     {
-        $dbHost = config('database.connections.pgsql.host');
         $dbName = config('database.connections.pgsql.database');
         $dbUser = config('database.connections.pgsql.username');
-        $dbPass = config('database.connections.pgsql.password');
+
+        $dumpFile = "{$tempDir}/database.sql";
+
+        // First verify docker is accessible
+        exec('docker --version 2>&1', $dockerCheck, $dockerReturnCode);
+        if ($dockerReturnCode !== 0) {
+            throw new \RuntimeException('Docker not accessible: ' . implode("\n", $dockerCheck));
+        }
 
         // Use docker exec to run pg_dump in the postgres container
+        // Capture output directly then write to file (more reliable than shell redirection)
         $command = sprintf(
-            'docker exec pocket-dev-postgres pg_dump -U %s %s > "%s/database.sql" 2>&1',
+            'docker exec pocket-dev-postgres pg_dump -U %s %s 2>&1',
             escapeshellarg($dbUser),
-            escapeshellarg($dbName),
-            $tempDir
+            escapeshellarg($dbName)
         );
 
         exec($command, $output, $returnCode);
+
         if ($returnCode !== 0) {
-            throw new \RuntimeException('Database backup failed: ' . implode("\n", $output));
+            $errorMsg = implode("\n", $output);
+            if (empty($errorMsg)) {
+                $errorMsg = "pg_dump failed with exit code {$returnCode}";
+            }
+            throw new \RuntimeException('Database backup failed: ' . $errorMsg);
         }
 
-        // Verify the dump file exists and has content
-        $dumpFile = "{$tempDir}/database.sql";
-        if (!file_exists($dumpFile) || filesize($dumpFile) === 0) {
-            throw new \RuntimeException('Database dump file is empty or missing');
+        // Write output to file
+        $dumpContent = implode("\n", $output);
+        if (empty($dumpContent)) {
+            throw new \RuntimeException('Database dump is empty');
         }
+
+        file_put_contents($dumpFile, $dumpContent);
     }
 
     /**
