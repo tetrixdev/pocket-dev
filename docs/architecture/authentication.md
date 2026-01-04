@@ -160,6 +160,6 @@ Chat interface loads
 
 ## Security Notes
 
-1. **Basic Auth is always required** - There's no "development mode" without auth
+1. **Network-level security is always required** - Use Tailscale for production, or enable Basic Auth for local access
 2. **Credentials are sensitive** - Never commit `.credentials.json` or `.env` to git
 3. **Token expiry** - Claude tokens expire; the auth status page shows days remaining

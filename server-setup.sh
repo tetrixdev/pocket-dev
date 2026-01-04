@@ -328,12 +328,12 @@ if [ ! -f /swapfile ] && [ "$(swapon --show | wc -l)" -eq 0 ]; then
     mkswap /swapfile
     swapon /swapfile
 
-    # Make swap permanent
-    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    # Make swap permanent (idempotent)
+    grep -qxF '/swapfile none swap sw 0 0' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
-    # Optimize swap settings
+    # Optimize swap settings (idempotent)
     # swappiness=10 means only use swap when RAM is nearly full
-    echo 'vm.swappiness=10' >> /etc/sysctl.conf
+    grep -qxF 'vm.swappiness=10' /etc/sysctl.conf || echo 'vm.swappiness=10' >> /etc/sysctl.conf
     sysctl vm.swappiness=10
 
     log_info "2GB swap file created"

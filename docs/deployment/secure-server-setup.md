@@ -185,7 +185,7 @@ docker compose up -d
 
 Open in your browser:
 
-```
+```text
 http://<tailscale-ip>
 ```
 
@@ -213,7 +213,7 @@ The public IP returns nothing - not even a connection refused. The server is inv
 Instead of remembering the Tailscale IP, you can point a subdomain to it:
 
 1. In your DNS provider, add an A record:
-   ```
+   ```text
    pocketdev.yourdomain.com → 100.64.x.x
    ```
 
@@ -222,7 +222,7 @@ Instead of remembering the Tailscale IP, you can point a subdomain to it:
 The DNS is public, but only Tailscale devices can actually connect to that IP.
 
 Alternatively, Tailscale provides a free MagicDNS name:
-```
+```text
 http://<server-hostname>.<tailnet-name>.ts.net
 ```
 
