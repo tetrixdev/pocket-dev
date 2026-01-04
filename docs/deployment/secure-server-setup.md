@@ -175,9 +175,15 @@ cd pocket-dev
 cp .env.example .env
 nano .env  # Edit settings as needed
 
-# Start containers
-docker compose up -d
+# Start containers (composer install runs automatically)
+docker compose up -d --build
 ```
+
+The container's entrypoint automatically handles:
+- `composer install` - PHP dependencies
+- `npm install && npm run build` - Frontend assets
+- Database migrations
+- Permission setup for storage directories
 
 ---
 
