@@ -248,7 +248,12 @@ iptables -A INPUT -i tailscale0 -j ACCEPT
 # connections with the Tailscale network
 iptables -A INPUT -p udp --dport 41641 -j ACCEPT
 
-# Rule 6: Default DROP - block everything else
+# Rule 6: Allow forwarding for Docker networks (needed for builds)
+# Docker build containers need to reach the internet for package downloads
+iptables -I FORWARD -s 172.16.0.0/12 -j ACCEPT
+iptables -I FORWARD -d 172.16.0.0/12 -j ACCEPT
+
+# Rule 7: Default DROP - block everything else
 # Any traffic not matching the above rules is silently dropped
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
