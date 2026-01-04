@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class MemoryInsertCommand extends Command
 {
     protected $signature = 'memory:insert
+        {--schema= : Memory schema short name (e.g., "default")}
         {--table= : Table name (without schema prefix)}
         {--data= : JSON object with column => value pairs}';
 
@@ -28,6 +29,7 @@ class MemoryInsertCommand extends Command
         }
 
         $input = [
+            'schema' => $this->option('schema'),
             'table' => $table,
             'data' => $data,
         ];

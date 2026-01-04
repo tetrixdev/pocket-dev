@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class MemorySchemaExecuteCommand extends Command
 {
     protected $signature = 'memory:schema:execute
+        {--schema= : Memory schema short name (e.g., "default")}
         {--sql= : DDL SQL statement to execute}';
 
     protected $description = 'Execute DDL SQL on the memory schema (CREATE INDEX, DROP TABLE, etc.)';
@@ -22,6 +23,7 @@ class MemorySchemaExecuteCommand extends Command
         }
 
         $input = [
+            'schema' => $this->option('schema'),
             'sql' => $sql,
         ];
 

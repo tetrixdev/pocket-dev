@@ -1646,12 +1646,12 @@
                             this.resetContextTracking();
                         }
 
-                        // Parse messages for display
-                        if (data.conversation?.messages) {
-                            for (const msg of data.conversation.messages) {
-                                this.addMessageFromDb(msg);
-                            }
-                            this.debugLog('loadConversation: messages loaded', { count: this.messages.length });
+                        // Parse messages for display using progressive rendering
+                        if (data.conversation?.messages?.length > 0) {
+                            await this.loadMessagesProgressively(
+                                data.conversation.messages,
+                                this.pendingScrollToTurn
+                            );
                         }
 
                         // Update provider/model from conversation
@@ -1696,18 +1696,13 @@
                         this.openaiCompatibleReasoningEffort = data.conversation?.openai_compatible_reasoning_effort ?? 'none';
                         this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
 
-                        // Scroll to turn if coming from search, otherwise scroll to bottom
-                        if (this.pendingScrollToTurn !== null) {
-                            this.scrollToTurn(this.pendingScrollToTurn);
-                            this.pendingScrollToTurn = null;
-                        } else {
-                            this.scrollToBottom();
-                        }
+                        // Note: scrolling is handled inside loadMessagesProgressively
+                        // Clear pendingScrollToTurn since it was passed to loadMessagesProgressively
+                        this.pendingScrollToTurn = null;
 
                         // Re-enable scroll event handling after scroll completes
                         this.$nextTick(() => {
                             this.ignoreScrollEvents = false;
-                            this.debugLog('loadConversation: $nextTick completed');
                         });
 
                         // Check if there's an active stream for this conversation
@@ -1741,6 +1736,254 @@
                     } catch (err) {
                         // No active stream, that's fine
                     }
+                },
+
+                /**
+                 * Progressive message loading - renders priority messages first, then fills in the rest.
+                 * For normal load: shows last N messages immediately, then prepends older ones.
+                 * For search: shows messages around target turn first, then fills in.
+                 */
+                async loadMessagesProgressively(dbMessages, targetTurn = null) {
+                    const INITIAL_BATCH = 100;  // Messages to show immediately
+                    const PREPEND_BATCH = 50;   // Messages per prepend batch
+
+                    // Convert all messages to UI format first
+                    const allUiMessages = [];
+                    for (const msg of dbMessages) {
+                        const converted = this.convertDbMessageToUi(msg);
+                        allUiMessages.push(...converted);
+                    }
+
+                    if (allUiMessages.length === 0) return;
+
+                    // Determine which messages to render first based on context
+                    let priorityStartIndex;
+                    if (targetTurn !== null) {
+                        // Search case: find messages around the target turn
+                        const targetIndex = allUiMessages.findIndex(m => m.turn_number === targetTurn);
+                        if (targetIndex !== -1) {
+                            // Center the initial batch around the target
+                            priorityStartIndex = Math.max(0, targetIndex - Math.floor(INITIAL_BATCH / 2));
+                        } else {
+                            // Target not found, fall back to end
+                            priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
+                        }
+                    } else {
+                        // Normal load: show last N messages first
+                        priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
+                    }
+
+                    // Split messages into priority (render first) and before (prepend later)
+                    const messagesBefore = allUiMessages.slice(0, priorityStartIndex);
+                    const priorityMessages = allUiMessages.slice(priorityStartIndex);
+
+                    this.debugLog('[Progressive] Strategy', {
+                        total: allUiMessages.length,
+                        priorityStart: priorityStartIndex,
+                        priorityCount: priorityMessages.length,
+                        beforeCount: messagesBefore.length,
+                        targetTurn
+                    });
+
+                    // Phase 1: Render priority messages immediately
+                    this.messages = priorityMessages;
+
+                    // Wait for initial render and scroll
+                    await new Promise(resolve => {
+                        this.$nextTick(() => {
+                            if (targetTurn !== null) {
+                                this.scrollToTurn(targetTurn);
+                            } else {
+                                this.scrollToBottom();
+                            }
+                            resolve();
+                        });
+                    });
+
+                    // Phase 2: Prepend older messages in batches (if any) - runs in background, don't await
+                    if (messagesBefore.length > 0) {
+                        this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH);
+                    }
+                },
+
+                /**
+                 * Prepends messages in batches. Browser's scroll anchoring maintains scroll position.
+                 */
+                async prependMessagesInBatches(messages, batchSize) {
+                    let remaining = [...messages];
+
+                    while (remaining.length > 0) {
+                        // Take a batch from the END (newest of the old messages)
+                        const batch = remaining.slice(-batchSize);
+                        remaining = remaining.slice(0, -batchSize);
+
+                        // Prepend batch to beginning of messages array
+                        this.messages.unshift(...batch);
+
+                        // Yield to main thread between batches (lets browser render and handle scroll anchoring)
+                        await new Promise(resolve => requestAnimationFrame(resolve));
+                    }
+
+                    this.debugLog('[Progressive] Prepend complete', {
+                        totalMessages: this.messages.length
+                    });
+                },
+
+                /**
+                 * Converts a DB message to UI format. Returns array (content blocks expand to multiple).
+                 */
+                convertDbMessageToUi(dbMsg) {
+                    const result = [];
+                    const content = dbMsg.content;
+                    const msgInputTokens = dbMsg.input_tokens || 0;
+                    const msgOutputTokens = dbMsg.output_tokens || 0;
+                    const msgCacheCreation = dbMsg.cache_creation_tokens || 0;
+                    const msgCacheRead = dbMsg.cache_read_tokens || 0;
+                    const msgModel = dbMsg.model || this.model;
+                    const msgCost = dbMsg.cost || null;
+
+                    if (typeof content === 'string') {
+                        result.push({
+                            id: 'msg-' + Date.now() + '-' + Math.random(),
+                            role: dbMsg.role,
+                            content: content,
+                            timestamp: dbMsg.created_at,
+                            collapsed: false,
+                            cost: msgCost,
+                            model: msgModel,
+                            inputTokens: msgInputTokens,
+                            outputTokens: msgOutputTokens,
+                            cacheCreationTokens: msgCacheCreation,
+                            cacheReadTokens: msgCacheRead,
+                            agent: dbMsg.agent,
+                            turn_number: dbMsg.turn_number
+                        });
+                    } else if (Array.isArray(content)) {
+                        if (content.length === 0) {
+                            if (msgCost && dbMsg.role === 'assistant') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'empty-response',
+                                    content: null,
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: false,
+                                    cost: msgCost,
+                                    model: msgModel,
+                                    inputTokens: msgInputTokens,
+                                    outputTokens: msgOutputTokens,
+                                    cacheCreationTokens: msgCacheCreation,
+                                    cacheReadTokens: msgCacheRead,
+                                    agent: dbMsg.agent,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            }
+                            return result;
+                        }
+
+                        const lastBlockIndex = content.length - 1;
+
+                        for (let i = 0; i < content.length; i++) {
+                            const block = content[i];
+                            const isLast = (i === lastBlockIndex);
+
+                            if (block.type === 'text') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'assistant',
+                                    content: block.text,
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: false,
+                                    cost: isLast ? msgCost : null,
+                                    model: isLast ? msgModel : null,
+                                    inputTokens: isLast ? msgInputTokens : null,
+                                    outputTokens: isLast ? msgOutputTokens : null,
+                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'thinking') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'thinking',
+                                    content: block.thinking,
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: true,
+                                    cost: isLast ? msgCost : null,
+                                    model: isLast ? msgModel : null,
+                                    inputTokens: isLast ? msgInputTokens : null,
+                                    outputTokens: isLast ? msgOutputTokens : null,
+                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'tool_use') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'tool',
+                                    toolName: block.name,
+                                    toolId: block.id,
+                                    toolInput: block.input,
+                                    toolResult: null,
+                                    content: JSON.stringify(block.input, null, 2),
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: true,
+                                    cost: isLast ? msgCost : null,
+                                    model: isLast ? msgModel : null,
+                                    inputTokens: isLast ? msgInputTokens : null,
+                                    outputTokens: isLast ? msgOutputTokens : null,
+                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'tool_result' && block.tool_use_id) {
+                                // Link result to the corresponding tool message in result array
+                                const toolMsgIndex = result.findIndex(m => m.role === 'tool' && m.toolId === block.tool_use_id);
+                                if (toolMsgIndex >= 0) {
+                                    result[toolMsgIndex] = {
+                                        ...result[toolMsgIndex],
+                                        toolResult: block.content
+                                    };
+                                }
+                            } else if (block.type === 'interrupted') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'interrupted',
+                                    content: 'Response interrupted',
+                                    timestamp: dbMsg.created_at,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'error') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'error',
+                                    content: block.message || 'An unexpected error occurred',
+                                    timestamp: dbMsg.created_at,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'system') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'system',
+                                    content: block.content,
+                                    subtype: block.subtype,
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: false,
+                                    cost: isLast ? msgCost : null,
+                                    model: isLast ? msgModel : null,
+                                    inputTokens: isLast ? msgInputTokens : null,
+                                    outputTokens: isLast ? msgOutputTokens : null,
+                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            }
+                        }
+                    }
+                    return result;
                 },
 
                 addMessageFromDb(dbMsg) {
