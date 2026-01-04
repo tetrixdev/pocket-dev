@@ -10,3 +10,6 @@ RUN apt-get update \
         postgresql-17-postgis-3 \
         postgresql-17-pgvector \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy init script to create extensions on database initialization
+COPY init-extensions.sql /docker-entrypoint-initdb.d/
