@@ -3,8 +3,11 @@
 namespace App\Services;
 
 use App\Enums\Provider;
+use App\Models\Agent;
+use App\Models\MemoryDatabase;
 use App\Models\PocketTool;
 use App\Models\ToolConflict;
+use App\Models\Workspace;
 use App\Services\MemorySchemaService;
 use App\Tools\Tool;
 use App\Tools\UserTool;
@@ -15,6 +18,11 @@ use Illuminate\Support\Collection;
  *
  * It uses the ToolRegistry (which auto-discovers Tool classes and wraps
  * user tools from the database) as the source of truth.
+ *
+ * Tool filtering follows a three-tier hierarchy:
+ * 1. Global enablement (PocketTool.enabled)
+ * 2. Workspace enablement (WorkspaceTool, no entry = enabled)
+ * 3. Agent allowed tools (optional per-agent filtering)
  */
 class ToolSelector
 {
@@ -31,12 +39,24 @@ class ToolSelector
     }
 
     /**
+     * Get all tools from the registry, filtered by workspace.
+     */
+    public function getAllToolsForWorkspace(Workspace $workspace): Collection
+    {
+        return collect($this->registry->allForWorkspace($workspace));
+    }
+
+    /**
      * Get all tools available for a specific provider.
      * All tools are available for all providers - filtering is done in getDefaultTools().
      */
-    public function getAvailableTools(string $provider): Collection
+    public function getAvailableTools(string $provider, ?Workspace $workspace = null): Collection
     {
-        return $this->getAllTools()
+        $tools = $workspace
+            ? $this->getAllToolsForWorkspace($workspace)
+            : $this->getAllTools();
+
+        return $tools
             ->sortBy([
                 ['category', 'asc'],
                 ['name', 'asc'],
@@ -48,9 +68,9 @@ class ToolSelector
      * Get default tools for a provider (for new conversations).
      * For CLI providers (Claude Code, Codex): excludes file operations tools (they have native equivalents).
      */
-    public function getDefaultTools(string $provider): Collection
+    public function getDefaultTools(string $provider, ?Workspace $workspace = null): Collection
     {
-        $tools = $this->getAvailableTools($provider);
+        $tools = $this->getAvailableTools($provider, $workspace);
 
         // For CLI providers, exclude file operation tools (native equivalents exist)
         $providerEnum = Provider::tryFrom($provider);
@@ -65,17 +85,17 @@ class ToolSelector
      * Get tools for system prompt injection (CLI providers).
      * Returns only non-file-ops tools (CLI providers have native file ops).
      */
-    public function getToolsForSystemPrompt(string $provider): Collection
+    public function getToolsForSystemPrompt(string $provider, ?Workspace $workspace = null): Collection
     {
         $providerEnum = Provider::tryFrom($provider);
 
         // For CLI providers, exclude file_ops since they have native equivalents
         if ($providerEnum?->isCliProvider()) {
-            return $this->getAvailableTools($provider)
+            return $this->getAvailableTools($provider, $workspace)
                 ->filter(fn(Tool $tool) => $tool->category !== PocketTool::CATEGORY_FILE_OPS);
         }
 
-        return $this->getAvailableTools($provider);
+        return $this->getAvailableTools($provider, $workspace);
     }
 
     /**
@@ -167,10 +187,16 @@ class ToolSelector
      *
      * @param string $provider The provider type
      * @param array|null $allowedTools Tool slugs to allow (null = all, [] = none, [...] = specific)
+     * @param Workspace|null $workspace Workspace for tool filtering
+     * @param Agent|null $agent Agent for memory schema access (uses agent's enabled schemas)
      */
-    public function buildSystemPrompt(string $provider, ?array $allowedTools = null): string
-    {
-        $tools = $this->getToolsForSystemPrompt($provider);
+    public function buildSystemPrompt(
+        string $provider,
+        ?array $allowedTools = null,
+        ?Workspace $workspace = null,
+        ?Agent $agent = null
+    ): string {
+        $tools = $this->getToolsForSystemPrompt($provider, $workspace);
 
         // Filter by agent's allowed tools if specified (case-insensitive)
         $tools = ToolFilterHelper::filterCollection($tools, $allowedTools);
@@ -192,10 +218,10 @@ class ToolSelector
             $sections[] = "# PocketDev Tools\n";
         }
 
-        // Add available memory tables from schema registry
-        $tablesSection = $this->buildTablesSection();
-        if ($tablesSection) {
-            $sections[] = $tablesSection;
+        // Add available memory schemas for this agent
+        $schemasSection = $this->buildAvailableSchemasSection($agent);
+        if ($schemasSection) {
+            $sections[] = $schemasSection;
         }
 
         if ($isCliProvider) {
@@ -248,55 +274,51 @@ class ToolSelector
     }
 
     /**
-     * Build the memory tables section for the system prompt.
-     * Reads from schema_registry to show available user tables.
+     * Build the available memory schemas section for the system prompt.
+     * Shows which schemas the agent has access to.
+     *
+     * @param Agent|null $agent The agent to get schemas for
      */
-    private function buildTablesSection(): ?string
+    private function buildAvailableSchemasSection(?Agent $agent): ?string
     {
-        try {
-            $schemaService = app(MemorySchemaService::class);
-            $tables = $schemaService->listTables();
-        } catch (\Exception $e) {
-            // Database not ready or memory schema doesn't exist yet
-            return null;
-        }
+        // Get available schemas for this agent
+        $schemas = $this->getAvailableSchemas($agent);
 
-        // Filter out system tables - they're documented in tool instructions
-        $userTables = array_filter($tables, fn($t) => !in_array($t['table_name'], ['embeddings', 'schema_registry']));
-
-        if (empty($userTables)) {
+        if ($schemas->isEmpty()) {
             return null;
         }
 
         $lines = [];
-        $lines[] = "## Memory Tables\n";
-        $lines[] = "The following tables exist in the `memory` schema. Use `memory:query` to read, `memory:insert` to create rows.\n";
+        $lines[] = "## Available Memory Schemas\n";
+        $lines[] = "You have access to the following memory schemas. Use `--schema=<name>` with all memory tools.\n";
 
-        foreach ($userTables as $table) {
-            $lines[] = "### memory.{$table['table_name']}";
-            if ($table['description']) {
-                $lines[] = $table['description'];
-            }
-
-            // Show embeddable fields if any
-            if (!empty($table['embeddable_fields'])) {
-                $lines[] = "**Auto-embed:** " . implode(', ', $table['embeddable_fields']);
-            }
-
-            // Show columns
-            if (!empty($table['columns'])) {
-                $lines[] = "\n**Columns:**";
-                foreach ($table['columns'] as $col) {
-                    $nullable = $col['nullable'] ? '' : ' NOT NULL';
-                    $desc = $col['description'] ? ": {$col['description']}" : '';
-                    $lines[] = "- `{$col['name']}` ({$col['type']}{$nullable}){$desc}";
-                }
-            }
-
-            $lines[] = "";
+        foreach ($schemas as $schema) {
+            $shortName = $schema->schema_name;
+            $lines[] = "- **{$shortName}**" . ($schema->description ? ": {$schema->description}" : "");
         }
 
+        $lines[] = "\nExample: `php artisan memory:query --schema={$schemas->first()->schema_name} --sql=\"SELECT * FROM {$schemas->first()->getFullSchemaName()}.schema_registry\"`";
+        $lines[] = "";
+
         return implode("\n", $lines);
+    }
+
+    /**
+     * Get available memory schemas for an agent.
+     * If no agent, returns all schemas. If agent has workspace, filters by workspace then agent access.
+     * Respects the agent's inherit_workspace_schemas setting.
+     */
+    private function getAvailableSchemas(?Agent $agent): Collection
+    {
+        if (!$agent) {
+            // No agent context - return all schemas
+            return MemoryDatabase::orderBy('name')->get();
+        }
+
+        // Use getEnabledMemoryDatabases() which respects inherit_workspace_schemas:
+        // - If inheriting: returns all workspace-enabled schemas
+        // - Otherwise: returns only explicitly granted schemas that are workspace-enabled
+        return $agent->getEnabledMemoryDatabases()->sortBy('name')->values();
     }
 
     /**

@@ -5,25 +5,27 @@
 @section('content')
 <div class="space-y-6" x-data="tableBrowser()">
     {{-- Header --}}
-    <div class="flex items-center justify-between">
-        <div>
-            <div class="flex items-center gap-3 mb-2">
-                <a href="{{ route('config.memory') }}" class="text-gray-400 hover:text-white transition-colors">
-                    <x-icon.chevron-left class="w-5 h-5" />
-                </a>
-                <h1 class="text-2xl font-bold text-white">memory.{{ $tableName }}</h1>
-                <span class="text-sm text-gray-500 bg-gray-800 px-2 py-1 rounded">
-                    {{ number_format($totalRows) }} rows
-                </span>
+    <div>
+        <div class="flex items-start gap-3 mb-2">
+            <a href="{{ route('config.memory') }}{{ $selectedDatabase ? '?db=' . $selectedDatabase->id : '' }}" class="text-gray-400 hover:text-white transition-colors mt-1 flex-shrink-0">
+                <x-icon.chevron-left class="w-5 h-5" />
+            </a>
+            <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                    <h1 class="text-xl sm:text-2xl font-bold text-white break-words">{{ $selectedDatabase ? $selectedDatabase->getFullSchemaName() : 'memory' }}.{{ $tableName }}</h1>
+                    <span class="text-sm text-gray-500 bg-gray-800 px-2 py-1 rounded whitespace-nowrap">
+                        {{ number_format($totalRows) }} rows
+                    </span>
+                </div>
+                @if($tableInfo['description'])
+                    <p class="text-gray-400 mt-1 text-sm sm:text-base">{{ Str::limit($tableInfo['description'], 200) }}</p>
+                @endif
             </div>
-            @if($tableInfo['description'])
-                <p class="text-gray-400 ml-8">{{ Str::limit($tableInfo['description'], 200) }}</p>
-            @endif
         </div>
     </div>
 
     {{-- Controls --}}
-    <div class="flex items-center justify-between">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div class="flex items-center gap-4">
             {{-- Per page selector --}}
             <div class="flex items-center gap-2">
@@ -42,7 +44,7 @@
         {{-- Pagination info --}}
         <div class="text-sm text-gray-400">
             @if($totalRows > 0)
-                Showing {{ ($currentPage - 1) * $perPage + 1 }} - {{ min($currentPage * $perPage, $totalRows) }} of {{ number_format($totalRows) }}
+                <span class="hidden sm:inline">Showing</span> {{ ($currentPage - 1) * $perPage + 1 }}-{{ min($currentPage * $perPage, $totalRows) }} <span class="hidden sm:inline">of</span><span class="sm:hidden">/</span> {{ number_format($totalRows) }}
             @else
                 No data
             @endif
@@ -89,7 +91,7 @@
                             <tr class="hover:bg-gray-750 transition-colors">
                                 <td class="px-3 py-3 align-top">
                                     @if($rowId)
-                                        <a href="{{ route('config.memory.show', [$tableName, $rowId]) }}"
+                                        <a href="{{ route('config.memory.show', [$tableName, $rowId]) }}{{ $selectedDatabase ? '?db=' . $selectedDatabase->id : '' }}"
                                            class="text-blue-400 hover:text-blue-300 text-xs font-medium">
                                             View
                                         </a>
@@ -155,19 +157,21 @@
 
         {{-- Pagination --}}
         @if($totalPages > 1)
-            <div class="flex items-center justify-center gap-2">
+            <div class="flex flex-wrap items-center justify-center gap-2">
                 {{-- Previous --}}
                 @if($currentPage > 1)
                     <a href="{{ request()->fullUrlWithQuery(['page' => $currentPage - 1]) }}"
                        class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded transition-colors">
-                        Previous
+                        <span class="hidden sm:inline">Previous</span>
+                        <span class="sm:hidden">&larr;</span>
                     </a>
                 @endif
 
-                {{-- Page numbers --}}
+                {{-- Page numbers (show fewer on mobile) --}}
                 @php
-                    $startPage = max(1, $currentPage - 2);
-                    $endPage = min($totalPages, $currentPage + 2);
+                    $range = request()->has('mobile') ? 1 : 2;
+                    $startPage = max(1, $currentPage - $range);
+                    $endPage = min($totalPages, $currentPage + $range);
                 @endphp
 
                 @if($startPage > 1)
@@ -197,7 +201,8 @@
                 @if($currentPage < $totalPages)
                     <a href="{{ request()->fullUrlWithQuery(['page' => $currentPage + 1]) }}"
                        class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded transition-colors">
-                        Next
+                        <span class="hidden sm:inline">Next</span>
+                        <span class="sm:hidden">&rarr;</span>
                     </a>
                 @endif
             </div>

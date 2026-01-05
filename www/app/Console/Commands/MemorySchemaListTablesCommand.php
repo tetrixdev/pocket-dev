@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class MemorySchemaListTablesCommand extends Command
 {
     protected $signature = 'memory:schema:list-tables
+        {--schema= : Memory schema short name (e.g., "default")}
         {--table= : Show details for a specific table only}
         {--show-columns=true : Include column details}';
 
@@ -20,6 +21,7 @@ class MemorySchemaListTablesCommand extends Command
         $showColumns = $this->option('show-columns') !== 'false';
 
         $input = [
+            'schema' => $this->option('schema'),
             'show_columns' => $showColumns,
         ];
 

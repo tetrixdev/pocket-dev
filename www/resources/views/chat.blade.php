@@ -424,7 +424,7 @@
                 <div class="flex items-center gap-3 pl-2">
                     <h2 class="text-base font-semibold">PocketDev</h2>
                     <button @click="showAgentSelector = true"
-                            class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200"
+                            class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer"
                             aria-label="Select AI agent">
                         <span class="w-1.5 h-1.5 rounded-full shrink-0"
                               :class="{
@@ -437,7 +437,7 @@
                     </button>
                     {{-- Conversation status badge --}}
                     <span x-show="currentConversationUuid && currentConversationStatus"
-                          class="inline-flex items-center justify-center w-4 h-4 rounded-sm"
+                          class="inline-flex items-center justify-center w-4 h-4 rounded-sm cursor-help"
                           :class="getStatusColorClass(currentConversationStatus)"
                           :title="'Status: ' + currentConversationStatus">
                         <i class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
@@ -448,7 +448,7 @@
                 {{-- Conversation Menu Dropdown --}}
                 <div class="relative">
                     <button @click="showConversationMenu = !showConversationMenu"
-                            class="text-gray-300 hover:text-white p-2"
+                            class="text-gray-300 hover:text-white p-2 cursor-pointer"
                             title="Menu">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -466,6 +466,13 @@
                          x-transition:leave-start="transform opacity-100 scale-100"
                          x-transition:leave-end="transform opacity-0 scale-95"
                          class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
+                        {{-- Workspace --}}
+                        <button @click="openWorkspaceSelector(); showConversationMenu = false"
+                                class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
+                            <i class="fa-solid fa-folder w-4 text-center"></i>
+                            <span class="flex-1">Workspace</span>
+                            <span class="text-xs text-gray-400 truncate max-w-[80px]" x-text="currentWorkspace?.name || 'Default'"></span>
+                        </button>
                         {{-- Settings --}}
                         <a href="{{ route('config.index') }}"
                            class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
@@ -475,7 +482,7 @@
                         {{-- Archive/Unarchive --}}
                         <button @click="toggleArchiveConversation(); showConversationMenu = false"
                                 :disabled="!currentConversationUuid"
-                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
+                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
                                 class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                             <i class="fa-solid fa-box-archive w-4 text-center"></i>
                             <span x-text="currentConversationStatus === 'archived' ? 'Unarchive' : 'Archive'"></span>
@@ -483,7 +490,7 @@
                         {{-- Delete --}}
                         <button @click="deleteConversation(); showConversationMenu = false"
                                 :disabled="!currentConversationUuid"
-                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600'"
+                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
                                 class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                             <i class="fa-solid fa-trash w-4 text-center"></i>
                             Delete
@@ -627,6 +634,7 @@
                 showMobileDrawer: false,
                 showShortcutsModal: false,
                 showAgentSelector: false,
+                showWorkspaceSelector: false,
                 showPricingSettings: false,
                 showMessageDetails: false,
                 showOpenAiModal: false,
@@ -635,6 +643,12 @@
                 showSearchModal: false,
                 errorMessage: '',
                 openAiKeyInput: '',
+
+                // Workspace state
+                workspaces: [],
+                workspacesLoading: false,
+                currentWorkspace: null,
+                currentWorkspaceId: null,
 
                 // Conversation search
                 showSearchInput: false,
@@ -732,7 +746,11 @@
                     // Fetch providers
                     await this.fetchProviders();
 
-                    // Fetch available agents
+                    // Fetch workspaces and active workspace (must happen before agents/conversations)
+                    await this.fetchWorkspaces();
+                    await this.fetchActiveWorkspace();
+
+                    // Fetch available agents (filtered by workspace)
                     await this.fetchAgents();
 
                     // Restore filter states from sessionStorage
@@ -933,13 +951,30 @@
 
                 async fetchAgents() {
                     try {
-                        const response = await fetch('/api/agents');
+                        let url = '/api/agents';
+                        if (this.currentWorkspaceId) {
+                            url += '?workspace_id=' + this.currentWorkspaceId;
+                        }
+                        const response = await fetch(url);
                         const data = await response.json();
                         this.agents = data.data || [];
 
-                        // Auto-select default agent if none selected
-                        if (!this.currentAgentId && this.agents.length > 0) {
-                            // Find default agent, or first available
+                        // Check if current agent still exists in fetched agents
+                        const currentAgentExists = this.currentAgentId && this.agents.some(a => a.id === this.currentAgentId);
+
+                        // If current agent doesn't exist in this workspace
+                        if (this.currentAgentId && !currentAgentExists) {
+                            if (this.agents.length > 0) {
+                                // Auto-select default agent or first available
+                                const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+                                this.selectAgent(defaultAgent, false);
+                            } else {
+                                // No agents in this workspace - clear selection
+                                this.currentAgentId = null;
+                                this.claudeCodeAllowedTools = [];
+                            }
+                        } else if (!this.currentAgentId && this.agents.length > 0) {
+                            // No agent selected but agents available - auto-select
                             const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
                             this.selectAgent(defaultAgent, false);
                         }
@@ -1070,6 +1105,95 @@
                     }
                 },
 
+                // ==================== Workspace Methods ====================
+
+                async fetchWorkspaces() {
+                    try {
+                        const response = await fetch('/api/workspaces');
+                        if (response.ok) {
+                            this.workspaces = await response.json();
+                            this.debugLog('Workspaces loaded', { count: this.workspaces.length });
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch workspaces:', err);
+                    }
+                },
+
+                async fetchActiveWorkspace() {
+                    try {
+                        const response = await fetch('/api/workspaces/active');
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data.workspace) {
+                                this.currentWorkspace = data.workspace;
+                                this.currentWorkspaceId = data.workspace.id;
+                                this.debugLog('Active workspace loaded', { workspace: data.workspace.name });
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch active workspace:', err);
+                    }
+                },
+
+                async openWorkspaceSelector() {
+                    this.showWorkspaceSelector = true;
+                    if (this.workspaces.length === 0) {
+                        this.workspacesLoading = true;
+                        await this.fetchWorkspaces();
+                        this.workspacesLoading = false;
+                    }
+                },
+
+                async selectWorkspace(workspace) {
+                    if (!workspace || workspace.id === this.currentWorkspaceId) {
+                        this.showWorkspaceSelector = false;
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/workspaces/active/${workspace.id}`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.currentWorkspace = workspace;
+                            this.currentWorkspaceId = workspace.id;
+                            this.showWorkspaceSelector = false;
+                            this.debugLog('Workspace switched', { workspace: workspace.name, lastConversation: data.last_conversation_uuid });
+
+                            // Reload conversations and agents for the new workspace
+                            await this.fetchConversations();
+                            await this.fetchAgents();
+
+                            // Restore last conversation for this workspace, or start new
+                            if (data.last_conversation_uuid) {
+                                // Check if conversation still exists in the loaded list
+                                const lastConvo = this.conversations.find(c => c.uuid === data.last_conversation_uuid);
+                                if (lastConvo) {
+                                    await this.loadConversation(data.last_conversation_uuid, true); // skipWorkspaceCheck=true
+                                } else {
+                                    this.newConversation();
+                                }
+                            } else {
+                                this.newConversation();
+                            }
+                        } else {
+                            console.error('Failed to switch workspace:', response.status);
+                            this.errorMessage = 'Failed to switch workspace. Please try again.';
+                        }
+                    } catch (err) {
+                        console.error('Error switching workspace:', err);
+                        this.errorMessage = 'Failed to switch workspace. Please try again.';
+                    }
+                },
+
+                // ==================== End Workspace Methods ====================
+
                 async fetchSettings() {
                     try {
                         const response = await fetch('/api/settings/chat-defaults');
@@ -1180,6 +1304,9 @@
                 async fetchConversations() {
                     try {
                         let url = '/api/conversations?working_directory=/var/www';
+                        if (this.currentWorkspaceId) {
+                            url += '&workspace_id=' + this.currentWorkspaceId;
+                        }
                         if (this.showArchivedConversations) {
                             url += '&include_archived=true';
                         }
@@ -1243,6 +1370,9 @@
                 async refreshSidebar() {
                     try {
                         let url = '/api/conversations?working_directory=/var/www';
+                        if (this.currentWorkspaceId) {
+                            url += '&workspace_id=' + this.currentWorkspaceId;
+                        }
                         if (this.showArchivedConversations) {
                             url += '&include_archived=true';
                         }
@@ -1274,6 +1404,9 @@
                     try {
                         const nextPage = this.conversationsPage + 1;
                         let url = `/api/conversations?working_directory=/var/www&page=${nextPage}`;
+                        if (this.currentWorkspaceId) {
+                            url += '&workspace_id=' + this.currentWorkspaceId;
+                        }
                         if (this.showArchivedConversations) {
                             url += '&include_archived=true';
                         }
@@ -1309,6 +1442,9 @@
                     this.conversationSearchLoading = true;
                     try {
                         let url = `/api/conversations/search?query=${encodeURIComponent(this.conversationSearchQuery)}&limit=20`;
+                        if (this.currentWorkspaceId) {
+                            url += '&workspace_id=' + this.currentWorkspaceId;
+                        }
                         if (this.showArchivedConversations) {
                             url += '&include_archived=true';
                         }
@@ -1437,7 +1573,7 @@
                     }
                 },
 
-                async loadConversation(uuid) {
+                async loadConversation(uuid, skipWorkspaceCheck = false) {
                     // Disconnect from any current stream before switching
                     this.disconnectFromStream();
 
@@ -1449,6 +1585,56 @@
                         const data = await response.json();
                         if (!data?.conversation) {
                             throw new Error('Missing conversation payload');
+                        }
+
+                        // Check if conversation belongs to a different workspace
+                        const conversationWorkspaceId = data.conversation.workspace_id;
+                        if (!skipWorkspaceCheck && conversationWorkspaceId && conversationWorkspaceId !== this.currentWorkspaceId) {
+                            this.debugLog('Conversation workspace mismatch, switching workspace', {
+                                conversationWorkspace: conversationWorkspaceId,
+                                currentWorkspace: this.currentWorkspaceId
+                            });
+
+                            // Find workspace in list, or fetch it
+                            let targetWorkspace = this.workspaces.find(w => w.id === conversationWorkspaceId);
+                            if (!targetWorkspace) {
+                                await this.fetchWorkspaces();
+                                targetWorkspace = this.workspaces.find(w => w.id === conversationWorkspaceId);
+                            }
+
+                            if (!targetWorkspace) {
+                                console.error('Workspace not found for conversation', { conversationWorkspaceId });
+                                this.showError('Cannot load conversation: workspace not found');
+                                return;
+                            }
+
+                            try {
+                                // Switch to the workspace (but skip loading last conversation since we want this one)
+                                const switchResponse = await fetch(`/api/workspaces/active/${conversationWorkspaceId}`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                                    }
+                                });
+
+                                if (switchResponse.ok) {
+                                    this.currentWorkspace = targetWorkspace;
+                                    this.currentWorkspaceId = targetWorkspace.id;
+                                    this.debugLog('Auto-switched workspace', { workspace: targetWorkspace.name });
+
+                                    // Reload conversations and agents for the new workspace
+                                    await this.fetchConversations();
+                                    await this.fetchAgents();
+
+                                    // Reload conversation with new workspace context to avoid stale data
+                                    return this.loadConversation(uuid, true);
+                                }
+                            } catch (err) {
+                                console.error('Failed to switch workspace:', err);
+                                this.showError('Failed to switch workspace');
+                                return;
+                            }
                         }
 
                         // Only set state after validating response
@@ -1525,12 +1711,12 @@
                             this.resetContextTracking();
                         }
 
-                        // Parse messages for display
-                        if (data.conversation?.messages) {
-                            for (const msg of data.conversation.messages) {
-                                this.addMessageFromDb(msg);
-                            }
-                            this.debugLog('loadConversation: messages loaded', { count: this.messages.length });
+                        // Parse messages for display using progressive rendering
+                        if (data.conversation?.messages?.length > 0) {
+                            await this.loadMessagesProgressively(
+                                data.conversation.messages,
+                                this.pendingScrollToTurn
+                            );
                         }
 
                         // Update provider/model from conversation
@@ -1575,18 +1761,13 @@
                         this.openaiCompatibleReasoningEffort = data.conversation?.openai_compatible_reasoning_effort ?? 'none';
                         this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
 
-                        // Scroll to turn if coming from search, otherwise scroll to bottom
-                        if (this.pendingScrollToTurn !== null) {
-                            this.scrollToTurn(this.pendingScrollToTurn);
-                            this.pendingScrollToTurn = null;
-                        } else {
-                            this.scrollToBottom();
-                        }
+                        // Note: scrolling is handled inside loadMessagesProgressively
+                        // Clear pendingScrollToTurn since it was passed to loadMessagesProgressively
+                        this.pendingScrollToTurn = null;
 
                         // Re-enable scroll event handling after scroll completes
                         this.$nextTick(() => {
                             this.ignoreScrollEvents = false;
-                            this.debugLog('loadConversation: $nextTick completed');
                         });
 
                         // Check if there's an active stream for this conversation
@@ -1620,6 +1801,254 @@
                     } catch (err) {
                         // No active stream, that's fine
                     }
+                },
+
+                /**
+                 * Progressive message loading - renders priority messages first, then fills in the rest.
+                 * For normal load: shows last N messages immediately, then prepends older ones.
+                 * For search: shows messages around target turn first, then fills in.
+                 */
+                async loadMessagesProgressively(dbMessages, targetTurn = null) {
+                    const INITIAL_BATCH = 100;  // Messages to show immediately
+                    const PREPEND_BATCH = 50;   // Messages per prepend batch
+
+                    // Convert all messages to UI format first
+                    const allUiMessages = [];
+                    for (const msg of dbMessages) {
+                        const converted = this.convertDbMessageToUi(msg);
+                        allUiMessages.push(...converted);
+                    }
+
+                    if (allUiMessages.length === 0) return;
+
+                    // Determine which messages to render first based on context
+                    let priorityStartIndex;
+                    if (targetTurn !== null) {
+                        // Search case: find messages around the target turn
+                        const targetIndex = allUiMessages.findIndex(m => m.turn_number === targetTurn);
+                        if (targetIndex !== -1) {
+                            // Center the initial batch around the target
+                            priorityStartIndex = Math.max(0, targetIndex - Math.floor(INITIAL_BATCH / 2));
+                        } else {
+                            // Target not found, fall back to end
+                            priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
+                        }
+                    } else {
+                        // Normal load: show last N messages first
+                        priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
+                    }
+
+                    // Split messages into priority (render first) and before (prepend later)
+                    const messagesBefore = allUiMessages.slice(0, priorityStartIndex);
+                    const priorityMessages = allUiMessages.slice(priorityStartIndex);
+
+                    this.debugLog('[Progressive] Strategy', {
+                        total: allUiMessages.length,
+                        priorityStart: priorityStartIndex,
+                        priorityCount: priorityMessages.length,
+                        beforeCount: messagesBefore.length,
+                        targetTurn
+                    });
+
+                    // Phase 1: Render priority messages immediately
+                    this.messages = priorityMessages;
+
+                    // Wait for initial render and scroll
+                    await new Promise(resolve => {
+                        this.$nextTick(() => {
+                            if (targetTurn !== null) {
+                                this.scrollToTurn(targetTurn);
+                            } else {
+                                this.scrollToBottom();
+                            }
+                            resolve();
+                        });
+                    });
+
+                    // Phase 2: Prepend older messages in batches (if any) - runs in background, don't await
+                    if (messagesBefore.length > 0) {
+                        this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH);
+                    }
+                },
+
+                /**
+                 * Prepends messages in batches. Browser's scroll anchoring maintains scroll position.
+                 */
+                async prependMessagesInBatches(messages, batchSize) {
+                    let remaining = [...messages];
+
+                    while (remaining.length > 0) {
+                        // Take a batch from the END (newest of the old messages)
+                        const batch = remaining.slice(-batchSize);
+                        remaining = remaining.slice(0, -batchSize);
+
+                        // Prepend batch to beginning of messages array
+                        this.messages.unshift(...batch);
+
+                        // Yield to main thread between batches (lets browser render and handle scroll anchoring)
+                        await new Promise(resolve => requestAnimationFrame(resolve));
+                    }
+
+                    this.debugLog('[Progressive] Prepend complete', {
+                        totalMessages: this.messages.length
+                    });
+                },
+
+                /**
+                 * Converts a DB message to UI format. Returns array (content blocks expand to multiple).
+                 */
+                convertDbMessageToUi(dbMsg) {
+                    const result = [];
+                    const content = dbMsg.content;
+                    const msgInputTokens = dbMsg.input_tokens || 0;
+                    const msgOutputTokens = dbMsg.output_tokens || 0;
+                    const msgCacheCreation = dbMsg.cache_creation_tokens || 0;
+                    const msgCacheRead = dbMsg.cache_read_tokens || 0;
+                    const msgModel = dbMsg.model || this.model;
+                    const msgCost = dbMsg.cost || null;
+
+                    if (typeof content === 'string') {
+                        result.push({
+                            id: 'msg-' + Date.now() + '-' + Math.random(),
+                            role: dbMsg.role,
+                            content: content,
+                            timestamp: dbMsg.created_at,
+                            collapsed: false,
+                            cost: msgCost,
+                            model: msgModel,
+                            inputTokens: msgInputTokens,
+                            outputTokens: msgOutputTokens,
+                            cacheCreationTokens: msgCacheCreation,
+                            cacheReadTokens: msgCacheRead,
+                            agent: dbMsg.agent,
+                            turn_number: dbMsg.turn_number
+                        });
+                    } else if (Array.isArray(content)) {
+                        if (content.length === 0) {
+                            if (msgCost && dbMsg.role === 'assistant') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'empty-response',
+                                    content: null,
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: false,
+                                    cost: msgCost,
+                                    model: msgModel,
+                                    inputTokens: msgInputTokens,
+                                    outputTokens: msgOutputTokens,
+                                    cacheCreationTokens: msgCacheCreation,
+                                    cacheReadTokens: msgCacheRead,
+                                    agent: dbMsg.agent,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            }
+                            return result;
+                        }
+
+                        const lastBlockIndex = content.length - 1;
+
+                        for (let i = 0; i < content.length; i++) {
+                            const block = content[i];
+                            const isLast = (i === lastBlockIndex);
+
+                            if (block.type === 'text') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'assistant',
+                                    content: block.text,
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: false,
+                                    cost: isLast ? msgCost : null,
+                                    model: isLast ? msgModel : null,
+                                    inputTokens: isLast ? msgInputTokens : null,
+                                    outputTokens: isLast ? msgOutputTokens : null,
+                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'thinking') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'thinking',
+                                    content: block.thinking,
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: true,
+                                    cost: isLast ? msgCost : null,
+                                    model: isLast ? msgModel : null,
+                                    inputTokens: isLast ? msgInputTokens : null,
+                                    outputTokens: isLast ? msgOutputTokens : null,
+                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'tool_use') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'tool',
+                                    toolName: block.name,
+                                    toolId: block.id,
+                                    toolInput: block.input,
+                                    toolResult: null,
+                                    content: JSON.stringify(block.input, null, 2),
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: true,
+                                    cost: isLast ? msgCost : null,
+                                    model: isLast ? msgModel : null,
+                                    inputTokens: isLast ? msgInputTokens : null,
+                                    outputTokens: isLast ? msgOutputTokens : null,
+                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'tool_result' && block.tool_use_id) {
+                                // Link result to the corresponding tool message in result array
+                                const toolMsgIndex = result.findIndex(m => m.role === 'tool' && m.toolId === block.tool_use_id);
+                                if (toolMsgIndex >= 0) {
+                                    result[toolMsgIndex] = {
+                                        ...result[toolMsgIndex],
+                                        toolResult: block.content
+                                    };
+                                }
+                            } else if (block.type === 'interrupted') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'interrupted',
+                                    content: 'Response interrupted',
+                                    timestamp: dbMsg.created_at,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'error') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'error',
+                                    content: block.message || 'An unexpected error occurred',
+                                    timestamp: dbMsg.created_at,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            } else if (block.type === 'system') {
+                                result.push({
+                                    id: 'msg-' + Date.now() + '-' + Math.random(),
+                                    role: 'system',
+                                    content: block.content,
+                                    subtype: block.subtype,
+                                    timestamp: dbMsg.created_at,
+                                    collapsed: false,
+                                    cost: isLast ? msgCost : null,
+                                    model: isLast ? msgModel : null,
+                                    inputTokens: isLast ? msgInputTokens : null,
+                                    outputTokens: isLast ? msgOutputTokens : null,
+                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
+                                    cacheReadTokens: isLast ? msgCacheRead : null,
+                                    agent: isLast ? dbMsg.agent : null,
+                                    turn_number: dbMsg.turn_number
+                                });
+                            }
+                        }
+                    }
+                    return result;
                 },
 
                 addMessageFromDb(dbMsg) {
@@ -1774,18 +2203,27 @@
                     const userPrompt = this.prompt;
                     this.prompt = '';
 
+                    // Validate agent exists in current workspace
+                    const agentValid = this.currentAgentId && this.agents.some(a => a.id === this.currentAgentId);
+                    if (!agentValid) {
+                        if (this.agents.length > 0) {
+                            // Agents available but none/invalid selected - show selector
+                            this.showAgentSelector = true;
+                        } else {
+                            // No agents in this workspace
+                            this.showError('No agents available in this workspace. Please switch workspaces or create an agent.');
+                        }
+                        this.prompt = userPrompt; // Restore prompt
+                        return;
+                    }
+
                     // Create conversation if needed
                     if (!this.currentConversationUuid) {
-                        // Require agent selection
-                        if (!this.currentAgentId) {
-                            this.showAgentSelector = true;
-                            this.prompt = userPrompt; // Restore prompt
-                            return;
-                        }
 
                         try {
                             const createBody = {
                                 working_directory: '/var/www',
+                                workspace_id: this.currentWorkspaceId,
                                 agent_id: this.currentAgentId,
                                 title: userPrompt.substring(0, 50),
                             };

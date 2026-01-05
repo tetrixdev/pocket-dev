@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class MemoryQueryCommand extends Command
 {
     protected $signature = 'memory:query
+        {--schema= : Memory schema short name (e.g., "default")}
         {--sql= : SQL SELECT query}
         {--search-text= : Text to convert to embedding for semantic search}
         {--limit=50 : Maximum number of results (max 100)}';
@@ -26,6 +27,7 @@ class MemoryQueryCommand extends Command
         }
 
         $input = [
+            'schema' => $this->option('schema'),
             'sql' => $sql,
             'limit' => $limit,
         ];

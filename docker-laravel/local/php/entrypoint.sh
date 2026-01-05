@@ -3,6 +3,24 @@ set -e
 
 echo "🚀 Configuring PHP development environment..."
 
+# Add www-data to the host's docker group for docker socket access
+# DOCKER_GID is passed from compose.yml and matches the host's docker group
+if [ -n "$DOCKER_GID" ]; then
+    # Check if a group with this GID already exists
+    if ! getent group "$DOCKER_GID" > /dev/null 2>&1; then
+        groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
+    fi
+    # Extract group name from GID (usermod -aG expects a name, not a numeric GID)
+    EXISTING_GROUP=$(getent group "$DOCKER_GID" | cut -d: -f1)
+    if [ -z "$EXISTING_GROUP" ]; then
+        # Group creation may have failed; create with fallback name
+        groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
+        EXISTING_GROUP="hostdocker_runtime"
+    fi
+    # Add www-data to this group
+    usermod -aG "$EXISTING_GROUP" www-data 2>/dev/null || true
+fi
+
 # Set HOME for Claude Code CLI, Codex CLI, and other tools that expect a writable home directory
 # www-data is in group 1000 (appgroup) which owns /home/appuser with 775 permissions
 export HOME=/home/appuser

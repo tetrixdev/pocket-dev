@@ -8,7 +8,7 @@ This guide sets up PocketDev on a VPS with Tailscale-only access. After setup, y
 
 ## Deployment Options
 
-After securing the server (Steps 1-7), you have two options for deploying PocketDev:
+After securing the server (Steps 1-4), you have two options for deploying PocketDev:
 
 | Option | For | Method |
 |--------|-----|--------|
@@ -43,9 +43,9 @@ Save the root password from the confirmation email.
 
 ---
 
-## Step 2: Initial Server Access
+## Step 2: Connect and Complete Server Setup
 
-This is the only time you'll use the public IP:
+SSH to your server using the public IP:
 
 ```bash
 ssh root@<public-ip>
@@ -53,72 +53,32 @@ ssh root@<public-ip>
 
 Enter password from email. You'll be prompted to change it. Store the new one.
 
----
+Now run all the server setup commands in one session:
 
-## Step 3: Install Tailscale on Server
+**1. Install Tailscale:**
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --ssh
+tailscale up --ssh
+```
+
+A URL will appear - open it in your browser to authenticate. After authenticating:
+
+```bash
 tailscale ip -4
-# Example output: 100.64.0.5
+# Note this IP (e.g., 100.64.0.5) - you'll use it later
 ```
 
-A URL will appear - open it in your browser to authenticate with your Tailscale account.
-
-After authenticating, it should echo your Tailscale IP
-
-**Write down this IP** - you'll use it from now on. (Or don't. You can also find this on your phone/PC after connecting those)
-
----
-
-## Step 4: Install Tailscale on Your Devices (If not already using Tailscale)
-
-Before you can connect via Tailscale, install it on your local machine:
-
-**Desktop:**
-1. Go to [tailscale.com/download](https://tailscale.com/download)
-2. Download and install for your OS (Windows/Mac/Linux)
-3. Open Tailscale and sign in with the same account you used on the server
-
-**Mobile:**
-1. Install "Tailscale" from App Store / Play Store
-2. Sign in with the same account
-
-Once signed in, all your devices can see each other via Tailscale IPs (100.x.x.x).
-
----
-
-## Step 5: Switch to Tailscale Connection
-
-Disconnect from the public IP:
-
-```bash
-exit
-```
-
-From your local machine, connect via Tailscale:
-
-```bash
-ssh root@<tailscale-ip>
-```
-
-This should work without a password because Tailscale SSH handles authentication.
-
----
-
-## Step 6: Run Security Setup Script
+**2. Run the security setup script:**
 
 ```bash
 curl -O https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/server-setup.sh
 chmod +x server-setup.sh
-sudo ./server-setup.sh
+./server-setup.sh
 rm ./server-setup.sh
 ```
 
-Type `yes` when prompted to confirm.
-
-This script:
+Type `yes` when prompted. This script:
 - Updates the system and installs git, nano
 - Enables automatic security updates
 - Installs Docker with log rotation
@@ -126,16 +86,84 @@ This script:
 - Creates a 2GB swap file
 - Only allows connections through Tailscale
 
----
+> **Note:** After this runs, public IP access is blocked - but your current session stays alive (established connections are preserved). If your connection drops for any reason, just reconnect via Tailscale IP instead.
 
-## Step 7: Deploy PocketDev
+**3. Enable Tailscale HTTPS (Recommended):**
 
-Log out and back in (required for Docker group permissions):
+Voice input on mobile requires HTTPS.
+
+First, in your browser:
+- Go to [Tailscale Admin Console → DNS](https://login.tailscale.com/admin/dns)
+- Enable **MagicDNS** if not already enabled
+- (Optional) Click **Rename tailnet...** if you want a custom name
+- Under **HTTPS Certificates**, click **Enable HTTPS**
+
+Then back in the terminal:
+
+```bash
+tailscale status  # Note your machine name
+tailscale cert <machine-name>.<tailnet-name>.ts.net  # Provision TLS certificate
+tailscale serve --bg http://localhost:80
+tailscale serve status
+```
+
+**4. Create non-root user:**
+
+PocketDev must run as a non-root user (Claude CLI refuses root for security).
+
+```bash
+useradd -m -s /bin/bash pocketdev
+usermod -aG docker pocketdev
+```
+
+**5. Exit and reconnect via Tailscale:**
 
 ```bash
 exit
+```
+
+---
+
+## Step 3: Install Tailscale on Your Devices
+
+If you're not already using Tailscale, install it on your local machine:
+
+**Desktop:**
+1. Go to [tailscale.com/download](https://tailscale.com/download)
+2. Download and install for your OS (Windows/Mac/Linux)
+3. Sign in with the same account you used on the server
+
+**Mobile:**
+1. Install "Tailscale" from App Store / Play Store
+2. Sign in with the same account
+
+---
+
+## Step 4: Connect via Tailscale
+
+From your local machine:
+
+```bash
 ssh root@<tailscale-ip>
 ```
+
+This should work without a password (Tailscale SSH handles auth).
+
+Then switch to the pocketdev user:
+
+```bash
+su - pocketdev
+```
+
+Verify:
+```bash
+whoami
+# Should output: pocketdev
+```
+
+---
+
+## Step 5: Deploy PocketDev
 
 ### Option A: Standard Install (Recommended)
 
@@ -167,49 +195,11 @@ docker compose up -d
 
 ---
 
-## Step 8: Enable HTTPS (Required for Voice Input)
+## Step 6: Configure App for HTTPS
 
-Voice input on mobile requires HTTPS. Tailscale provides free automatic SSL certificates for your `.ts.net` domain.
+If you enabled Tailscale HTTPS in Step 2, configure PocketDev to use it:
 
-> **Important:** Enabling HTTPS publishes your machine name and tailnet name to a public certificate transparency ledger. If your machine or tailnet names contain sensitive information, rename them first.
-
-For full details, see [Tailscale HTTPS documentation](https://tailscale.com/kb/1153/enabling-https).
-
-**1. (Optional) Rename your tailnet:**
-
-Your tailnet name (e.g., `tail1234.ts.net`) will be public. To rename it:
-- Go to [Tailscale Admin Console → DNS](https://login.tailscale.com/admin/dns)
-- Click **Rename tailnet...** at the top
-
-Do this **before** enabling HTTPS - changing it later requires re-provisioning certificates.
-
-**2. Enable HTTPS certificates:**
-
-In the same DNS settings page, under **HTTPS Certificates**, click **Enable HTTPS**.
-
-**3. Get your server's hostname:**
-
-```bash
-tailscale status
-```
-
-Note your server's machine name. You can also rename it in the [Machines page](https://login.tailscale.com/admin/machines) if needed.
-
-**4. Enable Tailscale Serve to proxy HTTPS:**
-
-```bash
-tailscale serve --bg http://localhost:80
-```
-
-This makes Tailscale handle HTTPS termination and forward requests to your HTTP containers. Verify it's running:
-
-```bash
-tailscale serve status
-```
-
-The `--bg` flag runs it persistently in the background, surviving reboots.
-
-**5. Update your `.env` file:**
+**1. Update your `.env` file:**
 
 ```bash
 nano .env
@@ -221,7 +211,7 @@ APP_URL=https://<server-name>.<tailnet-name>.ts.net
 FORCE_HTTPS=true
 ```
 
-**6. Clear config cache and restart:**
+**2. Clear config cache and restart:**
 
 ```bash
 docker compose exec pocket-dev-php php artisan config:cache
@@ -230,9 +220,9 @@ docker compose restart
 
 ---
 
-## Step 9: Access PocketDev
+## Step 7: Access PocketDev
 
-Open in your browser (using the hostname from Step 8):
+Open in your browser (using the hostname from Step 2):
 
 ```text
 https://<server-name>.<tailnet-name>.ts.net
@@ -304,3 +294,31 @@ ssh root@<tailscale-ip>
 ### Script fails on non-Ubuntu
 
 The script supports Ubuntu and Debian. For other distributions, you'll need to adapt the package installation commands.
+
+### Conversations return empty responses
+
+If you send a message and get no response (SSE stream ends immediately with no content), check the logs:
+
+```bash
+docker exec pocket-dev-php tail -20 /var/www/storage/logs/api-*.log | grep -i "dangerously-skip-permissions"
+```
+
+If you see `--dangerously-skip-permissions cannot be used with root/sudo privileges`, you're running the containers as root. The Claude CLI refuses this for security reasons.
+
+**Fix:** Create a non-root user and redeploy (see Step 2). If you already deployed as root:
+
+```bash
+# As root, create the user
+useradd -m -s /bin/bash pocketdev
+usermod -aG docker pocketdev
+
+# Move the project
+mv /root/pocket-dev /home/pocketdev/
+chown -R pocketdev:pocketdev /home/pocketdev/pocket-dev
+
+# Switch to pocketdev and redeploy
+su - pocketdev
+cd pocket-dev
+./setup.sh  # This will set correct USER_ID/GROUP_ID
+docker compose down && docker compose up -d --build
+```

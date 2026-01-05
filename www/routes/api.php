@@ -101,6 +101,30 @@ Route::prefix('settings')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Workspace Routes
+|--------------------------------------------------------------------------
+|
+| Workspace management and selection.
+| Note: Active workspace routes need session middleware for state persistence.
+| IMPORTANT: Specific routes (like /active) must come BEFORE wildcard routes.
+|
+*/
+
+Route::get('workspaces', [\App\Http\Controllers\Api\WorkspaceController::class, 'index']);
+
+// Routes that require session for active workspace state (must be before {workspace} routes)
+Route::middleware(['web'])->group(function () {
+    Route::get('workspaces/active', [\App\Http\Controllers\Api\WorkspaceController::class, 'getActive']);
+    Route::post('workspaces/active/{workspace}', [\App\Http\Controllers\Api\WorkspaceController::class, 'setActive']);
+});
+
+// Wildcard routes must come last
+Route::get('workspaces/{workspace}', [\App\Http\Controllers\Api\WorkspaceController::class, 'show']);
+Route::get('workspaces/{workspace}/agents', [\App\Http\Controllers\Api\WorkspaceController::class, 'agents']);
+Route::get('workspaces/{workspace}/memory-databases', [\App\Http\Controllers\Api\WorkspaceController::class, 'memoryDatabases']);
+
+/*
+|--------------------------------------------------------------------------
 | Agent Routes
 |--------------------------------------------------------------------------
 |
@@ -112,9 +136,14 @@ Route::get('agents', [AgentController::class, 'index']);
 Route::get('agents/providers', [AgentController::class, 'providers']);
 Route::get('agents/for-provider/{provider}', [AgentController::class, 'forProvider']);
 Route::get('agents/default/{provider}', [AgentController::class, 'defaultForProvider']);
+Route::get('agents/available-schemas', [AgentController::class, 'availableSchemas']);
+Route::get('agents/{agent}/available-schemas', [AgentController::class, 'availableSchemas']);
 Route::get('agents/{agent}', [AgentController::class, 'show']);
+Route::get('tools', [AgentController::class, 'allTools']);
 Route::get('tools/for-provider/{provider}', [AgentController::class, 'availableTools']);
 Route::post('agents/preview-system-prompt', [AgentController::class, 'previewSystemPrompt']);
+Route::post('agents/check-schema-affected', [AgentController::class, 'checkSchemaAffectedAgents']);
+Route::post('agents/validate-clone', [AgentController::class, 'validateClone']);
 
 /*
 |--------------------------------------------------------------------------

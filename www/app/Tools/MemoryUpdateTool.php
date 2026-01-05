@@ -18,6 +18,10 @@ class MemoryUpdateTool extends Tool
     public array $inputSchema = [
         'type' => 'object',
         'properties' => [
+            'schema' => [
+                'type' => 'string',
+                'description' => 'Memory schema short name (e.g., "default", "my_campaign"). Required - check your available schemas in the system prompt.',
+            ],
             'table' => [
                 'type' => 'string',
                 'description' => 'Table name (without schema prefix).',
@@ -31,7 +35,7 @@ class MemoryUpdateTool extends Tool
                 'description' => 'WHERE clause (without WHERE keyword). Required. Example: "id = \'uuid-here\'"',
             ],
         ],
-        'required' => ['table', 'data', 'where'],
+        'required' => ['schema', 'table', 'data', 'where'],
     ];
 
     public function getArtisanCommand(): ?string
@@ -107,7 +111,7 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan memory:update --table=characters --data='{"backstory":"Updated backstory with new details..."}' --where="id = '123e4567-e89b-12d3-a456-426614174000'"
+php artisan memory:update --schema=default --table=characters --data='{"backstory":"Updated backstory with new details..."}' --where="id = '123e4567-e89b-12d3-a456-426614174000'"
 ```
 CLI;
 
@@ -116,6 +120,7 @@ CLI;
 
 ```json
 {
+  "schema": "default",
   "table": "characters",
   "data": {
     "backstory": "After the Battle of Five Armies, Thorin sacrificed himself to save his companions. His legacy lives on through his nephew Fili who now rules Erebor."
@@ -129,9 +134,26 @@ API;
 
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
+        $schemaName = trim($input['schema'] ?? '');
         $table = trim($input['table'] ?? '');
         $dataJson = $input['data'] ?? '';
         $where = trim($input['where'] ?? '');
+
+        // Validate schema parameter
+        if (empty($schemaName)) {
+            return ToolResult::error('schema is required. Specify the short schema name (e.g., "default", "my_campaign"). Check your available schemas in the system prompt.');
+        }
+
+        // Validate schema exists
+        $memoryDb = \App\Models\MemoryDatabase::where('schema_name', $schemaName)->first();
+        if (!$memoryDb) {
+            return ToolResult::error("Schema '{$schemaName}' not found. Check your available schemas in the system prompt.");
+        }
+
+        // Validate agent has access to this schema (if agent context available)
+        if ($context->agent && !$context->agent->hasMemoryDatabaseAccess($memoryDb)) {
+            return ToolResult::error("Agent does not have access to schema '{$schemaName}'. Enable it in agent settings.");
+        }
 
         if (empty($table)) {
             return ToolResult::error('table is required');
@@ -155,6 +177,7 @@ API;
         }
 
         $service = app(MemoryDataService::class);
+        $service->setMemoryDatabase($memoryDb);
         $result = $service->update($table, $data, $where);
 
         if ($result['success']) {

@@ -5,7 +5,6 @@ namespace App\Services\Providers;
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
 use App\Models\Message;
-use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
 use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
@@ -24,22 +23,12 @@ class ClaudeCodeProvider implements AIProviderInterface
     use InjectsInterruptionReminder;
 
     private ModelRepository $models;
-    private AppSettingsService $appSettings;
     /** @var resource|null */
     private $activeProcess = null;
 
-    public function __construct(ModelRepository $models, AppSettingsService $appSettings)
+    public function __construct(ModelRepository $models)
     {
         $this->models = $models;
-        $this->appSettings = $appSettings;
-    }
-
-    /**
-     * Check if Anthropic API key is configured.
-     */
-    public function hasApiKey(): bool
-    {
-        return $this->appSettings->hasAnthropicApiKey();
     }
 
     /**
@@ -53,19 +42,15 @@ class ClaudeCodeProvider implements AIProviderInterface
     }
 
     /**
-     * Check if any authentication method is configured.
+     * Check if OAuth authentication is configured (from `claude login`).
+     *
+     * Note: We intentionally don't fall back to API key here.
+     * Users must explicitly authenticate with `claude login` to use Claude Code.
+     * This prevents unknowing API key usage when OAuth isn't set up.
      */
     public function isAuthenticated(): bool
     {
-        return $this->hasOAuthCredentials() || $this->hasApiKey();
-    }
-
-    /**
-     * Get the Anthropic API key.
-     */
-    private function getApiKey(): ?string
-    {
-        return $this->appSettings->getAnthropicApiKey();
+        return $this->hasOAuthCredentials();
     }
 
     public function getProviderType(): string
@@ -109,9 +94,9 @@ class ClaudeCodeProvider implements AIProviderInterface
             return;
         }
 
-        // Check if authenticated (OAuth or API key)
+        // Check if authenticated via OAuth (claude login)
         if (!$this->isAuthenticated()) {
-            yield StreamEvent::error('CLAUDE_CODE_AUTH_REQUIRED:Claude Code authentication required. Please login or add your API key.');
+            yield StreamEvent::error('CLAUDE_CODE_AUTH_REQUIRED:Claude Code authentication required. Please run "claude login" in the container.');
 
             return;
         }
@@ -294,14 +279,10 @@ class ClaudeCodeProvider implements AIProviderInterface
         // Build environment variable prefix
         $envVars = [];
 
-        // Add Anthropic API key only if OAuth isn't available
-        // (OAuth credentials in ~/.claude/.credentials.json take precedence)
-        if (!$this->hasOAuthCredentials()) {
-            $apiKey = $this->getApiKey();
-            if ($apiKey) {
-                $envVars[] = 'ANTHROPIC_API_KEY=' . escapeshellarg($apiKey);
-            }
-        }
+        // Note: We don't set ANTHROPIC_API_KEY here.
+        // Claude Code uses OAuth credentials from ~/.claude/.credentials.json
+        // (set up via `claude login`). If not authenticated, streamMessage()
+        // returns an error before we get here.
 
         // Set thinking tokens via environment variable
         $thinkingTokens = $this->getThinkingTokens($conversation);

@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class MemoryDeleteCommand extends Command
 {
     protected $signature = 'memory:delete
+        {--schema= : Memory schema short name (e.g., "default")}
         {--table= : Table name (without schema prefix)}
         {--where= : WHERE clause (without WHERE keyword)}';
 
@@ -28,6 +29,7 @@ class MemoryDeleteCommand extends Command
         }
 
         $input = [
+            'schema' => $this->option('schema'),
             'table' => $table,
             'where' => $where,
         ];

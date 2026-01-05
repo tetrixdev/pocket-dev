@@ -36,6 +36,7 @@ class ConversationController extends Controller
         $validated = $request->validate([
             'title' => 'nullable|string|max:255',
             'working_directory' => 'required|string|max:500',
+            'workspace_id' => 'nullable|uuid|exists:workspaces,id',
             'agent_id' => 'nullable|uuid|exists:agents,id',
             // Legacy fields (used when no agent_id provided)
             'provider_type' => 'nullable|string|in:anthropic,openai,claude_code,codex,openai_compatible',
@@ -58,6 +59,7 @@ class ConversationController extends Controller
             }
 
             $conversationData = [
+                'workspace_id' => $validated['workspace_id'] ?? null,
                 'agent_id' => $agent->id,
                 'provider_type' => $agent->provider,
                 'model' => $agent->model,
@@ -80,6 +82,7 @@ class ConversationController extends Controller
             $provider = $this->providerFactory->make($providerType);
 
             $conversationData = [
+                'workspace_id' => $validated['workspace_id'] ?? null,
                 'provider_type' => $providerType,
                 'model' => $validated['model'] ?? config("ai.providers.{$providerType}.default_model"),
                 'title' => $validated['title'] ?? null,
@@ -153,6 +156,7 @@ class ConversationController extends Controller
     {
         $query = Conversation::query()
             ->with(['agent:id,name'])
+            ->when($request->input('workspace_id'), fn($q, $w) => $q->forWorkspace($w))
             ->when($request->input('status'), fn($q, $s) => $q->where('status', $s))
             ->when($request->input('provider_type'), fn($q, $t) => $q->where('provider_type', $t))
             ->when($request->input('working_directory'), fn($q, $d) => $q->where('working_directory', $d))

@@ -2,18 +2,45 @@
 
 namespace App\Services;
 
+use App\Models\MemoryDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Service for managing embeddings in the memory.embeddings table.
+ * Service for managing embeddings in the memory schema's embeddings table.
  * Handles embedding generation, storage, and hash-based change detection.
+ *
+ * Supports multiple memory databases through setMemoryDatabase().
+ * When no memory database is set, defaults to the 'memory' schema.
  */
 class MemoryEmbeddingService
 {
+    private ?MemoryDatabase $memoryDatabase = null;
+
     public function __construct(
         protected EmbeddingService $embedder
     ) {}
+
+    /**
+     * Set the memory database to operate on.
+     *
+     * @param MemoryDatabase $memoryDatabase The memory database to use
+     * @return $this
+     */
+    public function setMemoryDatabase(MemoryDatabase $memoryDatabase): self
+    {
+        $this->memoryDatabase = $memoryDatabase;
+        return $this;
+    }
+
+    /**
+     * Get the schema name to use for operations.
+     * Returns 'memory' for backward compatibility if no memory database is set.
+     */
+    protected function getSchemaName(): string
+    {
+        return $this->memoryDatabase?->getFullSchemaName() ?? 'memory';
+    }
 
     /**
      * Generate and store embeddings for specified fields of a row.
@@ -25,6 +52,7 @@ class MemoryEmbeddingService
      */
     public function embedFields(string $tableName, string $rowId, array $fields): array
     {
+        $schemaName = $this->getSchemaName();
         $embedded = [];
         $skipped = [];
         $errors = [];
@@ -45,7 +73,7 @@ class MemoryEmbeddingService
 
             // Check if embedding exists and is current
             $existing = DB::connection('pgsql_readonly')->selectOne("
-                SELECT content_hash FROM memory.embeddings
+                SELECT content_hash FROM {$schemaName}.embeddings
                 WHERE source_table = ? AND source_id = ? AND field_name = ? AND chunk_index = 0
             ", [$tableName, $rowId, $fieldName]);
 
@@ -94,14 +122,14 @@ class MemoryEmbeddingService
                 if ($fieldData['exists']) {
                     // Update existing embedding
                     DB::connection('pgsql_memory_ai')->statement("
-                        UPDATE memory.embeddings
+                        UPDATE {$schemaName}.embeddings
                         SET content = ?, content_hash = ?, embedding = ?, updated_at = NOW()
                         WHERE source_table = ? AND source_id = ? AND field_name = ? AND chunk_index = 0
                     ", [$fieldData['content'], $fieldData['hash'], $vectorString, $tableName, $rowId, $fieldName]);
                 } else {
                     // Insert new embedding
                     DB::connection('pgsql_memory_ai')->statement("
-                        INSERT INTO memory.embeddings
+                        INSERT INTO {$schemaName}.embeddings
                         (source_table, source_id, field_name, chunk_index, content, content_hash, embedding)
                         VALUES (?, ?, ?, 0, ?, ?, ?)
                     ", [$tableName, $rowId, $fieldName, $fieldData['content'], $fieldData['hash'], $vectorString]);
@@ -112,6 +140,7 @@ class MemoryEmbeddingService
                 $errors[] = "Failed to store embedding for {$fieldName}: " . $e->getMessage();
                 Log::channel('embeddings')->error('MemoryEmbeddingService: Failed to store embedding', [
                     'table' => $tableName,
+                    'schema' => $schemaName,
                     'row_id' => $rowId,
                     'field' => $fieldName,
                     'error' => $e->getMessage(),
@@ -141,8 +170,9 @@ class MemoryEmbeddingService
      */
     public function deleteRowEmbeddings(string $tableName, string $rowId): int
     {
+        $schemaName = $this->getSchemaName();
         return DB::connection('pgsql')->delete("
-            DELETE FROM memory.embeddings
+            DELETE FROM {$schemaName}.embeddings
             WHERE source_table = ? AND source_id = ?
         ", [$tableName, $rowId]);
     }
@@ -163,10 +193,11 @@ class MemoryEmbeddingService
             return 0;
         }
 
+        $schemaName = $this->getSchemaName();
         $placeholders = implode(',', array_fill(0, count($fieldNames), '?'));
 
         return DB::connection('pgsql')->delete("
-            DELETE FROM memory.embeddings
+            DELETE FROM {$schemaName}.embeddings
             WHERE source_table = ? AND source_id = ? AND field_name IN ({$placeholders})
         ", array_merge([$tableName, $rowId], $fieldNames));
     }
@@ -180,8 +211,9 @@ class MemoryEmbeddingService
      */
     public function updateSourceTable(string $oldTableName, string $newTableName): int
     {
+        $schemaName = $this->getSchemaName();
         return DB::connection('pgsql_memory_ai')->update("
-            UPDATE memory.embeddings
+            UPDATE {$schemaName}.embeddings
             SET source_table = ?, updated_at = NOW()
             WHERE source_table = ?
         ", [$newTableName, $oldTableName]);
@@ -197,8 +229,9 @@ class MemoryEmbeddingService
      */
     public function deleteTableEmbeddings(string $tableName): int
     {
+        $schemaName = $this->getSchemaName();
         return DB::connection('pgsql')->delete("
-            DELETE FROM memory.embeddings WHERE source_table = ?
+            DELETE FROM {$schemaName}.embeddings WHERE source_table = ?
         ", [$tableName]);
     }
 
@@ -207,8 +240,9 @@ class MemoryEmbeddingService
      */
     public function getTableEmbeddingCount(string $tableName): int
     {
+        $schemaName = $this->getSchemaName();
         $result = DB::connection('pgsql_readonly')->selectOne("
-            SELECT COUNT(*) as count FROM memory.embeddings WHERE source_table = ?
+            SELECT COUNT(*) as count FROM {$schemaName}.embeddings WHERE source_table = ?
         ", [$tableName]);
 
         return (int) ($result->count ?? 0);
@@ -228,6 +262,7 @@ class MemoryEmbeddingService
         array $embedFields,
         ?callable $progressCallback = null
     ): array {
+        $schemaName = $this->getSchemaName();
         $processed = 0;
         $errors = [];
 
@@ -237,7 +272,7 @@ class MemoryEmbeddingService
 
         // Get all rows
         $rows = DB::connection('pgsql_readonly')->select(
-            "SELECT * FROM memory.{$tableName}"
+            "SELECT * FROM {$schemaName}.{$tableName}"
         );
 
         $total = count($rows);

@@ -6,7 +6,10 @@ use App\Enums\Provider;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class Agent extends Model
@@ -27,6 +30,7 @@ class Agent extends Model
     public const PROVIDER_CODEX = 'codex';
 
     protected $fillable = [
+        'workspace_id',
         'name',
         'slug',
         'description',
@@ -38,6 +42,8 @@ class Agent extends Model
         'codex_reasoning_effort',
         'response_level',
         'allowed_tools',
+        'inherit_workspace_tools',
+        'inherit_workspace_schemas',
         'system_prompt',
         'is_default',
         'enabled',
@@ -45,6 +51,8 @@ class Agent extends Model
 
     protected $casts = [
         'allowed_tools' => 'array',
+        'inherit_workspace_tools' => 'boolean',
+        'inherit_workspace_schemas' => 'boolean',
         'is_default' => 'boolean',
         'enabled' => 'boolean',
         'anthropic_thinking_budget' => 'integer',
@@ -62,14 +70,23 @@ class Agent extends Model
             }
         });
 
-        // Ensure only one default per provider
+        // Ensure only one default per provider per workspace
         static::saving(function (Agent $agent) {
             if ($agent->is_default && $agent->isDirty('is_default')) {
                 static::where('provider', $agent->provider)
+                    ->where('workspace_id', $agent->workspace_id)
                     ->where('id', '!=', $agent->id)
                     ->update(['is_default' => false]);
             }
         });
+    }
+
+    /**
+     * Get the workspace this agent belongs to.
+     */
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
     }
 
     /**
@@ -78,6 +95,97 @@ class Agent extends Model
     public function conversations(): HasMany
     {
         return $this->hasMany(Conversation::class);
+    }
+
+    /**
+     * Get memory databases this agent has access to.
+     */
+    public function memoryDatabases(): BelongsToMany
+    {
+        return $this->belongsToMany(MemoryDatabase::class, 'agent_memory_databases')
+            ->withPivot(['permission'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Get enabled memory databases for this agent.
+     *
+     * If inherit_workspace_schemas is true, returns all workspace-enabled schemas.
+     * Otherwise, returns schemas that are both:
+     * 1. Enabled in the agent's workspace
+     * 2. Explicitly granted to the agent
+     */
+    public function getEnabledMemoryDatabases(): Collection
+    {
+        if (!$this->workspace) {
+            return collect();
+        }
+
+        // If inheriting from workspace, return all workspace-enabled schemas
+        if ($this->inheritsWorkspaceSchemas()) {
+            return $this->workspace->enabledMemoryDatabases()->get();
+        }
+
+        // Otherwise, return only schemas explicitly granted to the agent
+        // that are also enabled in the workspace
+        $workspaceEnabledIds = $this->workspace
+            ->enabledMemoryDatabases()
+            ->pluck('memory_databases.id');
+
+        return $this->memoryDatabases()
+            ->whereIn('memory_databases.id', $workspaceEnabledIds)
+            ->get();
+    }
+
+    /**
+     * Check if this agent has access to a specific memory database.
+     */
+    public function hasMemoryDatabaseAccess(MemoryDatabase $db): bool
+    {
+        if (!$this->workspace || !$db->isEnabledInWorkspace($this->workspace)) {
+            return false;
+        }
+
+        // If inheriting from workspace, has access to all workspace-enabled schemas
+        if ($this->inheritsWorkspaceSchemas()) {
+            return true;
+        }
+
+        return $this->memoryDatabases()
+            ->where('memory_databases.id', $db->id)
+            ->exists();
+    }
+
+    /**
+     * Check if this agent can write to a specific memory database.
+     */
+    public function canWriteToMemoryDatabase(MemoryDatabase $db): bool
+    {
+        if (!$this->hasMemoryDatabaseAccess($db)) {
+            return false;
+        }
+
+        // If inheriting from workspace, allow write (workspace-level permissions can be added later)
+        if ($this->inheritsWorkspaceSchemas()) {
+            return true;
+        }
+
+        // Otherwise check explicit permission
+        $permission = $this->memoryDatabases()
+            ->where('memory_databases.id', $db->id)
+            ->first()
+            ?->pivot
+            ?->permission;
+
+        return in_array($permission, ['write', 'admin'], true);
+    }
+
+    /**
+     * Scope to filter by workspace.
+     */
+    public function scopeForWorkspace(Builder $query, string $workspaceId): Builder
+    {
+        return $query->where('workspace_id', $workspaceId);
     }
 
     /**
@@ -98,10 +206,19 @@ class Agent extends Model
 
     /**
      * Scope to get default agent for a provider.
+     *
+     * @param string $provider The provider to filter by
+     * @param string|null $workspaceId Optional workspace ID to scope the default to
      */
-    public function scopeDefaultFor(Builder $query, string $provider): Builder
+    public function scopeDefaultFor(Builder $query, string $provider, ?string $workspaceId = null): Builder
     {
-        return $query->where('provider', $provider)->where('is_default', true);
+        $query->where('provider', $provider)->where('is_default', true);
+
+        if ($workspaceId !== null) {
+            $query->where('workspace_id', $workspaceId);
+        }
+
+        return $query;
     }
 
     /**
@@ -145,23 +262,52 @@ class Agent extends Model
     }
 
     /**
-     * Check if all tools are allowed (null means all).
+     * Check if this agent inherits tools from workspace.
+     */
+    public function inheritsWorkspaceTools(): bool
+    {
+        return $this->inherit_workspace_tools ?? true;
+    }
+
+    /**
+     * Check if this agent inherits schemas from workspace.
+     */
+    public function inheritsWorkspaceSchemas(): bool
+    {
+        return $this->inherit_workspace_schemas ?? false;
+    }
+
+    /**
+     * Check if all tools are allowed.
+     * True if inheriting from workspace OR if allowed_tools is null.
      */
     public function allowsAllTools(): bool
     {
-        return $this->allowed_tools === null;
+        return $this->inheritsWorkspaceTools() || $this->allowed_tools === null;
     }
 
     /**
      * Check if a specific tool is allowed.
+     *
+     * If inheriting from workspace: checks if tool is enabled in workspace.
+     * If specific tools selected: checks if tool is in allowed_tools list.
      */
     public function allowsTool(string $toolSlug): bool
     {
-        if ($this->allowsAllTools()) {
-            return true;
+        // If inheriting from workspace, check workspace settings
+        if ($this->inheritsWorkspaceTools()) {
+            if (!$this->workspace) {
+                return true; // No workspace = allow all (fallback)
+            }
+            return $this->workspace->isToolEnabled($toolSlug);
         }
 
-        return in_array($toolSlug, $this->allowed_tools ?? [], true);
+        // If specific tools selected, check the list
+        if ($this->allowed_tools === null) {
+            return true; // null means all tools allowed
+        }
+
+        return in_array($toolSlug, $this->allowed_tools, true);
     }
 
     /**

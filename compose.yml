@@ -46,6 +46,7 @@ services:
       - GH_TOKEN=${GIT_TOKEN:-}
       - HOST_PROJECT_PATH=${PWD}
       - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
+      - DOCKER_GID=${DOCKER_GID:-}
     entrypoint: ["/entrypoint.sh"]
     ports:
       - "${VITE_PORT:-5173}:5173"
@@ -155,6 +156,7 @@ services:
       - GH_TOKEN=${GIT_TOKEN:-}
       - HOST_PROJECT_PATH=${PWD}
       - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
+      - DOCKER_GID=${DOCKER_GID:-}
     volumes:
       - ./www:/var/www
       - .env:/var/www/.env

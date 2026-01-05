@@ -5,14 +5,14 @@
         <div class="flex items-center gap-2">
             {{-- New conversation button (green) --}}
             <button @click="newConversation()"
-                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors bg-emerald-600/90 hover:bg-emerald-500 text-white"
+                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors bg-emerald-600/90 hover:bg-emerald-500 text-white cursor-pointer"
                     title="New conversation">
                 <i class="fa-solid fa-comment-medical"></i>
             </button>
             {{-- Filter/Search button (blue) --}}
             <button @click="showSearchInput = !showSearchInput; if(showSearchInput) $nextTick(() => $refs.sidebarSearchInput?.focus())"
                     :class="showSearchInput ? 'bg-blue-500' : 'bg-blue-600/90 hover:bg-blue-500'"
-                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors text-white"
+                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors text-white cursor-pointer"
                     title="Search conversations">
                 <i class="fa-solid fa-filter"></i>
             </button>
@@ -20,7 +20,7 @@
             <button x-show="conversationSearchQuery || showArchivedConversations"
                     x-cloak
                     @click="clearAllFilters()"
-                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors bg-rose-600/90 hover:bg-rose-500 text-white"
+                    class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors bg-rose-600/90 hover:bg-rose-500 text-white cursor-pointer"
                     title="Clear all filters">
                 <i class="fa-solid fa-filter-circle-xmark"></i>
             </button>
@@ -125,7 +125,7 @@
             <div class="flex items-center justify-between mb-1">
                 <div class="flex items-center gap-1">
                     <span class="text-gray-300 font-semibold">Session Cost</span>
-                    <button @click="showPricingSettings = true" class="text-gray-400 hover:text-gray-200 transition-colors" title="Configure pricing">
+                    <button @click="showPricingSettings = true" class="text-gray-400 hover:text-gray-200 transition-colors cursor-pointer" title="Configure pricing">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -141,10 +141,10 @@
         <div>Working Dir: /var/www</div>
         <div class="flex flex-wrap gap-2 mt-2">
             <a href="{{ route('config.index') }}" class="text-blue-400 hover:text-blue-300">Settings</a>
-            <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300">Shortcuts</button>
+            <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300 cursor-pointer">Shortcuts</button>
             <button @click="copyConversationToClipboard()"
                     :disabled="messages.length === 0"
-                    :class="messages.length === 0 ? 'text-gray-600 cursor-not-allowed' : 'text-blue-400 hover:text-blue-300'"
+                    :class="messages.length === 0 ? 'text-gray-600 cursor-not-allowed' : 'text-blue-400 hover:text-blue-300 cursor-pointer'"
                     x-text="copyingConversation ? 'Copied!' : 'Copy Chat'">
             </button>
         </div>

@@ -14,6 +14,9 @@
     @endif
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
+        /* Hide elements until Alpine.js initializes */
+        [x-cloak] { display: none !important; }
+
         /* Category button styles */
         .category-button {
             padding: 12px 16px;
@@ -118,7 +121,11 @@
 <body class="bg-gray-900 text-white" x-data="{ showMobileDrawer: false }">
     <!-- Desktop Layout -->
     @php
-        $lastConversationUuid = session('last_conversation_uuid');
+        // Get last conversation for the active workspace
+        $activeWorkspaceId = session('active_workspace_id');
+        $lastConversationUuid = $activeWorkspaceId
+            ? session("last_conversation_{$activeWorkspaceId}")
+            : session('last_conversation_default');
         $backToChatUrl = $lastConversationUuid ? '/chat/' . $lastConversationUuid : '/';
     @endphp
     <div class="desktop-layout flex" style="height: 100dvh;">
@@ -141,25 +148,12 @@
                     </a>
                 </div>
 
-                <!-- Files Category -->
+                <!-- Workspaces Category -->
                 <div class="border-b border-gray-700">
-                    <div class="category-button w-full {{ in_array(Route::currentRouteName(), ['config.claude', 'config.settings', 'config.nginx']) ? 'active' : '' }}">
-                        📄 Files
-                    </div>
-                    <div class="bg-gray-900">
-                        <a href="{{ route('config.claude') }}"
-                           class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.claude' ? 'active' : '' }}">
-                            CLAUDE.md
-                        </a>
-                        <a href="{{ route('config.settings') }}"
-                           class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.settings' ? 'active' : '' }}">
-                            settings.json
-                        </a>
-                        <a href="{{ route('config.nginx') }}"
-                           class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.nginx' ? 'active' : '' }}">
-                            nginx.conf
-                        </a>
-                    </div>
+                    <a href="{{ route('config.workspaces') }}"
+                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.workspaces') ? 'active' : '' }}">
+                        📁 Workspaces
+                    </a>
                 </div>
 
                 <!-- Agents Category -->
@@ -235,6 +229,14 @@
                     <a href="{{ route('config.credentials') }}"
                        class="category-button w-full block {{ Route::currentRouteName() == 'config.credentials' ? 'active' : '' }}">
                         🔑 Credentials
+                    </a>
+                </div>
+
+                <!-- Backup & Restore -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.backup') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.backup' ? 'active' : '' }}">
+                        💾 Backup
                     </a>
                 </div>
 
@@ -318,7 +320,7 @@
         </div>
 
         <!-- Mobile Content Area -->
-        <div class="flex-1 overflow-y-auto p-6">
+        <div class="flex-1 overflow-y-auto p-4 md:p-6">
             <!-- Notifications -->
             @if(session('success'))
                 <div class="mb-4 p-4 bg-green-900 border-l-4 border-green-500 text-green-200 rounded">
@@ -388,28 +390,13 @@
                 </a>
             </div>
 
-            <!-- Files Category -->
+            <!-- Workspaces Category -->
             <div class="border-b border-gray-700">
-                <div class="category-button w-full {{ in_array(Route::currentRouteName(), ['config.claude', 'config.settings', 'config.nginx']) ? 'active' : '' }}">
-                    📄 Files
-                </div>
-                <div class="bg-gray-900">
-                    <a href="{{ route('config.claude') }}"
-                       @click="showMobileDrawer = false"
-                       class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.claude' ? 'active' : '' }}">
-                        CLAUDE.md
-                    </a>
-                    <a href="{{ route('config.settings') }}"
-                       @click="showMobileDrawer = false"
-                       class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.settings' ? 'active' : '' }}">
-                        settings.json
-                    </a>
-                    <a href="{{ route('config.nginx') }}"
-                       @click="showMobileDrawer = false"
-                       class="file-item w-full text-sm block {{ Route::currentRouteName() == 'config.nginx' ? 'active' : '' }}">
-                        nginx.conf
-                    </a>
-                </div>
+                <a href="{{ route('config.workspaces') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.workspaces') ? 'active' : '' }}">
+                    📁 Workspaces
+                </a>
             </div>
 
             <!-- Agents Category -->
@@ -495,6 +482,15 @@
                    @click="showMobileDrawer = false"
                    class="category-button w-full block {{ Route::currentRouteName() == 'config.credentials' ? 'active' : '' }}">
                     🔑 Credentials
+                </a>
+            </div>
+
+            <!-- Backup & Restore -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.backup') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.backup' ? 'active' : '' }}">
+                    💾 Backup
                 </a>
             </div>
 

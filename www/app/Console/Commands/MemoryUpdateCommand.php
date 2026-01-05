@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class MemoryUpdateCommand extends Command
 {
     protected $signature = 'memory:update
+        {--schema= : Memory schema short name (e.g., "default")}
         {--table= : Table name (without schema prefix)}
         {--data= : JSON object with column => value pairs to update}
         {--where= : WHERE clause (without WHERE keyword)}';
@@ -34,6 +35,7 @@ class MemoryUpdateCommand extends Command
         }
 
         $input = [
+            'schema' => $this->option('schema'),
             'table' => $table,
             'data' => $data,
             'where' => $where,

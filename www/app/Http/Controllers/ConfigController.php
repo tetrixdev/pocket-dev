@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Agent;
 use App\Models\PocketTool;
+use App\Models\Workspace;
 use App\Services\NativeToolService;
 use App\Services\ToolSelector;
 use App\Tools\Tool;
@@ -288,21 +289,22 @@ class ConfigController extends Controller
     }
 
     /**
-     * List all agents
+     * List all agents grouped by workspace
      */
     public function listAgents(Request $request)
     {
         $request->session()->put('config_last_section', 'agents');
 
         try {
-            $agents = Agent::query()
-                ->orderBy('provider')
-                ->orderBy('is_default', 'desc')
+            $workspaces = Workspace::with(['agents' => function ($query) {
+                $query->orderBy('is_default', 'desc')
+                    ->orderBy('name');
+            }])
                 ->orderBy('name')
                 ->get();
 
             return view('config.agents.index', [
-                'agents' => $agents,
+                'workspaces' => $workspaces,
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to list agents', ['error' => $e->getMessage()]);
@@ -318,7 +320,7 @@ class ConfigController extends Controller
     {
         $request->session()->put('config_last_section', 'agents');
 
-        return view('config.agents.form', [
+        $viewData = [
             'providers' => Agent::getProviders(),
             'modelsPerProvider' => [
                 Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
@@ -326,7 +328,67 @@ class ConfigController extends Controller
                 Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
                 Agent::PROVIDER_CODEX => $this->getModelsForProvider(Agent::PROVIDER_CODEX),
             ],
-        ]);
+            'workspaces' => Workspace::orderBy('name')->get(),
+            'selectedWorkspaceId' => $request->query('workspace_id'),
+            'sourceAgent' => null,
+            'cloneWarnings' => null,
+        ];
+
+        // Handle "Create from" (cloning an existing agent)
+        if ($request->has('from')) {
+            $sourceAgent = Agent::with('memoryDatabases')->find($request->query('from'));
+            if ($sourceAgent) {
+                $viewData['sourceAgent'] = $sourceAgent;
+
+                // Calculate missing resources if cloning to a different workspace
+                // Only warn if agent has specific tools/schemas selected (not inheriting from workspace)
+                $targetWorkspaceId = $request->query('workspace_id');
+                if ($targetWorkspaceId && $targetWorkspaceId !== $sourceAgent->workspace_id) {
+                    $targetWorkspace = Workspace::find($targetWorkspaceId);
+                    if ($targetWorkspace) {
+                        $missingTools = [];
+                        $missingSchemas = [];
+
+                        // Check tools only if agent has specific tools selected (not inheriting)
+                        // If inheriting, the cloned agent will just inherit from the new workspace
+                        if (!$sourceAgent->inheritsWorkspaceTools() && $sourceAgent->allowed_tools !== null && is_array($sourceAgent->allowed_tools)) {
+                            $disabledToolSlugs = $targetWorkspace->getDisabledToolSlugs();
+                            foreach ($sourceAgent->allowed_tools as $toolSlug) {
+                                if (in_array($toolSlug, $disabledToolSlugs)) {
+                                    $missingTools[] = $toolSlug;
+                                }
+                            }
+                        }
+
+                        // Check memory schemas only if agent has specific schemas selected (not inheriting)
+                        if (!$sourceAgent->inheritsWorkspaceSchemas()) {
+                            $enabledSchemaIds = $targetWorkspace->enabledMemoryDatabases()
+                                ->pluck('memory_databases.id')
+                                ->toArray();
+
+                            foreach ($sourceAgent->memoryDatabases as $schema) {
+                                if (!in_array($schema->id, $enabledSchemaIds)) {
+                                    $missingSchemas[] = [
+                                        'name' => $schema->name,
+                                        'schema_name' => $schema->schema_name,
+                                    ];
+                                }
+                            }
+                        }
+
+                        if (!empty($missingTools) || !empty($missingSchemas)) {
+                            $viewData['cloneWarnings'] = [
+                                'missing_tools' => $missingTools,
+                                'missing_schemas' => $missingSchemas,
+                                'source_workspace' => $sourceAgent->workspace?->name ?? 'Unknown',
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+
+        return view('config.agents.form', $viewData);
     }
 
     /**
@@ -338,6 +400,7 @@ class ConfigController extends Controller
             $validated = $request->validate([
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string|max:1024',
+                'workspace_id' => 'required|uuid|exists:workspaces,id',
                 'provider' => 'required|string|in:' . implode(',', Agent::getProviders()),
                 'model' => 'required|string|max:100',
                 'anthropic_thinking_budget' => 'nullable|integer|min:0',
@@ -345,8 +408,12 @@ class ConfigController extends Controller
                 'claude_code_thinking_tokens' => 'nullable|integer|min:0',
                 'codex_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
+                'inherit_workspace_tools' => 'nullable|in:0,1',
+                'inherit_workspace_schemas' => 'nullable|in:0,1',
                 'allowed_tools' => 'nullable|array',
                 'allowed_tools.*' => 'string',
+                'memory_schemas' => 'nullable|array',
+                'memory_schemas.*' => 'uuid|exists:memory_databases,id',
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
@@ -360,27 +427,47 @@ class ConfigController extends Controller
                     ->with('error', 'An agent with this name already exists');
             }
 
-            // Normalize allowed_tools to lowercase for consistent matching
-            $allowedTools = $validated['allowed_tools'] ?? null;
-            if (is_array($allowedTools)) {
-                $allowedTools = array_map('mb_strtolower', $allowedTools);
+            // Parse inherit settings
+            $inheritWorkspaceTools = ($validated['inherit_workspace_tools'] ?? '1') === '1';
+            $inheritWorkspaceSchemas = ($validated['inherit_workspace_schemas'] ?? '0') === '1';
+
+            // Normalize allowed_tools to lowercase for consistent matching (only if not inheriting)
+            // When inheriting: null means "inherit from workspace"
+            // When not inheriting: null means "all tools" (legacy), empty array means "no tools"
+            $allowedTools = null;
+            if (!$inheritWorkspaceTools) {
+                $allowedTools = isset($validated['allowed_tools'])
+                    ? array_map('mb_strtolower', $validated['allowed_tools'])
+                    : []; // Empty array = no tools selected
             }
 
-            Agent::create([
-                'name' => $validated['name'],
-                'description' => $validated['description'] ?? null,
-                'provider' => $validated['provider'],
-                'model' => $validated['model'],
-                'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
-                'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
-                'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
-                'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
-                'response_level' => $validated['response_level'] ?? 1,
-                'allowed_tools' => $allowedTools,
-                'system_prompt' => $validated['system_prompt'] ?? null,
-                'is_default' => $validated['is_default'] ?? false,
-                'enabled' => $validated['enabled'] ?? true,
-            ]);
+            // Use transaction to ensure agent and schema associations are created atomically
+            DB::transaction(function () use ($validated, $inheritWorkspaceTools, $inheritWorkspaceSchemas, $allowedTools) {
+                $agent = Agent::create([
+                    'name' => $validated['name'],
+                    'description' => $validated['description'] ?? null,
+                    'workspace_id' => $validated['workspace_id'],
+                    'provider' => $validated['provider'],
+                    'model' => $validated['model'],
+                    'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
+                    'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
+                    'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
+                    'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
+                    'response_level' => $validated['response_level'] ?? 1,
+                    'inherit_workspace_tools' => $inheritWorkspaceTools,
+                    'inherit_workspace_schemas' => $inheritWorkspaceSchemas,
+                    'allowed_tools' => $allowedTools,
+                    'system_prompt' => $validated['system_prompt'] ?? null,
+                    'is_default' => $validated['is_default'] ?? false,
+                    'enabled' => $validated['enabled'] ?? true,
+                ]);
+
+                // Sync memory schemas (only if not inheriting)
+                if (!$inheritWorkspaceSchemas) {
+                    $memorySchemaIds = $validated['memory_schemas'] ?? [];
+                    $agent->memoryDatabases()->sync($memorySchemaIds);
+                }
+            });
 
             return redirect()->route('config.agents')
                 ->with('success', 'Agent created successfully');
@@ -427,8 +514,12 @@ class ConfigController extends Controller
                 'claude_code_thinking_tokens' => 'nullable|integer|min:0',
                 'codex_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
+                'inherit_workspace_tools' => 'nullable|in:0,1',
+                'inherit_workspace_schemas' => 'nullable|in:0,1',
                 'allowed_tools' => 'nullable|array',
                 'allowed_tools.*' => 'string',
+                'memory_schemas' => 'nullable|array',
+                'memory_schemas.*' => 'uuid|exists:memory_databases,id',
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
@@ -442,28 +533,50 @@ class ConfigController extends Controller
                     ->with('error', 'An agent with this name already exists');
             }
 
-            // Normalize allowed_tools to lowercase for consistent matching
-            $allowedTools = $validated['allowed_tools'] ?? null;
-            if (is_array($allowedTools)) {
-                $allowedTools = array_map('mb_strtolower', $allowedTools);
+            // Parse inherit settings
+            $inheritWorkspaceTools = ($validated['inherit_workspace_tools'] ?? '1') === '1';
+            $inheritWorkspaceSchemas = ($validated['inherit_workspace_schemas'] ?? '0') === '1';
+
+            // Normalize allowed_tools to lowercase for consistent matching (only if not inheriting)
+            // When inheriting: null means "inherit from workspace"
+            // When not inheriting: null means "all tools" (legacy), empty array means "no tools"
+            $allowedTools = null;
+            if (!$inheritWorkspaceTools) {
+                $allowedTools = isset($validated['allowed_tools'])
+                    ? array_map('mb_strtolower', $validated['allowed_tools'])
+                    : []; // Empty array = no tools selected
             }
 
-            $agent->update([
-                'name' => $validated['name'],
-                'slug' => $slug,
-                'description' => $validated['description'] ?? null,
-                'provider' => $validated['provider'],
-                'model' => $validated['model'],
-                'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
-                'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
-                'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
-                'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
-                'response_level' => $validated['response_level'] ?? 1,
-                'allowed_tools' => $allowedTools,
-                'system_prompt' => $validated['system_prompt'] ?? null,
-                'is_default' => $validated['is_default'] ?? false,
-                'enabled' => $validated['enabled'] ?? true,
-            ]);
+            // Use transaction to ensure agent update and schema associations are updated atomically
+            DB::transaction(function () use ($agent, $validated, $slug, $inheritWorkspaceTools, $inheritWorkspaceSchemas, $allowedTools) {
+                $agent->update([
+                    'name' => $validated['name'],
+                    'slug' => $slug,
+                    'description' => $validated['description'] ?? null,
+                    'provider' => $validated['provider'],
+                    'model' => $validated['model'],
+                    'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
+                    'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
+                    'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
+                    'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
+                    'response_level' => $validated['response_level'] ?? 1,
+                    'inherit_workspace_tools' => $inheritWorkspaceTools,
+                    'inherit_workspace_schemas' => $inheritWorkspaceSchemas,
+                    'allowed_tools' => $allowedTools,
+                    'system_prompt' => $validated['system_prompt'] ?? null,
+                    'is_default' => $validated['is_default'] ?? false,
+                    'enabled' => $validated['enabled'] ?? true,
+                ]);
+
+                // Sync memory schemas (only if not inheriting)
+                if (!$inheritWorkspaceSchemas) {
+                    $memorySchemaIds = $validated['memory_schemas'] ?? [];
+                    $agent->memoryDatabases()->sync($memorySchemaIds);
+                } else {
+                    // Clear specific schema assignments when inheriting
+                    $agent->memoryDatabases()->detach();
+                }
+            });
 
             return redirect()->route('config.agents')
                 ->with('success', 'Agent saved successfully');

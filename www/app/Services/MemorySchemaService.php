@@ -2,23 +2,93 @@
 
 namespace App\Services;
 
+use App\Models\MemoryDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Service for managing the memory schema DDL operations.
  * Uses the memory_ai database user with DDL/DML rights.
+ *
+ * Supports multiple memory databases through setMemoryDatabase().
+ * When no memory database is set, defaults to the 'memory' schema for backward compatibility.
  */
 class MemorySchemaService
 {
     private const PROTECTED_TABLES = ['embeddings', 'schema_registry'];
 
+    private ?MemoryDatabase $memoryDatabase = null;
+
+    /**
+     * Set the memory database to operate on.
+     *
+     * @param MemoryDatabase $memoryDatabase The memory database to use
+     * @return $this
+     */
+    public function setMemoryDatabase(MemoryDatabase $memoryDatabase): self
+    {
+        $this->memoryDatabase = $memoryDatabase;
+        return $this;
+    }
+
+    /**
+     * Get the current memory database, if any.
+     */
+    public function getMemoryDatabase(): ?MemoryDatabase
+    {
+        return $this->memoryDatabase;
+    }
+
+    /**
+     * Get the schema name to use for operations.
+     * Returns 'memory' for backward compatibility if no memory database is set.
+     */
+    protected function getSchemaName(): string
+    {
+        return $this->memoryDatabase?->getFullSchemaName() ?? 'memory';
+    }
+
     /**
      * Get the database connection for memory schema operations.
+     * Sets the search_path to the appropriate schema.
      */
     protected function connection(): \Illuminate\Database\Connection
     {
-        return DB::connection('pgsql_memory_ai');
+        $conn = DB::connection('pgsql_memory_ai');
+        $schemaName = $this->getSchemaName();
+
+        // Set search_path for this connection (properly quoted to prevent SQL injection)
+        $quotedSchema = $this->quoteIdentifier($schemaName);
+        $conn->statement("SET search_path = {$quotedSchema}, public");
+
+        return $conn;
+    }
+
+    /**
+     * Get a read-only connection with the appropriate schema.
+     */
+    protected function readonlyConnection(): \Illuminate\Database\Connection
+    {
+        $conn = DB::connection('pgsql_readonly');
+        $schemaName = $this->getSchemaName();
+
+        // Set search_path for this connection (properly quoted to prevent SQL injection)
+        $quotedSchema = $this->quoteIdentifier($schemaName);
+        $conn->statement("SET search_path = {$quotedSchema}, public");
+
+        return $conn;
+    }
+
+    /**
+     * Quote a PostgreSQL identifier (schema, table, column name) to prevent SQL injection.
+     * Wraps in double quotes and escapes internal double quotes by doubling them.
+     *
+     * @param string $identifier The identifier to quote
+     * @return string The properly quoted identifier
+     */
+    protected function quoteIdentifier(string $identifier): string
+    {
+        return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
     /**
@@ -60,16 +130,17 @@ class MemorySchemaService
             ];
         }
 
-        // Ensure SQL references the memory schema
-        if (!$this->sqlReferencesMemorySchema($sql, $tableName)) {
+        // Ensure SQL references the appropriate memory schema
+        $schemaName = $this->getSchemaName();
+        if (!$this->sqlReferencesSchema($sql, $tableName, $schemaName)) {
             return [
                 'success' => false,
-                'message' => "SQL must create table in memory schema: memory.{$tableName}",
+                'message' => "SQL must create table in schema: {$schemaName}.{$tableName}",
             ];
         }
 
         try {
-            $this->connection()->transaction(function () use ($tableName, $sql, $description, $embedFields, $columnDescriptions) {
+            $this->connection()->transaction(function () use ($tableName, $sql, $description, $embedFields, $columnDescriptions, $schemaName) {
                 // Execute CREATE TABLE
                 $this->connection()->statement($sql);
 
@@ -90,17 +161,20 @@ class MemorySchemaService
                 // Grant SELECT to memory_readonly for query access
                 // This is needed because ALTER DEFAULT PRIVILEGES only applies to tables
                 // created by the role that ran the ALTER, not tables created by other roles
-                $this->connection()->statement("GRANT SELECT ON memory.{$tableName} TO memory_readonly");
+                $quotedSchemaForGrant = $this->quoteIdentifier($schemaName);
+                $quotedTableForGrant = $this->quoteIdentifier($tableName);
+                $this->connection()->statement("GRANT SELECT ON {$quotedSchemaForGrant}.{$quotedTableForGrant} TO memory_readonly");
             });
 
             Log::info('Memory table created', [
                 'table' => $tableName,
+                'schema' => $schemaName,
                 'embed_fields' => $embedFields,
             ]);
 
             return [
                 'success' => true,
-                'message' => "Table memory.{$tableName} created successfully",
+                'message' => "Table {$schemaName}.{$tableName} created successfully",
             ];
         } catch (\Exception $e) {
             Log::error('Failed to create memory table', [
@@ -123,8 +197,10 @@ class MemorySchemaService
      */
     public function execute(string $sql): array
     {
+        $schemaName = $this->getSchemaName();
+
         // Check for protected tables in DROP/TRUNCATE/ALTER statements
-        $protectedCheck = $this->checkProtectedTables($sql);
+        $protectedCheck = $this->checkProtectedTables($sql, $schemaName);
         if ($protectedCheck !== null) {
             return [
                 'success' => false,
@@ -132,11 +208,11 @@ class MemorySchemaService
             ];
         }
 
-        // Ensure SQL only operates on memory schema
-        if (!$this->sqlOperatesOnMemorySchemaOnly($sql)) {
+        // Ensure SQL only operates on the appropriate schema
+        if (!$this->sqlOperatesOnSchemaOnly($sql, $schemaName)) {
             return [
                 'success' => false,
-                'message' => 'SQL must only operate on tables in the memory schema',
+                'message' => "SQL must only operate on tables in the {$schemaName} schema",
             ];
         }
 
@@ -145,13 +221,13 @@ class MemorySchemaService
 
             // If this was a DROP TABLE, also clean up schema_registry
             // Use main Laravel connection which has DELETE permission on schema_registry
-            $droppedTable = $this->extractDroppedTableName($sql);
+            $droppedTable = $this->extractDroppedTableName($sql, $schemaName);
             if ($droppedTable) {
-                DB::table('memory.schema_registry')
+                DB::table("{$schemaName}.schema_registry")
                     ->where('table_name', $droppedTable)
                     ->delete();
 
-                Log::info('Memory table dropped', ['table' => $droppedTable]);
+                Log::info('Memory table dropped', ['table' => $droppedTable, 'schema' => $schemaName]);
             }
 
             return [
@@ -161,6 +237,7 @@ class MemorySchemaService
         } catch (\Exception $e) {
             Log::error('Failed to execute memory DDL', [
                 'sql' => $sql,
+                'schema' => $schemaName,
                 'error' => $e->getMessage(),
             ]);
 
@@ -179,30 +256,33 @@ class MemorySchemaService
     public function listTables(): array
     {
         $tables = [];
+        $schemaName = $this->getSchemaName();
 
         // Get tables from information_schema
         $dbTables = DB::connection('pgsql_readonly')->select("
             SELECT table_name
             FROM information_schema.tables
-            WHERE table_schema = 'memory'
+            WHERE table_schema = ?
             ORDER BY table_name
-        ");
+        ", [$schemaName]);
 
         foreach ($dbTables as $table) {
             $tableName = $table->table_name;
 
             // Get metadata from schema_registry
             $registry = DB::connection('pgsql_readonly')
-                ->table('memory.schema_registry')
+                ->table("{$schemaName}.schema_registry")
                 ->where('table_name', $tableName)
                 ->first();
 
             // Get columns with their types and descriptions
             $columns = $this->getTableColumns($tableName);
 
-            // Get row count
+            // Get row count (with properly quoted identifiers to prevent SQL injection)
+            $quotedSchema = $this->quoteIdentifier($schemaName);
+            $quotedTable = $this->quoteIdentifier($tableName);
             $countResult = DB::connection('pgsql_readonly')
-                ->select("SELECT COUNT(*) as count FROM memory.{$tableName}");
+                ->select("SELECT COUNT(*) as count FROM {$quotedSchema}.{$quotedTable}");
             $rowCount = $countResult[0]->count ?? 0;
 
             $tables[] = [
@@ -225,6 +305,7 @@ class MemorySchemaService
     public function getTableColumns(string $tableName): array
     {
         $columns = [];
+        $schemaName = $this->getSchemaName();
 
         // Get column info from information_schema
         $dbColumns = DB::connection('pgsql_readonly')->select("
@@ -240,10 +321,10 @@ class MemorySchemaService
                 ON st.schemaname = c.table_schema AND st.relname = c.table_name
             LEFT JOIN pg_catalog.pg_description pgd
                 ON pgd.objoid = st.relid AND pgd.objsubid = c.ordinal_position
-            WHERE c.table_schema = 'memory'
+            WHERE c.table_schema = ?
                 AND c.table_name = ?
             ORDER BY c.ordinal_position
-        ", [$tableName]);
+        ", [$schemaName, $tableName]);
 
         foreach ($dbColumns as $col) {
             // Use udt_name for custom types like 'vector', 'geography'
@@ -275,8 +356,9 @@ class MemorySchemaService
      */
     public function getEmbeddableFields(string $tableName): array
     {
+        $schemaName = $this->getSchemaName();
         $registry = DB::connection('pgsql_readonly')
-            ->table('memory.schema_registry')
+            ->table("{$schemaName}.schema_registry")
             ->where('table_name', $tableName)
             ->first();
 
@@ -313,12 +395,13 @@ class MemorySchemaService
      */
     public function tableExists(string $tableName): bool
     {
+        $schemaName = $this->getSchemaName();
         $result = DB::connection('pgsql_readonly')->selectOne("
             SELECT EXISTS (
                 SELECT 1 FROM information_schema.tables
-                WHERE table_schema = 'memory' AND table_name = ?
+                WHERE table_schema = ? AND table_name = ?
             ) as exists
-        ", [$tableName]);
+        ", [$schemaName, $tableName]);
 
         return (bool) $result->exists;
     }
@@ -328,7 +411,8 @@ class MemorySchemaService
      */
     protected function addColumnComment(string $tableName, string $columnName, string $description): void
     {
-        $quotedTable = '"memory"."' . str_replace('"', '""', $tableName) . '"';
+        $schemaName = $this->getSchemaName();
+        $quotedTable = '"' . str_replace('"', '""', $schemaName) . '"."' . str_replace('"', '""', $tableName) . '"';
         $quotedColumn = '"' . str_replace('"', '""', $columnName) . '"';
         $escapedDescription = str_replace("'", "''", $description);
 
@@ -389,16 +473,19 @@ class MemorySchemaService
     }
 
     /**
-     * Check if the CREATE TABLE SQL references the memory schema.
+     * Check if the CREATE TABLE SQL references the expected schema.
      */
-    protected function sqlReferencesMemorySchema(string $sql, string $tableName): bool
+    protected function sqlReferencesSchema(string $sql, string $tableName, string $schemaName): bool
     {
-        // Must be memory.tablename or "memory"."tablename"
+        // Must be schema.tablename or "schema"."tablename"
+        $quotedSchema = preg_quote($schemaName, '/');
+        $quotedTable = preg_quote($tableName, '/');
+
         $patterns = [
-            '/CREATE\s+TABLE\s+memory\.' . preg_quote($tableName, '/') . '\s*\(/i',
-            '/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+memory\.' . preg_quote($tableName, '/') . '\s*\(/i',
-            '/CREATE\s+TABLE\s+"memory"\."' . preg_quote($tableName, '/') . '"\s*\(/i',
-            '/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"memory"\."' . preg_quote($tableName, '/') . '"\s*\(/i',
+            '/CREATE\s+TABLE\s+' . $quotedSchema . '\.' . $quotedTable . '\s*\(/i',
+            '/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+' . $quotedSchema . '\.' . $quotedTable . '\s*\(/i',
+            '/CREATE\s+TABLE\s+"' . $quotedSchema . '"\."' . $quotedTable . '"\s*\(/i',
+            '/CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"' . $quotedSchema . '"\."' . $quotedTable . '"\s*\(/i',
         ];
 
         foreach ($patterns as $pattern) {
@@ -429,13 +516,14 @@ class MemorySchemaService
     }
 
     /**
-     * Check if SQL only operates on memory schema.
+     * Check if SQL only operates on the specified schema.
      */
-    protected function sqlOperatesOnMemorySchemaOnly(string $sql): bool
+    protected function sqlOperatesOnSchemaOnly(string $sql, string $schemaName): bool
     {
         // Strip string literals to avoid false positives from content like {"type": "..."}
         $sqlWithoutStrings = $this->stripStringLiterals($sql);
         $sqlWithoutStrings = strtolower($sqlWithoutStrings);
+        $schemaNameLower = strtolower($schemaName);
 
         // Comprehensive list of SQL keywords that might appear after FROM/JOIN/etc.
         $keywords = [
@@ -454,9 +542,10 @@ class MemorySchemaService
             'index', 'cascade', 'restrict', 'no', 'action', 'initially', 'deferred', 'immediate',
         ];
 
-        // Look for table references that aren't memory. prefixed
+        // Look for table references that aren't prefixed with the expected schema
         // Common patterns: FROM table, JOIN table, INTO table, UPDATE table, TABLE table
-        if (preg_match_all('/\b(from|join|into|update|table)\s+(?!memory\.)([a-z_][a-z0-9_]*)/i', $sqlWithoutStrings, $matches, PREG_SET_ORDER)) {
+        $escapedSchema = preg_quote($schemaNameLower, '/');
+        if (preg_match_all('/\b(from|join|into|update|table)\s+(?!' . $escapedSchema . '\.)([a-z_][a-z0-9_]*)/i', $sqlWithoutStrings, $matches, PREG_SET_ORDER)) {
             foreach ($matches as $match) {
                 $potentialTable = strtolower($match[2]);
                 // If it's not a keyword, it's likely an unqualified table reference
@@ -466,9 +555,9 @@ class MemorySchemaService
             }
         }
 
-        // Also check for quoted schema.table references outside memory schema
+        // Also check for quoted schema.table references outside the expected schema
         // E.g., "public"."users" or "other_schema"."table"
-        if (preg_match('/\b(from|join|into|update|table)\s+"(?!memory")[a-z_][a-z0-9_]*"\s*\./i', $sqlWithoutStrings)) {
+        if (preg_match('/\b(from|join|into|update|table)\s+"(?!' . $escapedSchema . '")[a-z_][a-z0-9_]*"\s*\./i', $sqlWithoutStrings)) {
             return false;
         }
 
@@ -480,13 +569,15 @@ class MemorySchemaService
      * Only matches when the protected table name appears as the target table,
      * not when it appears elsewhere (e.g., in column names like "embeddings_count").
      */
-    protected function checkProtectedTables(string $sql): ?string
+    protected function checkProtectedTables(string $sql, string $schemaName): ?string
     {
         $sql = strtolower($sql);
+        $schemaNameLower = strtolower($schemaName);
+        $escapedSchema = preg_quote($schemaNameLower, '/');
 
         foreach (self::PROTECTED_TABLES as $protected) {
-            // Match: DROP/TRUNCATE/ALTER TABLE [IF EXISTS] [memory.]protected_table_name
-            if (preg_match('/\b(drop|truncate|alter)\s+table\s+(?:if\s+exists\s+)?(?:memory\.)?' . preg_quote($protected, '/') . '\b/', $sql)) {
+            // Match: DROP/TRUNCATE/ALTER TABLE [IF EXISTS] [schema.]protected_table_name
+            if (preg_match('/\b(drop|truncate|alter)\s+table\s+(?:if\s+exists\s+)?(?:' . $escapedSchema . '\.)?' . preg_quote($protected, '/') . '\b/', $sql)) {
                 return "Cannot DROP, TRUNCATE, or ALTER protected table: {$protected}";
             }
         }
@@ -497,13 +588,15 @@ class MemorySchemaService
     /**
      * Extract table name from a DROP TABLE statement.
      */
-    protected function extractDroppedTableName(string $sql): ?string
+    protected function extractDroppedTableName(string $sql, string $schemaName): ?string
     {
-        if (preg_match('/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?memory\.([a-z_][a-z0-9_]*)/i', $sql, $matches)) {
+        $escapedSchema = preg_quote($schemaName, '/');
+
+        if (preg_match('/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?' . $escapedSchema . '\.([a-z_][a-z0-9_]*)/i', $sql, $matches)) {
             return $matches[1];
         }
 
-        if (preg_match('/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?"memory"\."([^"]+)"/i', $sql, $matches)) {
+        if (preg_match('/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?"' . $escapedSchema . '"\."([^"]+)"/i', $sql, $matches)) {
             return $matches[1];
         }
 

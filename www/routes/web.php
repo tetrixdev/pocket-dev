@@ -100,6 +100,15 @@ Route::delete("/config/tools/{slug}", [ConfigController::class, "deleteTool"])->
 // Native tools toggle (AJAX)
 Route::post("/config/tools/native/toggle", [ConfigController::class, "toggleNativeTool"])->name("config.tools.native.toggle");
 
+// Workspace management
+Route::get("/config/workspaces", [\App\Http\Controllers\WorkspaceController::class, "index"])->name("config.workspaces");
+Route::get("/config/workspaces/create", [\App\Http\Controllers\WorkspaceController::class, "create"])->name("config.workspaces.create");
+Route::post("/config/workspaces", [\App\Http\Controllers\WorkspaceController::class, "store"])->name("config.workspaces.store");
+Route::get("/config/workspaces/{workspace}/edit", [\App\Http\Controllers\WorkspaceController::class, "edit"])->name("config.workspaces.edit");
+Route::put("/config/workspaces/{workspace}", [\App\Http\Controllers\WorkspaceController::class, "update"])->name("config.workspaces.update");
+Route::delete("/config/workspaces/{workspace}", [\App\Http\Controllers\WorkspaceController::class, "destroy"])->name("config.workspaces.delete");
+Route::post("/config/workspaces/{workspace}/restore", [\App\Http\Controllers\WorkspaceController::class, "restore"])->name("config.workspaces.restore");
+
 // Memory management
 Route::get("/config/memory", [MemoryController::class, "index"])->name("config.memory");
 Route::get("/config/memory/tables/{tableName}", [MemoryController::class, "browseTable"])->name("config.memory.browse");
@@ -112,6 +121,15 @@ Route::post("/config/memory/snapshots/{filename}/restore", [MemoryController::cl
 Route::delete("/config/memory/snapshots/{filename}", [MemoryController::class, "deleteSnapshot"])->name("config.memory.snapshots.delete");
 Route::get("/config/memory/export", [MemoryController::class, "export"])->name("config.memory.export");
 Route::post("/config/memory/import", [MemoryController::class, "import"])->name("config.memory.import");
+Route::patch("/config/memory/database/{memoryDatabase}", [MemoryController::class, "updateDatabase"])->name("config.memory.update-database");
+Route::post("/config/memory/database", [MemoryController::class, "createDatabase"])->name("config.memory.create-database");
+
+// Backup and restore
+Route::get("/config/backup", [\App\Http\Controllers\BackupController::class, "show"])->name("config.backup");
+Route::post("/config/backup/create", [\App\Http\Controllers\BackupController::class, "create"])->name("config.backup.create");
+Route::get("/config/backup/download/{filename}", [\App\Http\Controllers\BackupController::class, "download"])->name("config.backup.download");
+Route::delete("/config/backup/{filename}", [\App\Http\Controllers\BackupController::class, "delete"])->name("config.backup.delete");
+Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::class, "restore"])->name("config.backup.restore");
 
 // Developer tools (only available in local environment)
 if (app()->environment('local')) {

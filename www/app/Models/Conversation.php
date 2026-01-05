@@ -20,6 +20,7 @@ class Conversation extends Model
 
     protected $fillable = [
         'uuid',
+        'workspace_id',
         'agent_id',
         'provider_type',
         'model',
@@ -83,6 +84,14 @@ class Conversation extends Model
     public function agent(): BelongsTo
     {
         return $this->belongsTo(Agent::class);
+    }
+
+    /**
+     * Get the workspace this conversation belongs to.
+     */
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
     }
 
     public function getRouteKeyName(): string
@@ -243,6 +252,14 @@ class Conversation extends Model
     public function scopeForProvider($query, string $providerType)
     {
         return $query->where('provider_type', $providerType);
+    }
+
+    /**
+     * Scope to filter by workspace.
+     */
+    public function scopeForWorkspace($query, string $workspaceId)
+    {
+        return $query->where('workspace_id', $workspaceId);
     }
 
     /**

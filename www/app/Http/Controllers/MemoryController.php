@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MemoryDatabase;
+use App\Models\Workspace;
+use App\Services\MemoryDatabaseService;
 use App\Services\MemorySchemaService;
 use App\Services\MemorySnapshotService;
 use App\Services\AppSettingsService;
@@ -12,10 +15,77 @@ use Illuminate\Support\Facades\Log;
 class MemoryController extends Controller
 {
     public function __construct(
+        protected MemoryDatabaseService $databaseService,
         protected MemorySchemaService $schemaService,
         protected MemorySnapshotService $snapshotService,
         protected AppSettingsService $settings
     ) {}
+
+    /**
+     * Get the active workspace from session.
+     * Returns null if no workspace is active.
+     */
+    protected function getActiveWorkspace(Request $request): ?Workspace
+    {
+        $workspaceId = $request->session()->get('active_workspace_id');
+
+        if (!$workspaceId) {
+            return null;
+        }
+
+        return Workspace::find($workspaceId);
+    }
+
+    /**
+     * Get the selected memory database from request or default to first available.
+     * When a workspace is active, filters to databases enabled in that workspace.
+     */
+    protected function getSelectedDatabase(Request $request): ?MemoryDatabase
+    {
+        $workspace = $this->getActiveWorkspace($request);
+
+        if ($workspace) {
+            // Filter to databases enabled in the active workspace
+            $databases = $workspace->enabledMemoryDatabases()->orderBy('name')->get();
+        } else {
+            // No workspace context - show all databases
+            // TODO: Consider requiring workspace context or filtering by user's accessible workspaces
+            $databases = MemoryDatabase::orderBy('name')->get();
+        }
+
+        if ($databases->isEmpty()) {
+            return null;
+        }
+
+        $selectedId = $request->input('db');
+        if ($selectedId) {
+            $selected = $databases->firstWhere('id', $selectedId);
+            if ($selected) {
+                return $selected;
+            }
+        }
+
+        // Default to first database (or workspace default if available)
+        if ($workspace) {
+            $defaultDb = $workspace->defaultMemoryDatabase();
+            if ($defaultDb && $databases->contains('id', $defaultDb->id)) {
+                return $defaultDb;
+            }
+        }
+
+        return $databases->first();
+    }
+
+    /**
+     * Configure services with the selected database.
+     */
+    protected function configureServices(?MemoryDatabase $database): void
+    {
+        if ($database) {
+            $this->schemaService->setMemoryDatabase($database);
+            $this->snapshotService->setMemoryDatabase($database);
+        }
+    }
 
     /**
      * Show memory management page.
@@ -24,14 +94,36 @@ class MemoryController extends Controller
     {
         $request->session()->put('config_last_section', 'memory');
 
-        try {
-            $tables = $this->schemaService->listTables();
-            $snapshots = $this->snapshotService->list();
-        } catch (\Exception $e) {
-            // Database not ready yet
-            Log::warning('Memory schema not available', ['error' => $e->getMessage()]);
-            $tables = [];
-            $snapshots = [];
+        // Get workspace and filter databases accordingly
+        $workspace = $this->getActiveWorkspace($request);
+
+        if ($workspace) {
+            // Filter to databases enabled in the active workspace
+            $databases = $workspace->enabledMemoryDatabases()->orderBy('name')->get();
+        } else {
+            // No workspace context - show all databases
+            // TODO: Consider requiring workspace context or filtering by user's accessible workspaces
+            $databases = MemoryDatabase::orderBy('name')->get();
+        }
+
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
+        $tables = [];
+        $snapshots = [];
+
+        if ($selectedDatabase) {
+            try {
+                $tables = $this->schemaService->listTables();
+                $snapshots = $this->snapshotService->list();
+            } catch (\Exception $e) {
+                // Database not ready yet
+                Log::warning('Memory schema not available', [
+                    'database' => $selectedDatabase->name,
+                    'schema' => $selectedDatabase->getFullSchemaName(),
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         // Separate system tables from user tables
@@ -52,6 +144,8 @@ class MemoryController extends Controller
         }
 
         return view('config.memory', [
+            'databases' => $databases,
+            'selectedDatabase' => $selectedDatabase,
             'userTables' => $userTables,
             'systemTables' => $systemTables,
             'snapshots' => $snapshots,
@@ -83,6 +177,9 @@ class MemoryController extends Controller
      */
     public function createSnapshot(Request $request)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         $schemaOnly = $request->boolean('schema_only', false);
 
         try {
@@ -104,6 +201,9 @@ class MemoryController extends Controller
      */
     public function restoreSnapshot(Request $request, string $filename)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         try {
             $result = $this->snapshotService->restore($filename);
 
@@ -123,6 +223,9 @@ class MemoryController extends Controller
      */
     public function deleteSnapshot(Request $request, string $filename)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         try {
             $result = $this->snapshotService->delete($filename);
 
@@ -142,6 +245,9 @@ class MemoryController extends Controller
      */
     public function export(Request $request)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         $schemaOnly = $request->boolean('schema_only', false);
 
         try {
@@ -164,6 +270,9 @@ class MemoryController extends Controller
      */
     public function import(Request $request)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         $request->validate([
             'snapshot_file' => 'required|file|mimes:sql,txt|max:102400', // 100MB max
         ]);
@@ -190,9 +299,17 @@ class MemoryController extends Controller
     {
         $request->session()->put('config_last_section', 'memory');
 
+        // Get selected database and configure service
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        if (!$selectedDatabase) {
+            abort(404, "No memory database available");
+        }
+        $this->configureServices($selectedDatabase);
+        $schemaName = $selectedDatabase->getFullSchemaName();
+
         // Validate table exists
         if (!$this->schemaService->tableExists($tableName)) {
-            abort(404, "Table '{$tableName}' not found in memory schema");
+            abort(404, "Table '{$tableName}' not found in {$schemaName} schema");
         }
 
         // Get table metadata
@@ -237,12 +354,12 @@ class MemoryController extends Controller
         try {
             // Get total count
             $countResult = DB::connection('pgsql_readonly')
-                ->selectOne("SELECT COUNT(*) as total FROM memory.{$tableName}");
+                ->selectOne("SELECT COUNT(*) as total FROM {$schemaName}.{$tableName}");
             $totalRows = $countResult->total ?? 0;
 
             // Get paginated data
             $rows = DB::connection('pgsql_readonly')
-                ->select("SELECT {$selectList} FROM memory.{$tableName} ORDER BY \"{$sortColumn}\" {$sortDirection} LIMIT ? OFFSET ?", [$perPage, $offset]);
+                ->select("SELECT {$selectList} FROM {$schemaName}.{$tableName} ORDER BY \"{$sortColumn}\" {$sortDirection} LIMIT ? OFFSET ?", [$perPage, $offset]);
 
             // Convert to array and process for display
             $processedRows = [];
@@ -257,6 +374,7 @@ class MemoryController extends Controller
             $totalPages = (int) ceil($totalRows / $perPage);
 
             return view('config.memory-browse', [
+                'selectedDatabase' => $selectedDatabase,
                 'tableName' => $tableName,
                 'tableInfo' => $tableInfo,
                 'columns' => array_filter($tableInfo['columns'], fn($c) => $c['type'] !== 'vector'),
@@ -403,9 +521,17 @@ class MemoryController extends Controller
     {
         $request->session()->put('config_last_section', 'memory');
 
+        // Get selected database and configure service
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        if (!$selectedDatabase) {
+            abort(404, "No memory database available");
+        }
+        $this->configureServices($selectedDatabase);
+        $schemaName = $selectedDatabase->getFullSchemaName();
+
         // Validate table exists
         if (!$this->schemaService->tableExists($tableName)) {
-            abort(404, "Table '{$tableName}' not found in memory schema");
+            abort(404, "Table '{$tableName}' not found in {$schemaName} schema");
         }
 
         // Get table metadata
@@ -432,7 +558,7 @@ class MemoryController extends Controller
         try {
             // Try to find the row by id (UUID)
             $row = DB::connection('pgsql_readonly')
-                ->selectOne("SELECT {$selectList} FROM memory.{$tableName} WHERE id = ?", [$rowId]);
+                ->selectOne("SELECT {$selectList} FROM {$schemaName}.{$tableName} WHERE id = ?", [$rowId]);
 
             if (!$row) {
                 abort(404, "Row not found");
@@ -451,6 +577,7 @@ class MemoryController extends Controller
             }
 
             return view('config.memory-show', [
+                'selectedDatabase' => $selectedDatabase,
                 'tableName' => $tableName,
                 'tableInfo' => $tableInfo,
                 'rowId' => $rowId,
@@ -464,6 +591,65 @@ class MemoryController extends Controller
             ]);
 
             return back()->with('error', 'Failed to load row: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update a memory database's metadata (name, description).
+     */
+    public function updateDatabase(Request $request, MemoryDatabase $memoryDatabase)
+    {
+        $validated = $request->validate([
+            'description' => 'nullable|string|max:1024',
+        ]);
+
+        $memoryDatabase->update([
+            'description' => $validated['description'] ?? null,
+        ]);
+
+        return redirect()
+            ->route('config.memory', ['db' => $memoryDatabase->id])
+            ->with('success', 'Database description updated');
+    }
+
+    /**
+     * Create a new memory database.
+     */
+    public function createDatabase(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:100',
+            'schema_name' => 'nullable|string|max:55|regex:/^[a-z][a-z0-9_]*$/',
+            'description' => 'nullable|string|max:1024',
+        ]);
+
+        // Generate schema name from display name if not provided
+        $schemaName = $validated['schema_name'] ?? null;
+        if (empty($schemaName)) {
+            $schemaName = \Illuminate\Support\Str::snake(\Illuminate\Support\Str::slug($validated['name'], '_'));
+            // Ensure it starts with a letter
+            if (!preg_match('/^[a-z]/', $schemaName)) {
+                $schemaName = 'db_' . $schemaName;
+            }
+            // Truncate to fit limit
+            $schemaName = substr($schemaName, 0, 55);
+        }
+
+        $result = $this->databaseService->create(
+            $validated['name'],
+            $schemaName,
+            $validated['description'] ?? null
+        );
+
+        if ($result['success']) {
+            return redirect()
+                ->route('config.memory', ['db' => $result['memory_database']->id])
+                ->with('success', $result['message']);
+        } else {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', $result['message']);
         }
     }
 

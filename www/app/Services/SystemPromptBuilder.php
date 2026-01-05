@@ -42,7 +42,11 @@ class SystemPromptBuilder
 
         // 4: Tool instructions (from tools that have them)
         // Filter by agent's allowed_tools if specified
-        $allowedTools = $agent?->allowed_tools;
+        // When inheriting, pass null so workspace filtering applies
+        $allowedTools = null;
+        if ($agent && !$agent->inheritsWorkspaceTools()) {
+            $allowedTools = $agent->allowed_tools;
+        }
         $toolInstructions = $toolRegistry->getInstructions($allowedTools);
         if (!empty($toolInstructions)) {
             $sections[] = $this->buildToolSection($toolInstructions);
@@ -81,8 +85,14 @@ class SystemPromptBuilder
         // 4: PocketDev tools (memory, tool management, user tools)
         // These are tools that don't have native CLI provider equivalents
         // Filter by agent's allowed_tools if specified
-        $allowedTools = $agent?->allowed_tools;
-        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools);
+        // Pass agent for memory schema access
+        // When inheriting, pass null so workspace filtering applies
+        $allowedTools = null;
+        if ($agent && !$agent->inheritsWorkspaceTools()) {
+            $allowedTools = $agent->allowed_tools;
+        }
+        $workspace = $agent?->workspace;
+        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, $workspace, $agent);
         if (!empty($pocketDevToolPrompt)) {
             $sections[] = $pocketDevToolPrompt;
         }

@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 class MemorySchemaCreateTableCommand extends Command
 {
     protected $signature = 'memory:schema:create-table
+        {--schema= : Memory schema short name (e.g., "default")}
         {--name= : Table name (without schema prefix)}
         {--description= : Description of what this table stores}
         {--sql= : CREATE TABLE SQL statement}
@@ -42,6 +43,7 @@ class MemorySchemaCreateTableCommand extends Command
         }
 
         $input = [
+            'schema' => $this->option('schema'),
             'name' => $name,
             'description' => $description,
             'sql' => $sql,
