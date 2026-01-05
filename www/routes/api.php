@@ -143,6 +143,7 @@ Route::get('tools', [AgentController::class, 'allTools']);
 Route::get('tools/for-provider/{provider}', [AgentController::class, 'availableTools']);
 Route::post('agents/preview-system-prompt', [AgentController::class, 'previewSystemPrompt']);
 Route::post('agents/check-schema-affected', [AgentController::class, 'checkSchemaAffectedAgents']);
+Route::post('agents/validate-clone', [AgentController::class, 'validateClone']);
 
 /*
 |--------------------------------------------------------------------------

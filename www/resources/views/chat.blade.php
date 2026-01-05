@@ -424,7 +424,7 @@
                 <div class="flex items-center gap-3 pl-2">
                     <h2 class="text-base font-semibold">PocketDev</h2>
                     <button @click="showAgentSelector = true"
-                            class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200"
+                            class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer"
                             aria-label="Select AI agent">
                         <span class="w-1.5 h-1.5 rounded-full shrink-0"
                               :class="{
@@ -437,7 +437,7 @@
                     </button>
                     {{-- Conversation status badge --}}
                     <span x-show="currentConversationUuid && currentConversationStatus"
-                          class="inline-flex items-center justify-center w-4 h-4 rounded-sm"
+                          class="inline-flex items-center justify-center w-4 h-4 rounded-sm cursor-help"
                           :class="getStatusColorClass(currentConversationStatus)"
                           :title="'Status: ' + currentConversationStatus">
                         <i class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
@@ -448,7 +448,7 @@
                 {{-- Conversation Menu Dropdown --}}
                 <div class="relative">
                     <button @click="showConversationMenu = !showConversationMenu"
-                            class="text-gray-300 hover:text-white p-2"
+                            class="text-gray-300 hover:text-white p-2 cursor-pointer"
                             title="Menu">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -468,7 +468,7 @@
                          class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
                         {{-- Workspace --}}
                         <button @click="openWorkspaceSelector(); showConversationMenu = false"
-                                class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left">
+                                class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
                             <i class="fa-solid fa-folder w-4 text-center"></i>
                             <span class="flex-1">Workspace</span>
                             <span class="text-xs text-gray-400 truncate max-w-[80px]" x-text="currentWorkspace?.name || 'Default'"></span>
@@ -482,7 +482,7 @@
                         {{-- Archive/Unarchive --}}
                         <button @click="toggleArchiveConversation(); showConversationMenu = false"
                                 :disabled="!currentConversationUuid"
-                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
+                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
                                 class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                             <i class="fa-solid fa-box-archive w-4 text-center"></i>
                             <span x-text="currentConversationStatus === 'archived' ? 'Unarchive' : 'Archive'"></span>
@@ -490,7 +490,7 @@
                         {{-- Delete --}}
                         <button @click="deleteConversation(); showConversationMenu = false"
                                 :disabled="!currentConversationUuid"
-                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600'"
+                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
                                 class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                             <i class="fa-solid fa-trash w-4 text-center"></i>
                             Delete
@@ -1160,21 +1160,27 @@
                         });
 
                         if (response.ok) {
+                            const data = await response.json();
                             this.currentWorkspace = workspace;
                             this.currentWorkspaceId = workspace.id;
                             this.showWorkspaceSelector = false;
-                            this.debugLog('Workspace switched', { workspace: workspace.name });
+                            this.debugLog('Workspace switched', { workspace: workspace.name, lastConversation: data.last_conversation_uuid });
 
                             // Reload conversations and agents for the new workspace
                             await this.fetchConversations();
                             await this.fetchAgents();
 
-                            // Reset to new conversation if current one doesn't belong to this workspace
-                            if (this.currentConversationUuid) {
-                                const currentConvo = this.conversations.find(c => c.uuid === this.currentConversationUuid);
-                                if (!currentConvo) {
+                            // Restore last conversation for this workspace, or start new
+                            if (data.last_conversation_uuid) {
+                                // Check if conversation still exists in the loaded list
+                                const lastConvo = this.conversations.find(c => c.uuid === data.last_conversation_uuid);
+                                if (lastConvo) {
+                                    await this.loadConversation(data.last_conversation_uuid, true); // skipWorkspaceCheck=true
+                                } else {
                                     this.newConversation();
                                 }
+                            } else {
+                                this.newConversation();
                             }
                         } else {
                             console.error('Failed to switch workspace:', response.status);
@@ -1364,6 +1370,9 @@
                 async refreshSidebar() {
                     try {
                         let url = '/api/conversations?working_directory=/var/www';
+                        if (this.currentWorkspaceId) {
+                            url += '&workspace_id=' + this.currentWorkspaceId;
+                        }
                         if (this.showArchivedConversations) {
                             url += '&include_archived=true';
                         }
@@ -1395,6 +1404,9 @@
                     try {
                         const nextPage = this.conversationsPage + 1;
                         let url = `/api/conversations?working_directory=/var/www&page=${nextPage}`;
+                        if (this.currentWorkspaceId) {
+                            url += '&workspace_id=' + this.currentWorkspaceId;
+                        }
                         if (this.showArchivedConversations) {
                             url += '&include_archived=true';
                         }
@@ -1430,6 +1442,9 @@
                     this.conversationSearchLoading = true;
                     try {
                         let url = `/api/conversations/search?query=${encodeURIComponent(this.conversationSearchQuery)}&limit=20`;
+                        if (this.currentWorkspaceId) {
+                            url += '&workspace_id=' + this.currentWorkspaceId;
+                        }
                         if (this.showArchivedConversations) {
                             url += '&include_archived=true';
                         }
@@ -1558,7 +1573,7 @@
                     }
                 },
 
-                async loadConversation(uuid) {
+                async loadConversation(uuid, skipWorkspaceCheck = false) {
                     // Disconnect from any current stream before switching
                     this.disconnectFromStream();
 
@@ -1570,6 +1585,43 @@
                         const data = await response.json();
                         if (!data?.conversation) {
                             throw new Error('Missing conversation payload');
+                        }
+
+                        // Check if conversation belongs to a different workspace
+                        const conversationWorkspaceId = data.conversation.workspace_id;
+                        if (!skipWorkspaceCheck && conversationWorkspaceId && conversationWorkspaceId !== this.currentWorkspaceId) {
+                            this.debugLog('Conversation workspace mismatch, switching workspace', {
+                                conversationWorkspace: conversationWorkspaceId,
+                                currentWorkspace: this.currentWorkspaceId
+                            });
+
+                            // Find workspace in list, or fetch it
+                            let targetWorkspace = this.workspaces.find(w => w.id === conversationWorkspaceId);
+                            if (!targetWorkspace) {
+                                await this.fetchWorkspaces();
+                                targetWorkspace = this.workspaces.find(w => w.id === conversationWorkspaceId);
+                            }
+
+                            if (targetWorkspace) {
+                                // Switch to the workspace (but skip loading last conversation since we want this one)
+                                const switchResponse = await fetch(`/api/workspaces/active/${conversationWorkspaceId}`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                                    }
+                                });
+
+                                if (switchResponse.ok) {
+                                    this.currentWorkspace = targetWorkspace;
+                                    this.currentWorkspaceId = targetWorkspace.id;
+                                    this.debugLog('Auto-switched workspace', { workspace: targetWorkspace.name });
+
+                                    // Reload conversations and agents for the new workspace
+                                    await this.fetchConversations();
+                                    await this.fetchAgents();
+                                }
+                            }
                         }
 
                         // Only set state after validating response

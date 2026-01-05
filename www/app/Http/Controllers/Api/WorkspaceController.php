@@ -113,6 +113,9 @@ class WorkspaceController extends Controller
     {
         $request->session()->put('active_workspace_id', $workspace->id);
 
+        // Get the last conversation for this workspace (if any)
+        $lastConversationUuid = $request->session()->get("last_conversation_{$workspace->id}");
+
         return response()->json([
             'success' => true,
             'message' => "Switched to workspace: {$workspace->name}",
@@ -121,6 +124,7 @@ class WorkspaceController extends Controller
                 'name' => $workspace->name,
                 'directory' => $workspace->directory,
             ],
+            'last_conversation_uuid' => $lastConversationUuid,
         ]);
     }
 
@@ -146,12 +150,16 @@ class WorkspaceController extends Controller
             return response()->json(['workspace' => null]);
         }
 
+        // Get the last conversation for this workspace (if any)
+        $lastConversationUuid = $request->session()->get("last_conversation_{$workspace->id}");
+
         return response()->json([
             'workspace' => [
                 'id' => $workspace->id,
                 'name' => $workspace->name,
                 'directory' => $workspace->directory,
             ],
+            'last_conversation_uuid' => $lastConversationUuid,
         ]);
     }
 }

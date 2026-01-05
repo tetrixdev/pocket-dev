@@ -143,33 +143,6 @@ class ToolRegistry
     }
 
     /**
-     * Get effective tools for an agent.
-     *
-     * Applies the full three-tier filter:
-     * 1. Global enablement (PocketTool.enabled = true or built-in)
-     * 2. Workspace enablement (workspace_tools, no entry = enabled)
-     * 3. Agent allowed tools (agent.allowed_tools, null = all)
-     *
-     * @param Workspace $workspace The workspace
-     * @param \App\Models\Agent $agent The agent
-     * @return array<string, Tool>
-     */
-    public function getEffectiveTools(Workspace $workspace, \App\Models\Agent $agent): array
-    {
-        // 1 & 2: Get workspace-enabled tools
-        $tools = $this->allForWorkspace($workspace);
-
-        // 3: Filter by agent's allowed tools if specified
-        if ($agent->allowed_tools !== null) {
-            $tools = array_filter($tools, function (Tool $tool) use ($agent) {
-                return ToolFilterHelper::isAllowed($tool->getSlug(), $agent->allowed_tools);
-            });
-        }
-
-        return $tools;
-    }
-
-    /**
      * Get tool definitions for the API.
      * Returns array of tool definition objects.
      *

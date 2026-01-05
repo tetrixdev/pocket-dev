@@ -33,13 +33,12 @@
         @if($databases->count() > 0)
             <div class="space-y-2 mb-6">
                 @foreach($databases as $db)
-                    <div class="flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg {{ $selectedDatabase && $selectedDatabase->id === $db->id ? 'bg-blue-900/30 border border-blue-700' : 'bg-gray-700/50 hover:bg-gray-700' }}">
-                        <div class="flex-1 min-w-0">
+                    <div class="group flex flex-col sm:flex-row sm:items-center gap-2 p-3 rounded-lg {{ $selectedDatabase && $selectedDatabase->id === $db->id ? 'bg-blue-900/30 border border-blue-700' : 'bg-gray-700/50 hover:bg-gray-700' }}">
+                        <a href="{{ route('config.memory', ['db' => $db->id]) }}" class="flex-1 min-w-0 block">
                             <div class="flex items-center gap-2">
-                                <a href="{{ route('config.memory', ['db' => $db->id]) }}"
-                                   class="font-medium {{ $selectedDatabase && $selectedDatabase->id === $db->id ? 'text-blue-300' : 'text-white hover:text-blue-300' }}">
+                                <span class="font-medium {{ $selectedDatabase && $selectedDatabase->id === $db->id ? 'text-blue-300' : 'text-white group-hover:text-blue-300' }}">
                                     {{ $db->name }}
-                                </a>
+                                </span>
                                 <code class="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">{{ $db->getFullSchemaName() }}</code>
                                 @if($selectedDatabase && $selectedDatabase->id === $db->id)
                                     <span class="text-xs text-blue-400 bg-blue-900/50 px-2 py-0.5 rounded">Selected</span>
@@ -48,11 +47,10 @@
                             @if($db->description)
                                 <p class="text-sm text-gray-400 mt-1 truncate">{{ $db->description }}</p>
                             @endif
-                        </div>
-                        <a href="{{ route('config.memory', ['db' => $db->id]) }}"
-                           class="text-sm text-blue-400 hover:text-blue-300 whitespace-nowrap">
-                            {{ $selectedDatabase && $selectedDatabase->id === $db->id ? 'Viewing' : 'Select' }}
                         </a>
+                        <span class="text-sm text-blue-400 whitespace-nowrap">
+                            {{ $selectedDatabase && $selectedDatabase->id === $db->id ? 'Viewing' : 'Select' }}
+                        </span>
                     </div>
                 @endforeach
             </div>

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\MemoryDatabase;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -9,17 +10,60 @@ use Illuminate\Support\Facades\Process;
 /**
  * Service for managing memory schema snapshots using pg_dump/pg_restore.
  * Implements tiered retention: hourly (24h) → 4/day (7d) → 1/day (30d).
+ *
+ * Supports multiple memory databases through setMemoryDatabase().
+ * When no memory database is set, defaults to the 'memory' schema for backward compatibility.
  */
 class MemorySnapshotService
 {
     protected string $directory;
     protected int $retentionDays;
+    protected ?MemoryDatabase $memoryDatabase = null;
 
     public function __construct(
         protected AppSettingsService $settings
     ) {
         $this->directory = config('memory.snapshot_directory', storage_path('memory-snapshots'));
         $this->retentionDays = $this->settings->get('memory_snapshot_retention_days', config('memory.snapshot_retention_days', 30));
+    }
+
+    /**
+     * Set the memory database to operate on.
+     *
+     * @param MemoryDatabase $memoryDatabase The memory database to use
+     * @return $this
+     */
+    public function setMemoryDatabase(MemoryDatabase $memoryDatabase): self
+    {
+        $this->memoryDatabase = $memoryDatabase;
+        return $this;
+    }
+
+    /**
+     * Get the current memory database, if any.
+     */
+    public function getMemoryDatabase(): ?MemoryDatabase
+    {
+        return $this->memoryDatabase;
+    }
+
+    /**
+     * Get the schema name to use for operations.
+     * Returns 'memory' for backward compatibility if no memory database is set.
+     */
+    protected function getSchemaName(): string
+    {
+        return $this->memoryDatabase?->getFullSchemaName() ?? 'memory';
+    }
+
+    /**
+     * Get the schema prefix for filenames.
+     * Returns empty string for 'memory' (backward compatibility), otherwise schema name.
+     */
+    protected function getSchemaPrefix(): string
+    {
+        $schemaName = $this->getSchemaName();
+        return $schemaName === 'memory' ? '' : $schemaName . '_';
     }
 
     /**
@@ -32,9 +76,11 @@ class MemorySnapshotService
     {
         $this->ensureDirectory();
 
+        $schemaName = $this->getSchemaName();
+        $schemaPrefix = $this->getSchemaPrefix();
         $timestamp = now()->format('Ymd_His');
         $suffix = $schemaOnly ? '_schema' : '';
-        $filename = "memory_{$timestamp}{$suffix}.sql";
+        $filename = "{$schemaPrefix}memory_{$timestamp}{$suffix}.sql";
         $path = $this->directory . '/' . $filename;
 
         // Build pg_dump command
@@ -50,7 +96,7 @@ class MemorySnapshotService
             '-p', (string) $dbPort,
             '-U', $dbUser,
             '-d', $dbName,
-            '-n', 'memory',  // Only memory schema
+            '-n', $schemaName,  // Use dynamic schema name
             '-f', $path,
         ];
 
@@ -79,6 +125,7 @@ class MemorySnapshotService
 
             Log::info('Memory snapshot created', [
                 'filename' => $filename,
+                'schema' => $schemaName,
                 'schema_only' => $schemaOnly,
             ]);
 
@@ -111,7 +158,9 @@ class MemorySnapshotService
     {
         $this->ensureDirectory();
 
-        $files = glob($this->directory . '/memory_*.sql') ?: [];
+        $schemaPrefix = $this->getSchemaPrefix();
+        $pattern = $this->directory . '/' . $schemaPrefix . 'memory_*.sql';
+        $files = glob($pattern) ?: [];
         $snapshots = [];
 
         foreach ($files as $path) {
@@ -156,8 +205,9 @@ class MemorySnapshotService
             return false;
         }
 
-        // Must match expected pattern: memory_YYYYMMDD_HHMMSS[_schema][_imported].sql
-        if (!preg_match('/^memory_\d{8}_\d{6}(_schema)?(_imported)?\.sql$/', $filename)) {
+        // Must match expected pattern: [schema_prefix_]memory_YYYYMMDD_HHMMSS[_schema][_imported].sql
+        // Schema prefix is optional for backward compatibility (e.g., memory_default_memory_*.sql)
+        if (!preg_match('/^(memory_[a-z][a-z0-9_]*_)?memory_\d{8}_\d{6}(_schema)?(_imported)?\.sql$/', $filename)) {
             return false;
         }
 
@@ -199,6 +249,8 @@ class MemorySnapshotService
             ];
         }
 
+        $schemaName = $this->getSchemaName();
+
         $dbHost = config('database.connections.pgsql.host');
         $dbPort = config('database.connections.pgsql.port');
         $dbName = config('database.connections.pgsql.database');
@@ -206,7 +258,7 @@ class MemorySnapshotService
         $dbPassword = config('database.connections.pgsql.password');
 
         try {
-            // Drop and recreate memory schema
+            // Drop and recreate the schema
             $dropResult = Process::env(['PGPASSWORD' => $dbPassword])
                 ->timeout(60)
                 ->run([
@@ -215,11 +267,12 @@ class MemorySnapshotService
                     '-p', (string) $dbPort,
                     '-U', $dbUser,
                     '-d', $dbName,
-                    '-c', 'DROP SCHEMA IF EXISTS memory CASCADE; CREATE SCHEMA memory;',
+                    '-c', "DROP SCHEMA IF EXISTS {$schemaName} CASCADE; CREATE SCHEMA {$schemaName};",
                 ]);
 
             if (!$dropResult->successful()) {
                 Log::error('Failed to reset memory schema', [
+                    'schema' => $schemaName,
                     'error' => $dropResult->errorOutput(),
                 ]);
 
@@ -256,6 +309,7 @@ class MemorySnapshotService
 
             Log::info('Memory schema restored', [
                 'snapshot' => $filename,
+                'schema' => $schemaName,
                 'backup' => $backupResult['filename'],
             ]);
 
@@ -467,9 +521,10 @@ class MemorySnapshotService
     {
         $this->ensureDirectory();
 
-        // Generate new filename with current timestamp
+        // Generate new filename with current timestamp and schema prefix
+        $schemaPrefix = $this->getSchemaPrefix();
         $timestamp = now()->format('Ymd_His');
-        $filename = "memory_{$timestamp}_imported.sql";
+        $filename = "{$schemaPrefix}memory_{$timestamp}_imported.sql";
         $destinationPath = $this->directory . '/' . $filename;
 
         // Move file to snapshots directory
@@ -523,8 +578,9 @@ class MemorySnapshotService
      */
     protected function parseFilename(string $filename): ?array
     {
-        // Expected format: memory_YYYYMMDD_HHMMSS.sql or memory_YYYYMMDD_HHMMSS_schema.sql
-        if (!preg_match('/^memory_(\d{8})_(\d{6})(_schema)?(_imported)?\.sql$/', $filename, $matches)) {
+        // Expected format: [schema_prefix_]memory_YYYYMMDD_HHMMSS[_schema][_imported].sql
+        // Schema prefix is optional for backward compatibility
+        if (!preg_match('/^(?:memory_[a-z][a-z0-9_]*_)?memory_(\d{8})_(\d{6})(_schema)?(_imported)?\.sql$/', $filename, $matches)) {
             return null;
         }
 

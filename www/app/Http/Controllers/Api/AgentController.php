@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Agent;
 use App\Models\MemoryDatabase;
 use App\Models\PocketTool;
+use App\Models\Workspace;
 use App\Services\NativeToolService;
 use App\Services\SystemPromptService;
 use App\Services\ToolSelector;
@@ -288,7 +289,9 @@ class AgentController extends Controller
             // Attach memory databases without saving (for preview purposes)
             $previewAgent->setRelation('memoryDatabases', MemoryDatabase::whereIn('id', $memorySchemas)->get());
         }
-        $toolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, null, $previewAgent);
+        $workspaceId = $request->input('workspace_id');
+        $workspace = $workspaceId ? Workspace::find($workspaceId) : null;
+        $toolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, $workspace, $previewAgent);
         if (!empty($toolPrompt)) {
             $sections[] = [
                 'title' => 'PocketDev Tools',
@@ -381,6 +384,65 @@ class AgentController extends Controller
 
         return response()->json([
             'schemas' => $schemas,
+        ]);
+    }
+
+    /**
+     * Validate cloning an agent to a different workspace.
+     *
+     * Checks if tools and memory schemas from the source agent are available
+     * in the target workspace. Returns lists of missing items.
+     */
+    public function validateClone(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'source_agent_id' => 'required|uuid|exists:agents,id',
+            'target_workspace_id' => 'required|uuid|exists:workspaces,id,deleted_at,NULL',
+        ]);
+
+        $sourceAgent = Agent::with(['memoryDatabases', 'workspace'])->findOrFail($validated['source_agent_id']);
+        $targetWorkspace = Workspace::findOrFail($validated['target_workspace_id']);
+
+        $missingTools = [];
+        $missingSchemas = [];
+
+        // Check tools only if agent has specific tools selected (not inheriting from workspace)
+        if (!$sourceAgent->inheritsWorkspaceTools() && $sourceAgent->allowed_tools !== null && is_array($sourceAgent->allowed_tools)) {
+            $disabledToolSlugs = $targetWorkspace->getDisabledToolSlugs();
+
+            foreach ($sourceAgent->allowed_tools as $toolSlug) {
+                if (in_array($toolSlug, $disabledToolSlugs)) {
+                    $missingTools[] = $toolSlug;
+                }
+            }
+        }
+
+        // Check memory schemas only if agent has specific schemas selected (not inheriting)
+        if (!$sourceAgent->inheritsWorkspaceSchemas()) {
+            $enabledSchemaIds = $targetWorkspace->enabledMemoryDatabases()
+                ->pluck('memory_databases.id')
+                ->toArray();
+
+            foreach ($sourceAgent->memoryDatabases as $schema) {
+                if (!in_array($schema->id, $enabledSchemaIds)) {
+                    $missingSchemas[] = [
+                        'id' => $schema->id,
+                        'name' => $schema->name,
+                        'schema_name' => $schema->schema_name,
+                    ];
+                }
+            }
+        }
+
+        return response()->json([
+            'valid' => empty($missingTools) && empty($missingSchemas),
+            'missing_tools' => $missingTools,
+            'missing_schemas' => $missingSchemas,
+            'source_agent' => [
+                'id' => $sourceAgent->id,
+                'name' => $sourceAgent->name,
+                'workspace_name' => $sourceAgent->workspace?->name,
+            ],
         ]);
     }
 }

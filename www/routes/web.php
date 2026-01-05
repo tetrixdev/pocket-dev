@@ -107,6 +107,7 @@ Route::post("/config/workspaces", [\App\Http\Controllers\WorkspaceController::cl
 Route::get("/config/workspaces/{workspace}/edit", [\App\Http\Controllers\WorkspaceController::class, "edit"])->name("config.workspaces.edit");
 Route::put("/config/workspaces/{workspace}", [\App\Http\Controllers\WorkspaceController::class, "update"])->name("config.workspaces.update");
 Route::delete("/config/workspaces/{workspace}", [\App\Http\Controllers\WorkspaceController::class, "destroy"])->name("config.workspaces.delete");
+Route::post("/config/workspaces/{workspace}/restore", [\App\Http\Controllers\WorkspaceController::class, "restore"])->name("config.workspaces.restore");
 
 // Memory management
 Route::get("/config/memory", [MemoryController::class, "index"])->name("config.memory");

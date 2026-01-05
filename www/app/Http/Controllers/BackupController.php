@@ -289,8 +289,7 @@ class BackupController extends Controller
 
             exec($command, $output, $returnCode);
             if ($returnCode !== 0) {
-                Log::warning("Failed to backup volume {$volume}", ['output' => implode("\n", $output)]);
-                // Don't fail completely - some volumes might be empty
+                throw new \RuntimeException("Failed to backup volume {$volume}: " . implode("\n", $output));
             }
         }
     }

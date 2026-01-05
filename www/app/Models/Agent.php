@@ -42,6 +42,8 @@ class Agent extends Model
         'codex_reasoning_effort',
         'response_level',
         'allowed_tools',
+        'inherit_workspace_tools',
+        'inherit_workspace_schemas',
         'system_prompt',
         'is_default',
         'enabled',
@@ -49,6 +51,8 @@ class Agent extends Model
 
     protected $casts = [
         'allowed_tools' => 'array',
+        'inherit_workspace_tools' => 'boolean',
+        'inherit_workspace_schemas' => 'boolean',
         'is_default' => 'boolean',
         'enabled' => 'boolean',
         'anthropic_thinking_budget' => 'integer',
@@ -66,10 +70,11 @@ class Agent extends Model
             }
         });
 
-        // Ensure only one default per provider
+        // Ensure only one default per provider per workspace
         static::saving(function (Agent $agent) {
             if ($agent->is_default && $agent->isDirty('is_default')) {
                 static::where('provider', $agent->provider)
+                    ->where('workspace_id', $agent->workspace_id)
                     ->where('id', '!=', $agent->id)
                     ->update(['is_default' => false]);
             }
@@ -105,7 +110,8 @@ class Agent extends Model
     /**
      * Get enabled memory databases for this agent.
      *
-     * Only returns databases that are both:
+     * If inherit_workspace_schemas is true, returns all workspace-enabled schemas.
+     * Otherwise, returns schemas that are both:
      * 1. Enabled in the agent's workspace
      * 2. Explicitly granted to the agent
      */
@@ -115,6 +121,13 @@ class Agent extends Model
             return collect();
         }
 
+        // If inheriting from workspace, return all workspace-enabled schemas
+        if ($this->inheritsWorkspaceSchemas()) {
+            return $this->workspace->enabledMemoryDatabases()->get();
+        }
+
+        // Otherwise, return only schemas explicitly granted to the agent
+        // that are also enabled in the workspace
         $workspaceEnabledIds = $this->workspace
             ->enabledMemoryDatabases()
             ->pluck('memory_databases.id');
@@ -133,6 +146,11 @@ class Agent extends Model
             return false;
         }
 
+        // If inheriting from workspace, has access to all workspace-enabled schemas
+        if ($this->inheritsWorkspaceSchemas()) {
+            return true;
+        }
+
         return $this->memoryDatabases()
             ->where('memory_databases.id', $db->id)
             ->exists();
@@ -147,6 +165,12 @@ class Agent extends Model
             return false;
         }
 
+        // If inheriting from workspace, allow write (workspace-level permissions can be added later)
+        if ($this->inheritsWorkspaceSchemas()) {
+            return true;
+        }
+
+        // Otherwise check explicit permission
         $permission = $this->memoryDatabases()
             ->where('memory_databases.id', $db->id)
             ->first()
@@ -182,10 +206,19 @@ class Agent extends Model
 
     /**
      * Scope to get default agent for a provider.
+     *
+     * @param string $provider The provider to filter by
+     * @param string|null $workspaceId Optional workspace ID to scope the default to
      */
-    public function scopeDefaultFor(Builder $query, string $provider): Builder
+    public function scopeDefaultFor(Builder $query, string $provider, ?string $workspaceId = null): Builder
     {
-        return $query->where('provider', $provider)->where('is_default', true);
+        $query->where('provider', $provider)->where('is_default', true);
+
+        if ($workspaceId !== null) {
+            $query->where('workspace_id', $workspaceId);
+        }
+
+        return $query;
     }
 
     /**
@@ -229,23 +262,52 @@ class Agent extends Model
     }
 
     /**
-     * Check if all tools are allowed (null means all).
+     * Check if this agent inherits tools from workspace.
+     */
+    public function inheritsWorkspaceTools(): bool
+    {
+        return $this->inherit_workspace_tools ?? true;
+    }
+
+    /**
+     * Check if this agent inherits schemas from workspace.
+     */
+    public function inheritsWorkspaceSchemas(): bool
+    {
+        return $this->inherit_workspace_schemas ?? false;
+    }
+
+    /**
+     * Check if all tools are allowed.
+     * True if inheriting from workspace OR if allowed_tools is null.
      */
     public function allowsAllTools(): bool
     {
-        return $this->allowed_tools === null;
+        return $this->inheritsWorkspaceTools() || $this->allowed_tools === null;
     }
 
     /**
      * Check if a specific tool is allowed.
+     *
+     * If inheriting from workspace: checks if tool is enabled in workspace.
+     * If specific tools selected: checks if tool is in allowed_tools list.
      */
     public function allowsTool(string $toolSlug): bool
     {
-        if ($this->allowsAllTools()) {
-            return true;
+        // If inheriting from workspace, check workspace settings
+        if ($this->inheritsWorkspaceTools()) {
+            if (!$this->workspace) {
+                return true; // No workspace = allow all (fallback)
+            }
+            return $this->workspace->isToolEnabled($toolSlug);
         }
 
-        return in_array($toolSlug, $this->allowed_tools ?? [], true);
+        // If specific tools selected, check the list
+        if ($this->allowed_tools === null) {
+            return true; // null means all tools allowed
+        }
+
+        return in_array($toolSlug, $this->allowed_tools, true);
     }
 
     /**

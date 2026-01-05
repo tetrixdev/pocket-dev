@@ -24,8 +24,14 @@ class WorkspaceController extends Controller
                 ->orderBy('name')
                 ->get();
 
+            $trashedWorkspaces = Workspace::onlyTrashed()
+                ->withCount(['agents', 'conversations'])
+                ->orderBy('deleted_at', 'desc')
+                ->get();
+
             return view('config.workspaces.index', [
                 'workspaces' => $workspaces,
+                'trashedWorkspaces' => $trashedWorkspaces,
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to list workspaces', ['error' => $e->getMessage()]);
@@ -105,8 +111,9 @@ class WorkspaceController extends Controller
 
             DB::commit();
 
-            return redirect()->route('config.workspaces')
-                ->with('success', 'Workspace created successfully');
+            // Redirect to create first agent for this workspace
+            return redirect()->route('config.agents.create', ['workspace_id' => $workspace->id])
+                ->with('success', 'Workspace created! Now create your first agent.');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to create workspace', ['error' => $e->getMessage()]);
@@ -215,25 +222,38 @@ class WorkspaceController extends Controller
     }
 
     /**
-     * Delete workspace
+     * Delete workspace (soft delete)
      */
     public function destroy(Workspace $workspace)
     {
         try {
-            // Check if workspace has conversations
-            if ($workspace->conversations()->count() > 0) {
-                return redirect()->route('config.workspaces')
-                    ->with('error', 'Cannot delete workspace with existing conversations. Archive or delete conversations first.');
-            }
-
+            // Soft delete - keeps all relations intact (tools, agents, conversations, memory links)
             $workspace->delete();
 
             return redirect()->route('config.workspaces')
-                ->with('success', 'Workspace deleted successfully');
+                ->with('success', 'Workspace moved to trash. You can restore it from the trash section below.');
         } catch (\Exception $e) {
             Log::error("Failed to delete workspace {$workspace->id}", ['error' => $e->getMessage()]);
             return redirect()->route('config.workspaces')
                 ->with('error', 'Failed to delete workspace: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Restore a soft-deleted workspace
+     */
+    public function restore(string $id)
+    {
+        try {
+            $workspace = Workspace::withTrashed()->findOrFail($id);
+            $workspace->restore();
+
+            return redirect()->route('config.workspaces')
+                ->with('success', 'Workspace restored successfully');
+        } catch (\Exception $e) {
+            Log::error("Failed to restore workspace {$id}", ['error' => $e->getMessage()]);
+            return redirect()->route('config.workspaces')
+                ->with('error', 'Failed to restore workspace: ' . $e->getMessage());
         }
     }
 }

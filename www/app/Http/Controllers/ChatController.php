@@ -27,8 +27,14 @@ class ChatController extends Controller
         $conversation = Conversation::where('uuid', $conversationUuid)->first();
 
         if ($conversation) {
-            // Store in session for "Back to Chat" from settings
-            $request->session()->put('last_conversation_uuid', $conversationUuid);
+            // Store per-workspace last conversation (for returning from settings)
+            $workspaceId = $conversation->workspace_id ?? 'default';
+            $request->session()->put("last_conversation_{$workspaceId}", $conversationUuid);
+
+            // Also set the active workspace to match the conversation
+            if ($conversation->workspace_id) {
+                $request->session()->put('active_workspace_id', $conversation->workspace_id);
+            }
         }
 
         return view('chat');
@@ -43,7 +49,9 @@ class ChatController extends Controller
         $conversation = Conversation::where('uuid', $conversationUuid)->first();
 
         if ($conversation) {
-            $request->session()->put('last_conversation_uuid', $conversationUuid);
+            // Store per-workspace last conversation
+            $workspaceId = $conversation->workspace_id ?? 'default';
+            $request->session()->put("last_conversation_{$workspaceId}", $conversationUuid);
         }
 
         return response()->noContent();

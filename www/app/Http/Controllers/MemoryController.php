@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\MemoryDatabase;
+use App\Models\Workspace;
 use App\Services\MemoryDatabaseService;
 use App\Services\MemorySchemaService;
 use App\Services\MemorySnapshotService;
@@ -21,11 +22,36 @@ class MemoryController extends Controller
     ) {}
 
     /**
+     * Get the active workspace from session.
+     * Returns null if no workspace is active.
+     */
+    protected function getActiveWorkspace(Request $request): ?Workspace
+    {
+        $workspaceId = $request->session()->get('active_workspace_id');
+
+        if (!$workspaceId) {
+            return null;
+        }
+
+        return Workspace::find($workspaceId);
+    }
+
+    /**
      * Get the selected memory database from request or default to first available.
+     * When a workspace is active, filters to databases enabled in that workspace.
      */
     protected function getSelectedDatabase(Request $request): ?MemoryDatabase
     {
-        $databases = MemoryDatabase::orderBy('name')->get();
+        $workspace = $this->getActiveWorkspace($request);
+
+        if ($workspace) {
+            // Filter to databases enabled in the active workspace
+            $databases = $workspace->enabledMemoryDatabases()->orderBy('name')->get();
+        } else {
+            // No workspace context - show all databases
+            // TODO: Consider requiring workspace context or filtering by user's accessible workspaces
+            $databases = MemoryDatabase::orderBy('name')->get();
+        }
 
         if ($databases->isEmpty()) {
             return null;
@@ -39,17 +65,25 @@ class MemoryController extends Controller
             }
         }
 
-        // Default to first database
+        // Default to first database (or workspace default if available)
+        if ($workspace) {
+            $defaultDb = $workspace->defaultMemoryDatabase();
+            if ($defaultDb && $databases->contains('id', $defaultDb->id)) {
+                return $defaultDb;
+            }
+        }
+
         return $databases->first();
     }
 
     /**
-     * Configure schema service with the selected database.
+     * Configure services with the selected database.
      */
-    protected function configureSchemaService(?MemoryDatabase $database): void
+    protected function configureServices(?MemoryDatabase $database): void
     {
         if ($database) {
             $this->schemaService->setMemoryDatabase($database);
+            $this->snapshotService->setMemoryDatabase($database);
         }
     }
 
@@ -60,10 +94,20 @@ class MemoryController extends Controller
     {
         $request->session()->put('config_last_section', 'memory');
 
-        // Get all databases and selected one
-        $databases = MemoryDatabase::orderBy('name')->get();
+        // Get workspace and filter databases accordingly
+        $workspace = $this->getActiveWorkspace($request);
+
+        if ($workspace) {
+            // Filter to databases enabled in the active workspace
+            $databases = $workspace->enabledMemoryDatabases()->orderBy('name')->get();
+        } else {
+            // No workspace context - show all databases
+            // TODO: Consider requiring workspace context or filtering by user's accessible workspaces
+            $databases = MemoryDatabase::orderBy('name')->get();
+        }
+
         $selectedDatabase = $this->getSelectedDatabase($request);
-        $this->configureSchemaService($selectedDatabase);
+        $this->configureServices($selectedDatabase);
 
         $tables = [];
         $snapshots = [];
@@ -133,6 +177,9 @@ class MemoryController extends Controller
      */
     public function createSnapshot(Request $request)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         $schemaOnly = $request->boolean('schema_only', false);
 
         try {
@@ -154,6 +201,9 @@ class MemoryController extends Controller
      */
     public function restoreSnapshot(Request $request, string $filename)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         try {
             $result = $this->snapshotService->restore($filename);
 
@@ -173,6 +223,9 @@ class MemoryController extends Controller
      */
     public function deleteSnapshot(Request $request, string $filename)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         try {
             $result = $this->snapshotService->delete($filename);
 
@@ -192,6 +245,9 @@ class MemoryController extends Controller
      */
     public function export(Request $request)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         $schemaOnly = $request->boolean('schema_only', false);
 
         try {
@@ -214,6 +270,9 @@ class MemoryController extends Controller
      */
     public function import(Request $request)
     {
+        $selectedDatabase = $this->getSelectedDatabase($request);
+        $this->configureServices($selectedDatabase);
+
         $request->validate([
             'snapshot_file' => 'required|file|mimes:sql,txt|max:102400', // 100MB max
         ]);
@@ -245,7 +304,7 @@ class MemoryController extends Controller
         if (!$selectedDatabase) {
             abort(404, "No memory database available");
         }
-        $this->configureSchemaService($selectedDatabase);
+        $this->configureServices($selectedDatabase);
         $schemaName = $selectedDatabase->getFullSchemaName();
 
         // Validate table exists
@@ -467,7 +526,7 @@ class MemoryController extends Controller
         if (!$selectedDatabase) {
             abort(404, "No memory database available");
         }
-        $this->configureSchemaService($selectedDatabase);
+        $this->configureServices($selectedDatabase);
         $schemaName = $selectedDatabase->getFullSchemaName();
 
         // Validate table exists
