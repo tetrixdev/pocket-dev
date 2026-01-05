@@ -113,6 +113,12 @@ class BackupController extends Controller
      */
     public function download(Request $request, string $filename)
     {
+        // Security: only allow .tar.gz files in our backup directory (prevent path traversal)
+        if (!str_ends_with($filename, '.tar.gz') || str_contains($filename, '..')) {
+            return redirect()->route('config.backup')
+                ->with('error', 'Invalid backup filename');
+        }
+
         $path = storage_path("app/{$this->backupDir}/{$filename}");
 
         if (!file_exists($path)) {
