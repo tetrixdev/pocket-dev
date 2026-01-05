@@ -10,8 +10,15 @@ if [ -n "$DOCKER_GID" ]; then
     if ! getent group "$DOCKER_GID" > /dev/null 2>&1; then
         groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
     fi
+    # Extract group name from GID (usermod -aG expects a name, not a numeric GID)
+    EXISTING_GROUP=$(getent group "$DOCKER_GID" | cut -d: -f1)
+    if [ -z "$EXISTING_GROUP" ]; then
+        # Group creation may have failed; create with fallback name
+        groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
+        EXISTING_GROUP="hostdocker_runtime"
+    fi
     # Add www-data to this group
-    usermod -aG "$DOCKER_GID" www-data 2>/dev/null || true
+    usermod -aG "$EXISTING_GROUP" www-data 2>/dev/null || true
 fi
 
 # Set HOME for Claude Code CLI, Codex CLI, and other tools that expect a writable home directory

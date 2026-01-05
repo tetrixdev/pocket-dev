@@ -50,10 +50,23 @@ class MemoryDataService
         $conn = DB::connection('pgsql_memory_ai');
         $schemaName = $this->getSchemaName();
 
-        // Set search_path for this connection
-        $conn->statement("SET search_path = {$schemaName}, public");
+        // Set search_path for this connection (properly quoted to prevent SQL injection)
+        $quotedSchema = $this->quoteIdentifier($schemaName);
+        $conn->statement("SET search_path = {$quotedSchema}, public");
 
         return $conn;
+    }
+
+    /**
+     * Quote a PostgreSQL identifier (schema, table, column name) to prevent SQL injection.
+     * Wraps in double quotes and escapes internal double quotes by doubling them.
+     *
+     * @param string $identifier The identifier to quote
+     * @return string The properly quoted identifier
+     */
+    protected function quoteIdentifier(string $identifier): string
+    {
+        return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
     /**
@@ -106,7 +119,8 @@ class MemoryDataService
         try {
             $rowId = null;
 
-            $this->connection()->transaction(function () use ($schemaName, $quotedTable, $data, $columnTypes, &$rowId) {
+            $quotedSchema = $this->quoteIdentifier($schemaName);
+            $this->connection()->transaction(function () use ($quotedSchema, $quotedTable, $data, $columnTypes, &$rowId) {
                 // Build and execute INSERT
                 $columns = array_keys($data);
                 $placeholders = array_map(fn($c) => $this->formatValue($data[$c], $columnTypes[$c] ?? null), $columns);
@@ -114,7 +128,7 @@ class MemoryDataService
                 $columnsSql = implode(', ', array_map(fn($c) => '"' . str_replace('"', '""', $c) . '"', $columns));
                 $valuesSql = implode(', ', $placeholders);
 
-                $sql = "INSERT INTO {$schemaName}.{$quotedTable} ({$columnsSql}) VALUES ({$valuesSql}) RETURNING id";
+                $sql = "INSERT INTO {$quotedSchema}.{$quotedTable} ({$columnsSql}) VALUES ({$valuesSql}) RETURNING id";
 
                 $result = $this->connection()->selectOne($sql);
                 $rowId = $result->id ?? null;
@@ -234,11 +248,14 @@ class MemoryDataService
         $columnTypes = $this->getColumnTypes($tableName);
 
         try {
+            // Quote schema name for SQL injection prevention
+            $quotedSchema = $this->quoteIdentifier($schemaName);
+
             // First, get the IDs of rows that will be updated (for embedding regeneration)
             $affectedIds = [];
             if (!empty($updatedEmbedFields)) {
                 $idResults = $this->connection()->select(
-                    "SELECT id FROM {$schemaName}.{$quotedTable} WHERE {$whereClause}",
+                    "SELECT id FROM {$quotedSchema}.{$quotedTable} WHERE {$whereClause}",
                     $whereParams
                 );
                 $affectedIds = array_map(fn($r) => $r->id, $idResults);
@@ -251,7 +268,7 @@ class MemoryDataService
             }
             $setSql = implode(', ', $setClauses);
 
-            $sql = "UPDATE {$schemaName}.{$quotedTable} SET {$setSql} WHERE {$whereClause}";
+            $sql = "UPDATE {$quotedSchema}.{$quotedTable} SET {$setSql} WHERE {$whereClause}";
             $affectedRows = $this->connection()->update($sql, $whereParams);
 
             // Regenerate embeddings for affected rows
@@ -260,7 +277,7 @@ class MemoryDataService
                 foreach ($affectedIds as $rowId) {
                     // Get updated row data
                     $row = $this->connection()->selectOne(
-                        "SELECT * FROM {$schemaName}.{$quotedTable} WHERE id = ?",
+                        "SELECT * FROM {$quotedSchema}.{$quotedTable} WHERE id = ?",
                         [$rowId]
                     );
 
@@ -351,13 +368,16 @@ class MemoryDataService
         }
 
         try {
+            // Quote schema name for SQL injection prevention
+            $quotedSchema = $this->quoteIdentifier($schemaName);
+
             // Use privileged connection for transaction to ensure embedding deletes
             // (which also use 'pgsql') are within the same transactional scope.
             // This is safe because the method validates table exists in memory schema.
-            return DB::connection('pgsql')->transaction(function () use ($schemaName, $tableName, $quotedTable, $whereClause, $whereParams) {
+            return DB::connection('pgsql')->transaction(function () use ($schemaName, $tableName, $quotedSchema, $quotedTable, $whereClause, $whereParams) {
                 // Delete rows and get their IDs in one atomic operation using RETURNING
                 $deletedRows = DB::connection('pgsql')->select(
-                    "DELETE FROM {$schemaName}.{$quotedTable} WHERE {$whereClause} RETURNING id",
+                    "DELETE FROM {$quotedSchema}.{$quotedTable} WHERE {$whereClause} RETURNING id",
                     $whereParams
                 );
                 $ids = array_map(fn($r) => $r->id, $deletedRows);

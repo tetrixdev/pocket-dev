@@ -412,9 +412,9 @@ class BackupController extends Controller
      */
     protected function fixVolumePermissions(): void
     {
-        // Get the host user/group IDs from environment (containers run as this user, not www-data)
-        $userId = env('USER_ID');
-        $groupId = env('GROUP_ID');
+        // Get the host user/group IDs from config (containers run as this user, not www-data)
+        $userId = config('backup.user_id');
+        $groupId = config('backup.group_id');
 
         if ($userId === null || $groupId === null || $userId === '' || $groupId === '') {
             throw new \RuntimeException('USER_ID and GROUP_ID must be set in .env for volume permission fixes');
@@ -456,7 +456,7 @@ class BackupController extends Controller
      */
     protected function restartContainers(): void
     {
-        $hostProjectPath = env('HOST_PROJECT_PATH');
+        $hostProjectPath = config('backup.host_project_path');
 
         if (empty($hostProjectPath)) {
             Log::warning('HOST_PROJECT_PATH not set, skipping container restart');

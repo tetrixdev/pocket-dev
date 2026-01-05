@@ -38,8 +38,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
     public int $tries = 1;      // Don't retry failed streams
 
     // Note: Redis job reservation timeout is controlled by REDIS_QUEUE_RETRY_AFTER in .env
-    // (default 90s is too short). The job's $backoff property only affects retry delay
-    // after failure, NOT the reservation timeout. See .env.example for details.
+    // (default 90s is too short for long-running streams). See .env.example for details.
 
     public function __construct(
         public string $conversationUuid,

@@ -42,7 +42,9 @@ class MemoryDatabaseService
         }
 
         try {
-            DB::connection('pgsql')->transaction(function () use ($fullSchemaName, $schemaName) {
+            // Use a transaction that spans both PostgreSQL schema creation and model creation
+            // to ensure atomicity - if either fails, both are rolled back
+            $memoryDb = DB::connection('pgsql')->transaction(function () use ($fullSchemaName, $schemaName, $name, $description) {
                 // Create the PostgreSQL schema
                 DB::connection('pgsql')->statement("CREATE SCHEMA {$fullSchemaName}");
 
@@ -101,14 +103,15 @@ class MemoryDatabaseService
                     ALTER DEFAULT PRIVILEGES IN SCHEMA {$fullSchemaName}
                     GRANT SELECT ON TABLES TO memory_readonly
                 ");
-            });
 
-            // Create the MemoryDatabase record
-            $memoryDb = MemoryDatabase::create([
-                'name' => $name,
-                'schema_name' => $schemaName,
-                'description' => $description,
-            ]);
+                // Create the MemoryDatabase record INSIDE the transaction
+                // If this fails, the schema creation will also be rolled back
+                return MemoryDatabase::create([
+                    'name' => $name,
+                    'schema_name' => $schemaName,
+                    'description' => $description,
+                ]);
+            });
 
             Log::info('Memory database created', [
                 'id' => $memoryDb->id,

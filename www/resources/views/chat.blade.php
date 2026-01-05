@@ -1602,7 +1602,13 @@
                                 targetWorkspace = this.workspaces.find(w => w.id === conversationWorkspaceId);
                             }
 
-                            if (targetWorkspace) {
+                            if (!targetWorkspace) {
+                                console.error('Workspace not found for conversation', { conversationWorkspaceId });
+                                this.showError('Cannot load conversation: workspace not found');
+                                return;
+                            }
+
+                            try {
                                 // Switch to the workspace (but skip loading last conversation since we want this one)
                                 const switchResponse = await fetch(`/api/workspaces/active/${conversationWorkspaceId}`, {
                                     method: 'POST',
@@ -1620,7 +1626,14 @@
                                     // Reload conversations and agents for the new workspace
                                     await this.fetchConversations();
                                     await this.fetchAgents();
+
+                                    // Reload conversation with new workspace context to avoid stale data
+                                    return this.loadConversation(uuid, true);
                                 }
+                            } catch (err) {
+                                console.error('Failed to switch workspace:', err);
+                                this.showError('Failed to switch workspace');
+                                return;
                             }
                         }
 

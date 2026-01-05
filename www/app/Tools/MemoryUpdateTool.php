@@ -120,6 +120,7 @@ CLI;
 
 ```json
 {
+  "schema": "default",
   "table": "characters",
   "data": {
     "backstory": "After the Battle of Five Armies, Thorin sacrificed himself to save his companions. His legacy lives on through his nephew Fili who now rules Erebor."

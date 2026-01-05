@@ -169,18 +169,20 @@ class WorkspaceController extends Controller
                     ->with('error', 'A workspace with this directory already exists');
             }
 
+            // Track if directory change is needed (filesystem operation must happen AFTER commit)
+            $oldDirectory = $workspace->directory;
+            $needsDirectoryRename = $directory !== $oldDirectory;
+            $oldPath = $workspace->getWorkingDirectoryPath();
+            $newPath = '/workspace/' . $directory;
+
             DB::beginTransaction();
 
-            // Handle directory rename
-            if ($directory !== $workspace->directory) {
-                if (!$workspace->changeDirectory($directory)) {
-                    throw new \RuntimeException('Failed to rename workspace directory');
-                }
-            }
-
+            // Update workspace fields (including directory if changed)
+            // Note: Filesystem rename happens AFTER commit to avoid sync issues
             $workspace->update([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
+                'directory' => $directory,
             ]);
 
             // Sync memory databases
@@ -209,6 +211,23 @@ class WorkspaceController extends Controller
             }
 
             DB::commit();
+
+            // Perform filesystem rename AFTER transaction commits
+            // This ensures database is consistent even if filesystem op fails
+            if ($needsDirectoryRename && is_dir($oldPath) && $oldPath !== $newPath) {
+                if (!@rename($oldPath, $newPath)) {
+                    // Filesystem rename failed - revert the database change
+                    try {
+                        $workspace->update(['directory' => $oldDirectory]);
+                    } catch (\Exception $revertError) {
+                        Log::error("Failed to revert directory change after filesystem error", [
+                            'workspace_id' => $workspace->id,
+                            'error' => $revertError->getMessage(),
+                        ]);
+                    }
+                    throw new \RuntimeException('Failed to rename workspace directory on filesystem');
+                }
+            }
 
             return redirect()->route('config.workspaces')
                 ->with('success', 'Workspace saved successfully');

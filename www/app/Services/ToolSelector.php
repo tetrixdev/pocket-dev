@@ -306,6 +306,7 @@ class ToolSelector
     /**
      * Get available memory schemas for an agent.
      * If no agent, returns all schemas. If agent has workspace, filters by workspace then agent access.
+     * Respects the agent's inherit_workspace_schemas setting.
      */
     private function getAvailableSchemas(?Agent $agent): Collection
     {
@@ -314,11 +315,10 @@ class ToolSelector
             return MemoryDatabase::orderBy('name')->get();
         }
 
-        // Get schemas the agent has explicitly enabled
-        $agentSchemas = $agent->memoryDatabases()->orderBy('name')->get();
-
-        // If agent has no schemas selected, return empty (explicit opt-in required)
-        return $agentSchemas;
+        // Use getEnabledMemoryDatabases() which respects inherit_workspace_schemas:
+        // - If inheriting: returns all workspace-enabled schemas
+        // - Otherwise: returns only explicitly granted schemas that are workspace-enabled
+        return $agent->getEnabledMemoryDatabases()->sortBy('name')->values();
     }
 
     /**

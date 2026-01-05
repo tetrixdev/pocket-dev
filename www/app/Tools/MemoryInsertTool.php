@@ -89,6 +89,7 @@ CLI;
 
 ```json
 {
+  "schema": "default",
   "table": "characters",
   "data": {
     "name": "Gandalf the Grey",

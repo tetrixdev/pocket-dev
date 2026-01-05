@@ -57,8 +57,9 @@ class MemorySchemaService
         $conn = DB::connection('pgsql_memory_ai');
         $schemaName = $this->getSchemaName();
 
-        // Set search_path for this connection
-        $conn->statement("SET search_path = {$schemaName}, public");
+        // Set search_path for this connection (properly quoted to prevent SQL injection)
+        $quotedSchema = $this->quoteIdentifier($schemaName);
+        $conn->statement("SET search_path = {$quotedSchema}, public");
 
         return $conn;
     }
@@ -71,10 +72,23 @@ class MemorySchemaService
         $conn = DB::connection('pgsql_readonly');
         $schemaName = $this->getSchemaName();
 
-        // Set search_path for this connection
-        $conn->statement("SET search_path = {$schemaName}, public");
+        // Set search_path for this connection (properly quoted to prevent SQL injection)
+        $quotedSchema = $this->quoteIdentifier($schemaName);
+        $conn->statement("SET search_path = {$quotedSchema}, public");
 
         return $conn;
+    }
+
+    /**
+     * Quote a PostgreSQL identifier (schema, table, column name) to prevent SQL injection.
+     * Wraps in double quotes and escapes internal double quotes by doubling them.
+     *
+     * @param string $identifier The identifier to quote
+     * @return string The properly quoted identifier
+     */
+    protected function quoteIdentifier(string $identifier): string
+    {
+        return '"' . str_replace('"', '""', $identifier) . '"';
     }
 
     /**
@@ -147,7 +161,9 @@ class MemorySchemaService
                 // Grant SELECT to memory_readonly for query access
                 // This is needed because ALTER DEFAULT PRIVILEGES only applies to tables
                 // created by the role that ran the ALTER, not tables created by other roles
-                $this->connection()->statement("GRANT SELECT ON {$schemaName}.{$tableName} TO memory_readonly");
+                $quotedSchemaForGrant = $this->quoteIdentifier($schemaName);
+                $quotedTableForGrant = $this->quoteIdentifier($tableName);
+                $this->connection()->statement("GRANT SELECT ON {$quotedSchemaForGrant}.{$quotedTableForGrant} TO memory_readonly");
             });
 
             Log::info('Memory table created', [
@@ -262,9 +278,11 @@ class MemorySchemaService
             // Get columns with their types and descriptions
             $columns = $this->getTableColumns($tableName);
 
-            // Get row count
+            // Get row count (with properly quoted identifiers to prevent SQL injection)
+            $quotedSchema = $this->quoteIdentifier($schemaName);
+            $quotedTable = $this->quoteIdentifier($tableName);
             $countResult = DB::connection('pgsql_readonly')
-                ->select("SELECT COUNT(*) as count FROM {$schemaName}.{$tableName}");
+                ->select("SELECT COUNT(*) as count FROM {$quotedSchema}.{$quotedTable}");
             $rowCount = $countResult[0]->count ?? 0;
 
             $tables[] = [

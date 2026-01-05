@@ -92,6 +92,7 @@ CLI;
 
 ```json
 {
+  "schema": "default",
   "sql": "CREATE INDEX idx_characters_name ON memory.characters(name)"
 }
 ```

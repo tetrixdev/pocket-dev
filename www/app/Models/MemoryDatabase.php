@@ -84,7 +84,12 @@ class MemoryDatabase extends Model
             return false;
         }
 
-        // Then check if agent has explicit access
+        // If agent inherits workspace schemas, grant access to all workspace-enabled schemas
+        if ($agent->inheritsWorkspaceSchemas()) {
+            return true;
+        }
+
+        // Otherwise check if agent has explicit access
         return $this->agents()
             ->where('agents.id', $agent->id)
             ->exists();
