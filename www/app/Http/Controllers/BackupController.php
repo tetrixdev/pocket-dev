@@ -137,17 +137,17 @@ class BackupController extends Controller
      */
     public function delete(Request $request, string $filename)
     {
+        // Security: validate filename BEFORE checking existence (prevent file existence inference)
+        if (!str_ends_with($filename, '.tar.gz') || str_contains($filename, '..')) {
+            return redirect()->route('config.backup')
+                ->with('error', 'Invalid backup filename');
+        }
+
         $path = storage_path("app/{$this->backupDir}/{$filename}");
 
         if (!file_exists($path)) {
             return redirect()->route('config.backup')
                 ->with('error', 'Backup file not found');
-        }
-
-        // Security: only allow .tar.gz files in our backup directory
-        if (!str_ends_with($filename, '.tar.gz') || str_contains($filename, '..')) {
-            return redirect()->route('config.backup')
-                ->with('error', 'Invalid backup filename');
         }
 
         unlink($path);
