@@ -206,7 +206,7 @@
                                     method="POST"
                                     action="{{ route('config.environment.packages.destroy', $package->id) }}"
                                     class="inline"
-                                    onsubmit="return confirm('Remove {{ $package->name }} from the packages list?')"
+                                    onsubmit="return confirm('Remove ' + @js($package->name) + ' from the packages list?')"
                                 >
                                     @csrf
                                     @method('DELETE')
@@ -303,7 +303,7 @@
 
     {{-- Edit Credential Modal --}}
     <x-modal show="showEditCredentialModal" title="Edit Credential" max-width="lg">
-        <form method="POST" x-bind:action="'/config/environment/credentials/' + (editingCredential?.id || '')">
+        <form method="POST" x-bind:action="'{{ route('config.environment.credentials.update', ':id') }}'.replace(':id', editingCredential?.id || '')">
             @csrf
             @method('PUT')
             <div class="space-y-4">
