@@ -88,6 +88,13 @@ Route::delete("/config/credentials/api-keys/{provider}", [CredentialsController:
 Route::post("/config/credentials/git", [CredentialsController::class, "saveGitCredentials"])->name("config.credentials.git");
 Route::delete("/config/credentials/git", [CredentialsController::class, "deleteGitCredentials"])->name("config.credentials.git.delete");
 
+// Environment: Custom credentials and system packages
+Route::get("/config/environment", [\App\Http\Controllers\EnvironmentController::class, "index"])->name("config.environment");
+Route::post("/config/environment/credentials", [\App\Http\Controllers\EnvironmentController::class, "storeCredential"])->name("config.environment.credentials.store");
+Route::put("/config/environment/credentials/{credential}", [\App\Http\Controllers\EnvironmentController::class, "updateCredential"])->name("config.environment.credentials.update");
+Route::delete("/config/environment/credentials/{credential}", [\App\Http\Controllers\EnvironmentController::class, "destroyCredential"])->name("config.environment.credentials.destroy");
+Route::delete("/config/environment/packages/{id}", [\App\Http\Controllers\EnvironmentController::class, "destroyPackage"])->name("config.environment.packages.destroy");
+
 // Tools management
 Route::get("/config/tools", [ConfigController::class, "listTools"])->name("config.tools");
 Route::get("/config/tools/create", [ConfigController::class, "createToolForm"])->name("config.tools.create");
@@ -135,4 +142,5 @@ Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::c
 if (app()->environment('local')) {
     Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");
     Route::post("/config/developer/force-recreate", [ConfigController::class, "forceRecreate"])->name("config.developer.force-recreate");
+    Route::post("/config/developer/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.developer.rebuild");
 }

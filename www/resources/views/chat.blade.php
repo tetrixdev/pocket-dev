@@ -1303,12 +1303,16 @@
 
                 async fetchConversations() {
                     try {
-                        let url = '/api/conversations?working_directory=/var/www';
+                        let url = '/api/conversations';
+                        const params = [];
                         if (this.currentWorkspaceId) {
-                            url += '&workspace_id=' + this.currentWorkspaceId;
+                            params.push('workspace_id=' + this.currentWorkspaceId);
                         }
                         if (this.showArchivedConversations) {
-                            url += '&include_archived=true';
+                            params.push('include_archived=true');
+                        }
+                        if (params.length > 0) {
+                            url += '?' + params.join('&');
                         }
                         const response = await fetch(url);
                         const data = await response.json();
@@ -1369,12 +1373,16 @@
                 // Refresh sidebar without losing scroll position or current selection
                 async refreshSidebar() {
                     try {
-                        let url = '/api/conversations?working_directory=/var/www';
+                        let url = '/api/conversations';
+                        const params = [];
                         if (this.currentWorkspaceId) {
-                            url += '&workspace_id=' + this.currentWorkspaceId;
+                            params.push('workspace_id=' + this.currentWorkspaceId);
                         }
                         if (this.showArchivedConversations) {
-                            url += '&include_archived=true';
+                            params.push('include_archived=true');
+                        }
+                        if (params.length > 0) {
+                            url += '?' + params.join('&');
                         }
                         const response = await fetch(url);
                         const data = await response.json();
@@ -1403,13 +1411,14 @@
                     this.loadingMoreConversations = true;
                     try {
                         const nextPage = this.conversationsPage + 1;
-                        let url = `/api/conversations?working_directory=/var/www&page=${nextPage}`;
+                        const params = [`page=${nextPage}`];
                         if (this.currentWorkspaceId) {
-                            url += '&workspace_id=' + this.currentWorkspaceId;
+                            params.push('workspace_id=' + this.currentWorkspaceId);
                         }
                         if (this.showArchivedConversations) {
-                            url += '&include_archived=true';
+                            params.push('include_archived=true');
                         }
+                        const url = '/api/conversations?' + params.join('&');
                         const response = await fetch(url);
                         const data = await response.json();
                         if (data.data && data.data.length > 0) {
@@ -2222,7 +2231,7 @@
 
                         try {
                             const createBody = {
-                                working_directory: '/var/www',
+                                working_directory: this.currentWorkspace?.working_directory_path || '/workspace',
                                 workspace_id: this.currentWorkspaceId,
                                 agent_id: this.currentAgentId,
                                 title: userPrompt.substring(0, 50),

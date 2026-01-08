@@ -224,11 +224,19 @@
                     </a>
                 </div>
 
-                <!-- Credentials -->
+                <!-- Providers (AI API Keys) -->
                 <div class="border-b border-gray-700">
                     <a href="{{ route('config.credentials') }}"
                        class="category-button w-full block {{ Route::currentRouteName() == 'config.credentials' ? 'active' : '' }}">
-                        🔑 Credentials
+                        🔑 Providers
+                    </a>
+                </div>
+
+                <!-- Environment -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.environment') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.environment' ? 'active' : '' }}">
+                        🌐 Environment
                     </a>
                 </div>
 
@@ -476,12 +484,21 @@
                 </a>
             </div>
 
-            <!-- Credentials -->
+            <!-- Providers (AI API Keys) -->
             <div class="border-b border-gray-700">
                 <a href="{{ route('config.credentials') }}"
                    @click="showMobileDrawer = false"
                    class="category-button w-full block {{ Route::currentRouteName() == 'config.credentials' ? 'active' : '' }}">
-                    🔑 Credentials
+                    🔑 Providers
+                </a>
+            </div>
+
+            <!-- Environment -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.environment') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.environment' ? 'active' : '' }}">
+                    🌐 Environment
                 </a>
             </div>
 

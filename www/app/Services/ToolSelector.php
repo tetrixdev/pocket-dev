@@ -138,12 +138,15 @@ class ToolSelector
     }
 
     /**
-     * Get memory tools.
+     * Get all memory tools (schema + data operations).
      */
     public function getMemoryTools(): Collection
     {
         return $this->getAllTools()
-            ->filter(fn(Tool $tool) => $tool->category === PocketTool::CATEGORY_MEMORY)
+            ->filter(fn(Tool $tool) => in_array($tool->category, [
+                PocketTool::CATEGORY_MEMORY_SCHEMA,
+                PocketTool::CATEGORY_MEMORY_DATA,
+            ]))
             ->sortBy('name')
             ->values();
     }
@@ -224,50 +227,107 @@ class ToolSelector
             $sections[] = $schemasSection;
         }
 
-        if ($isCliProvider) {
-            $systemTools = $tools->filter(fn(Tool $tool) => !($tool instanceof UserTool));
-            $customTools = $tools->filter(fn(Tool $tool) => $tool instanceof UserTool);
+        // Build sections using tool groups from config
+        $groups = collect(config('tool-groups', []))->sortBy('sort_order');
+        $allGroupedCategories = $groups->flatMap(fn($g) => $g['categories'] ?? [])->all();
 
-            if ($systemTools->isNotEmpty()) {
-                $sections[] = "## System Tools\n";
-                $sections[] = "Built-in PocketDev tools.\n";
+        foreach ($groups as $groupSlug => $group) {
+            $groupCategories = $group['categories'] ?? [];
+            $groupTools = $tools->filter(fn(Tool $t) => in_array($t->category, $groupCategories));
 
-                foreach ($systemTools as $tool) {
-                    $artisanCommand = $tool->getArtisanCommand();
-                    $sections[] = "### {$artisanCommand}\n";
-                    $sections[] = $this->getToolInstructions($tool, true);
-                    $sections[] = $this->formatToolParameters($tool);
+            if ($groupTools->isNotEmpty()) {
+                // Output group intro if defined
+                if ($group['system_prompt_active'] ?? null) {
+                    $sections[] = $group['system_prompt_active'];
                     $sections[] = "";
                 }
+
+                // Output tools organized by category within the group
+                $sections[] = $this->buildGroupToolsSection($groupTools, $group, $isCliProvider);
+            } elseif ($group['system_prompt_inactive'] ?? null) {
+                // Group has no enabled tools - show inactive message
+                $sections[] = $group['system_prompt_inactive'];
+                $sections[] = "";
+            }
+        }
+
+        // Handle ungrouped tools (custom category or categories not in any group)
+        $ungroupedTools = $tools->filter(fn(Tool $t) => !in_array($t->category, $allGroupedCategories));
+
+        if ($ungroupedTools->isNotEmpty()) {
+            $systemUngrouped = $ungroupedTools->filter(fn(Tool $t) => !($t instanceof UserTool));
+            $customUngrouped = $ungroupedTools->filter(fn(Tool $t) => $t instanceof UserTool);
+
+            if ($systemUngrouped->isNotEmpty()) {
+                $sections[] = "## Other\n";
+                $sections[] = $this->buildToolsList($systemUngrouped, $isCliProvider);
             }
 
-            if ($customTools->isNotEmpty()) {
+            if ($customUngrouped->isNotEmpty()) {
                 $sections[] = "## Custom Tools\n";
                 $sections[] = "User-created tools invoked via `tool:run`.\n";
-
-                foreach ($customTools as $tool) {
-                    $artisanCommand = $tool->getArtisanCommand();
-                    $sections[] = "### {$artisanCommand}\n";
-                    $sections[] = $this->getToolInstructions($tool, true);
-                    $sections[] = $this->formatToolParameters($tool);
-                    $sections[] = "";
-                }
+                $sections[] = $this->buildToolsList($customUngrouped, $isCliProvider);
             }
-        } else {
-            // Group by category for API providers
-            $grouped = $tools->groupBy('category');
+        }
 
-            foreach ($grouped as $category => $categoryTools) {
-                $categoryTitle = $this->formatCategoryTitle($category);
-                $sections[] = "## {$categoryTitle}\n";
+        return implode("\n", $sections);
+    }
 
-                foreach ($categoryTools as $tool) {
-                    $sections[] = "### {$tool->name}\n";
-                    $sections[] = $this->getToolInstructions($tool, false);
-                    $sections[] = $this->formatToolParameters($tool);
-                    $sections[] = "";
+    /**
+     * Build the tools section for a group, organized by category.
+     */
+    private function buildGroupToolsSection(Collection $tools, array $group, bool $isCliProvider): string
+    {
+        $sections = [];
+        $categoryLabels = $group['category_labels'] ?? [];
+
+        // Split into system and custom tools
+        $systemTools = $tools->filter(fn(Tool $t) => !($t instanceof UserTool));
+        $customTools = $tools->filter(fn(Tool $t) => $t instanceof UserTool);
+
+        // System tools grouped by category
+        if ($systemTools->isNotEmpty()) {
+            $sections[] = "### System Tools\n";
+
+            foreach ($group['categories'] as $category) {
+                $categoryTools = $systemTools->filter(fn(Tool $t) => $t->category === $category);
+                if ($categoryTools->isEmpty()) {
+                    continue;
                 }
+
+                // Use custom label if defined, otherwise format the category name
+                $categoryLabel = $categoryLabels[$category] ?? $this->formatCategoryTitle($category);
+                $sections[] = "**{$categoryLabel}**\n";
+                $sections[] = $this->buildToolsList($categoryTools, $isCliProvider);
             }
+        }
+
+        // Custom tools in this group's categories
+        if ($customTools->isNotEmpty()) {
+            $sections[] = "### Custom Tools\n";
+            $sections[] = $this->buildToolsList($customTools, $isCliProvider);
+        }
+
+        return implode("\n", $sections);
+    }
+
+    /**
+     * Build a list of tool documentation.
+     */
+    private function buildToolsList(Collection $tools, bool $isCliProvider): string
+    {
+        $sections = [];
+
+        foreach ($tools as $tool) {
+            if ($isCliProvider) {
+                $artisanCommand = $tool->getArtisanCommand();
+                $sections[] = "#### {$artisanCommand}\n";
+            } else {
+                $sections[] = "#### {$tool->name}\n";
+            }
+            $sections[] = $this->getToolInstructions($tool, $isCliProvider);
+            $sections[] = $this->formatToolParameters($tool);
+            $sections[] = "";
         }
 
         return implode("\n", $sections);
@@ -319,50 +379,6 @@ class ToolSelector
         // - If inheriting: returns all workspace-enabled schemas
         // - Otherwise: returns only explicitly granted schemas that are workspace-enabled
         return $agent->getEnabledMemoryDatabases()->sortBy('name')->values();
-    }
-
-    /**
-     * Get category-level instructions (shared guidance for a category).
-     */
-    private function getCategoryInstructions(string $category): ?string
-    {
-        return match ($category) {
-            PocketTool::CATEGORY_MEMORY_SCHEMA => $this->getMemorySchemaInstructions(),
-            default => null,
-        };
-    }
-
-    /**
-     * Get shared instructions for memory_schema category tools.
-     */
-    private function getMemorySchemaInstructions(): string
-    {
-        return <<<'MD'
-### Schema Change Guidelines
-
-**ALTER TABLE is supported** for non-protected tables (add/drop/rename columns, rename tables).
-
-For table renames, also update related metadata:
-1. Rename table: `ALTER TABLE memory.old_name RENAME TO new_name`
-2. Update embeddings: `UPDATE memory.embeddings SET source_table = 'new_name' WHERE source_table = 'old_name'`
-3. Update registry: `memory:update --table=schema_registry --data='{"table_name":"new_name"}' --where="table_name = 'old_name'"`
-
-**Protected tables** (embeddings, schema_registry) cannot be altered.
-
-### Extensions Available
-
-**PostGIS (Spatial):**
-```sql
-coordinates GEOGRAPHY(Point, 4326)
-ST_DWithin(coordinates, ST_MakePoint(-122.4, 37.8)::geography, 50000)
-```
-
-**pg_trgm (Fuzzy Text):**
-```sql
-CREATE INDEX idx_name_trgm ON memory.table USING GIN (name gin_trgm_ops);
-WHERE name % 'Gandolf'  -- Finds "Gandalf"
-```
-MD;
     }
 
     /**

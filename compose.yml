@@ -32,14 +32,14 @@ services:
     container_name: pocket-dev-php
     restart: unless-stopped
     working_dir: /var/www
-    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
-    group_add:
-      - "1000"
-      - "${DOCKER_GID:-1001}"
+    # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
+    # This allows privileged operations (package install, permission fixes) before dropping privileges
     environment:
       - HOME=/home/appuser
       - COMPOSER_HOME=/tmp/.composer
       - NPM_CONFIG_CACHE=/tmp/.npm
+      - TARGET_UID=${USER_ID:-1000}
+      - TARGET_GID=${GROUP_ID:-1000}
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
@@ -142,7 +142,7 @@ services:
     container_name: pocket-dev-queue
     restart: unless-stopped
     working_dir: /var/www
-    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
     group_add:
       - "1000"
       - "${DOCKER_GID:-1001}"
@@ -150,6 +150,8 @@ services:
     # Command removed - supervisord in entrypoint manages multiple workers
     environment:
       - HOME=/home/appuser
+      - TARGET_UID=${USER_ID:-1000}
+      - TARGET_GID=${GROUP_ID:-1000}
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
@@ -162,6 +164,7 @@ services:
       - .env:/var/www/.env
       - /var/run/docker.sock:/var/run/docker.sock
       - user-data:/home/appuser
+      - workspace-data:/workspace
       - .:/pocketdev-source
       - pocketdev-storage:/var/www/storage/pocketdev
       - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro

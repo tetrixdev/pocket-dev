@@ -4,6 +4,9 @@ namespace App\Services;
 
 use App\Enums\Provider;
 use App\Models\Conversation;
+use App\Models\Credential;
+use App\Models\SystemPackage;
+use App\Models\Workspace;
 
 /**
  * Builds the system prompt for AI providers.
@@ -55,7 +58,13 @@ class SystemPromptBuilder
         // 5: Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 6: Context usage (dynamic)
+        // 6: Environment (credentials and packages)
+        $workspace = $agent?->workspace;
+        if ($envSection = $this->buildEnvironmentSection($workspace)) {
+            $sections[] = $envSection;
+        }
+
+        // 7: Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -100,7 +109,12 @@ class SystemPromptBuilder
         // 5: Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 6: Context usage (dynamic)
+        // 6: Environment (credentials and packages)
+        if ($envSection = $this->buildEnvironmentSection($workspace)) {
+            $sections[] = $envSection;
+        }
+
+        // 7: Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -150,5 +164,53 @@ PROMPT;
         $formatted = number_format($percentage, 0);
 
         return "Context window usage: {$formatted}% (estimate includes thinking tokens from current turn)";
+    }
+
+    /**
+     * Build environment section showing available credentials and packages.
+     * This helps AI know what's available without exposing actual values.
+     * Filters by workspace if provided.
+     */
+    private function buildEnvironmentSection(?Workspace $workspace): ?string
+    {
+        $lines = [];
+        $workspaceId = $workspace?->id;
+
+        // Get credential env var names for this workspace (not values!)
+        // Global + workspace-specific, with workspace ones overriding global
+        $credentials = Credential::getForWorkspace($workspaceId);
+
+        // Get unique env_var names (workspace-specific takes precedence)
+        $envVarNames = [];
+        $globalEnvVars = [];
+        $workspaceEnvVars = [];
+
+        foreach ($credentials as $cred) {
+            if ($cred->workspace_id === null) {
+                $globalEnvVars[$cred->env_var] = true;
+            } else {
+                $workspaceEnvVars[$cred->env_var] = true;
+            }
+        }
+
+        // Merge: workspace overrides global
+        $envVarNames = array_keys(array_merge($globalEnvVars, $workspaceEnvVars));
+
+        if (!empty($envVarNames)) {
+            $lines[] = '**Credentials:** ' . implode(', ', $envVarNames);
+        }
+
+        // Get packages for this workspace
+        // Now uses Workspace object instead of workspace_id for selected_packages filtering
+        $packages = SystemPackage::getNamesForWorkspace($workspace);
+        if (!empty($packages)) {
+            $lines[] = '**Packages:** ' . implode(', ', $packages);
+        }
+
+        if (empty($lines)) {
+            return null;
+        }
+
+        return "# Environment\n\n" . implode("\n", $lines);
     }
 }

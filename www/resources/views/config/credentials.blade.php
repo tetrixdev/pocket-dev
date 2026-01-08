@@ -1,6 +1,6 @@
 @extends('layouts.config')
 
-@section('title', 'Credentials')
+@section('title', 'Providers')
 
 @section('content')
 <div class="space-y-8">

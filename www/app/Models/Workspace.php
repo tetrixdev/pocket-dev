@@ -23,10 +23,12 @@ class Workspace extends Model
         'description',
         'owner_id',
         'settings',
+        'selected_packages',
     ];
 
     protected $casts = [
         'settings' => 'array',
+        'selected_packages' => 'array',
     ];
 
     protected static function boot(): void

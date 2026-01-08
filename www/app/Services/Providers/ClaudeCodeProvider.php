@@ -524,7 +524,7 @@ class ClaudeCodeProvider implements AIProviderInterface
             return false;
         }
 
-        $workingDir = $conversation->working_directory ?? '/var/www';
+        $workingDir = $conversation->working_directory ?? '/workspace';
         $sessionFile = $this->getSessionFilePath($workingDir, $sessionId);
 
         if (!$sessionFile) {
