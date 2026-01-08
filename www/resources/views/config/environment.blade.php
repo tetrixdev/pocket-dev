@@ -57,10 +57,10 @@
                         <div class="flex items-center gap-3 pt-2 border-t border-gray-700">
                             <button
                                 @click="openEditModal({
-                                    id: '{{ $credential->id }}',
-                                    env_var: '{{ $credential->env_var }}',
+                                    id: @js($credential->id),
+                                    env_var: @js($credential->env_var),
                                     description: @js($credential->description ?? ''),
-                                    workspace_id: '{{ $credential->workspace_id ?? '' }}'
+                                    workspace_id: @js($credential->workspace_id ?? '')
                                 })"
                                 class="text-blue-400 hover:text-blue-300 text-sm"
                             >
@@ -70,7 +70,7 @@
                                 method="POST"
                                 action="{{ route('config.environment.credentials.destroy', $credential) }}"
                                 class="inline"
-                                onsubmit="return confirm('Delete credential {{ $credential->env_var }}?')"
+                                onsubmit="return confirm('Delete credential ' + @js($credential->env_var) + '?')"
                             >
                                 @csrf
                                 @method('DELETE')
@@ -121,10 +121,10 @@
                                     <div class="flex items-center justify-end gap-2">
                                         <button
                                             @click="openEditModal({
-                                                id: '{{ $credential->id }}',
-                                                env_var: '{{ $credential->env_var }}',
+                                                id: @js($credential->id),
+                                                env_var: @js($credential->env_var),
                                                 description: @js($credential->description ?? ''),
-                                                workspace_id: '{{ $credential->workspace_id ?? '' }}'
+                                                workspace_id: @js($credential->workspace_id ?? '')
                                             })"
                                             class="text-blue-400 hover:text-blue-300 text-sm"
                                         >
@@ -134,7 +134,7 @@
                                             method="POST"
                                             action="{{ route('config.environment.credentials.destroy', $credential) }}"
                                             class="inline"
-                                            onsubmit="return confirm('Delete credential {{ $credential->env_var }}?')"
+                                            onsubmit="return confirm('Delete credential ' + @js($credential->env_var) + '?')"
                                         >
                                             @csrf
                                             @method('DELETE')
