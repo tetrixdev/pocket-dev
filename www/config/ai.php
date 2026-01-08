@@ -390,6 +390,7 @@ return [
         // Paths outside these directories will be rejected
         'allowed_paths' => [
             '/var/www',
+            '/workspace',
             '/home',
             '/pocketdev-source',
             '/tmp',

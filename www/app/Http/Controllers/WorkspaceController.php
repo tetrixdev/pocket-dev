@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Credential;
 use App\Models\MemoryDatabase;
+use App\Models\SystemPackage;
 use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,10 +50,13 @@ class WorkspaceController extends Controller
         $request->session()->put('config_last_section', 'workspaces');
 
         $memoryDatabases = MemoryDatabase::orderBy('name')->get();
+        $allPackages = SystemPackage::orderBy('name')->pluck('name')->toArray();
 
         return view('config.workspaces.form', [
             'memoryDatabases' => $memoryDatabases,
             'disabledToolSlugs' => [], // New workspace has all tools enabled
+            'allPackages' => $allPackages,
+            'selectedPackages' => [], // New workspace has no packages selected (shows all by default)
         ]);
     }
 
@@ -70,6 +75,8 @@ class WorkspaceController extends Controller
                 'default_memory_database' => 'nullable|uuid|exists:memory_databases,id',
                 'disabled_tools' => 'nullable|array',
                 'disabled_tools.*' => 'string|max:100',
+                'selected_packages' => 'nullable|array',
+                'selected_packages.*' => 'string|max:255',
             ]);
 
             // Check for duplicate directory
@@ -82,10 +89,18 @@ class WorkspaceController extends Controller
 
             DB::beginTransaction();
 
+            // Filter selected_packages to only include existing packages
+            $selectedPackages = $validated['selected_packages'] ?? [];
+            if (!empty($selectedPackages)) {
+                $existingPackages = SystemPackage::pluck('name')->toArray();
+                $selectedPackages = array_values(array_intersect($selectedPackages, $existingPackages));
+            }
+
             $workspace = Workspace::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'directory' => $directory,
+                'selected_packages' => !empty($selectedPackages) ? $selectedPackages : null,
             ]);
 
             // Attach memory databases
@@ -135,12 +150,22 @@ class WorkspaceController extends Controller
         $defaultDb = $workspace->defaultMemoryDatabase();
         $disabledToolSlugs = $workspace->getDisabledToolSlugs();
 
+        // Get all packages and workspace's selected packages
+        $allPackages = SystemPackage::orderBy('name')->pluck('name')->toArray();
+        $selectedPackages = $workspace->selected_packages ?? [];
+
+        // Get credentials for this workspace (global + workspace-specific)
+        $workspaceCredentials = Credential::getForWorkspace($workspace->id);
+
         return view('config.workspaces.form', [
             'workspace' => $workspace,
             'memoryDatabases' => $memoryDatabases,
             'enabledDbIds' => $enabledDbIds,
             'defaultDbId' => $defaultDb?->id,
             'disabledToolSlugs' => $disabledToolSlugs,
+            'allPackages' => $allPackages,
+            'selectedPackages' => $selectedPackages,
+            'workspaceCredentials' => $workspaceCredentials,
         ]);
     }
 
@@ -159,6 +184,8 @@ class WorkspaceController extends Controller
                 'default_memory_database' => 'nullable|uuid|exists:memory_databases,id',
                 'disabled_tools' => 'nullable|array',
                 'disabled_tools.*' => 'string|max:100',
+                'selected_packages' => 'nullable|array',
+                'selected_packages.*' => 'string|max:255',
             ]);
 
             // Check for duplicate directory (excluding current workspace)
@@ -177,12 +204,20 @@ class WorkspaceController extends Controller
 
             DB::beginTransaction();
 
+            // Filter selected_packages to only include existing packages
+            $selectedPackages = $validated['selected_packages'] ?? [];
+            if (!empty($selectedPackages)) {
+                $existingPackages = SystemPackage::pluck('name')->toArray();
+                $selectedPackages = array_values(array_intersect($selectedPackages, $existingPackages));
+            }
+
             // Update workspace fields (including directory if changed)
             // Note: Filesystem rename happens AFTER commit to avoid sync issues
             $workspace->update([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
                 'directory' => $directory,
+                'selected_packages' => !empty($selectedPackages) ? $selectedPackages : null,
             ]);
 
             // Sync memory databases

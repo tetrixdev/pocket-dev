@@ -46,7 +46,7 @@ docker compose up -d --force-recreate
 ### Docker Self-Management (for AI/Dogfooding)
 The queue container has full dogfooding capabilities:
 - **`/pocketdev-source`** - Full PocketDev project (read/write) for editing code, git operations
-- **Docker socket** - Can run docker commands and restart containers
+- **Docker socket** - Can run docker commands (read-only operations like `docker ps`, `docker logs`)
 - **Git/GitHub CLI** - Configured with credentials from environment
 
 ```bash
@@ -55,19 +55,12 @@ cd /pocketdev-source
 git status
 git diff
 
-# Safe self-restart (spawns helper container that survives the restart)
-docker run --rm -d \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$HOST_PROJECT_PATH:$HOST_PROJECT_PATH" \
-    -w "$HOST_PROJECT_PATH" \
-    docker:27-cli \
-    docker compose restart pocket-dev-queue
-
-# Restart other containers directly
-docker restart pocket-dev-php
-docker restart pocket-dev-nginx
+# View container status and logs (safe, read-only)
+docker ps --filter "name=pocket-dev"
 docker logs pocket-dev-php --tail 50
 ```
+
+**⚠️ Container restarts**: See "Critical Pitfalls" #4 - the AI must NEVER restart containers. If code changes require a restart, ask the user to do it via the Developer tab or CLI.
 
 ## Critical Pitfalls
 
@@ -76,6 +69,8 @@ docker logs pocket-dev-php --tail 50
 2. **Route order matters**: Specific routes (like `/claude/auth`) must come BEFORE wildcard routes (`/claude/{sessionId?}`).
 
 3. **Claude CLI flags**: Use `--print --output-format json`, NOT `--json`.
+
+4. **NEVER restart containers directly**: The AI must NEVER restart any PocketDev containers (`docker restart`, `docker compose restart`, etc.). Restarting the queue container mid-conversation causes the conversation to enter a limbo state. If a container restart is needed (e.g., to pick up code changes), **ask the user** to restart it via the Developer tab or manually. The user should always be in control of container lifecycle.
 
 ## PHP Style Preferences
 

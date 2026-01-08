@@ -138,7 +138,7 @@
                 <span x-text="totalTokens.toLocaleString() + ' tokens'">0 tokens</span>
             </div>
         </div>
-        <div>Working Dir: /var/www</div>
+        <div>Working Dir: <span x-text="currentWorkspace?.working_directory_path || '/workspace'"></span></div>
         <div class="flex flex-wrap gap-2 mt-2">
             <a href="{{ route('config.index') }}" class="text-blue-400 hover:text-blue-300">Settings</a>
             <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300 cursor-pointer">Shortcuts</button>

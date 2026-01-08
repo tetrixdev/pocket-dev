@@ -16,7 +16,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     locales \
     supervisor \
-    && rm -rf /var/lib/apt/lists/*
+    gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && gosu nobody true
 
 # Install PostgreSQL 17 client (for pg_dump/pg_restore with PG17 server)
 RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg \

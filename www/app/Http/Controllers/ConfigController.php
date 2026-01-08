@@ -1791,4 +1791,44 @@ class ConfigController extends Controller
             return redirect()->back()->with('error', 'Failed to force recreate: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Rebuild all Docker containers (down + build + up)
+     * Use this when Dockerfiles or entrypoint scripts have changed.
+     */
+    public function rebuildContainers(Request $request)
+    {
+        try {
+            $hostProjectPath = env('HOST_PROJECT_PATH');
+
+            if (empty($hostProjectPath)) {
+                throw new \RuntimeException('HOST_PROJECT_PATH environment variable is not set');
+            }
+
+            // Spawn a helper container that survives container restarts
+            // Uses sh -c to chain commands: down (without -v to preserve data) then up with build
+            $command = sprintf(
+                'docker run --rm -d ' .
+                '-v /var/run/docker.sock:/var/run/docker.sock ' .
+                '-v "%s:%s" ' .
+                '-w "%s" ' .
+                'docker:27-cli ' .
+                'sh -c "docker compose down && docker compose up -d --build" 2>&1',
+                $hostProjectPath,
+                $hostProjectPath,
+                $hostProjectPath
+            );
+
+            exec($command, $output, $returnCode);
+
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
+            }
+
+            return redirect()->back()->with('success', 'Rebuild initiated. Containers will be rebuilt and restarted shortly (this takes longer than a normal restart).');
+        } catch (\Exception $e) {
+            Log::error('Failed to rebuild containers', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to rebuild: ' . $e->getMessage());
+        }
+    }
 }

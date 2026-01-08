@@ -302,9 +302,10 @@ class AgentController extends Controller
         }
 
         // 5. Working directory context (example)
+        $workingDir = $workspace ? $workspace->getWorkingDirectoryPath() : '/workspace';
         $sections[] = [
             'title' => 'Working Directory Context',
-            'content' => "# Working Directory\n\nCurrent project: /var/www\n\nAll file operations should be relative to or within this directory.",
+            'content' => "# Working Directory\n\nCurrent project: {$workingDir}\n\nAll file operations should be relative to or within this directory.",
             'source' => 'Dynamic (set per conversation)',
             'collapsible' => true,
         ];

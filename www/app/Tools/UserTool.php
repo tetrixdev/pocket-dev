@@ -2,6 +2,7 @@
 
 namespace App\Tools;
 
+use App\Models\Credential;
 use App\Models\PocketTool;
 use Illuminate\Support\Facades\Process;
 
@@ -114,8 +115,15 @@ class UserTool extends Tool
             file_put_contents($tempFile, $this->pocketTool->script);
             chmod($tempFile, 0755);
 
+            // Get credentials and merge with tool arguments (tool args take precedence)
+            // Workspace-specific credentials override global ones
+            $workspace = $context->getWorkspace();
+            $workspaceId = $workspace?->id;
+            $credentials = Credential::getEnvArrayForWorkspace($workspaceId);
+            $allEnvVars = array_merge($credentials, $envVars);
+
             // Execute the script with environment variables
-            $result = Process::timeout(300)->env($envVars)->path($context->workingDirectory)->run($tempFile);
+            $result = Process::timeout(300)->env($allEnvVars)->path($context->workingDirectory)->run($tempFile);
 
             $output = $result->output();
             $errorOutput = $result->errorOutput();

@@ -5,6 +5,7 @@ use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\CodexAuthController;
 use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\CredentialsController;
+use App\Http\Controllers\EnvironmentController;
 use App\Http\Controllers\MemoryController;
 use App\Http\Controllers\SystemPromptController;
 use Illuminate\Support\Facades\Route;
@@ -88,6 +89,13 @@ Route::delete("/config/credentials/api-keys/{provider}", [CredentialsController:
 Route::post("/config/credentials/git", [CredentialsController::class, "saveGitCredentials"])->name("config.credentials.git");
 Route::delete("/config/credentials/git", [CredentialsController::class, "deleteGitCredentials"])->name("config.credentials.git.delete");
 
+// Environment: Custom credentials and system packages
+Route::get("/config/environment", [EnvironmentController::class, "index"])->name("config.environment");
+Route::post("/config/environment/credentials", [EnvironmentController::class, "storeCredential"])->name("config.environment.credentials.store");
+Route::put("/config/environment/credentials/{credential}", [EnvironmentController::class, "updateCredential"])->name("config.environment.credentials.update");
+Route::delete("/config/environment/credentials/{credential}", [EnvironmentController::class, "destroyCredential"])->name("config.environment.credentials.destroy");
+Route::delete("/config/environment/packages/{id}", [EnvironmentController::class, "destroyPackage"])->name("config.environment.packages.destroy");
+
 // Tools management
 Route::get("/config/tools", [ConfigController::class, "listTools"])->name("config.tools");
 Route::get("/config/tools/create", [ConfigController::class, "createToolForm"])->name("config.tools.create");
@@ -135,4 +143,5 @@ Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::c
 if (app()->environment('local')) {
     Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");
     Route::post("/config/developer/force-recreate", [ConfigController::class, "forceRecreate"])->name("config.developer.force-recreate");
+    Route::post("/config/developer/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.developer.rebuild");
 }

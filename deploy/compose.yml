@@ -115,10 +115,16 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    environment:
+      - HOME=/home/appuser
+      - DOCKER_GID=${DOCKER_GID:-}
     volumes:
       - .env:/var/www/.env
       - user-data:/home/appuser
       - workspace-data:/workspace
+      - pocketdev-storage:/var/www/storage/pocketdev
+      - shared-tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - pocket-dev
     depends_on:
@@ -147,4 +153,10 @@ volumes:
     driver: local
   proxy-config-data:
     name: pocket-dev-proxy-config
+    driver: local
+  pocketdev-storage:
+    name: pocket-dev-storage
+    driver: local
+  shared-tmp:
+    name: pocket-dev-shared-tmp
     driver: local

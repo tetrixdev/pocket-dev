@@ -22,6 +22,7 @@ class WorkspaceController extends Controller
                 'id' => $workspace->id,
                 'name' => $workspace->name,
                 'directory' => $workspace->directory,
+                'working_directory_path' => $workspace->getWorkingDirectoryPath(),
                 'description' => $workspace->description,
                 'agents_count' => $workspace->agents_count,
                 'conversations_count' => $workspace->conversations_count,
@@ -123,6 +124,7 @@ class WorkspaceController extends Controller
                 'id' => $workspace->id,
                 'name' => $workspace->name,
                 'directory' => $workspace->directory,
+                'working_directory_path' => $workspace->getWorkingDirectoryPath(),
             ],
             'last_conversation_uuid' => $lastConversationUuid,
         ]);
@@ -158,6 +160,7 @@ class WorkspaceController extends Controller
                 'id' => $workspace->id,
                 'name' => $workspace->name,
                 'directory' => $workspace->directory,
+                'working_directory_path' => $workspace->getWorkingDirectoryPath(),
             ],
             'last_conversation_uuid' => $lastConversationUuid,
         ]);

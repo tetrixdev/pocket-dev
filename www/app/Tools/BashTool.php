@@ -2,6 +2,7 @@
 
 namespace App\Tools;
 
+use App\Models\Credential;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -83,8 +84,14 @@ INSTRUCTIONS;
             }
         }
 
-        // Execute command
+        // Get credentials as environment variables (workspace-specific override global)
+        $workspace = $context->getWorkspace();
+        $workspaceId = $workspace?->id;
+        $credentials = Credential::getEnvArrayForWorkspace($workspaceId);
+
+        // Execute command with credentials injected
         $result = Process::timeout($timeout)
+            ->env($credentials)
             ->path($context->getWorkingDirectory())
             ->run($command);
 

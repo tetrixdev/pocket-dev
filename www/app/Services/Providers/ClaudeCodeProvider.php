@@ -4,6 +4,7 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Models\Credential;
 use App\Models\Message;
 use App\Services\ModelRepository;
 use App\Services\Providers\Traits\InjectsInterruptionReminder;
@@ -320,7 +321,19 @@ class ClaudeCodeProvider implements AIProviderInterface
             2 => ['pipe', 'w'], // stderr
         ];
 
-        $process = proc_open($command, $descriptors, $pipes, base_path());
+        // Get workspace-specific credentials merged with global ones
+        $workspaceId = $conversation->workspace_id;
+        $credentials = Credential::getEnvArrayForWorkspace($workspaceId);
+
+        // Merge credentials with current environment
+        // Credentials override any existing env vars with the same name
+        $env = array_merge($_ENV, $_SERVER, $credentials);
+
+        // Filter to only string values (proc_open requires this)
+        $env = array_filter($env, fn($v) => is_string($v) || is_numeric($v));
+        $env = array_map(fn($v) => (string) $v, $env);
+
+        $process = proc_open($command, $descriptors, $pipes, base_path(), $env);
 
         if (!is_resource($process)) {
             yield StreamEvent::error('Failed to start Claude Code CLI process');
@@ -524,7 +537,7 @@ class ClaudeCodeProvider implements AIProviderInterface
             return false;
         }
 
-        $workingDir = $conversation->working_directory ?? '/var/www';
+        $workingDir = $conversation->working_directory ?? '/workspace';
         $sessionFile = $this->getSessionFilePath($workingDir, $sessionId);
 
         if (!$sessionFile) {

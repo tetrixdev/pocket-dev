@@ -12,4 +12,4 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy init script to create extensions on database initialization
-COPY init-extensions.sql /docker-entrypoint-initdb.d/
+COPY docker-postgres/init-extensions.sql /docker-entrypoint-initdb.d/

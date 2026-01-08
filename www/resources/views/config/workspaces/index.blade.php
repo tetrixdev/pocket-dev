@@ -19,7 +19,7 @@
 @else
     <div class="space-y-4">
         @foreach($workspaces as $workspace)
-            <div class="bg-gray-800 rounded border border-gray-700" x-data="{ showAgents: false }">
+            <div class="bg-gray-800 rounded border border-gray-700" x-data="{ activeSection: null }">
                 <div class="p-4">
                     <div class="flex items-start justify-between gap-4">
                         <div class="flex-1 min-w-0">
@@ -50,14 +50,28 @@
                             <!-- Agents toggle -->
                             <button
                                 type="button"
-                                @click="showAgents = !showAgents"
+                                @click="activeSection = activeSection === 'agents' ? null : 'agents'"
                                 class="p-2 rounded hover:bg-gray-700 transition-colors"
-                                :class="showAgents ? 'text-blue-400' : 'text-gray-400 hover:text-white'"
+                                :class="activeSection === 'agents' ? 'text-blue-400' : 'text-gray-400 hover:text-white'"
                                 title="Manage agents"
                             >
                                 <!-- Robot icon -->
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                            </button>
+
+                            <!-- Environment toggle -->
+                            <button
+                                type="button"
+                                @click="activeSection = activeSection === 'environment' ? null : 'environment'"
+                                class="p-2 rounded hover:bg-gray-700 transition-colors"
+                                :class="activeSection === 'environment' ? 'text-blue-400' : 'text-gray-400 hover:text-white'"
+                                title="View environment (credentials & packages)"
+                            >
+                                <!-- Key icon -->
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                                 </svg>
                             </button>
 
@@ -93,7 +107,7 @@
 
                 <!-- Expandable Agents Section -->
                 <div
-                    x-show="showAgents"
+                    x-show="activeSection === 'agents'"
                     x-collapse
                     x-cloak
                     class="border-t border-gray-700"
@@ -103,6 +117,20 @@
                             'agents' => $workspace->agents()->orderBy('is_default', 'desc')->orderBy('name')->get(),
                             'workspace' => $workspace,
                             'showCreateButton' => true,
+                        ])
+                    </div>
+                </div>
+
+                <!-- Expandable Environment Section -->
+                <div
+                    x-show="activeSection === 'environment'"
+                    x-collapse
+                    x-cloak
+                    class="border-t border-gray-700"
+                >
+                    <div class="p-4 bg-gray-750">
+                        @include('config.workspaces.partials.environment-section', [
+                            'workspace' => $workspace,
                         ])
                     </div>
                 </div>

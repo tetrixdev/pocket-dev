@@ -1,34 +1,39 @@
 #!/bin/bash
 set -e
 
+# =============================================================================
+# PocketDev PHP-FPM Production Entrypoint
+# Uses gosu privilege drop pattern (same as official Docker images)
+# - Runs as root initially for privileged operations
+# - Drops to www-data before starting PHP-FPM
+# =============================================================================
+
 echo "Starting Laravel production container..."
 
-# Set HOME for Claude Code CLI, Codex CLI, and other tools that expect a writable home directory
-# www-data is in group 1000 (appgroup) which owns /home/appuser with 775 permissions
+# Set HOME for tools that expect a writable home directory
 export HOME=/home/appuser
 
-# Ensure CLI config directories exist
+# Ensure CLI config directories exist and are owned by www-data
 mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
+chown -R www-data:www-data "$HOME" 2>/dev/null || true
+chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
-# Configure git and GitHub CLI if credentials are provided
+# Configure git and GitHub CLI if credentials are provided (as root for now)
 if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
-    echo "⚙️  Configuring git credentials..."
+    echo "Configuring git credentials..."
 
-    # Configure git user information
-    git config --global user.name "$GIT_USER_NAME"
-    git config --global user.email "$GIT_USER_EMAIL"
-
-    # Configure git credential helper for HTTPS repos
-    git config --global credential.helper store
-
-    # Store GitHub credentials in standard format (username = "token" for GitHub tokens)
-    echo "https://token:$GIT_TOKEN@github.com" > ~/.git-credentials
-    chmod 600 ~/.git-credentials
-
-    echo "✅ Git and GitHub CLI configured for user: $GIT_USER_NAME"
-    echo "   GitHub CLI will use GH_TOKEN environment variable"
+    # Configure as www-data using gosu
+    gosu www-data bash -c "
+        export HOME=/home/appuser
+        git config --global user.name \"$GIT_USER_NAME\" 2>/dev/null && \
+        git config --global user.email \"$GIT_USER_EMAIL\" 2>/dev/null && \
+        git config --global credential.helper store 2>/dev/null && \
+        echo \"https://token:$GIT_TOKEN@github.com\" > ~/.git-credentials && \
+        chmod 600 ~/.git-credentials
+    " && echo "Git and GitHub CLI configured for user: $GIT_USER_NAME" \
+      || echo "Warning: Could not configure git credentials - continuing without"
 else
-    echo "ℹ️  Git credentials not provided - skipping git/GitHub CLI setup"
+    echo "Git credentials not provided - skipping git/GitHub CLI setup"
 fi
 
 # Check if running as main PHP container (no args or php-fpm)
@@ -36,40 +41,46 @@ fi
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Main PHP container: run migrations, caching, and start PHP-FPM
 
-    # Generate Laravel application key if not set
+    # Generate Laravel application key if not set (as www-data since it writes to .env)
     if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
         echo "Generating Laravel application key..."
-        php artisan key:generate --no-interaction --force
+        gosu www-data php artisan key:generate --no-interaction --force
     fi
 
-    # Run Laravel production optimizations
+    # Run Laravel production optimizations (as www-data)
     echo "Running Laravel optimizations..."
-    php artisan migrate --force --no-interaction
-    php artisan config:cache --no-interaction
-    php artisan route:cache --no-interaction
-    php artisan view:cache --no-interaction
-    php artisan queue:restart --no-interaction
+    gosu www-data php artisan migrate --force --no-interaction
+    gosu www-data php artisan config:cache --no-interaction
+    gosu www-data php artisan route:cache --no-interaction
+    gosu www-data php artisan view:cache --no-interaction
+    gosu www-data php artisan queue:restart --no-interaction
 
     echo "Laravel application ready for production"
-    echo "Starting PHP-FPM..."
+
+    # PHP-FPM master runs as root, pool workers run as www-data (via www.conf)
+    # This is standard Docker practice - see https://github.com/docker-library/php/issues/70
+    # Running master as non-root fails with "failed to open error_log (/proc/self/fd/2): Permission denied"
+    echo "Starting PHP-FPM (master as root, workers as www-data)..."
+
+    # Start PHP-FPM as root - pool workers will be www-data per www.conf
     exec php-fpm
 else
     # Secondary container (queue worker, scheduler, etc.):
     # Wait for main container to complete migrations, then run the command
-    echo "⏳ Waiting for database migrations..."
+    echo "Waiting for database migrations..."
     max_attempts=60
     attempt=0
     while [ $attempt -lt $max_attempts ]; do
         if php artisan migrate:status > /dev/null 2>&1; then
-            echo "✅ Database ready"
+            echo "Database ready"
             break
         fi
         attempt=$((attempt + 1))
         if [ $attempt -eq $max_attempts ]; then
-            echo "❌ Timeout waiting for database migrations"
+            echo "Timeout waiting for database migrations"
             exit 1
         fi
         sleep 1
     done
-    exec "$@"
+    exec gosu www-data "$@"
 fi

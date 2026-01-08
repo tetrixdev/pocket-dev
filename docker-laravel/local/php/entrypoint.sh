@@ -1,129 +1,176 @@
 #!/bin/bash
 set -e
 
+# =============================================================================
+# PocketDev PHP-FPM Local Development Entrypoint
+# Uses gosu privilege drop pattern (same as official Docker images)
+# - Runs as root initially for privileged operations
+# - Drops to TARGET_UID before starting PHP-FPM
+# =============================================================================
+
 echo "🚀 Configuring PHP development environment..."
 
-# Add www-data to the host's docker group for docker socket access
+# Runtime configurable UID/GID (from compose.yml environment)
+TARGET_UID="${TARGET_UID:-1000}"
+TARGET_GID="${TARGET_GID:-1000}"
+
+# =============================================================================
+# PHASE 1: ROOT OPERATIONS (permissions, groups)
+# Note: System packages are installed by queue container only (where CLI tools are used)
+# =============================================================================
+
+# Set up Docker socket access for TARGET_UID
 # DOCKER_GID is passed from compose.yml and matches the host's docker group
 if [ -n "$DOCKER_GID" ]; then
-    # Check if a group with this GID already exists
+    echo "🐳 Setting up Docker socket access for UID $TARGET_UID..."
+
+    # Create the docker group with the host's GID if it doesn't exist
     if ! getent group "$DOCKER_GID" > /dev/null 2>&1; then
         groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
     fi
-    # Extract group name from GID (usermod -aG expects a name, not a numeric GID)
-    EXISTING_GROUP=$(getent group "$DOCKER_GID" | cut -d: -f1)
-    if [ -z "$EXISTING_GROUP" ]; then
-        # Group creation may have failed; create with fallback name
-        groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
-        EXISTING_GROUP="hostdocker_runtime"
+
+    # Get the group name for this GID
+    DOCKER_GROUP_NAME=$(getent group "$DOCKER_GID" | cut -d: -f1)
+    if [ -z "$DOCKER_GROUP_NAME" ]; then
+        DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
-    # Add www-data to this group
-    usermod -aG "$EXISTING_GROUP" www-data 2>/dev/null || true
+
+    # Create a user for TARGET_UID if it doesn't exist (needed for group membership)
+    if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
+        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+    fi
+
+    # Get the username for TARGET_UID
+    TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
+    if [ -n "$TARGET_USER" ]; then
+        usermod -aG "$DOCKER_GROUP_NAME" "$TARGET_USER" 2>/dev/null || true
+        echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $DOCKER_GID)"
+    fi
+
+    # Also add www-data for PHP-FPM workers (web app needs Docker access)
+    usermod -aG "$DOCKER_GROUP_NAME" www-data 2>/dev/null || true
+    echo "  ✅ Added www-data to group $DOCKER_GROUP_NAME (GID $DOCKER_GID)"
+
+    # Verify docker socket is accessible
+    if [ -S /var/run/docker.sock ]; then
+        chgrp "$DOCKER_GROUP_NAME" /var/run/docker.sock 2>/dev/null || true
+        chmod 660 /var/run/docker.sock 2>/dev/null || true
+    fi
 fi
 
-# Set HOME for Claude Code CLI, Codex CLI, and other tools that expect a writable home directory
-# www-data is in group 1000 (appgroup) which owns /home/appuser with 775 permissions
+# Set up home directory with correct ownership
 export HOME=/home/appuser
-
-# Ensure CLI config directories exist
-mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
-
-# Configure git and GitHub CLI if credentials are provided
-if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
-    echo "⚙️  Configuring git credentials..."
-
-    # Ensure home directory exists and is writable
-    mkdir -p "$HOME" 2>/dev/null || true
-
-    # Configure git user information (continue on failure)
-    if git config --global user.name "$GIT_USER_NAME" 2>/dev/null && \
-       git config --global user.email "$GIT_USER_EMAIL" 2>/dev/null && \
-       git config --global credential.helper store 2>/dev/null; then
-
-        # Store GitHub credentials in standard format (username = "token" for GitHub tokens)
-        echo "https://token:$GIT_TOKEN@github.com" > ~/.git-credentials 2>/dev/null
-        chmod 600 ~/.git-credentials 2>/dev/null || true
-
-        echo "✅ Git and GitHub CLI configured for user: $GIT_USER_NAME"
-        echo "   GitHub CLI will use GH_TOKEN environment variable"
-    else
-        echo "⚠️  Could not configure git credentials (permission issue) - continuing without"
-    fi
-else
-    echo "ℹ️  Git credentials not provided - skipping git/GitHub CLI setup"
-    echo "   Set GIT_TOKEN, GIT_USER_NAME, and GIT_USER_EMAIL to enable"
-fi
+mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.npm" "$HOME/.composer" 2>/dev/null || true
+chown -R "${TARGET_UID}:${TARGET_GID}" "$HOME" 2>/dev/null || true
+chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Main PHP container: run full setup
 
-    # Set group ownership to www-data for shared access (user:www-data)
-    # This allows both host user and container to write files
-    chgrp -R www-data /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
-
-    # Set group write permissions (664 for files, 775 for directories)
-    find /var/www/storage -type d -exec chmod 775 {} \;
-    find /var/www/storage -type f -exec chmod 664 {} \;
-    find /var/www/bootstrap/cache -type d -exec chmod 775 {} \;
-    find /var/www/bootstrap/cache -type f -exec chmod 664 {} \;
+    # Fix storage and cache permissions (as root)
+    echo "Setting storage permissions..."
+    chgrp -R "$TARGET_GID" /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
+    find /var/www/storage -type d -exec chmod 775 {} \; 2>/dev/null || true
+    find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
+    find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
+    find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
     # Fix permissions for mounted config volumes (for config editor)
-    # Make directories and files group-writable so www-data (in group 1001) can edit configs
     if [ -d "/etc/nginx-proxy-config" ]; then
         echo "Setting permissions on /etc/nginx-proxy-config..."
+        chgrp -R "$TARGET_GID" /etc/nginx-proxy-config 2>/dev/null || true
         find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
         find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
-        # Change group ownership to hostdocker so www-data can write
-        find /etc/nginx-proxy-config -exec chgrp hostdocker {} \; 2>/dev/null || true
     fi
 
-    # Fix permissions for pocketdev storage volume (recursive with setgid)
+    # Fix permissions for pocketdev storage volume (with setgid for group inheritance)
     if [ -d "/var/www/storage/pocketdev" ]; then
         echo "Setting permissions on /var/www/storage/pocketdev..."
-        chgrp -R www-data /var/www/storage/pocketdev 2>/dev/null || true
+        chgrp -R "$TARGET_GID" /var/www/storage/pocketdev 2>/dev/null || true
         find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
         find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
     fi
 
-    # Install composer dependencies (must run before any artisan commands)
+    # =============================================================================
+    # PHASE 2: TARGET USER OPERATIONS (composer, npm, git, artisan)
+    # =============================================================================
+
+    # Configure git as appuser
+    # Using username (not UID:GID) to properly initialize supplementary groups
+    if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
+        echo "⚙️  Configuring git credentials..."
+        gosu appuser bash -c "
+            export HOME=/home/appuser
+            git config --global user.name \"$GIT_USER_NAME\" 2>/dev/null && \
+            git config --global user.email \"$GIT_USER_EMAIL\" 2>/dev/null && \
+            git config --global credential.helper store 2>/dev/null && \
+            echo \"https://token:$GIT_TOKEN@github.com\" > ~/.git-credentials && \
+            chmod 600 ~/.git-credentials
+        " && echo "✅ Git configured for user: $GIT_USER_NAME" \
+          || echo "⚠️  Could not configure git credentials - continuing without"
+    else
+        echo "ℹ️  Git credentials not provided - skipping git/GitHub CLI setup"
+    fi
+
+    # Install composer dependencies as appuser
     echo "Installing composer dependencies..."
-    composer install
-    composer dump-autoload -o
+    gosu appuser bash -c "
+        export HOME=/home/appuser
+        export COMPOSER_HOME=/tmp/.composer
+        cd /var/www && composer install && composer dump-autoload -o
+    "
 
     # Generate Laravel application key if not set
-    if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
+    if [ -f "/var/www/.env" ] && ! grep -q "^APP_KEY=.\+" /var/www/.env; then
         echo "Generating Laravel application key..."
-        php artisan key:generate --no-interaction
+        gosu appuser php /var/www/artisan key:generate --no-interaction
     fi
 
     # Create storage symlink if it doesn't exist
-    if [ ! -L "public/storage" ]; then
+    if [ ! -L "/var/www/public/storage" ]; then
         echo "Creating storage symlink..."
-        php artisan storage:link --no-interaction
+        gosu appuser php /var/www/artisan storage:link --no-interaction
     fi
 
-    # Install npm dependencies and build assets
-    cd /var/www
-    if [ -f "package.json" ]; then
+    # Install npm dependencies and build assets as appuser
+    if [ -f "/var/www/package.json" ]; then
         echo "Installing npm dependencies..."
-        npm install
+        gosu appuser bash -c "
+            export HOME=/home/appuser
+            export NPM_CONFIG_CACHE=/tmp/.npm
+            cd /var/www && npm install
+        "
 
         echo "Building frontend assets..."
-        npm run build
-
+        gosu appuser bash -c "
+            export HOME=/home/appuser
+            export NPM_CONFIG_CACHE=/tmp/.npm
+            cd /var/www && npm run build
+        "
         echo "✅ Built assets ready in public/build/"
-        echo "ℹ️  To start Vite dev server: docker compose exec pocket-dev-php npm run dev"
     fi
 
-    php artisan migrate --force
-    php artisan optimize:clear
-    php artisan config:cache
-    php artisan queue:restart
+    # Run Laravel commands as appuser
+    echo "Running Laravel setup..."
+    gosu appuser php /var/www/artisan migrate --force
+    gosu appuser php /var/www/artisan optimize:clear
+    gosu appuser php /var/www/artisan config:cache
+    gosu appuser php /var/www/artisan queue:restart
 
-    echo "Development environment ready"
-    echo "Starting PHP-FPM"
+    # =============================================================================
+    # PHASE 3: START PHP-FPM AS ROOT (standard Docker practice)
+    # =============================================================================
+
+    # PHP-FPM master runs as root, pool workers run as www-data (via www.conf)
+    # This is standard Docker practice - see https://github.com/docker-library/php/issues/70
+    # Running master as non-root fails with "failed to open error_log (/proc/self/fd/2): Permission denied"
+
+    echo "✅ Development environment ready"
+    echo "🚀 Starting PHP-FPM (master as root, workers as www-data)..."
+
+    # Start PHP-FPM as root - pool workers will be www-data per www.conf
     exec php-fpm
 else
     # Secondary container (queue worker, scheduler, etc.):
@@ -143,5 +190,8 @@ else
         fi
         sleep 1
     done
-    exec "$@"
+
+    # Drop privileges and execute the command
+    # Using username (not UID:GID) to properly initialize supplementary groups
+    exec gosu appuser "$@"
 fi

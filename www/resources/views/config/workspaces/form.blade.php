@@ -294,6 +294,101 @@
                 </template>
             </div>
 
+            <!-- System Packages -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-2">System Packages</h3>
+
+                @if(empty($allPackages ?? []))
+                    <p class="text-gray-400 text-sm">No system packages available. <a href="{{ route('config.environment') }}" class="text-blue-400 hover:text-blue-300">Install packages</a> in the Environment section.</p>
+                @else
+                    <p class="text-sm text-gray-400 mb-3">Select which packages appear in this workspace's system prompt. Unselected packages are still installed, the AI just won't be told about them.</p>
+
+                    <div class="flex items-center gap-3 p-3 bg-gray-800 border border-gray-700 rounded mb-4">
+                        <input
+                            type="checkbox"
+                            x-model="allPackagesVisible"
+                            @change="onAllPackagesChange()"
+                            class="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                        >
+                        <div>
+                            <span class="text-white font-medium">Show all packages</span>
+                            <p class="text-xs text-gray-400">When enabled, all installed packages appear in the system prompt. Disable to select specific packages.</p>
+                        </div>
+                    </div>
+
+                    <div x-show="!allPackagesVisible" class="space-y-2">
+                        <div class="flex flex-wrap gap-2">
+                            @foreach($allPackages ?? [] as $package)
+                                <label class="flex items-center gap-1.5 px-2 py-1 bg-gray-800 border border-gray-700 rounded cursor-pointer hover:border-gray-600">
+                                    <input
+                                        type="checkbox"
+                                        name="selected_packages[]"
+                                        value="{{ $package }}"
+                                        :checked="selectedPackages.includes('{{ $package }}')"
+                                        @change="togglePackage('{{ $package }}')"
+                                        class="w-3.5 h-3.5 rounded border-gray-700 bg-gray-900 text-green-500 focus:ring-green-500"
+                                    >
+                                    <code class="text-sm text-green-400">{{ $package }}</code>
+                                </label>
+                            @endforeach
+                        </div>
+                        <p class="text-xs text-gray-500">Selected: <span x-text="selectedPackages.length"></span> of {{ count($allPackages ?? []) }}</p>
+                    </div>
+
+                    <p class="text-xs text-gray-400 mt-2">
+                        <a href="{{ route('config.environment') }}" class="text-blue-400 hover:text-blue-300">Manage packages</a> in the Environment section.
+                    </p>
+                @endif
+            </div>
+
+            @if(isset($workspace))
+            <!-- Credentials -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-2">Credentials</h3>
+
+                @if(($workspaceCredentials ?? collect())->isEmpty())
+                    <p class="text-gray-400 text-sm">No credentials configured for this workspace. <a href="{{ route('config.environment') }}" class="text-blue-400 hover:text-blue-300">Add credentials</a> in the Environment section.</p>
+                @else
+                    <p class="text-sm text-gray-400 mb-3">Credentials available to this workspace (global + workspace-specific):</p>
+
+                    <div class="bg-gray-800 rounded-lg overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-750">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-gray-400 font-medium">Env Variable</th>
+                                    <th class="px-3 py-2 text-left text-gray-400 font-medium">Scope</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-700">
+                                @foreach($workspaceCredentials as $credential)
+                                    <tr>
+                                        <td class="px-3 py-2">
+                                            <code class="text-blue-400 bg-gray-900 px-1.5 py-0.5 rounded">{{ $credential->env_var }}</code>
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            @if($credential->workspace_id === $workspace->id)
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-900/50 text-purple-300">
+                                                    This workspace
+                                                </span>
+                                            @else
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-700 text-gray-300">
+                                                    Global
+                                                </span>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                <p class="text-xs text-gray-400">
+                    <a href="{{ route('config.environment') }}" class="text-blue-400 hover:text-blue-300">Manage credentials</a> in the Environment section. Workspace-specific credentials override global ones with the same env var.
+                </p>
+            </div>
+            @endif
+
         </div>
 
         <!-- Actions -->
@@ -335,6 +430,10 @@
             groupedPocketdevTools: {},
             disabledTools: @js($disabledToolSlugs ?? []),
             allToolsEnabled: @js(empty($disabledToolSlugs ?? [])),
+
+            // Package selection state
+            selectedPackages: @js($selectedPackages ?? []),
+            allPackagesVisible: @js(empty($selectedPackages ?? [])),
 
             // Schema warning state
             workspaceId: @js($workspace->id ?? null),
@@ -532,6 +631,23 @@
                     }
                 } catch (error) {
                     console.error('Failed to check affected agents:', error);
+                }
+            },
+
+            // Package selection functions
+            togglePackage(packageName) {
+                const idx = this.selectedPackages.indexOf(packageName);
+                if (idx > -1) {
+                    this.selectedPackages.splice(idx, 1);
+                } else {
+                    this.selectedPackages.push(packageName);
+                }
+            },
+
+            onAllPackagesChange() {
+                if (this.allPackagesVisible) {
+                    // Clear selection (show all packages)
+                    this.selectedPackages = [];
                 }
             }
         };
