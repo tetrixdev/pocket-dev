@@ -95,7 +95,11 @@ class Credential extends Model
         try {
             return Crypt::decryptString($this->encrypted_value);
         } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
-            // Log or handle decryption failure
+            \Log::warning('Credential decryption failed', [
+                'credential_id' => $this->id,
+                'slug' => $this->slug,
+                'error' => $e->getMessage(),
+            ]);
             return null;
         }
     }

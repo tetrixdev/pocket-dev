@@ -231,7 +231,7 @@ class ToolSelector
         $groups = collect(config('tool-groups', []))->sortBy('sort_order');
         $allGroupedCategories = $groups->flatMap(fn($g) => $g['categories'] ?? [])->all();
 
-        foreach ($groups as $groupSlug => $group) {
+        foreach ($groups as $group) {
             $groupCategories = $group['categories'] ?? [];
             $groupTools = $tools->filter(fn(Tool $t) => in_array($t->category, $groupCategories));
 

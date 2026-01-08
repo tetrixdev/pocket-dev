@@ -110,9 +110,10 @@ if command -v jq &> /dev/null; then
                 # Auto-rewrite /tmp/ to /var/tmp/ in install scripts (see comment above)
                 pkg_script=$(echo "$pkg_script" | sed -e 's| /tmp/| /var/tmp/|g' -e 's|"/tmp/|"/var/tmp/|g' -e "s|'/tmp/|'/var/tmp/|g" -e 's|=/tmp/|=/var/tmp/|g')
 
-                # Skip if no script defined
+                # Mark as failed if no script defined
                 if [ -z "$pkg_script" ] || [ "$pkg_script" = "null" ]; then
-                    echo "  ⚠ $pkg_name: No install script defined, skipping"
+                    echo "  ✗ $pkg_name: No install script defined"
+                    cd /var/www && php artisan system:package status-by-id --id="$pkg_id" --status=failed --message="No install script defined" 2>/dev/null || true
                     continue
                 fi
 
@@ -151,13 +152,17 @@ fi
 if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
     echo "Configuring git credentials for queue worker..."
 
+    # Write git-credentials as root first (avoids exposing token in ps via gosu bash -c)
+    echo "https://token:$GIT_TOKEN@github.com" > /home/appuser/.git-credentials
+    chown www-data:www-data /home/appuser/.git-credentials
+    chmod 600 /home/appuser/.git-credentials
+
+    # Configure git as www-data (no secrets in command args)
     gosu www-data bash -c "
         export HOME=/home/appuser
         git config --global user.name \"$GIT_USER_NAME\" 2>/dev/null && \
         git config --global user.email \"$GIT_USER_EMAIL\" 2>/dev/null && \
-        git config --global credential.helper store 2>/dev/null && \
-        echo \"https://token:$GIT_TOKEN@github.com\" > ~/.git-credentials && \
-        chmod 600 ~/.git-credentials
+        git config --global credential.helper store 2>/dev/null
     " && echo "Git and GitHub CLI configured for queue worker" \
       || echo "Warning: Could not configure git credentials - continuing without"
 else

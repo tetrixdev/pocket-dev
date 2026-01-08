@@ -4,6 +4,7 @@ namespace App\Services\Providers;
 
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
+use App\Models\Credential;
 use App\Models\Message;
 use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
@@ -277,7 +278,18 @@ class CodexProvider implements AIProviderInterface
             2 => ['pipe', 'w'], // stderr
         ];
 
-        $process = proc_open($fullCommand, $descriptors, $pipes, $conversation->working_directory ?? base_path());
+        // Get workspace-specific credentials merged with global ones
+        $workspaceId = $conversation->workspace_id;
+        $credentials = Credential::getEnvArrayForWorkspace($workspaceId);
+
+        // Merge credentials with current environment
+        $env = array_merge($_ENV, $_SERVER, $credentials);
+
+        // Filter to only string values (proc_open requires this)
+        $env = array_filter($env, fn($v) => is_string($v) || is_numeric($v));
+        $env = array_map(fn($v) => (string) $v, $env);
+
+        $process = proc_open($fullCommand, $descriptors, $pipes, $conversation->working_directory ?? base_path(), $env);
 
         if (!is_resource($process)) {
             yield StreamEvent::error('Failed to start Codex CLI process');

@@ -5,6 +5,7 @@ use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\CodexAuthController;
 use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\CredentialsController;
+use App\Http\Controllers\EnvironmentController;
 use App\Http\Controllers\MemoryController;
 use App\Http\Controllers\SystemPromptController;
 use Illuminate\Support\Facades\Route;
@@ -89,11 +90,11 @@ Route::post("/config/credentials/git", [CredentialsController::class, "saveGitCr
 Route::delete("/config/credentials/git", [CredentialsController::class, "deleteGitCredentials"])->name("config.credentials.git.delete");
 
 // Environment: Custom credentials and system packages
-Route::get("/config/environment", [\App\Http\Controllers\EnvironmentController::class, "index"])->name("config.environment");
-Route::post("/config/environment/credentials", [\App\Http\Controllers\EnvironmentController::class, "storeCredential"])->name("config.environment.credentials.store");
-Route::put("/config/environment/credentials/{credential}", [\App\Http\Controllers\EnvironmentController::class, "updateCredential"])->name("config.environment.credentials.update");
-Route::delete("/config/environment/credentials/{credential}", [\App\Http\Controllers\EnvironmentController::class, "destroyCredential"])->name("config.environment.credentials.destroy");
-Route::delete("/config/environment/packages/{id}", [\App\Http\Controllers\EnvironmentController::class, "destroyPackage"])->name("config.environment.packages.destroy");
+Route::get("/config/environment", [EnvironmentController::class, "index"])->name("config.environment");
+Route::post("/config/environment/credentials", [EnvironmentController::class, "storeCredential"])->name("config.environment.credentials.store");
+Route::put("/config/environment/credentials/{credential}", [EnvironmentController::class, "updateCredential"])->name("config.environment.credentials.update");
+Route::delete("/config/environment/credentials/{credential}", [EnvironmentController::class, "destroyCredential"])->name("config.environment.credentials.destroy");
+Route::delete("/config/environment/packages/{id}", [EnvironmentController::class, "destroyPackage"])->name("config.environment.packages.destroy");
 
 // Tools management
 Route::get("/config/tools", [ConfigController::class, "listTools"])->name("config.tools");

@@ -59,7 +59,7 @@
                                 @click="openEditModal({
                                     id: '{{ $credential->id }}',
                                     env_var: '{{ $credential->env_var }}',
-                                    description: '{{ addslashes($credential->description ?? '') }}',
+                                    description: @js($credential->description ?? ''),
                                     workspace_id: '{{ $credential->workspace_id ?? '' }}'
                                 })"
                                 class="text-blue-400 hover:text-blue-300 text-sm"
@@ -123,7 +123,7 @@
                                             @click="openEditModal({
                                                 id: '{{ $credential->id }}',
                                                 env_var: '{{ $credential->env_var }}',
-                                                description: '{{ addslashes($credential->description ?? '') }}',
+                                                description: @js($credential->description ?? ''),
                                                 workspace_id: '{{ $credential->workspace_id ?? '' }}'
                                             })"
                                             class="text-blue-400 hover:text-blue-300 text-sm"

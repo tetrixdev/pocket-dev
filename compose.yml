@@ -34,6 +34,9 @@ services:
     working_dir: /var/www
     # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
     # This allows privileged operations (package install, permission fixes) before dropping privileges
+    group_add:
+      - "1000"
+      - "${DOCKER_GID:-1001}"
     environment:
       - HOME=/home/appuser
       - COMPOSER_HOME=/tmp/.composer

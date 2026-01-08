@@ -607,7 +607,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
     private function executeTools(array $toolUses, Conversation $conversation, ToolRegistry $toolRegistry): array
     {
-        $context = new ExecutionContext($conversation->working_directory);
+        // Pass workspace to context so tools can access workspace-specific credentials
+        $context = new ExecutionContext(
+            $conversation->working_directory,
+            workspace: $conversation->workspace
+        );
         $results = [];
 
         foreach ($toolUses as $toolUse) {

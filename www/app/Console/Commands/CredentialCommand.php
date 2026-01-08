@@ -32,7 +32,10 @@ class CredentialCommand extends Command
      */
     private function exportCredentials(): int
     {
-        $credentials = Credential::all();
+        // Only export global credentials (workspace_id IS NULL)
+        // The queue container serves all workspaces, so workspace-specific
+        // credentials should not be exported at container startup
+        $credentials = Credential::whereNull('workspace_id')->get();
 
         foreach ($credentials as $credential) {
             $value = $credential->getValue();
@@ -45,7 +48,7 @@ class CredentialCommand extends Command
 
             // Escape for shell: handle quotes, backslashes, and special chars
             // Use single quotes and escape any single quotes within the value
-            $escapedValue = str_replace("'", "'\"'\"'", $value);
+            $escapedValue = str_replace("'", "'\\''", $value);
 
             $this->output->writeln("export {$envVar}='{$escapedValue}'");
         }
