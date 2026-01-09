@@ -15,6 +15,15 @@ sedi() {
     fi
 }
 
+# Cross-platform stat for group ID
+get_gid() {
+    if stat -c '%g' "$1" >/dev/null 2>&1; then
+        stat -c '%g' "$1"
+    else
+        stat -f '%g' "$1" 2>/dev/null
+    fi
+}
+
 # Check if .env already exists
 if [ -f ".env" ]; then
     read -p ".env file already exists. Overwrite? [y/N]: " overwrite
@@ -42,6 +51,22 @@ echo "Generated DB_PASSWORD"
 DB_READONLY_PASSWORD=$(openssl rand -hex 16)
 sedi "s|DB_READONLY_PASSWORD=|DB_READONLY_PASSWORD=$DB_READONLY_PASSWORD|" .env
 echo "Generated DB_READONLY_PASSWORD"
+
+# Generate DB_MEMORY_AI_PASSWORD (for memory schema DDL/DML user)
+DB_MEMORY_AI_PASSWORD=$(openssl rand -hex 16)
+sedi "s|DB_MEMORY_AI_PASSWORD=|DB_MEMORY_AI_PASSWORD=$DB_MEMORY_AI_PASSWORD|" .env
+echo "Generated DB_MEMORY_AI_PASSWORD"
+
+# Detect DOCKER_GID
+if [ -S /var/run/docker.sock ]; then
+    DOCKER_GID=$(get_gid /var/run/docker.sock)
+    if [ -n "$DOCKER_GID" ]; then
+        sedi "s|DOCKER_GID=|DOCKER_GID=$DOCKER_GID|" .env
+        echo "Detected DOCKER_GID=$DOCKER_GID"
+    fi
+else
+    echo "Warning: Docker socket not found - DOCKER_GID not set"
+fi
 
 # Ask for NGINX_PORT
 echo ""

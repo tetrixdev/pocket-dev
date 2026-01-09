@@ -19,6 +19,7 @@ Everything else may be reset on container rebuild.
 
 - **Not root**: No sudo, no apt-get, no system file modifications.
 - **Docker**: May or may not be available depending on deployment. If available, don't modify PocketDev's own containers (`pocket-dev-*`).
+- **User access**: The user cannot directly access files. Include all relevant context in your response, or use full file paths (which are clickable and show a preview).
 
 ## Error Handling for PocketDev Tools
 
