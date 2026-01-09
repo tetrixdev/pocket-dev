@@ -109,13 +109,12 @@
                     Run this command in your terminal to authenticate with your Claude Pro/Team subscription:
                 </p>
                 <div class="relative">
-                    @php $dockerUser = config('app.env') === 'local' ? 'appuser' : 'www-data'; @endphp
                     <div
-                        @click="copyCommand('docker exec -it -u {{ $dockerUser }} pocket-dev-queue claude', 'claude')"
+                        @click="copyCommand('docker exec -it -u {{ config('backup.exec_user') }} pocket-dev-queue claude', 'claude')"
                         class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3"
                         title="Click to copy"
                     >
-                        docker exec -it -u {{ $dockerUser }} pocket-dev-queue claude
+                        docker exec -it -u {{ config('backup.exec_user') }} pocket-dev-queue claude
                     </div>
                     <div
                         x-show="copiedCommand === 'claude'"
@@ -146,17 +145,13 @@
                 <p class="text-sm text-gray-400 mb-4">
                     Run this command on your <strong class="text-white">host machine</strong> (not in Docker) to authenticate:
                 </p>
-                @php
-                    $codexUser = config('app.env') === 'local' ? 'appuser' : 'www-data';
-                    $codexGroup = config('app.env') === 'local' ? 'appgroup' : 'www-data';
-                @endphp
                 <div class="relative">
                     <div
-                        @click="copyCommand('sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ $codexUser }}:{{ $codexGroup }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json', 'codex')"
+                        @click="copyCommand('sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.exec_user') }}:{{ config('backup.exec_group') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json', 'codex')"
                         class="bg-gray-900 rounded p-3 font-mono text-xs text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3 overflow-x-auto"
                         title="Click to copy"
                     >
-                        sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ $codexUser }}:{{ $codexGroup }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json
+                        sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.exec_user') }}:{{ config('backup.exec_group') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json
                     </div>
                     <div
                         x-show="copiedCommand === 'codex'"
