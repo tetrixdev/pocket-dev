@@ -221,6 +221,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Track state for this turn
         $contentBlocks = [];
         $pendingToolUses = [];
+        $streamedToolResults = []; // Tool results from providers that execute tools internally (Claude Code, Codex)
         $inputTokens = 0;
         $outputTokens = 0;
         $cacheCreationTokens = null;
@@ -454,11 +455,22 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     }
                     break;
 
+                case StreamEvent::TOOL_RESULT:
+                    // Collect tool results from providers that execute tools internally (Claude Code, Codex)
+                    // These will be saved after the message completes if executeTools() doesn't run
+                    $streamedToolResults[] = [
+                        'tool_use_id' => $event->metadata['tool_id'],
+                        'content' => $event->content,
+                        'is_error' => $event->metadata['is_error'] ?? false,
+                    ];
+                    break;
+
                 case StreamEvent::DONE:
                     $stopReason = $event->metadata['stop_reason'] ?? 'end_turn';
                     Log::channel('api')->info('ProcessConversationStream: Received DONE event', [
                         'stop_reason' => $stopReason,
                         'pending_tool_uses_count' => count($pendingToolUses),
+                        'streamed_tool_results_count' => count($streamedToolResults),
                         'conversation' => $this->conversationUuid,
                     ]);
                     break;
@@ -520,6 +532,15 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $iteration + 1,
                 $userMessage
             );
+        } elseif (!empty($streamedToolResults)) {
+            // Save tool results from providers that execute tools internally (Claude Code, Codex)
+            // These providers stream TOOL_RESULT events but use stopReason='end_turn',
+            // so the executeTools path above doesn't run
+            Log::channel('api')->info('ProcessConversationStream: Saving streamed tool results', [
+                'count' => count($streamedToolResults),
+                'conversation' => $this->conversationUuid,
+            ]);
+            $this->saveToolResultMessage($conversation, $streamedToolResults);
         }
     }
 

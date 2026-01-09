@@ -179,12 +179,14 @@
                                     <span class="w-1.5 h-1.5 rounded-full bg-green-500" title="Installed"></span>
                                 @elseif($package->status === 'failed')
                                     <span class="w-1.5 h-1.5 rounded-full bg-red-500" title="Installation failed"></span>
+                                @elseif($package->status === 'requires_restart')
+                                    <span class="w-1.5 h-1.5 rounded-full bg-orange-500" title="Requires container restart"></span>
                                 @else
-                                    <span class="w-1.5 h-1.5 rounded-full bg-yellow-500" title="Pending installation"></span>
+                                    <span class="w-1.5 h-1.5 rounded-full bg-yellow-500" title="Installing"></span>
                                 @endif
 
                                 {{-- Package name with status-based color --}}
-                                <code class="text-xs @if($package->status === 'installed') text-green-400 @elseif($package->status === 'failed') text-red-400 @else text-yellow-400 @endif">{{ $package->name }}</code>
+                                <code class="text-xs @if($package->status === 'installed') text-green-400 @elseif($package->status === 'failed') text-red-400 @elseif($package->status === 'requires_restart') text-orange-400 @else text-yellow-400 @endif">{{ $package->name }}</code>
 
                                 {{-- Tooltip for failed packages --}}
                                 @if($package->status === 'failed' && $package->status_message)
@@ -223,12 +225,13 @@
                     {{-- Legend --}}
                     <div class="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
                         <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Installed</span>
-                        <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-yellow-500"></span> Pending</span>
+                        <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-yellow-500"></span> Installing</span>
+                        <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-orange-500"></span> Requires Restart</span>
                         <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Failed</span>
                     </div>
 
                     <p class="text-xs text-gray-500 mt-3">
-                        Removing a package from this list will not uninstall it from the current container, but it won't be installed in new containers.
+                        Packages install during container restart and may take 1-2 minutes. Refresh your browser to see updated status.
                     </p>
                 </div>
             @endif

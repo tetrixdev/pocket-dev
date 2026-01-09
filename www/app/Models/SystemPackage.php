@@ -17,13 +17,14 @@ class SystemPackage extends Model
     protected $keyType = 'string';
     public $incrementing = false;
 
-    protected $fillable = ['name', 'install_script', 'status', 'status_message', 'installed_at'];
+    protected $fillable = ['name', 'cli_commands', 'install_script', 'status', 'status_message', 'installed_at'];
 
     protected $casts = [
         'installed_at' => 'datetime',
     ];
 
     // Status constants
+    public const STATUS_REQUIRES_RESTART = 'requires_restart';
     public const STATUS_PENDING = 'pending';
     public const STATUS_INSTALLED = 'installed';
     public const STATUS_FAILED = 'failed';
@@ -72,7 +73,8 @@ class SystemPackage extends Model
     }
 
     /**
-     * Get package names visible to a workspace.
+     * Get CLI commands visible to a workspace (for system prompt).
+     * Returns cli_commands if set, otherwise falls back to name.
      * If workspace has selected_packages, only return those.
      * If no selection (null/empty), return all packages.
      *
@@ -81,21 +83,31 @@ class SystemPackage extends Model
      */
     public static function getNamesForWorkspace(?Workspace $workspace): array
     {
-        $allPackages = static::pluck('name')->toArray();
+        // Get all packages with cli_commands falling back to name
+        $packages = static::all();
+        $allPackageNames = $packages->pluck('name')->toArray();
+        $packageCommands = $packages->mapWithKeys(function ($package) {
+            return [$package->name => $package->cli_commands ?? $package->name];
+        })->toArray();
 
         if ($workspace === null) {
-            return $allPackages;
+            return array_values($packageCommands);
         }
 
         $selectedPackages = $workspace->selected_packages;
 
         // If no selection, show all
         if (empty($selectedPackages)) {
-            return $allPackages;
+            return array_values($packageCommands);
         }
 
         // Filter to only selected packages that actually exist
-        return array_values(array_intersect($selectedPackages, $allPackages));
+        $filteredNames = array_intersect($selectedPackages, $allPackageNames);
+
+        return array_values(array_map(
+            fn($name) => $packageCommands[$name],
+            $filteredNames
+        ));
     }
 
     /**
@@ -146,5 +158,13 @@ class SystemPackage extends Model
     public function isPending(): bool
     {
         return $this->status === self::STATUS_PENDING;
+    }
+
+    /**
+     * Check if package requires a container restart to install.
+     */
+    public function requiresRestart(): bool
+    {
+        return $this->status === self::STATUS_REQUIRES_RESTART;
     }
 }

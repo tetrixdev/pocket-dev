@@ -157,4 +157,6 @@ Route::post('agents/validate-clone', [AgentController::class, 'validateClone']);
 Route::prefix('file')->group(function () {
     Route::post('preview', [FilePreviewController::class, 'preview']);
     Route::post('check', [FilePreviewController::class, 'check']);
+    Route::post('upload', [\App\Http\Controllers\Api\FileUploadController::class, 'upload']);
+    Route::post('delete', [\App\Http\Controllers\Api\FileUploadController::class, 'delete']);
 });

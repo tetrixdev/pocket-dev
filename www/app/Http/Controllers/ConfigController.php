@@ -1813,7 +1813,7 @@ class ConfigController extends Controller
                 '-v "%s:%s" ' .
                 '-w "%s" ' .
                 'docker:27-cli ' .
-                'sh -c "docker compose down && docker compose up -d --build" 2>&1',
+                'sh -c "docker compose down && docker compose build --no-cache && docker compose up -d --force-recreate" 2>&1',
                 $hostProjectPath,
                 $hostProjectPath,
                 $hostProjectPath

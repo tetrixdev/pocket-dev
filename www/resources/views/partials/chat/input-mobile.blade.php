@@ -43,8 +43,8 @@
         <template x-if="!isStreaming">
             <button type="button"
                     @click="handleSendClick($event); if(!isRecording && !isProcessing && !waitingForFinalTranscript) sendMessage()"
-                    :disabled="isProcessing || isRecording || waitingForFinalTranscript || !prompt.trim()"
-                    :class="isProcessing || isRecording || waitingForFinalTranscript ? 'bg-gray-600/80 text-gray-400' : 'bg-emerald-500/90 hover:bg-emerald-400 text-white'"
+                    :disabled="isProcessing || isRecording || waitingForFinalTranscript || Alpine.store('attachments').isUploading || (!prompt.trim() && !Alpine.store('attachments').hasFiles)"
+                    :class="isProcessing || isRecording || waitingForFinalTranscript || Alpine.store('attachments').isUploading ? 'bg-gray-600/80 text-gray-400' : 'bg-emerald-500/90 hover:bg-emerald-400 text-white'"
                     class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-pointer disabled:cursor-not-allowed"
                     title="Send message">
                 <i class="fa-solid fa-paper-plane"></i>

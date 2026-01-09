@@ -38,8 +38,8 @@
     <div class="bg-gray-800 rounded-lg p-6 mb-6">
         <h2 class="text-lg font-semibold mb-2">Rebuild Containers</h2>
         <p class="text-gray-400 text-sm mb-4">
-            Runs <code class="bg-gray-900 px-2 py-1 rounded">docker compose down && docker compose up -d --build</code>.
-            Use this when Dockerfiles or entrypoint scripts have changed. Takes longer but rebuilds images.
+            Runs <code class="bg-gray-900 px-2 py-1 rounded">docker compose down && docker compose build --no-cache && docker compose up -d --force-recreate</code>.
+            Use this when Dockerfiles or entrypoint scripts have changed. Takes longer but rebuilds images from scratch without using cache.
             <span class="text-yellow-400">Data is preserved.</span>
         </p>
 

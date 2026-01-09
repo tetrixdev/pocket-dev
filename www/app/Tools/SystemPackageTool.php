@@ -20,11 +20,15 @@ class SystemPackageTool extends Tool
         'properties' => [
             'action' => [
                 'type' => 'string',
-                'description' => 'list, add, or remove',
+                'description' => 'list, add, update, or remove',
             ],
             'name' => [
                 'type' => 'string',
                 'description' => 'Display name (e.g., "Azure CLI", "jq"). Required for add.',
+            ],
+            'cli_commands' => [
+                'type' => 'string',
+                'description' => 'CLI command(s) to invoke, comma-separated (e.g., "mgc" or "libreoffice, soffice"). This is what appears in the AI prompt. Required for add.',
             ],
             'install_script' => [
                 'type' => 'string',
@@ -64,20 +68,26 @@ INSTRUCTIONS;
 php artisan system:package list
 
 # Add apt package
-php artisan system:package add --name="jq" --install_script="apt-get update -qq && apt-get install -y -qq jq"
+php artisan system:package add --name="jq" --cli_commands="jq" --install_script="apt-get update -qq && apt-get install -y -qq jq"
 
-# Add Azure CLI
-php artisan system:package add --name="Azure CLI" --install_script="curl -sL https://aka.ms/InstallAzureCLIDeb | bash"
+# Add package where CLI command differs from name
+php artisan system:package add --name="Azure CLI" --cli_commands="az" --install_script="curl -sL https://aka.ms/InstallAzureCLIDeb | bash"
 
-# Add from GitHub release
-php artisan system:package add --name="GitHub CLI" --install_script="curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main' | tee /etc/apt/sources.list.d/github-cli.list && apt-get update -qq && apt-get install -y -qq gh"
+# Add package with multiple CLI commands
+php artisan system:package add --name="LibreOffice" --cli_commands="libreoffice, soffice" --install_script="apt-get update -qq && apt-get install -y -qq libreoffice"
+
+# Update existing package CLI commands
+php artisan system:package update --name="Microsoft Graph CLI" --cli_commands="mgc"
+
+# Update install script (requires container restart)
+php artisan system:package update --name="extract-msg" --install_script="pip3 install extract-msg && ln -sf ~/.local/bin/extract_msg /usr/local/bin/"
 
 # Remove package
 php artisan system:package remove --id="uuid-here"
 php artisan system:package remove --name="jq"
 ```
 
-After adding packages, tell user: "Restart containers via Developer tab in menu to install."
+After adding/updating packages, tell user: "Restart containers via Developer tab in menu to install."
 CLI;
 
     /**

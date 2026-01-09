@@ -292,6 +292,128 @@
                 // Global helper for opening file preview
                 window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
             }
+
+            // File attachments store for managing uploaded files in chat
+            Alpine.store('attachments', {
+                files: [],           // Array of { id, path, filename, size, sizeFormatted, uploading, error }
+
+                get count() {
+                    return this.files.filter(f => !f.error && !f.uploading).length;
+                },
+
+                get hasFiles() {
+                    return this.count > 0;
+                },
+
+                get isUploading() {
+                    return this.files.some(f => f.uploading);
+                },
+
+                get badgeText() {
+                    if (this.count === 0) return '+';
+                    if (this.count > 9) return '\u221E'; // infinity symbol
+                    return this.count.toString();
+                },
+
+                async addFile(file) {
+                    const id = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                    const entry = {
+                        id,
+                        filename: file.name,
+                        size: file.size,
+                        sizeFormatted: this.formatSize(file.size),
+                        path: null,
+                        uploading: true,
+                        error: null,
+                    };
+                    this.files.push(entry);
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+
+                        const response = await fetch('/api/file/upload', {
+                            method: 'POST',
+                            body: formData,
+                        });
+
+                        const data = await response.json();
+
+                        if (!response.ok || !data.success) {
+                            throw new Error(data.message || data.error || 'Upload failed');
+                        }
+
+                        // Update entry with server response
+                        const idx = this.files.findIndex(f => f.id === id);
+                        if (idx !== -1) {
+                            this.files[idx] = {
+                                ...this.files[idx],
+                                path: data.path,
+                                sizeFormatted: data.size_formatted,
+                                uploading: false,
+                            };
+                        }
+                    } catch (err) {
+                        const idx = this.files.findIndex(f => f.id === id);
+                        if (idx !== -1) {
+                            this.files[idx] = {
+                                ...this.files[idx],
+                                uploading: false,
+                                error: err.message,
+                            };
+                        }
+                    }
+                },
+
+                async removeFile(id) {
+                    const file = this.files.find(f => f.id === id);
+                    if (file && file.path) {
+                        // Delete from server
+                        try {
+                            await fetch('/api/file/delete', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ path: file.path }),
+                            });
+                        } catch (err) {
+                            console.warn('Failed to delete file from server:', err);
+                        }
+                    }
+                    this.files = this.files.filter(f => f.id !== id);
+                },
+
+                clear(deleteFromServer = true) {
+                    // Optionally delete files from server (skip when sending - keep files for Claude to read)
+                    if (deleteFromServer) {
+                        this.files.forEach(async (file) => {
+                            if (file.path) {
+                                try {
+                                    await fetch('/api/file/delete', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ path: file.path }),
+                                    });
+                                } catch (err) {
+                                    console.warn('Failed to delete file:', err);
+                                }
+                            }
+                        });
+                    }
+                    this.files = [];
+                },
+
+                getFilePaths() {
+                    return this.files
+                        .filter(f => f.path && !f.error && !f.uploading)
+                        .map(f => f.path);
+                },
+
+                formatSize(bytes) {
+                    if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+                    if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                    return bytes + ' B';
+                },
+            });
         });
     </script>
 
@@ -417,7 +539,7 @@
         </div>
 
         {{-- Main Content Area --}}
-        <div class="flex-1 flex flex-col">
+        <div class="flex-1 flex flex-col min-h-0">
 
             {{-- Desktop Header (hidden on mobile) --}}
             <div class="hidden md:flex bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
@@ -499,15 +621,38 @@
                 </div>
             </div>
 
-            {{-- Messages Container --}}
+            {{-- Messages Container with Drag-and-Drop --}}
             {{-- Mobile: fixed position between header and input, contained scroll --}}
             {{-- Desktop: flex container scroll with overflow-y-auto --}}
-            <div id="messages"
-                 class="p-4 space-y-4 overflow-y-auto bg-gray-900
-                        fixed top-[60px] left-0 right-0 z-0
-                        md:static md:pt-4 md:pb-4 md:flex-1"
-                 :style="'bottom: ' + mobileInputHeight + 'px'"
-                 @scroll="handleMessagesScroll($event)">
+            <div x-data="{ isDragging: false }"
+                 @dragover.prevent="isDragging = true"
+                 @dragleave.prevent="isDragging = false"
+                 @drop.prevent="
+                     isDragging = false;
+                     const files = $event.dataTransfer.files;
+                     for (const file of files) {
+                         Alpine.store('attachments').addFile(file);
+                     }
+                 "
+                 class="relative md:flex-1 md:flex md:flex-col md:min-h-0">
+
+                {{-- Drop Overlay (Desktop only) --}}
+                <div x-show="isDragging"
+                     x-cloak
+                     class="hidden md:flex absolute inset-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg">
+                    <div class="bg-gray-800 rounded-lg p-6 text-center shadow-xl border-2 border-dashed border-blue-400">
+                        <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-400 mb-2"></i>
+                        <p class="text-gray-200 font-medium">Drop files to attach</p>
+                    </div>
+                </div>
+
+                <div id="messages"
+                     class="p-4 space-y-4 overflow-y-auto bg-gray-900
+                            fixed top-[60px] left-0 right-0 z-0
+                            md:static md:pt-4 md:pb-4 md:flex-1"
+                     :class="isDragging ? 'ring-2 ring-blue-500 ring-inset' : ''"
+                     :style="'bottom: ' + mobileInputHeight + 'px'"
+                     @scroll="handleMessagesScroll($event)">
 
                 {{-- Empty State --}}
                 <template x-if="messages.length === 0">
@@ -533,15 +678,20 @@
                     </div>
                 </template>
             </div>
+            </div> {{-- End drag-and-drop wrapper --}}
 
-            {{-- Scroll to Bottom Button (mobile) --}}
+            {{-- Scroll to Bottom Button (mobile) - positioned above attachment FAB --}}
             <button @click="autoScrollEnabled = true; scrollToBottom()"
                     :class="(!isAtBottom && messages.length > 0) ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'"
                     class="md:hidden fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 right-4"
-                    :style="'bottom: ' + (parseInt(mobileInputHeight) + 16) + 'px'"
+                    :style="'bottom: ' + (parseInt(mobileInputHeight) + 64) + 'px'"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
+
+            {{-- File Attachment FAB (mobile) --}}
+            @include('partials.chat.attachment-fab')
+
             {{-- Scroll to Bottom Button (desktop) --}}
             <button x-cloak
                     x-show="!isAtBottom && messages.length > 0"
@@ -552,7 +702,7 @@
                     x-transition:leave-start="opacity-100 scale-100"
                     x-transition:leave-end="opacity-0 scale-75"
                     @click="autoScrollEnabled = true; scrollToBottom()"
-                    class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 right-8 bottom-24"
+                    class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 cursor-pointer right-6 bottom-20"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
@@ -1823,9 +1973,31 @@
 
                     // Convert all messages to UI format first
                     const allUiMessages = [];
+                    // Track pending tool_results that need linking (tool_use in different db message)
+                    const pendingToolResults = [];
+
                     for (const msg of dbMessages) {
-                        const converted = this.convertDbMessageToUi(msg);
+                        const converted = this.convertDbMessageToUi(msg, pendingToolResults);
                         allUiMessages.push(...converted);
+                    }
+
+                    // Post-process: link any pending tool_results to their tool_use messages
+                    // This handles cases where tool_result is in a separate db message from tool_use
+                    for (const pending of pendingToolResults) {
+                        const toolMsgIndex = allUiMessages.findIndex(m => m.role === 'tool' && m.toolId === pending.tool_use_id);
+                        if (toolMsgIndex >= 0) {
+                            allUiMessages[toolMsgIndex] = {
+                                ...allUiMessages[toolMsgIndex],
+                                toolResult: pending.content
+                            };
+                        } else {
+                            this.debugLog('[Progressive] Orphaned tool_result - no matching tool_use', {
+                                tool_use_id: pending.tool_use_id,
+                                content_preview: typeof pending.content === 'string'
+                                    ? pending.content.substring(0, 100)
+                                    : JSON.stringify(pending.content).substring(0, 100)
+                            });
+                        }
                     }
 
                     if (allUiMessages.length === 0) return;
@@ -1905,8 +2077,11 @@
 
                 /**
                  * Converts a DB message to UI format. Returns array (content blocks expand to multiple).
+                 * @param {Object} dbMsg - The database message to convert
+                 * @param {Array} pendingToolResults - Optional array to collect tool_results that couldn't be linked
+                 *                                     (because tool_use is in a different db message)
                  */
-                convertDbMessageToUi(dbMsg) {
+                convertDbMessageToUi(dbMsg, pendingToolResults = null) {
                     const result = [];
                     const content = dbMsg.content;
                     const msgInputTokens = dbMsg.input_tokens || 0;
@@ -2020,6 +2195,13 @@
                                         ...result[toolMsgIndex],
                                         toolResult: block.content
                                     };
+                                } else if (pendingToolResults) {
+                                    // Tool not found in this message - collect for post-processing
+                                    // (tool_use is likely in a different db message)
+                                    pendingToolResults.push({
+                                        tool_use_id: block.tool_use_id,
+                                        content: block.content
+                                    });
                                 }
                             } else if (block.type === 'interrupted') {
                                 result.push({
@@ -2207,10 +2389,36 @@
                 },
 
                 async sendMessage() {
-                    if (!this.prompt.trim() || this.isStreaming) return;
+                    const attachments = Alpine.store('attachments');
 
-                    const userPrompt = this.prompt;
+                    // Allow sending if there's text OR files
+                    if (!this.prompt.trim() && !attachments.hasFiles) return;
+                    if (this.isStreaming) return;
+
+                    // Block if uploads still in progress
+                    if (attachments.isUploading) {
+                        this.showError('Please wait for file uploads to complete');
+                        return;
+                    }
+
+                    // Build the prompt with file paths if attachments exist
+                    let userPrompt = this.prompt;
+                    const filePaths = attachments.getFilePaths();
+
+                    if (filePaths.length > 0) {
+                        const fileSection = '\n\n---\n**Attached Files:**\n' +
+                            filePaths.map(p => `- ${p}`).join('\n') +
+                            '\n---\n\nPlease read and analyze the attached files as needed.';
+
+                        if (userPrompt.trim()) {
+                            userPrompt = userPrompt + fileSection;
+                        } else {
+                            userPrompt = 'Please analyze the following attached files:' + fileSection;
+                        }
+                    }
+
                     this.prompt = '';
+                    attachments.clear(false); // Clear UI only - keep files on disk for Claude to read
 
                     // Validate agent exists in current workspace
                     const agentValid = this.currentAgentId && this.agents.some(a => a.id === this.currentAgentId);
