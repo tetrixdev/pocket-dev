@@ -60,7 +60,7 @@
                 <i x-show="!isUploading" class="fa-solid fa-paperclip"></i>
                 <span x-show="!hasAnyFiles">Attach</span>
                 <span x-show="hasAnyFiles"
-                      x-text="'(' + (attachments.count > 9 ? '\u221E' : attachments.count) + ')'"></span>
+                      x-text="'(' + attachments.files.length + ')'"></span>
             </button>
 
             {{-- Desktop Attachments Modal --}}

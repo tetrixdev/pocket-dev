@@ -2418,7 +2418,6 @@
                     }
 
                     this.prompt = '';
-                    attachments.clear(false); // Clear UI only - keep files on disk for Claude to read
 
                     // Validate agent exists in current workspace
                     const agentValid = this.currentAgentId && this.agents.some(a => a.id === this.currentAgentId);
@@ -2462,6 +2461,7 @@
                             await this.fetchConversations();
                         } catch (err) {
                             this.showError('Failed to create conversation: ' + err.message);
+                            this.prompt = userPrompt; // Restore prompt so user can retry
                             return;
                         }
                     }
@@ -2520,6 +2520,7 @@
 
                         if (!data.success) {
                             this.showError(data.error || 'Failed to start streaming');
+                            this.prompt = userPrompt; // Restore prompt so user can retry
                             return;
                         }
 
@@ -2531,9 +2532,14 @@
                         // Connect to stream events SSE endpoint
                         await this.connectToStreamEvents();
 
+                        // Only clear attachments UI once stream is successfully started
+                        // (keep files on disk for Claude to read)
+                        attachments.clear(false);
+
                     } catch (err) {
                         this.showError('Failed to start streaming: ' + err.message);
                         this.isStreaming = false;
+                        this.prompt = userPrompt; // Restore prompt so user can retry
                     }
                 },
 

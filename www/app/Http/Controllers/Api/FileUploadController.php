@@ -23,19 +23,32 @@ class FileUploadController extends Controller
 
         $file = $request->file('file');
 
-        // Generate unique filename preserving extension
-        $extension = $file->getClientOriginalExtension();
+        // Generate unique filename preserving extension (sanitize extension)
+        $extension = preg_replace('/[^a-zA-Z0-9]+/', '', (string) $file->getClientOriginalExtension());
         $originalName = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
         $safeName = Str::slug($originalName) ?: 'file';
-        $uniqueName = $safeName . '-' . Str::random(8) . '.' . $extension;
+        $uniqueName = $safeName . '-' . Str::random(8) . ($extension ? ('.' . $extension) : '');
 
         // Ensure upload directory exists
         if (!is_dir(self::UPLOAD_DIR)) {
-            mkdir(self::UPLOAD_DIR, 0755, true);
+            if (!mkdir(self::UPLOAD_DIR, 0755, true) && !is_dir(self::UPLOAD_DIR)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Failed to create upload directory',
+                ], 500);
+            }
         }
 
         $path = self::UPLOAD_DIR . '/' . $uniqueName;
-        $file->move(self::UPLOAD_DIR, $uniqueName);
+
+        try {
+            $file->move(self::UPLOAD_DIR, $uniqueName);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Upload failed',
+            ], 500);
+        }
 
         return response()->json([
             'success' => true,
@@ -57,24 +70,19 @@ class FileUploadController extends Controller
 
         $path = $request->input('path');
 
-        // Security: Only allow deletion from upload directory
-        if (!str_starts_with($path, self::UPLOAD_DIR . '/')) {
+        // Security: Use realpath() for canonical path validation (protects against symlink attacks)
+        $uploadRoot = realpath(self::UPLOAD_DIR);
+        $resolved = $path ? realpath($path) : false;
+
+        if (!$uploadRoot || !$resolved || !str_starts_with($resolved, $uploadRoot . DIRECTORY_SEPARATOR)) {
             return response()->json([
                 'success' => false,
                 'error' => 'Access denied',
             ], 403);
         }
 
-        // Prevent path traversal
-        if (str_contains($path, '..')) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Invalid path',
-            ], 400);
-        }
-
-        if (file_exists($path)) {
-            unlink($path);
+        if (is_file($resolved)) {
+            unlink($resolved);
         }
 
         return response()->json(['success' => true]);

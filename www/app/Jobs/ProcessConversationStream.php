@@ -458,11 +458,18 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 case StreamEvent::TOOL_RESULT:
                     // Collect tool results from providers that execute tools internally (Claude Code, Codex)
                     // These will be saved after the message completes if executeTools() doesn't run
-                    $streamedToolResults[] = [
-                        'tool_use_id' => $event->metadata['tool_id'],
-                        'content' => $event->content,
-                        'is_error' => $event->metadata['is_error'] ?? false,
-                    ];
+                    $toolId = $event->metadata['tool_id'] ?? null;
+                    if ($toolId) {
+                        $streamedToolResults[] = [
+                            'tool_use_id' => $toolId,
+                            'content' => $event->content,
+                            'is_error' => $event->metadata['is_error'] ?? false,
+                        ];
+                    } else {
+                        Log::channel('api')->warning('ProcessConversationStream: TOOL_RESULT missing tool_id', [
+                            'conversation' => $this->conversationUuid,
+                        ]);
+                    }
                     break;
 
                 case StreamEvent::DONE:
