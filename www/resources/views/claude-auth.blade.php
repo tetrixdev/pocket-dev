@@ -107,7 +107,7 @@
                 <div id="content-docker" class="tab-content hidden">
                     <p class="text-gray-300 mb-4">Run this command on your host machine to authenticate:</p>
                     <div class="bg-gray-900 rounded p-4 mb-4">
-                        <code class="text-sm text-green-400">docker exec -it pocket-dev-php claude setup-token</code>
+                        <code class="text-sm text-green-400">docker exec -it -u www-data pocket-dev-php claude setup-token</code>
                     </div>
                     <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
                         <li>Copy the command above</li>

@@ -110,11 +110,11 @@
                 </p>
                 <div class="relative">
                     <div
-                        @click="copyCommand('docker exec -it pocket-dev-queue claude', 'claude')"
+                        @click="copyCommand('docker exec -it -u www-data pocket-dev-queue claude', 'claude')"
                         class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3"
                         title="Click to copy"
                     >
-                        docker exec -it pocket-dev-queue claude
+                        docker exec -it -u www-data pocket-dev-queue claude
                     </div>
                     <div
                         x-show="copiedCommand === 'claude'"
