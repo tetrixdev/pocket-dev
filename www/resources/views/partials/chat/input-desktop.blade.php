@@ -115,7 +115,9 @@
                                         <i class="fa-solid fa-exclamation-triangle text-red-400"></i>
                                     </template>
                                     <button @click="attachments.removeFile(file.id)"
-                                            class="text-gray-400 hover:text-red-400 p-1 transition-colors">
+                                            :disabled="file.uploading"
+                                            :class="file.uploading ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400 cursor-pointer'"
+                                            class="p-1 transition-colors">
                                         <i class="fa-solid fa-trash"></i>
                                     </button>
                                 </div>
@@ -141,7 +143,9 @@
                             </button>
                             <button @click="confirmClearAll()"
                                     x-show="attachments.files.length > 0"
-                                    class="px-4 py-2 bg-red-600/80 hover:bg-red-500 text-white rounded-lg font-medium transition-colors">
+                                    :disabled="isUploading"
+                                    :class="isUploading ? 'bg-gray-600 cursor-not-allowed' : 'bg-red-600/80 hover:bg-red-500 cursor-pointer'"
+                                    class="px-4 py-2 text-white rounded-lg font-medium transition-colors">
                                 <i class="fa-solid fa-trash"></i>
                             </button>
                         </div>

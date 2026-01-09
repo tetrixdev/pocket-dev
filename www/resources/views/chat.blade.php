@@ -352,6 +352,17 @@
                                 sizeFormatted: data.size_formatted,
                                 uploading: false,
                             };
+                        } else {
+                            // Entry was removed during upload - clean up orphaned server file
+                            try {
+                                await fetch('/api/file/delete', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ path: data.path }),
+                                });
+                            } catch (cleanupErr) {
+                                console.warn('Failed to clean up orphaned upload:', cleanupErr);
+                            }
                         }
                     } catch (err) {
                         const idx = this.files.findIndex(f => f.id === id);
@@ -2529,12 +2540,12 @@
                             this._streamState.startedAt = data.started_at;
                         }
 
-                        // Connect to stream events SSE endpoint
-                        await this.connectToStreamEvents();
-
-                        // Only clear attachments UI once stream is successfully started
+                        // Clear attachments UI now that stream job has started
                         // (keep files on disk for Claude to read)
                         attachments.clear(false);
+
+                        // Connect to stream events SSE endpoint
+                        await this.connectToStreamEvents();
 
                     } catch (err) {
                         this.showError('Failed to start streaming: ' + err.message);
