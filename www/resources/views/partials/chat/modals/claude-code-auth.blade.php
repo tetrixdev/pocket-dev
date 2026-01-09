@@ -11,7 +11,7 @@
                 Use your monthly subscription. Run this command in your terminal:
             </p>
             <div class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 select-all">
-                docker exec -it -u www-data pocket-dev-queue claude
+                docker exec -it -u {{ config('app.env') === 'local' ? 'appuser' : 'www-data' }} pocket-dev-queue claude
             </div>
             <p class="text-gray-500 text-xs mt-2">
                 This opens an interactive login. Complete the OAuth flow in your browser, then Claude Code will be ready to use.

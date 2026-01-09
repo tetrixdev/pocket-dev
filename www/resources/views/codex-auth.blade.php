@@ -74,9 +74,10 @@
 
                 <!-- Docker Exec Tab (Subscription) -->
                 <div id="content-docker" class="tab-content">
+                    @php $dockerUser = config('app.env') === 'local' ? 'appuser' : 'www-data'; @endphp
                     <p class="text-gray-300 mb-4">Sign in with your ChatGPT subscription (Plus, Pro, Team, Edu, or Enterprise):</p>
                     <div class="bg-gray-900 rounded p-4 mb-4">
-                        <code class="text-sm text-green-400">docker exec -it -u www-data pocket-dev-queue codex login --device-auth</code>
+                        <code class="text-sm text-green-400">docker exec -it -u {{ $dockerUser }} pocket-dev-queue codex login --device-auth</code>
                     </div>
                     <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
                         <li>Copy the command above and run it in your terminal</li>
@@ -96,7 +97,7 @@
 
                     <div class="bg-gray-900/50 border border-gray-700 rounded p-4 mb-4 text-sm">
                         <p class="text-gray-400 mb-2"><strong>Option 1:</strong> CLI command</p>
-                        <code class="text-green-400">echo "sk-your-key" | docker exec -i -u www-data pocket-dev-queue codex login --with-api-key</code>
+                        <code class="text-green-400">echo "sk-your-key" | docker exec -i -u {{ $dockerUser }} pocket-dev-queue codex login --with-api-key</code>
                     </div>
 
                     <p class="text-gray-400 mb-2"><strong>Option 2:</strong> Paste auth.json content below</p>
