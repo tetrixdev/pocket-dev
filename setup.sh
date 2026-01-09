@@ -48,7 +48,7 @@ echo "Detected USER_ID=$USER_ID, GROUP_ID=$GROUP_ID"
 if [ -S /var/run/docker.sock ]; then
     DOCKER_GID=$(get_gid /var/run/docker.sock)
     if [ -n "$DOCKER_GID" ]; then
-        sedi "s|# DOCKER_GID=|DOCKER_GID=$DOCKER_GID|" .env
+        sedi "s|DOCKER_GID=|DOCKER_GID=$DOCKER_GID|" .env
         echo "Detected DOCKER_GID=$DOCKER_GID"
     fi
 else
