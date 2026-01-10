@@ -768,6 +768,12 @@
         });
 
         function chatApp() {
+            // Debug: Log when chatApp() is called (component creation)
+            console.log('[chatApp] Function called - creating component instance', new Error().stack?.split('\n').slice(1, 4).join(' <- '));
+            if (window._chatAppCallCount === undefined) window._chatAppCallCount = 0;
+            window._chatAppCallCount++;
+            console.log('[chatApp] Call count:', window._chatAppCallCount);
+
             return {
                 // State
                 prompt: '',
