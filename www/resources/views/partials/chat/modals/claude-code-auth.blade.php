@@ -10,12 +10,19 @@
             <p class="text-gray-300 text-sm mb-3">
                 Use your monthly subscription. Run this command in your terminal:
             </p>
-            <div class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 select-all">
-                docker exec -it -u {{ config('backup.exec_user') }} pocket-dev-queue claude
-            </div>
-            <p class="text-gray-500 text-xs mt-2">
-                This opens an interactive login. Complete the OAuth flow in your browser, then Claude Code will be ready to use.
-            </p>
+            @if(config('backup.user_id'))
+                <div class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 select-all">
+                    docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude
+                </div>
+                <p class="text-gray-500 text-xs mt-2">
+                    This opens an interactive login. Complete the OAuth flow in your browser, then Claude Code will be ready to use.
+                </p>
+            @else
+                <div class="bg-red-900/50 border border-red-500/50 rounded p-3 text-red-300 text-sm">
+                    <strong>Configuration required:</strong> Please set <code class="bg-red-900 px-1 rounded">USER_ID</code> in your .env file.
+                    <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> on your host to get the value.</span>
+                </div>
+            @endif
         </div>
 
         {{-- Divider --}}

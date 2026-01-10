@@ -1,13 +1,11 @@
 <?php
 
 return [
-    'user_id' => env('USER_ID'),
-    'group_id' => env('GROUP_ID'),
-    'host_project_path' => env('HOST_PROJECT_PATH'),
+    // Docker user/group for file permissions and exec commands
+    // Local: must be set in .env (run `id -u` and `id -g` to get your values)
+    // Production: falls back to www-data if not set
+    'user_id' => env('USER_ID') ?: (env('APP_ENV') === 'local' ? null : 'www-data'),
+    'group_id' => env('GROUP_ID') ?: (env('APP_ENV') === 'local' ? null : 'www-data'),
 
-    // Docker exec user/group for credential setup commands
-    // Uses USER_ID/GROUP_ID if set, otherwise falls back based on environment
-    // Local: 1000 (appuser), Production: 33 (www-data)
-    'exec_user' => env('USER_ID') ?: (env('APP_ENV') === 'local' ? '1000' : '33'),
-    'exec_group' => env('GROUP_ID') ?: (env('APP_ENV') === 'local' ? '1000' : '33'),
+    'host_project_path' => env('HOST_PROJECT_PATH'),
 ];

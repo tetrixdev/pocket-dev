@@ -106,9 +106,15 @@
                 <!-- Docker Exec Tab -->
                 <div id="content-docker" class="tab-content hidden">
                     <p class="text-gray-300 mb-4">Run this command on your host machine to authenticate:</p>
-                    <div class="bg-gray-900 rounded p-4 mb-4">
-                        <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.exec_user') }} pocket-dev-queue claude</code>
-                    </div>
+                    @if(config('backup.user_id'))
+                        <div class="bg-gray-900 rounded p-4 mb-4">
+                            <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude</code>
+                        </div>
+                    @else
+                        <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">
+                            <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> in your .env file (run <code>id -u</code> to get the value).
+                        </div>
+                    @endif
                     <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
                         <li>Copy the command above</li>
                         <li>Run it in your terminal</li>

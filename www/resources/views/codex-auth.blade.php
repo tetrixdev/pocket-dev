@@ -75,9 +75,15 @@
                 <!-- Docker Exec Tab (Subscription) -->
                 <div id="content-docker" class="tab-content">
                     <p class="text-gray-300 mb-4">Sign in with your ChatGPT subscription (Plus, Pro, Team, Edu, or Enterprise):</p>
-                    <div class="bg-gray-900 rounded p-4 mb-4">
-                        <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.exec_user') }} pocket-dev-queue codex login --device-auth</code>
-                    </div>
+                    @if(config('backup.user_id'))
+                        <div class="bg-gray-900 rounded p-4 mb-4">
+                            <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue codex login --device-auth</code>
+                        </div>
+                    @else
+                        <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">
+                            <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> in your .env file (run <code>id -u</code> to get the value).
+                        </div>
+                    @endif
                     <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
                         <li>Copy the command above and run it in your terminal</li>
                         <li>A URL and device code will appear</li>
@@ -94,10 +100,16 @@
                 <div id="content-json" class="tab-content hidden">
                     <p class="text-gray-300 mb-4">Use an OpenAI API key for pay-per-use access:</p>
 
-                    <div class="bg-gray-900/50 border border-gray-700 rounded p-4 mb-4 text-sm">
-                        <p class="text-gray-400 mb-2"><strong>Option 1:</strong> CLI command</p>
-                        <code class="text-green-400">echo "sk-your-key" | docker exec -i -u {{ config('backup.exec_user') }} pocket-dev-queue codex login --with-api-key</code>
-                    </div>
+                    @if(config('backup.user_id'))
+                        <div class="bg-gray-900/50 border border-gray-700 rounded p-4 mb-4 text-sm">
+                            <p class="text-gray-400 mb-2"><strong>Option 1:</strong> CLI command</p>
+                            <code class="text-green-400">echo "sk-your-key" | docker exec -i -u {{ config('backup.user_id') }} pocket-dev-queue codex login --with-api-key</code>
+                        </div>
+                    @else
+                        <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">
+                            <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> in your .env file (run <code>id -u</code> to get the value).
+                        </div>
+                    @endif
 
                     <p class="text-gray-400 mb-2"><strong>Option 2:</strong> Paste auth.json content below</p>
                     <form id="json-form" class="space-y-4">
