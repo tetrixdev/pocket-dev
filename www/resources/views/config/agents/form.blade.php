@@ -528,7 +528,10 @@
     <!-- System Prompt Preview Section -->
     <div class="mt-8 border-t border-gray-700 pt-6">
         <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-semibold text-white">System Prompt Preview</h3>
+            <div>
+                <h3 class="text-lg font-semibold text-white">System Prompt Preview</h3>
+                <p class="text-xs text-gray-500 mt-1">Does not reflect unsaved changes. Click "Refresh Preview" after making changes.</p>
+            </div>
             <button
                 type="button"
                 @click="togglePromptPreview()"
@@ -545,41 +548,51 @@
             </div>
 
             <div x-show="!promptLoading">
-                <!-- Stats -->
-                <div class="flex gap-4 mb-4 text-sm text-gray-400">
-                    <span>Sections: <span class="text-white" x-text="promptSections.length"></span></span>
-                    <span>Est. tokens: <span class="text-white" x-text="estimatedTokens.toLocaleString()"></span></span>
+                <!-- Stats and controls -->
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mb-4 text-sm">
+                    <div class="flex items-center gap-4 text-gray-400">
+                        <span>Sections: <span class="text-white" x-text="promptSections.length"></span></span>
+                        <span class="flex items-center gap-1">
+                            Total: <span class="text-blue-400 font-medium" x-text="'~' + estimatedTokens.toLocaleString() + ' tokens'"></span>
+                            <span class="relative group">
+                                <i class="fa-solid fa-circle-info text-gray-500 text-xs cursor-help"></i>
+                                <span class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 text-xs text-gray-300 bg-gray-900 border border-gray-700 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    Estimated at ~4 chars/token.<br>
+                                    <a href="https://claude-tokenizer.vercel.app/" target="_blank" class="text-blue-400 hover:underline pointer-events-auto">Claude Tokenizer</a> for exact counts.
+                                </span>
+                            </span>
+                        </span>
+                    </div>
+                    <div class="flex gap-2 text-xs">
+                        <button
+                            type="button"
+                            @click="copyFullPrompt()"
+                            class="text-blue-400 hover:text-blue-300"
+                        >
+                            <span x-show="!copiedFullPrompt">Copy</span>
+                            <span x-show="copiedFullPrompt" class="text-green-400">Copied!</span>
+                        </button>
+                        <span class="text-gray-600">|</span>
+                        <button
+                            type="button"
+                            @click="expandAllSections()"
+                            class="text-blue-400 hover:text-blue-300"
+                        >Expand all</button>
+                        <span class="text-gray-600">|</span>
+                        <button
+                            type="button"
+                            @click="collapseAllSections()"
+                            class="text-blue-400 hover:text-blue-300"
+                        >Collapse all</button>
+                    </div>
                 </div>
 
-                <!-- Sections -->
-                <div class="space-y-4">
-                    <template x-for="(section, idx) in promptSections" :key="idx">
-                        <div class="bg-gray-800 border border-gray-700 rounded overflow-hidden">
-                            <div class="flex items-center justify-between px-4 py-2 bg-gray-750 border-b border-gray-700">
-                                <div>
-                                    <span class="font-medium text-white" x-text="section.title"></span>
-                                    <span class="text-xs text-gray-500 ml-2" x-text="section.source"></span>
-                                </div>
-                                <div class="flex items-center gap-3">
-                                    <span class="text-xs text-gray-400" x-text="section.content.length + ' chars'"></span>
-                                    <button
-                                        type="button"
-                                        @click="copySectionContent(section, idx)"
-                                        class="text-gray-400 hover:text-white transition-colors"
-                                        title="Copy section"
-                                    >
-                                        <template x-if="copiedSectionIdx !== idx">
-                                            <i class="fa-regular fa-copy text-sm"></i>
-                                        </template>
-                                        <template x-if="copiedSectionIdx === idx">
-                                            <span class="text-green-400 text-xs font-medium">Copied!</span>
-                                        </template>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="p-4 max-h-96 overflow-y-auto prose-preview" x-html="parseMarkdown(section.content)"></div>
-                        </div>
-                    </template>
+                <!-- Sections - using shared partial -->
+                <div x-data="{
+                    // Alias promptSections to sections for the partial
+                    get sections() { return promptSections }
+                }">
+                    @include('partials.system-prompt-sections')
                 </div>
 
                 <!-- Refresh button -->
@@ -667,6 +680,9 @@
             showPromptPreview: false,
             estimatedTokens: 0,
             copiedSectionIdx: null,
+            copiedFullPrompt: false,
+            expandedSections: {}, // Track which sections are expanded by index
+            rawViewSections: {}, // Track which sections show raw markdown vs rendered
 
             get availableModels() {
                 return this.modelsPerProvider[this.provider] || [];
@@ -692,10 +708,6 @@
                 }
                 // Fetch tools for new provider
                 await this.fetchTools();
-                // Refresh preview if visible
-                if (this.showPromptPreview) {
-                    await this.fetchPromptPreview();
-                }
             },
 
             async fetchTools() {
@@ -779,6 +791,8 @@
                     const data = await response.json();
                     this.promptSections = data.sections || [];
                     this.estimatedTokens = data.estimated_tokens || 0;
+                    // Initialize expanded state from API (all collapsed by default)
+                    this.expandedSections = {};
                 } catch (error) {
                     console.error('Failed to fetch prompt preview:', error);
                     this.promptSections = [];
@@ -853,12 +867,48 @@
                 }
             },
 
-            copySectionContent(section, idx) {
+            toggleSection(path) {
+                this.expandedSections[path] = !this.expandedSections[path];
+            },
+
+            toggleRawView(path) {
+                this.rawViewSections[path] = !this.rawViewSections[path];
+            },
+
+            // Recursively collect all paths for expand/collapse all
+            collectAllPaths(sections, prefix = '') {
+                const paths = [];
+                sections.forEach((section, idx) => {
+                    const path = prefix ? `${prefix}.${idx}` : String(idx);
+                    paths.push(path);
+                    if (section.children && section.children.length) {
+                        paths.push(...this.collectAllPaths(section.children, path));
+                    }
+                });
+                return paths;
+            },
+
+            expandAllSections() {
+                const allPaths = this.collectAllPaths(this.promptSections);
+                allPaths.forEach(path => {
+                    this.expandedSections[path] = true;
+                });
+            },
+
+            collapseAllSections() {
+                const allPaths = this.collectAllPaths(this.promptSections);
+                allPaths.forEach(path => {
+                    this.expandedSections[path] = false;
+                });
+            },
+
+            copySectionContent(section, path) {
+                if (!section.content) return;
                 navigator.clipboard.writeText(section.content)
                     .then(() => {
-                        this.copiedSectionIdx = idx;
+                        this.copiedSectionIdx = path;
                         setTimeout(() => {
-                            if (this.copiedSectionIdx === idx) {
+                            if (this.copiedSectionIdx === path) {
                                 this.copiedSectionIdx = null;
                             }
                         }, 1500);
@@ -866,37 +916,36 @@
                     .catch(err => {
                         console.error('Failed to copy:', err);
                     });
+            },
+
+            // Flatten all sections recursively to get full prompt text
+            flattenSections(sections) {
+                let parts = [];
+                for (const section of sections) {
+                    if (section.content) {
+                        parts.push(section.content);
+                    }
+                    if (section.children && section.children.length) {
+                        parts.push(this.flattenSections(section.children));
+                    }
+                }
+                return parts.filter(p => p).join('\n\n');
+            },
+
+            copyFullPrompt() {
+                const fullPrompt = this.flattenSections(this.promptSections);
+                navigator.clipboard.writeText(fullPrompt)
+                    .then(() => {
+                        this.copiedFullPrompt = true;
+                        setTimeout(() => {
+                            this.copiedFullPrompt = false;
+                        }, 1500);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy full prompt:', err);
+                    });
             }
         };
     }
 </script>
-
-<style>
-    [x-cloak] { display: none !important; }
-    .bg-gray-750 { background-color: rgb(55 65 81 / 0.5); }
-
-    /* Prose styles for markdown rendering */
-    .prose-preview {
-        font-size: 0.8rem;
-        line-height: 1.6;
-        color: #d1d5db;
-    }
-    .prose-preview h1 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #f3f4f6; }
-    .prose-preview h2 { font-size: 1.1rem; font-weight: 600; margin: 0.875rem 0 0.5rem; color: #f3f4f6; }
-    .prose-preview h3 { font-size: 0.95rem; font-weight: 600; margin: 0.75rem 0 0.375rem; color: #e5e7eb; }
-    .prose-preview h4 { font-size: 0.875rem; font-weight: 600; margin: 0.5rem 0 0.25rem; color: #e5e7eb; }
-    .prose-preview p { margin: 0.5rem 0; }
-    .prose-preview ul, .prose-preview ol { margin: 0.5rem 0; padding-left: 1.5rem; }
-    .prose-preview li { margin: 0.25rem 0; }
-    .prose-preview ul { list-style-type: disc; }
-    .prose-preview ol { list-style-type: decimal; }
-    .prose-preview code { background: #1f2937; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.75rem; }
-    .prose-preview pre { background: #1f2937; padding: 0.75rem; border-radius: 0.375rem; overflow-x: auto; margin: 0.5rem 0; }
-    .prose-preview pre code { background: transparent; padding: 0; }
-    .prose-preview strong { color: #f3f4f6; font-weight: 600; }
-    .prose-preview em { font-style: italic; }
-    .prose-preview a { color: #60a5fa; text-decoration: underline; }
-    .prose-preview blockquote { border-left: 3px solid #4b5563; padding-left: 1rem; margin: 0.5rem 0; color: #9ca3af; }
-    .prose-preview hr { border-color: #374151; margin: 1rem 0; }
-</style>
 @endpush

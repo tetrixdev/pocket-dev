@@ -3,6 +3,7 @@
 @include('partials.chat.modals.openai-key')
 @include('partials.chat.modals.claude-code-auth')
 @include('partials.chat.modals.agent-selector')
+@include('partials.chat.modals.system-prompt-preview')
 @include('partials.chat.modals.workspace-selector')
 @include('partials.chat.modals.pricing-settings')
 @include('partials.chat.modals.cost-breakdown')

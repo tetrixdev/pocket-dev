@@ -86,9 +86,20 @@
             <a href="{{ route('config.agents') }}" class="text-xs text-gray-400 hover:text-gray-300">
                 Manage Agents
             </a>
-            <x-button variant="secondary" @click="showAgentSelector = false">
-                Close
-            </x-button>
+            <div class="flex items-center gap-2">
+                <x-button
+                    variant="ghost"
+                    size="sm"
+                    @click="showAgentSelector = false; $root.openSystemPromptPreview()"
+                    x-show="currentAgentId"
+                    title="View system prompt for selected agent"
+                >
+                    <i class="fas fa-terminal mr-1.5"></i>System Prompt
+                </x-button>
+                <x-button variant="secondary" @click="showAgentSelector = false">
+                    Close
+                </x-button>
+            </div>
         </div>
     </div>
 </x-modal>

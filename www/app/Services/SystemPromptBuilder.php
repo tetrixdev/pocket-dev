@@ -3,20 +3,31 @@
 namespace App\Services;
 
 use App\Enums\Provider;
+use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Credential;
+use App\Models\MemoryDatabase;
 use App\Models\SystemPackage;
 use App\Models\Workspace;
 
 /**
  * Builds the system prompt for AI providers.
  *
- * System prompt structure (in order):
- * 1. Core system prompt (from resources/defaults or storage override)
- * 2. Additional system prompt (generic, from config or storage override)
- * 3. Agent-specific system prompt (from conversation's agent, if any)
- * 4. Tool instructions (dynamically generated from available tools)
- * 5. Working directory context
+ * System prompt structure (optimized for primacy/recency effects):
+ *
+ * PRIMACY ZONE (beginning - high attention):
+ * 1. Core system prompt - fundamental identity and behavior
+ *
+ * MIDDLE ZONE (reference material - retrievable):
+ * 2. Tools - capabilities and how to use them
+ * 3. Memory - available data schemas
+ *
+ * RECENCY ZONE (end - high attention, task-relevant):
+ * 4. Additional system prompt - project-wide customs
+ * 5. Agent instructions - task-specific behavior
+ * 6. Working directory - current context
+ * 7. Environment - available resources
+ * 8. Context usage - current state
  */
 class SystemPromptBuilder
 {
@@ -26,45 +37,57 @@ class SystemPromptBuilder
     ) {}
 
     /**
-     * Build the system prompt for a conversation.
+     * Build the system prompt for a conversation (API providers).
      */
     public function build(Conversation $conversation, ToolRegistry $toolRegistry): string
     {
-        $sections = [];
-
-        // 1 & 2: Core + Additional system prompt (customizable via settings)
-        $sections[] = $this->systemPromptService->get();
-
-        // 3: Agent-specific system prompt (if conversation has an agent with custom prompt)
-        // Also fetch agent for tool filtering
         $agent = $conversation->agent()->first();
-        $agentPrompt = $agent?->system_prompt;
-        if (!empty($agentPrompt)) {
-            $sections[] = $this->buildAgentSection($agentPrompt);
-        }
-
-        // 4: Tool instructions (from tools that have them)
-        // Filter by agent's allowed_tools if specified
-        // When inheriting, pass null so workspace filtering applies
+        $workspace = $agent?->workspace;
         $allowedTools = null;
         if ($agent && !$agent->inheritsWorkspaceTools()) {
             $allowedTools = $agent->allowed_tools;
         }
+
+        $sections = [];
+
+        // === PRIMACY ZONE ===
+        // 1. Core system prompt
+        $sections[] = $this->systemPromptService->getCore();
+
+        // === MIDDLE ZONE (reference material) ===
+        // 2. Tool instructions
         $toolInstructions = $toolRegistry->getInstructions($allowedTools);
         if (!empty($toolInstructions)) {
             $sections[] = $this->buildToolSection($toolInstructions);
         }
 
-        // 5: Working directory context
+        // 3. Memory section (separate from tools)
+        if ($memorySection = $this->toolSelector->buildMemorySection($agent)) {
+            $sections[] = $memorySection;
+        }
+
+        // === RECENCY ZONE (task-relevant) ===
+        // 4. Additional system prompt
+        $additionalPrompt = $this->systemPromptService->getAdditional();
+        if (!empty($additionalPrompt)) {
+            $sections[] = $additionalPrompt;
+        }
+
+        // 5. Agent-specific instructions
+        $agentPrompt = $agent?->system_prompt;
+        if (!empty($agentPrompt)) {
+            $sections[] = $this->buildAgentSection($agentPrompt);
+        }
+
+        // 6. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 6: Environment (credentials and packages)
-        $workspace = $agent?->workspace;
+        // 7. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 7: Context usage (dynamic)
+        // 8. Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -78,48 +101,183 @@ class SystemPromptBuilder
      */
     public function buildForCliProvider(Conversation $conversation, string $provider): string
     {
+        $agent = $conversation->agent()->first();
+        $workspace = $agent?->workspace;
+        $allowedTools = null;
+        if ($agent && !$agent->inheritsWorkspaceTools()) {
+            $allowedTools = $agent->allowed_tools;
+        }
+
         $sections = [];
 
-        // 1 & 2: Core + Additional system prompt (customizable via settings)
-        $sections[] = $this->systemPromptService->get();
+        // === PRIMACY ZONE ===
+        // 1. Core system prompt
+        $sections[] = $this->systemPromptService->getCore();
 
-        // 3: Agent-specific system prompt (if conversation has an agent with custom prompt)
-        // Also fetch agent for tool filtering
-        $agent = $conversation->agent()->first();
+        // === MIDDLE ZONE (reference material) ===
+        // 2. PocketDev tools
+        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, $workspace);
+        if (!empty($pocketDevToolPrompt)) {
+            $sections[] = $pocketDevToolPrompt;
+        }
+
+        // 3. Memory section (separate from tools)
+        if ($memorySection = $this->toolSelector->buildMemorySection($agent)) {
+            $sections[] = $memorySection;
+        }
+
+        // === RECENCY ZONE (task-relevant) ===
+        // 4. Additional system prompt
+        $additionalPrompt = $this->systemPromptService->getAdditional();
+        if (!empty($additionalPrompt)) {
+            $sections[] = $additionalPrompt;
+        }
+
+        // 5. Agent-specific instructions
         $agentPrompt = $agent?->system_prompt;
         if (!empty($agentPrompt)) {
             $sections[] = $this->buildAgentSection($agentPrompt);
         }
 
-        // 4: PocketDev tools (memory, tool management, user tools)
-        // These are tools that don't have native CLI provider equivalents
-        // Filter by agent's allowed_tools if specified
-        // Pass agent for memory schema access
-        // When inheriting, pass null so workspace filtering applies
-        $allowedTools = null;
-        if ($agent && !$agent->inheritsWorkspaceTools()) {
-            $allowedTools = $agent->allowed_tools;
-        }
-        $workspace = $agent?->workspace;
-        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, $workspace, $agent);
-        if (!empty($pocketDevToolPrompt)) {
-            $sections[] = $pocketDevToolPrompt;
-        }
-
-        // 5: Working directory context
+        // 6. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 6: Environment (credentials and packages)
+        // 7. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 7: Context usage (dynamic)
+        // 8. Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
 
         return implode("\n\n", array_filter($sections));
+    }
+
+    /**
+     * Build preview sections for the agent form.
+     * Returns structured data for each section with metadata for display.
+     *
+     * @param  string  $provider  The provider type (claude_code, anthropic, openai)
+     * @param  string|null  $agentSystemPrompt  Custom agent system prompt
+     * @param  array|null  $allowedTools  Tool filter (null = all tools)
+     * @param  array  $memorySchemaIds  Selected memory schema IDs
+     * @param  Workspace|null  $workspace  Target workspace
+     * @return array{sections: array, estimated_tokens: int}
+     */
+    public function buildPreviewSections(
+        string $provider,
+        ?string $agentSystemPrompt,
+        ?array $allowedTools,
+        array $memorySchemaIds,
+        ?Workspace $workspace
+    ): array {
+        $sections = [];
+
+        // Helper to create section with token estimate
+        $createSection = function (string $title, string $content, string $source, array $children = []): array {
+            $chars = strlen($content);
+            $childTokens = array_sum(array_column($children, 'estimated_tokens'));
+
+            return [
+                'title' => $title,
+                'content' => $content,
+                'source' => $source,
+                'collapsed' => true,
+                'chars' => $chars,
+                'estimated_tokens' => (int) ceil($chars / 4) + $childTokens,
+                'children' => $children,
+            ];
+        };
+
+        // Create a preview agent for memory schema access
+        // Always create an agent to avoid null = "all schemas" behavior
+        $previewAgent = new Agent([
+            'name' => 'preview',
+            'inherit_workspace_schemas' => false,
+        ]);
+        if (!empty($memorySchemaIds)) {
+            $previewAgent->setRelation('memoryDatabases', MemoryDatabase::whereIn('id', $memorySchemaIds)->get());
+        } else {
+            // Explicitly set empty collection when no schemas selected
+            $previewAgent->setRelation('memoryDatabases', collect());
+        }
+
+        $isCliProvider = in_array($provider, [Provider::ClaudeCode->value, Provider::Codex->value]);
+
+        // === PRIMACY ZONE ===
+        // 1. Core system prompt
+        $corePrompt = $this->systemPromptService->getCore();
+        $sections[] = $createSection(
+            'Core System Prompt',
+            $corePrompt,
+            $this->systemPromptService->isCoreOverridden()
+                ? 'storage/pocketdev/system-prompt.md (custom)'
+                : 'resources/defaults/system-prompt.md'
+        );
+
+        // === MIDDLE ZONE (reference material) ===
+        // 2. Tools (hierarchical: groups → categories → tools)
+        if ($isCliProvider) {
+            $toolsHierarchy = $this->toolSelector->buildToolsPreviewHierarchy($provider, $allowedTools, $workspace);
+            if (!empty($toolsHierarchy['children'])) {
+                $sections[] = $toolsHierarchy;
+            }
+        }
+
+        // 3. Memory (hierarchical: schemas → tables)
+        $memoryHierarchy = $this->toolSelector->buildMemoryPreviewHierarchy($previewAgent);
+        if ($memoryHierarchy) {
+            $sections[] = $memoryHierarchy;
+        }
+
+        // === RECENCY ZONE (task-relevant) ===
+        // 4. Additional system prompt
+        $additionalPrompt = $this->systemPromptService->getAdditional();
+        if (!empty($additionalPrompt)) {
+            $sections[] = $createSection(
+                'Additional System Prompt',
+                $additionalPrompt,
+                'storage/pocketdev/additional-system-prompt.md'
+            );
+        }
+
+        // 5. Agent instructions
+        if (!empty($agentSystemPrompt)) {
+            $sections[] = $createSection(
+                'Agent Instructions',
+                $this->buildAgentSection($agentSystemPrompt),
+                'Agent configuration'
+            );
+        }
+
+        // 6. Working directory
+        $workingDir = $workspace?->getWorkingDirectoryPath() ?? '/workspace';
+        $sections[] = $createSection(
+            'Working Directory',
+            "# Working Directory\n\nCurrent project: {$workingDir}\n\nAll file operations should be relative to or within this directory.",
+            'Dynamic (per conversation)'
+        );
+
+        // 7. Environment
+        $envContent = $this->buildEnvironmentSection($workspace);
+        if (!empty($envContent)) {
+            $sections[] = $createSection(
+                'Environment',
+                $envContent,
+                'Dynamic (workspace settings)'
+            );
+        }
+
+        // Calculate totals - sum estimated_tokens from top-level sections
+        // (each section's estimated_tokens already includes its children)
+        $totalTokens = array_sum(array_column($sections, 'estimated_tokens'));
+
+        return [
+            'sections' => $sections,
+            'estimated_tokens' => $totalTokens,
+        ];
     }
 
     private function buildAgentSection(string $prompt): string
@@ -181,7 +339,6 @@ PROMPT;
         $credentials = Credential::getForWorkspace($workspaceId);
 
         // Get unique env_var names (workspace-specific takes precedence)
-        $envVarNames = [];
         $globalEnvVars = [];
         $workspaceEnvVars = [];
 
@@ -197,20 +354,19 @@ PROMPT;
         $envVarNames = array_keys(array_merge($globalEnvVars, $workspaceEnvVars));
 
         if (!empty($envVarNames)) {
-            $lines[] = '**Credentials:** ' . implode(', ', $envVarNames);
+            $lines[] = '**Credentials:** '.implode(', ', $envVarNames);
         }
 
         // Get packages for this workspace
-        // Now uses Workspace object instead of workspace_id for selected_packages filtering
         $packages = SystemPackage::getNamesForWorkspace($workspace);
         if (!empty($packages)) {
-            $lines[] = '**Packages:** ' . implode(', ', $packages);
+            $lines[] = '**Packages:** '.implode(', ', $packages);
         }
 
         if (empty($lines)) {
             return null;
         }
 
-        return "# Environment\n\n" . implode("\n", $lines);
+        return "# Environment\n\n".implode("\n", $lines);
     }
 }

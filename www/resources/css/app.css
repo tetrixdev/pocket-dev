@@ -9,3 +9,41 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/*
+ * TODO: Consider replacing custom gray shades with Tailwind's built-in opacity syntax:
+ * - bg-gray-750 → bg-gray-700/50
+ * - bg-gray-850 → bg-gray-800/80
+ * This would require updating all usages in Blade templates.
+ */
+.bg-gray-750 { background-color: rgb(55 65 81 / 0.5); }
+.bg-gray-850 { background-color: rgb(31 41 55 / 0.8); }
+.hover\:bg-gray-750:hover { background-color: rgb(55 65 81 / 0.5); }
+.hover\:bg-gray-850:hover { background-color: rgb(31 41 55 / 0.8); }
+
+/*
+ * TODO: Consider using @tailwindcss/typography plugin instead of custom prose styles.
+ * Would use `prose prose-invert prose-sm` classes instead of .prose-preview.
+ * See: https://tailwindcss.com/docs/typography-plugin
+ */
+.prose-preview {
+    line-height: 1.6;
+    color: #d1d5db;
+}
+.prose-preview h1 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #f3f4f6; }
+.prose-preview h2 { font-size: 1.1rem; font-weight: 600; margin: 0.875rem 0 0.5rem; color: #f3f4f6; }
+.prose-preview h3 { font-size: 0.95rem; font-weight: 600; margin: 0.75rem 0 0.375rem; color: #e5e7eb; }
+.prose-preview h4 { font-size: 0.875rem; font-weight: 600; margin: 0.5rem 0 0.25rem; color: #e5e7eb; }
+.prose-preview p { margin: 0.5rem 0; }
+.prose-preview ul, .prose-preview ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+.prose-preview li { margin: 0.25rem 0; }
+.prose-preview ul { list-style-type: disc; }
+.prose-preview ol { list-style-type: decimal; }
+.prose-preview code { background: #1f2937; padding: 0.125rem 0.375rem; border-radius: 0.25rem; font-size: 0.75rem; }
+.prose-preview pre { background: #1f2937; padding: 0.75rem; border-radius: 0.375rem; overflow-x: auto; margin: 0.5rem 0; }
+.prose-preview pre code { background: transparent; padding: 0; }
+.prose-preview strong { color: #f3f4f6; font-weight: 600; }
+.prose-preview em { font-style: italic; }
+.prose-preview a { color: #60a5fa; text-decoration: underline; }
+.prose-preview blockquote { border-left: 3px solid #4b5563; padding-left: 1rem; margin: 0.5rem 0; color: #9ca3af; }
+.prose-preview hr { border-color: #374151; margin: 1rem 0; }
