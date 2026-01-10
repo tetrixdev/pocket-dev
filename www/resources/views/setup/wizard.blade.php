@@ -108,30 +108,37 @@
                 <p class="text-sm text-gray-400 mb-4">
                     Run this command in your terminal to authenticate with your Claude Pro/Team subscription:
                 </p>
-                <div class="relative">
-                    <div
-                        @click="copyCommand('docker exec -it pocket-dev-queue claude', 'claude')"
-                        class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3"
-                        title="Click to copy"
-                    >
-                        docker exec -it pocket-dev-queue claude
+                @if(config('backup.user_id') !== null)
+                    <div class="relative">
+                        <div
+                            @click="copyCommand('docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude', 'claude')"
+                            class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3"
+                            title="Click to copy"
+                        >
+                            docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude
+                        </div>
+                        <div
+                            x-show="copiedCommand === 'claude'"
+                            x-transition:enter="transition ease-out duration-200"
+                            x-transition:enter-start="opacity-0 translate-y-1"
+                            x-transition:enter-end="opacity-100 translate-y-0"
+                            x-transition:leave="transition ease-in duration-150"
+                            x-transition:leave-start="opacity-100 translate-y-0"
+                            x-transition:leave-end="opacity-0 translate-y-1"
+                            class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-green-600 text-white text-xs rounded shadow-lg"
+                        >
+                            Copied!
+                        </div>
                     </div>
-                    <div
-                        x-show="copiedCommand === 'claude'"
-                        x-transition:enter="transition ease-out duration-200"
-                        x-transition:enter-start="opacity-0 translate-y-1"
-                        x-transition:enter-end="opacity-100 translate-y-0"
-                        x-transition:leave="transition ease-in duration-150"
-                        x-transition:leave-start="opacity-100 translate-y-0"
-                        x-transition:leave-end="opacity-0 translate-y-1"
-                        class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-green-600 text-white text-xs rounded shadow-lg"
-                    >
-                        Copied!
+                    <p class="text-sm text-gray-400 mb-2">
+                        This opens an interactive login. Complete the OAuth flow in your browser, then return here and click <strong class="text-white">Verify & Continue</strong>.
+                    </p>
+                @else
+                    <div class="bg-red-900/50 border border-red-500/50 rounded p-3 text-red-300 text-sm mb-3">
+                        <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> in your .env file.
+                        <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> on your host to get the value.</span>
                     </div>
-                </div>
-                <p class="text-sm text-gray-400 mb-2">
-                    This opens an interactive login. Complete the OAuth flow in your browser, then return here and click <strong class="text-white">Verify & Continue</strong>.
-                </p>
+                @endif
                 <p class="text-xs text-gray-500">
                     If you prefer to use an API key instead, select "Anthropic API" above.
                 </p>
@@ -145,27 +152,34 @@
                 <p class="text-sm text-gray-400 mb-4">
                     Run this command on your <strong class="text-white">host machine</strong> (not in Docker) to authenticate:
                 </p>
-                <div class="relative">
-                    <div
-                        @click="copyCommand('sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown www-data:www-data /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json', 'codex')"
-                        class="bg-gray-900 rounded p-3 font-mono text-xs text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3 overflow-x-auto"
-                        title="Click to copy"
-                    >
-                        sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown www-data:www-data /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json
+                @if(config('backup.user_id') !== null && config('backup.group_id') !== null)
+                    <div class="relative">
+                        <div
+                            @click="copyCommand('sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json', 'codex')"
+                            class="bg-gray-900 rounded p-3 font-mono text-xs text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3 overflow-x-auto"
+                            title="Click to copy"
+                        >
+                            sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json
+                        </div>
+                        <div
+                            x-show="copiedCommand === 'codex'"
+                            x-transition:enter="transition ease-out duration-200"
+                            x-transition:enter-start="opacity-0 translate-y-1"
+                            x-transition:enter-end="opacity-100 translate-y-0"
+                            x-transition:leave="transition ease-in duration-150"
+                            x-transition:leave-start="opacity-100 translate-y-0"
+                            x-transition:leave-end="opacity-0 translate-y-1"
+                            class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-green-600 text-white text-xs rounded shadow-lg"
+                        >
+                            Copied!
+                        </div>
                     </div>
-                    <div
-                        x-show="copiedCommand === 'codex'"
-                        x-transition:enter="transition ease-out duration-200"
-                        x-transition:enter-start="opacity-0 translate-y-1"
-                        x-transition:enter-end="opacity-100 translate-y-0"
-                        x-transition:leave="transition ease-in duration-150"
-                        x-transition:leave-start="opacity-100 translate-y-0"
-                        x-transition:leave-end="opacity-0 translate-y-1"
-                        class="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-green-600 text-white text-xs rounded shadow-lg"
-                    >
-                        Copied!
+                @else
+                    <div class="bg-red-900/50 border border-red-500/50 rounded p-3 text-red-300 text-sm mb-3">
+                        <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> and <code class="bg-red-900 px-1 rounded">GROUP_ID</code> in your .env file.
+                        <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> and <code>id -g</code> on your host to get the values.</span>
                     </div>
-                </div>
+                @endif
                 <p class="text-sm text-gray-400 mb-2">
                     This installs Codex locally, opens a browser login, then copies credentials to the container. After completion, click <strong class="text-white">Verify & Continue</strong>.
                 </p>
