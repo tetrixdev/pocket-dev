@@ -657,6 +657,28 @@
                     </div>
                 </div>
 
+                {{-- Loading Conversation Overlay (mobile: fixed like #messages, desktop: absolute) --}}
+                <style>@media (min-width: 768px) { .loading-conv-overlay { bottom: 0 !important; top: 0 !important; } }</style>
+                <div x-show="loadingConversation"
+                     x-cloak
+                     x-transition:enter="transition ease-out duration-150"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="transition ease-in duration-100"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="loading-conv-overlay fixed top-[60px] left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm
+                            md:absolute md:inset-0"
+                     :style="'bottom: ' + mobileInputHeight + 'px'">
+                    <div class="flex flex-col items-center gap-3">
+                        <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-gray-400 text-sm">Loading conversation...</span>
+                    </div>
+                </div>
+
                 <div id="messages"
                      class="p-4 space-y-4 overflow-y-auto bg-gray-900
                             fixed top-[60px] left-0 right-0 z-0
@@ -765,6 +787,7 @@
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
                 ignoreScrollEvents: false, // Ignore scroll events during conversation loading
+                loadingConversation: false, // Show loading overlay during conversation loading
                 _initDone: false, // Guard against double initialization
                 sessionCost: 0,
                 totalTokens: 0,
@@ -1744,6 +1767,9 @@
                 },
 
                 async loadConversation(uuid, skipWorkspaceCheck = false) {
+                    // Show loading overlay
+                    this.loadingConversation = true;
+
                     // Disconnect from any current stream before switching
                     this.disconnectFromStream();
 
@@ -1944,6 +1970,7 @@
                         await this.checkAndReconnectStream(uuid);
 
                     } catch (err) {
+                        this.loadingConversation = false;
                         console.error('Failed to load conversation:', err);
                         this.showError('Failed to load conversation');
                         // Reset local state and clear URL without creating a back-button loop
@@ -2053,6 +2080,8 @@
                             } else {
                                 this.scrollToBottom();
                             }
+                            // Hide loading overlay - first batch is now visible
+                            this.loadingConversation = false;
                             resolve();
                         });
                     });
