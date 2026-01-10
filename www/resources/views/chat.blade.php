@@ -651,44 +651,56 @@
                 <div x-cloak
                      class="fixed left-64 right-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg hidden"
                      :class="isDragging ? 'md:flex' : 'md:hidden'"
-                     :style="'top: 57px; bottom: ' + desktopInputHeight + 'px'">
+                     :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
                     <div class="bg-gray-800 rounded-lg p-6 text-center shadow-xl border-2 border-dashed border-blue-400">
                         <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-400 mb-2"></i>
                         <p class="text-gray-200 font-medium">Drop files to attach</p>
                     </div>
                 </div>
 
-                {{-- Loading Conversation Overlay (Mobile) - fixed position matching #messages --}}
-                {{-- REFACTORED: Uses ONLY :class for visibility (no x-show). --}}
-                {{-- When loadingConversation=true: 'flex md:hidden' shows on mobile, hides on desktop --}}
-                {{-- When loadingConversation=false: 'hidden' hides everywhere --}}
-                <div x-cloak
-                     class="fixed top-[57px] left-0 right-0 z-20 bg-gray-900/90 items-center justify-center backdrop-blur-sm transition-opacity duration-150"
-                     :class="loadingConversation ? 'flex md:hidden opacity-100' : 'hidden opacity-0'"
-                     :style="'bottom: ' + mobileInputHeight + 'px'">
-                    <div class="flex flex-col items-center gap-3">
-                        <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span class="text-gray-400 text-sm">Loading conversation... (M)</span>
+                {{-- Loading Conversation Overlay (Mobile) - visible below md breakpoint only --}}
+                <div class="md:hidden">
+                    <div x-cloak
+                         x-show="loadingConversation"
+                         x-transition:enter="transition ease-out duration-150"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-100"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         class="fixed top-[57px] left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
+                         style="display: none;"
+                         :style="{ bottom: mobileInputHeight + 'px' }">
+                        <div class="flex flex-col items-center gap-3">
+                            <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span class="text-gray-400 text-sm">Loading conversation...</span>
+                        </div>
                     </div>
                 </div>
 
-                {{-- Loading Conversation Overlay (Desktop) - fixed position matching #messages --}}
-                {{-- REFACTORED: Uses ONLY :class for visibility (no x-show). --}}
-                {{-- When loadingConversation=true: 'hidden md:flex' hides on mobile, shows on desktop --}}
-                {{-- When loadingConversation=false: 'hidden' hides everywhere --}}
-                <div x-cloak
-                     class="fixed left-64 right-0 z-20 bg-gray-900/90 items-center justify-center backdrop-blur-sm transition-opacity duration-150 hidden md:hidden"
-                     :class="loadingConversation ? 'md:flex opacity-100' : 'md:hidden opacity-0'"
-                     :style="'top: 57px; bottom: ' + desktopInputHeight + 'px'">
-                    <div class="flex flex-col items-center gap-3">
-                        <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        <span class="text-gray-400 text-sm">Loading conversation... (D)</span>
+                {{-- Loading Conversation Overlay (Desktop) - visible at md breakpoint and above only --}}
+                <div class="hidden md:block">
+                    <div x-cloak
+                         x-show="loadingConversation"
+                         x-transition:enter="transition ease-out duration-150"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-100"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         class="fixed left-64 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
+                         style="display: none;"
+                         :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
+                        <div class="flex flex-col items-center gap-3">
+                            <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span class="text-gray-400 text-sm">Loading conversation...</span>
+                        </div>
                     </div>
                 </div>
 
@@ -696,7 +708,7 @@
                      class="p-4 space-y-4 overflow-y-auto bg-gray-900 fixed left-0 right-0 z-0
                             md:left-64 md:pt-4 md:pb-4"
                      :class="isDragging ? 'ring-2 ring-blue-500 ring-inset' : ''"
-                     :style="'top: 57px; bottom: ' + (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px'"
+                     :style="{ top: '57px', bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px' }"
                      @scroll="handleMessagesScroll($event)">
 
                 {{-- Empty State --}}
@@ -729,7 +741,7 @@
             <button @click="autoScrollEnabled = true; scrollToBottom()"
                     :class="(!isAtBottom && messages.length > 0) ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'"
                     class="md:hidden fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 right-4"
-                    :style="'bottom: ' + (parseInt(mobileInputHeight) + 64) + 'px'"
+                    :style="{ bottom: (parseInt(mobileInputHeight) + 64) + 'px' }"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
@@ -748,7 +760,7 @@
                     x-transition:leave-end="opacity-0 scale-75"
                     @click="autoScrollEnabled = true; scrollToBottom()"
                     class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 cursor-pointer right-6"
-                    :style="'bottom: ' + (parseInt(desktopInputHeight) + 8) + 'px'"
+                    :style="{ bottom: (parseInt(desktopInputHeight) + 8) + 'px' }"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
@@ -781,20 +793,6 @@
         });
 
         function chatApp() {
-            // Debug: Log when chatApp() is called (component creation)
-            // Use debugLog if available, otherwise console.log
-            const earlyLog = (msg, data) => {
-                if (typeof debugLog === 'function') {
-                    debugLog(msg, data);
-                } else {
-                    console.log(`[EARLY] ${msg}`, data || '');
-                }
-            };
-            earlyLog('chatApp() function called', { stack: new Error().stack?.split('\n').slice(1, 4).join(' <- ') });
-            if (window._chatAppCallCount === undefined) window._chatAppCallCount = 0;
-            window._chatAppCallCount++;
-            earlyLog('chatApp() call count', { count: window._chatAppCallCount });
-
             return {
                 // State
                 prompt: '',
@@ -946,30 +944,13 @@
                 },
 
                 async init() {
-                    // Debug: capture stack trace to find caller
-                    const stack = new Error().stack;
-                    const alpineInfo = {
-                        windowAlpine: typeof window.Alpine,
-                        alpineVersion: window.Alpine?.version,
-                        manifestExists: {{ file_exists(public_path('build/manifest.json')) ? 'true' : 'false' }},
-                    };
-
                     // Guard against double initialization
                     if (this._initDone) {
-                        this.debugLog('init() SKIPPED (already done)', { alpineInfo, stack: stack?.split('\n').slice(1, 5).join(' <- ') });
+                        this.debugLog('init() SKIPPED (already done)');
                         return;
                     }
                     this._initDone = true;
-                    this.debugLog('init() started', { alpineInfo, stack: stack?.split('\n').slice(1, 5).join(' <- ') });
-
-                    // DEBUG: Watch for loadingConversation changes - use *** prefix so it stands out
-                    this.$watch('loadingConversation', (value) => {
-                        this.debugLog('*** OVERLAY STATE CHANGED ***', {
-                            loadingConversation: value,
-                            currentUuid: this.currentConversationUuid,
-                            stack: new Error().stack?.split('\n').slice(1, 4).join(' <- ')
-                        });
-                    });
+                    this.debugLog('init() started');
 
                     // Fetch pricing from database
                     await this.fetchPricing();
@@ -1049,26 +1030,16 @@
                             }
                         }
 
-                        this.debugLog('init: calling loadConversation from URL', { uuid: urlConversationUuid, returningFromSettings: !!returningFromSettings });
                         await this.loadConversation(urlConversationUuid);
-                        this.debugLog('init: loadConversation completed', {
-                            uuid: urlConversationUuid,
-                            loadingConversation: this.loadingConversation,
-                            currentConversationUuid: this.currentConversationUuid
-                        });
 
                         // Scroll to bottom if returning from settings (only if not scrolling to turn)
                         if (returningFromSettings && this.pendingScrollToTurn === null) {
                             this.$nextTick(() => this.scrollToBottom());
                         }
-                    } else {
-                        this.debugLog('init: no URL conversation UUID, skipping loadConversation');
                     }
 
                     // Handle browser back/forward navigation
                     window.addEventListener('popstate', (event) => {
-                        this.debugLog('popstate: fired', { hasState: !!event.state, conversationUuid: event.state?.conversationUuid });
-
                         // Check for turn parameter in URL
                         const urlParams = new URLSearchParams(window.location.search);
                         const turnParam = urlParams.get('turn');
@@ -1083,35 +1054,13 @@
                         if (event.state && event.state.conversationUuid) {
                             // Don't reload if we're already on this conversation
                             if (this.currentConversationUuid === event.state.conversationUuid) {
-                                this.debugLog('popstate: skipping, already on this conversation', { uuid: event.state.conversationUuid });
                                 return;
                             }
-                            this.debugLog('popstate: calling loadConversation', { uuid: event.state.conversationUuid });
                             this.loadConversation(event.state.conversationUuid);
                         } else {
                             // Back to new conversation state
-                            this.debugLog('popstate: calling newConversation (no state uuid)');
                             this.newConversation();
                         }
-                    });
-                    this.debugLog('init: popstate handler registered');
-
-                    // Track visibility changes (for diagnosing background/foreground issues)
-                    document.addEventListener('visibilitychange', () => {
-                        this.debugLog('visibilitychange', {
-                            hidden: document.hidden,
-                            loadingConversation: this.loadingConversation,
-                            currentUuid: this.currentConversationUuid
-                        });
-                    });
-
-                    // Track pageshow (bfcache restoration)
-                    window.addEventListener('pageshow', (event) => {
-                        this.debugLog('pageshow', {
-                            persisted: event.persisted,
-                            loadingConversation: this.loadingConversation,
-                            currentUuid: this.currentConversationUuid
-                        });
                     });
 
                     // Track window resize for responsive layout calculations
@@ -1119,60 +1068,23 @@
                         this.windowWidth = window.innerWidth;
                     });
 
-                    // Track mobile input height for dynamic messages container bottom
+                    // Track input heights for dynamic messages container positioning
                     this.$nextTick(() => {
                         if (this.$refs.mobileInput) {
-                            this.debugLog('ResizeObserver: setting up on mobileInput');
-                            let resizeLogThrottle = null;
-                            let lastLoggedHeight = this.mobileInputHeight;
                             const resizeObserver = new ResizeObserver((entries) => {
                                 for (const entry of entries) {
-                                    const oldHeight = this.mobileInputHeight;
-                                    const newHeight = entry.contentRect.height;
-                                    this.mobileInputHeight = newHeight;
-
-                                    // Throttle logging to once per 500ms, but always log if loadingConversation changed
-                                    if (!resizeLogThrottle) {
-                                        resizeLogThrottle = setTimeout(() => {
-                                            resizeLogThrottle = null;
-                                            if (this.mobileInputHeight !== lastLoggedHeight) {
-                                                this.debugLog('ResizeObserver: height changed', {
-                                                    from: lastLoggedHeight,
-                                                    to: this.mobileInputHeight,
-                                                    loadingConversation: this.loadingConversation
-                                                });
-                                                lastLoggedHeight = this.mobileInputHeight;
-                                            }
-                                        }, 500);
-                                    }
+                                    // Add 1px for border-top on input container
+                                    this.mobileInputHeight = entry.contentRect.height + 1;
                                 }
                             });
                             resizeObserver.observe(this.$refs.mobileInput);
                         }
 
-                        // Track desktop input height for dynamic messages container bottom
                         if (this.$refs.desktopInput) {
-                            this.debugLog('ResizeObserver: setting up on desktopInput');
-                            let desktopResizeLogThrottle = null;
-                            let lastLoggedDesktopHeight = this.desktopInputHeight;
                             const desktopResizeObserver = new ResizeObserver((entries) => {
                                 for (const entry of entries) {
-                                    const newHeight = entry.contentRect.height;
-                                    this.desktopInputHeight = newHeight;
-
-                                    // Throttle logging to once per 500ms
-                                    if (!desktopResizeLogThrottle) {
-                                        desktopResizeLogThrottle = setTimeout(() => {
-                                            desktopResizeLogThrottle = null;
-                                            if (this.desktopInputHeight !== lastLoggedDesktopHeight) {
-                                                this.debugLog('ResizeObserver: desktop height changed', {
-                                                    from: lastLoggedDesktopHeight,
-                                                    to: this.desktopInputHeight,
-                                                });
-                                                lastLoggedDesktopHeight = this.desktopInputHeight;
-                                            }
-                                        }, 500);
-                                    }
+                                    // Add 1px for border-top on input container
+                                    this.desktopInputHeight = entry.contentRect.height + 1;
                                 }
                             });
                             desktopResizeObserver.observe(this.$refs.desktopInput);
@@ -1185,28 +1097,17 @@
                         if (link) {
                             e.preventDefault();
                             const filePath = link.dataset.filePath;
-                            debugLog('File path link clicked', { path: filePath });
                             if (filePath) {
                                 try {
                                     const store = Alpine.store('filePreview');
-                                    debugLog('filePreview store accessed', { storeExists: !!store, isOpen: store?.isOpen });
                                     if (store) {
                                         store.open(filePath);
-                                    } else {
-                                        debugLog('ERROR: filePreview store is undefined');
                                     }
                                 } catch (err) {
-                                    debugLog('ERROR accessing filePreview store', { error: err.message });
                                     console.error('filePreview error:', err);
                                 }
                             }
                         }
-                    });
-
-                    this.debugLog('init: COMPLETED', {
-                        loadingConversation: this.loadingConversation,
-                        currentConversationUuid: this.currentConversationUuid,
-                        messagesCount: this.messages.length
                     });
                 },
 
@@ -1501,7 +1402,6 @@
                                 // Check if conversation still exists in the loaded list
                                 const lastConvo = this.conversations.find(c => c.uuid === data.last_conversation_uuid);
                                 if (lastConvo) {
-                                    this.debugLog('switchWorkspace: calling loadConversation', { uuid: data.last_conversation_uuid });
                                     await this.loadConversation(data.last_conversation_uuid, true); // skipWorkspaceCheck=true
                                 } else {
                                     this.newConversation();
@@ -1814,11 +1714,6 @@
                 },
 
                 async loadSearchResult(result) {
-                    this.debugLog('loadSearchResult: START', {
-                        uuid: result.conversation_uuid,
-                        turnNumber: result.turn_number
-                    });
-
                     // Close mobile drawer but keep search input visible while search is active
                     this.showMobileDrawer = false;
 
@@ -1833,11 +1728,6 @@
                 },
 
                 async newConversation() {
-                    this.debugLog('newConversation: START', {
-                        previousUuid: this.currentConversationUuid,
-                        loadingConversation: this.loadingConversation
-                    });
-
                     // Disconnect from any active stream
                     this.disconnectFromStream();
 
@@ -1920,19 +1810,14 @@
                 },
 
                 async loadConversation(uuid, skipWorkspaceCheck = false) {
-                    const callId = Math.random().toString(36).substr(2, 6);
-                    this.debugLog('loadConversation: START', { callId, uuid, skipWorkspaceCheck, alreadyLoading: this._loadingConversationUuid });
-
                     // Skip if already loading this exact conversation
                     if (this._loadingConversationUuid === uuid) {
-                        this.debugLog('loadConversation: skipping duplicate load', { callId, uuid });
                         return;
                     }
 
                     // Show loading overlay and track which conversation is loading
                     this.loadingConversation = true;
                     this._loadingConversationUuid = uuid;
-                    this.debugLog('loadConversation: overlay ON', { callId, uuid });
 
                     // Disconnect from any current stream before switching
                     this.disconnectFromStream();
@@ -1950,11 +1835,6 @@
                         // Check if conversation belongs to a different workspace
                         const conversationWorkspaceId = data.conversation.workspace_id;
                         if (!skipWorkspaceCheck && conversationWorkspaceId && conversationWorkspaceId !== this.currentWorkspaceId) {
-                            this.debugLog('Conversation workspace mismatch, switching workspace', {
-                                conversationWorkspace: conversationWorkspaceId,
-                                currentWorkspace: this.currentWorkspaceId
-                            });
-
                             // Find workspace in list, or fetch it
                             let targetWorkspace = this.workspaces.find(w => w.id === conversationWorkspaceId);
                             if (!targetWorkspace) {
@@ -1983,22 +1863,18 @@
                                 if (switchResponse.ok) {
                                     this.currentWorkspace = targetWorkspace;
                                     this.currentWorkspaceId = targetWorkspace.id;
-                                    this.debugLog('Auto-switched workspace', { callId, workspace: targetWorkspace.name });
 
                                     // Reload conversations and agents for the new workspace
                                     await this.fetchConversations();
                                     await this.fetchAgents();
 
-                                    // IMPORTANT: Clear the loading state before recursive call
+                                    // Clear the loading state before recursive call
                                     // Otherwise the duplicate load guard will block it
-                                    this.debugLog('loadConversation: clearing state before recursive call', { callId, uuid });
                                     this._loadingConversationUuid = null;
 
-                                    // Reload conversation with new workspace context to avoid stale data
-                                    this.debugLog('loadConversation: recursive call for workspace switch', { callId, uuid });
+                                    // Reload conversation with new workspace context
                                     return this.loadConversation(uuid, true);
                                 } else {
-                                    this.debugLog('loadConversation: workspace switch failed, overlay OFF', { callId, status: switchResponse.status });
                                     this.loadingConversation = false;
                                     this._loadingConversationUuid = null;
                                 }
@@ -2018,13 +1894,11 @@
                         this.updateUrl(uuid);
                         this.messages = [];
                         this.isAtBottom = true; // Hide scroll button during load
-                        this.debugLog('SET isAtBottom = true (loadConversation reset)');
                         // Only enable auto-scroll if not coming from search result
                         if (this.pendingScrollToTurn === null) {
                             this.autoScrollEnabled = true;
                         }
                         this.ignoreScrollEvents = true; // Ignore scroll events until load complete
-                        this.debugLog('loadConversation: reset state, ignoreScrollEvents=true');
 
                         // Reset token counters
                         this.inputTokens = 0;
@@ -2093,7 +1967,6 @@
                             );
                         } else {
                             // No messages - clear loading overlay immediately
-                            this.debugLog('loadConversation: 0 messages, overlay OFF');
                             this.loadingConversation = false;
                             this._loadingConversationUuid = null;
                         }
@@ -2153,7 +2026,6 @@
                         await this.checkAndReconnectStream(uuid);
 
                     } catch (err) {
-                        this.debugLog('loadConversation: ERROR, overlay OFF', { error: err.message });
                         this.loadingConversation = false;
                         this._loadingConversationUuid = null;
                         console.error('Failed to load conversation:', err);
@@ -2191,13 +2063,6 @@
                  * For search: shows messages around target turn first, then fills in.
                  */
                 async loadMessagesProgressively(dbMessages, targetTurn = null) {
-                    this.debugLog('loadMessagesProgressively: START', {
-                        dbMessageCount: dbMessages?.length,
-                        targetTurn,
-                        loadingConversation: this.loadingConversation,
-                        _loadingConversationUuid: this._loadingConversationUuid
-                    });
-
                     const INITIAL_BATCH = 100;  // Messages to show immediately
                     const PREPEND_BATCH = 50;   // Messages per prepend batch
 
@@ -2225,12 +2090,8 @@
                             orphanedToolResults++;
                         }
                     }
-                    if (orphanedToolResults > 0) {
-                        this.debugLog('[Progressive] Orphaned tool_results (no matching tool_use)', { count: orphanedToolResults });
-                    }
 
                     if (allUiMessages.length === 0) {
-                        this.debugLog('loadMessagesProgressively: 0 messages, overlay OFF');
                         this.loadingConversation = false;
                         this._loadingConversationUuid = null;
                         return;
@@ -2257,14 +2118,6 @@
                     const messagesBefore = allUiMessages.slice(0, priorityStartIndex);
                     const priorityMessages = allUiMessages.slice(priorityStartIndex);
 
-                    this.debugLog('[Progressive] Strategy', {
-                        total: allUiMessages.length,
-                        priorityStart: priorityStartIndex,
-                        priorityCount: priorityMessages.length,
-                        beforeCount: messagesBefore.length,
-                        targetTurn
-                    });
-
                     // Phase 1: Render priority messages immediately
                     this.messages = priorityMessages;
 
@@ -2279,9 +2132,7 @@
                             resolve();
 
                             // Hide loading overlay AFTER scroll has painted
-                            // Using requestAnimationFrame to wait for the browser to complete the scroll paint
                             requestAnimationFrame(() => {
-                                this.debugLog('loadMessagesProgressively: first batch rendered, overlay OFF', { msgCount: this.messages.length });
                                 this.loadingConversation = false;
                                 this._loadingConversationUuid = null;
                             });
@@ -2311,10 +2162,6 @@
                         // Yield to main thread between batches (lets browser render and handle scroll anchoring)
                         await new Promise(resolve => requestAnimationFrame(resolve));
                     }
-
-                    this.debugLog('[Progressive] Prepend complete', {
-                        totalMessages: this.messages.length
-                    });
                 },
 
                 /**
@@ -3403,7 +3250,6 @@
                 },
 
                 scrollToBottom() {
-                    this.debugLog('scrollToBottom called', { autoScrollEnabled: this.autoScrollEnabled });
                     if (!this.autoScrollEnabled) return;
                     this.$nextTick(() => {
                         // Use requestAnimationFrame to wait for browser layout/paint completion
@@ -3411,34 +3257,19 @@
                         requestAnimationFrame(() => {
                             const container = document.getElementById('messages');
                             if (container) {
-                                container.scrollTop = container.scrollHeight;
+                                container.scrollTop = container.scrollHeight + 1; // +1 to handle sub-pixel rounding
                                 this.isAtBottom = true;
-                                this.debugLog('SET isAtBottom = true (scrollToBottom)', { scrollTop: container.scrollTop, scrollHeight: container.scrollHeight });
                             }
                         });
                     });
                 },
 
                 scrollToTurn(turnNumber) {
-                    this.debugLog('scrollToTurn called', { turnNumber, type: typeof turnNumber });
-
-                    // Debug: Check what turn_numbers exist in messages
-                    const turnNumbers = this.messages.map(m => m.turn_number);
-                    this.debugLog('scrollToTurn: available turn_numbers in messages', { turnNumbers });
-
                     this.$nextTick(() => {
                         // Small delay to ensure DOM is fully rendered
                         setTimeout(() => {
-                            // Debug: Check what data-turn values exist in DOM
-                            const allTurnElements = document.querySelectorAll('[data-turn]');
-                            const domTurns = Array.from(allTurnElements).map(el => el.getAttribute('data-turn'));
-                            this.debugLog('scrollToTurn: data-turn values in DOM', { domTurns, count: allTurnElements.length });
-
                             const selector = `[data-turn="${turnNumber}"]`;
-                            this.debugLog('scrollToTurn: using selector', { selector });
-
                             const turnElement = document.querySelector(selector);
-                            this.debugLog('scrollToTurn: element found?', { found: !!turnElement });
 
                             if (turnElement) {
                                 const container = document.getElementById('messages');
@@ -3449,28 +3280,15 @@
                                     const currentScrollTop = container.scrollTop;
                                     const topOffset = 16; // Small padding from top
                                     const newScrollTop = currentScrollTop + (elementRect.top - containerRect.top) - topOffset;
-                                    const finalScrollTop = Math.max(0, newScrollTop);
-
-                                    this.debugLog('scrollToTurn: scroll calculation', {
-                                        currentScrollTop,
-                                        containerHeight: containerRect.height,
-                                        elementTop: elementRect.top,
-                                        containerTop: containerRect.top,
-                                        newScrollTop,
-                                        finalScrollTop
-                                    });
-
-                                    container.scrollTop = finalScrollTop;
-                                    this.debugLog('scrollToTurn: scrollTop set to', { scrollTop: container.scrollTop });
+                                    container.scrollTop = Math.max(0, newScrollTop);
                                 }
                                 // Brief highlight effect
                                 turnElement.classList.add('bg-blue-900/30');
                                 setTimeout(() => turnElement.classList.remove('bg-blue-900/30'), 2000);
                                 this.isAtBottom = false;
-                                this.debugLog('scrollToTurn: SUCCESS - scrolled to turn', { turnNumber });
                             } else {
                                 // Fallback to bottom if turn not found
-                                this.debugLog('scrollToTurn: FAILED - turn not found', { turnNumber, selector });
+                                this.debugLog('scrollToTurn: turn not found', { turnNumber });
                                 this.autoScrollEnabled = true;
                                 this.scrollToBottom();
                             }
@@ -3480,26 +3298,12 @@
 
                 handleMessagesScroll(event) {
                     // Ignore scroll events during conversation loading
-                    if (this.ignoreScrollEvents) {
-                        this.debugLog('handleMessagesScroll IGNORED (ignoreScrollEvents=true)');
-                        return;
-                    }
+                    if (this.ignoreScrollEvents) return;
 
                     const container = event.target;
                     // Check if user is at bottom (within 50px threshold)
                     const diff = container.scrollHeight - container.scrollTop - container.clientHeight;
                     const atBottom = diff < 50;
-
-                    // Always log scroll events for debugging
-                    this.debugLog('handleMessagesScroll', {
-                        atBottom,
-                        wasAtBottom: this.isAtBottom,
-                        changed: this.isAtBottom !== atBottom,
-                        diff: Math.round(diff),
-                        scrollTop: Math.round(container.scrollTop),
-                        scrollHeight: container.scrollHeight,
-                        clientHeight: container.clientHeight
-                    });
 
                     this.isAtBottom = atBottom;
 
@@ -3908,12 +3712,6 @@
 
                             if (msg.type === 'conversation.item.input_audio_transcription.delta') {
                                 if (msg.delta) {
-                                    this.debugLog('voice: transcription delta received', {
-                                        deltaLength: msg.delta.length,
-                                        loadingConversation: this.loadingConversation,
-                                        currentConversationUuid: this.currentConversationUuid
-                                    });
-
                                     // Sync with any manual edits the user made during recording
                                     this.realtimeTranscript = this.prompt;
 
@@ -3925,11 +3723,6 @@
                                     this.realtimeTranscript += msg.delta;
                                     this.prompt = this.realtimeTranscript;
                                     this.scrollPromptToEnd();
-
-                                    this.debugLog('voice: prompt updated', {
-                                        promptLength: this.prompt.length,
-                                        loadingConversation: this.loadingConversation
-                                    });
                                 }
                             } else if (msg.type === 'conversation.item.input_audio_transcription.completed') {
                                 // Don't close on completed - there might be more turns pending.
