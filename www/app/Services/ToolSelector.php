@@ -188,20 +188,60 @@ class ToolSelector
      * Build system prompt section for PocketDev tools.
      * For CLI providers, these are artisan commands to run via Bash.
      *
+     * Note: Memory schemas are now built separately via buildMemorySection().
+     *
      * @param string $provider The provider type
      * @param array|null $allowedTools Tool slugs to allow (null = all, [] = none, [...] = specific)
      * @param Workspace|null $workspace Workspace for tool filtering
-     * @param Agent|null $agent Agent for memory schema access (uses agent's enabled schemas)
      */
     public function buildSystemPrompt(
         string $provider,
         ?array $allowedTools = null,
-        ?Workspace $workspace = null,
-        ?Agent $agent = null
+        ?Workspace $workspace = null
+    ): string {
+        // Build hierarchy (single source of truth) then flatten to string
+        $hierarchy = $this->buildToolsPreviewHierarchy($provider, $allowedTools, $workspace);
+
+        if (empty($hierarchy['children'])) {
+            return '';
+        }
+
+        return $this->flattenHierarchy($hierarchy);
+    }
+
+    /**
+     * Flatten a hierarchical structure into a single string.
+     * Recursively concatenates content from all nodes.
+     */
+    private function flattenHierarchy(array $node): string
+    {
+        $parts = [];
+
+        // Add this node's content
+        if (!empty($node['content'])) {
+            $parts[] = $node['content'];
+        }
+
+        // Recursively add children's content
+        if (!empty($node['children'])) {
+            foreach ($node['children'] as $child) {
+                $parts[] = $this->flattenHierarchy($child);
+            }
+        }
+
+        return implode("\n\n", array_filter($parts));
+    }
+
+    /**
+     * @deprecated Use buildSystemPrompt() which now uses the hierarchy as single source of truth.
+     * Kept temporarily for comparison/debugging. Remove once hierarchy approach is verified.
+     */
+    public function buildSystemPromptLegacy(
+        string $provider,
+        ?array $allowedTools = null,
+        ?Workspace $workspace = null
     ): string {
         $tools = $this->getToolsForSystemPrompt($provider, $workspace);
-
-        // Filter by agent's allowed tools if specified (case-insensitive)
         $tools = ToolFilterHelper::filterCollection($tools, $allowedTools);
 
         if ($tools->isEmpty()) {
@@ -212,19 +252,13 @@ class ToolSelector
         $providerEnum = Provider::tryFrom($provider);
         $isCliProvider = $providerEnum?->isCliProvider() ?? false;
 
-        // Add preamble for CLI providers explaining these are CLI commands
+        // Add preamble for CLI providers
         if ($isCliProvider) {
             $sections[] = "# PocketDev Tools\n";
             $sections[] = "These PocketDev tools are invoked via PHP Artisan commands. Use your Bash tool to execute them.\n";
             $sections[] = $this->buildInvocationGuide();
         } else {
             $sections[] = "# PocketDev Tools\n";
-        }
-
-        // Add available memory schemas for this agent
-        $schemasSection = $this->buildAvailableSchemasSection($agent);
-        if ($schemasSection) {
-            $sections[] = $schemasSection;
         }
 
         // Build sections using tool groups from config
@@ -234,39 +268,41 @@ class ToolSelector
         foreach ($groups as $group) {
             $groupCategories = $group['categories'] ?? [];
             $groupTools = $tools->filter(fn(Tool $t) => in_array($t->category, $groupCategories));
+            $groupName = $group['name'] ?? ucfirst(array_search($group, config('tool-groups', [])));
 
             if ($groupTools->isNotEmpty()) {
-                // Output group intro if defined
+                $sections[] = "## {$groupName}\n";
                 if ($group['system_prompt_active'] ?? null) {
-                    $sections[] = $group['system_prompt_active'];
+                    $sections[] = $group['system_prompt_active']."\n";
+                }
+                // Build tool list
+                foreach ($groupTools->sortBy('name') as $tool) {
+                    $artisanCommand = $tool->getArtisanCommand();
+                    $sections[] = "#### ".($isCliProvider ? $artisanCommand : $tool->name)."\n";
+                    $sections[] = $this->getToolInstructions($tool, $isCliProvider);
+                    $sections[] = $this->formatToolParameters($tool);
                     $sections[] = "";
                 }
-
-                // Output tools organized by category within the group
-                $sections[] = $this->buildGroupToolsSection($groupTools, $group, $isCliProvider);
             } elseif ($group['system_prompt_inactive'] ?? null) {
-                // Group has no enabled tools - show inactive message
+                $sections[] = "## {$groupName}\n";
                 $sections[] = $group['system_prompt_inactive'];
                 $sections[] = "";
             }
         }
 
-        // Handle ungrouped tools (custom category or categories not in any group)
+        // Handle ungrouped/custom tools
         $ungroupedTools = $tools->filter(fn(Tool $t) => !in_array($t->category, $allGroupedCategories));
+        $customTools = $ungroupedTools->filter(fn(Tool $t) => $t instanceof UserTool);
 
-        if ($ungroupedTools->isNotEmpty()) {
-            $systemUngrouped = $ungroupedTools->filter(fn(Tool $t) => !($t instanceof UserTool));
-            $customUngrouped = $ungroupedTools->filter(fn(Tool $t) => $t instanceof UserTool);
-
-            if ($systemUngrouped->isNotEmpty()) {
-                $sections[] = "## Other\n";
-                $sections[] = $this->buildToolsList($systemUngrouped, $isCliProvider);
-            }
-
-            if ($customUngrouped->isNotEmpty()) {
-                $sections[] = "## Custom Tools\n";
-                $sections[] = "User-created tools invoked via `tool:run`.\n";
-                $sections[] = $this->buildToolsList($customUngrouped, $isCliProvider);
+        if ($customTools->isNotEmpty()) {
+            $sections[] = "## Custom Tools\n";
+            $sections[] = "User-created tools invoked via `tool:run`.\n";
+            foreach ($customTools->sortBy('name') as $tool) {
+                $artisanCommand = $tool->getArtisanCommand();
+                $sections[] = "#### ".($isCliProvider ? $artisanCommand : $tool->name)."\n";
+                $sections[] = $this->getToolInstructions($tool, $isCliProvider);
+                $sections[] = $this->formatToolParameters($tool);
+                $sections[] = "";
             }
         }
 
@@ -274,63 +310,266 @@ class ToolSelector
     }
 
     /**
-     * Build the tools section for a group, organized by category.
+     * Build the memory section for the system prompt.
+     * This is a separate top-level section (not nested under tools).
+     *
+     * @param Agent|null $agent The agent to get schemas for
+     * @param bool $isCliProvider Whether to use CLI examples
      */
-    private function buildGroupToolsSection(Collection $tools, array $group, bool $isCliProvider): string
+    public function buildMemorySection(?Agent $agent, bool $isCliProvider = true): ?string
     {
-        $sections = [];
-        $categoryLabels = $group['category_labels'] ?? [];
+        $schemas = $this->getAvailableSchemas($agent);
 
-        // Split into system and custom tools
-        $systemTools = $tools->filter(fn(Tool $t) => !($t instanceof UserTool));
-        $customTools = $tools->filter(fn(Tool $t) => $t instanceof UserTool);
+        if ($schemas->isEmpty()) {
+            return null;
+        }
 
-        // System tools grouped by category
-        if ($systemTools->isNotEmpty()) {
-            $sections[] = "### System Tools\n";
+        $lines = [];
+        $lines[] = "# Memory\n";
+        $lines[] = "PocketDev provides a PostgreSQL-based memory system for persistent storage.\n";
 
-            foreach ($group['categories'] as $category) {
-                $categoryTools = $systemTools->filter(fn(Tool $t) => $t->category === $category);
-                if ($categoryTools->isEmpty()) {
-                    continue;
+        // Schema overview
+        $lines[] = "## Available Schemas\n";
+        $lines[] = "Use `--schema=<name>` with all memory tools.\n";
+
+        foreach ($schemas as $schema) {
+            $shortName = $schema->schema_name;
+            $lines[] = "- **{$shortName}**".($schema->description ? ": {$schema->description}" : "");
+        }
+
+        $lines[] = "";
+
+        // Technical notes
+        $lines[] = "## Schema Details\n";
+        $lines[] = "**Naming**: Tables use `{schema}.tablename` format (e.g., `memory_default.characters`)\n";
+        $lines[] = "**System tables** (per schema):";
+        $lines[] = "- `schema_registry` - table metadata and embed field config";
+        $lines[] = "- `embeddings` - vector storage for semantic search (never SELECT the embedding column directly)\n";
+        $lines[] = "**Extensions**: PostGIS (spatial), pg_trgm (fuzzy text search)\n";
+
+        // Example
+        $first = $schemas->first();
+        $lines[] = "**Example**:";
+        $lines[] = "```bash";
+        $lines[] = "php artisan memory:query --schema={$first->schema_name} --sql=\"SELECT * FROM {$first->getFullSchemaName()}.schema_registry\"";
+        $lines[] = "```";
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Build hierarchical preview data for tools.
+     * Returns nested structure: groups → categories → tools.
+     *
+     * @return array{title: string, content: string, children: array}
+     */
+    public function buildToolsPreviewHierarchy(
+        string $provider,
+        ?array $allowedTools = null,
+        ?Workspace $workspace = null
+    ): array {
+        $tools = $this->getToolsForSystemPrompt($provider, $workspace);
+        $tools = ToolFilterHelper::filterCollection($tools, $allowedTools);
+
+        $providerEnum = Provider::tryFrom($provider);
+        $isCliProvider = $providerEnum?->isCliProvider() ?? false;
+
+        // Build preamble
+        $preamble = "# PocketDev Tools\n\n";
+        if ($isCliProvider) {
+            $preamble .= "These PocketDev tools are invoked via PHP Artisan commands. Use your Bash tool to execute them.\n\n";
+            $preamble .= $this->buildInvocationGuide();
+        }
+
+        $groupChildren = [];
+        $groups = collect(config('tool-groups', []))->sortBy('sort_order');
+        $allGroupedCategories = $groups->flatMap(fn($g) => $g['categories'] ?? [])->all();
+
+        foreach ($groups as $groupKey => $group) {
+            $groupCategories = $group['categories'] ?? [];
+            $groupTools = $tools->filter(fn(Tool $t) => in_array($t->category, $groupCategories));
+            $groupName = $group['name'] ?? ucfirst($groupKey);
+
+            if ($groupTools->isNotEmpty()) {
+                // Build tool children directly under group (no category level)
+                $toolChildren = [];
+                foreach ($groupTools->sortBy('name') as $tool) {
+                    $toolTitle = $isCliProvider ? $tool->getArtisanCommand() : $tool->name;
+                    $toolContent = "#### {$toolTitle}\n\n";
+                    $toolContent .= $this->getToolInstructions($tool, $isCliProvider);
+                    $toolContent .= $this->formatToolParameters($tool);
+
+                    $toolChildren[] = [
+                        'title' => $toolTitle,
+                        'content' => $toolContent,
+                        'source' => $tool->getSlug(),
+                        'collapsed' => true,
+                        'chars' => strlen($toolContent),
+                        'estimated_tokens' => (int) ceil(strlen($toolContent) / 4),
+                        'children' => [],
+                    ];
                 }
 
-                // Use custom label if defined, otherwise format the category name
-                $categoryLabel = $categoryLabels[$category] ?? $this->formatCategoryTitle($category);
-                $sections[] = "**{$categoryLabel}**\n";
-                $sections[] = $this->buildToolsList($categoryTools, $isCliProvider);
+                // Build group - content includes header + system_prompt_active
+                $groupContent = "## {$groupName}\n\n";
+                if ($group['system_prompt_active'] ?? null) {
+                    $groupContent .= $group['system_prompt_active'];
+                }
+
+                $groupChars = array_sum(array_column($toolChildren, 'chars')) + strlen($groupContent);
+
+                $groupChildren[] = [
+                    'title' => $groupName,
+                    'content' => $groupContent,
+                    'source' => $groupKey,
+                    'collapsed' => true,
+                    'chars' => $groupChars,
+                    'estimated_tokens' => (int) ceil($groupChars / 4),
+                    'children' => $toolChildren,
+                ];
+            } elseif ($group['system_prompt_inactive'] ?? null) {
+                // Group has no enabled tools - show inactive message
+                $groupContent = "## {$groupName}\n\n" . $group['system_prompt_inactive'];
+
+                $groupChildren[] = [
+                    'title' => $groupName . ' (disabled)',
+                    'content' => $groupContent,
+                    'source' => $groupKey,
+                    'collapsed' => true,
+                    'chars' => strlen($groupContent),
+                    'estimated_tokens' => (int) ceil(strlen($groupContent) / 4),
+                    'children' => [],
+                ];
             }
         }
 
-        // Custom tools in this group's categories
+        // Handle ungrouped/custom tools
+        $ungroupedTools = $tools->filter(fn(Tool $t) => !in_array($t->category, $allGroupedCategories));
+        $customTools = $ungroupedTools->filter(fn(Tool $t) => $t instanceof UserTool);
+
         if ($customTools->isNotEmpty()) {
-            $sections[] = "### Custom Tools\n";
-            $sections[] = $this->buildToolsList($customTools, $isCliProvider);
+            $toolChildren = [];
+            foreach ($customTools->sortBy('name') as $tool) {
+                $toolTitle = $isCliProvider ? $tool->getArtisanCommand() : $tool->name;
+                $toolContent = "#### {$toolTitle}\n\n";
+                $toolContent .= $this->getToolInstructions($tool, $isCliProvider);
+                $toolContent .= $this->formatToolParameters($tool);
+
+                $toolChildren[] = [
+                    'title' => $toolTitle,
+                    'content' => $toolContent,
+                    'source' => $tool->getSlug(),
+                    'collapsed' => true,
+                    'chars' => strlen($toolContent),
+                    'estimated_tokens' => (int) ceil(strlen($toolContent) / 4),
+                    'children' => [],
+                ];
+            }
+
+            $groupChildren[] = [
+                'title' => 'Custom Tools',
+                'content' => "## Custom Tools\n\nUser-created tools invoked via `tool:run`.",
+                'source' => 'custom',
+                'collapsed' => true,
+                'chars' => array_sum(array_column($toolChildren, 'chars')),
+                'estimated_tokens' => array_sum(array_column($toolChildren, 'estimated_tokens')),
+                'children' => $toolChildren,
+            ];
         }
 
-        return implode("\n", $sections);
+        $totalTokens = (int) ceil(strlen($preamble) / 4) + array_sum(array_column($groupChildren, 'estimated_tokens'));
+
+        return [
+            'title' => 'PocketDev Tools',
+            'content' => $preamble,
+            'source' => $allowedTools === null ? 'Dynamic (all tools)' : 'Dynamic (filtered)',
+            'collapsed' => true,
+            'chars' => strlen($preamble) + array_sum(array_column($groupChildren, 'chars')),
+            'estimated_tokens' => $totalTokens,
+            'children' => $groupChildren,
+        ];
     }
 
     /**
-     * Build a list of tool documentation.
+     * Build hierarchical preview data for memory.
+     * Returns nested structure: schemas → tables.
      */
-    private function buildToolsList(Collection $tools, bool $isCliProvider): string
+    public function buildMemoryPreviewHierarchy(?Agent $agent): ?array
     {
-        $sections = [];
+        $schemas = $this->getAvailableSchemas($agent);
 
-        foreach ($tools as $tool) {
-            if ($isCliProvider) {
-                $artisanCommand = $tool->getArtisanCommand();
-                $sections[] = "#### {$artisanCommand}\n";
-            } else {
-                $sections[] = "#### {$tool->name}\n";
-            }
-            $sections[] = $this->getToolInstructions($tool, $isCliProvider);
-            $sections[] = $this->formatToolParameters($tool);
-            $sections[] = "";
+        if ($schemas->isEmpty()) {
+            return null;
         }
 
-        return implode("\n", $sections);
+        $schemaChildren = [];
+
+        foreach ($schemas as $schema) {
+            // Get tables for this schema using the service
+            $memorySchemaService = app(MemorySchemaService::class);
+            $memorySchemaService->setMemoryDatabase($schema);
+            $tables = $memorySchemaService->listTables();
+            $tableChildren = [];
+
+            foreach ($tables as $table) {
+                $tableName = $table['table_name'];
+                $tableContent = "**{$tableName}**";
+                if (!empty($table['description'])) {
+                    $tableContent .= "\n\n{$table['description']}";
+                }
+                $tableContent .= "\n\n**Rows**: {$table['row_count']}";
+                if (!empty($table['embeddable_fields'])) {
+                    $tableContent .= "\n**Embed fields**: ".implode(', ', $table['embeddable_fields']);
+                }
+
+                $tableChildren[] = [
+                    'title' => $tableName,
+                    'content' => $tableContent,
+                    'source' => "{$schema->schema_name}.{$tableName}",
+                    'collapsed' => true,
+                    'chars' => strlen($tableContent),
+                    'estimated_tokens' => (int) ceil(strlen($tableContent) / 4),
+                    'children' => [],
+                ];
+            }
+
+            $schemaContent = "**{$schema->schema_name}**";
+            if ($schema->description) {
+                $schemaContent .= ": {$schema->description}";
+            }
+            $schemaContent .= "\n\n".count($tableChildren)." tables";
+
+            $schemaChildren[] = [
+                'title' => $schema->schema_name,
+                'content' => $schemaContent,
+                'source' => $schema->getFullSchemaName(),
+                'collapsed' => true,
+                'chars' => array_sum(array_column($tableChildren, 'chars')),
+                'estimated_tokens' => array_sum(array_column($tableChildren, 'estimated_tokens')),
+                'children' => $tableChildren,
+            ];
+        }
+
+        // Build intro content
+        $introContent = "# Memory\n\n";
+        $introContent .= "PocketDev provides a PostgreSQL-based memory system for persistent storage.\n\n";
+        $introContent .= "## Schema Details\n\n";
+        $introContent .= "**Naming**: Tables use `{schema}.tablename` format\n";
+        $introContent .= "**System tables**: `schema_registry`, `embeddings`\n";
+        $introContent .= "**Extensions**: PostGIS (spatial), pg_trgm (fuzzy text)\n\n";
+        $introContent .= "Use `--schema=<name>` with all memory tools.";
+
+        $totalTokens = (int) ceil(strlen($introContent) / 4) + array_sum(array_column($schemaChildren, 'estimated_tokens'));
+
+        return [
+            'title' => 'Memory',
+            'content' => $introContent,
+            'source' => 'Dynamic (based on selected schemas)',
+            'collapsed' => true,
+            'chars' => strlen($introContent) + array_sum(array_column($schemaChildren, 'chars')),
+            'estimated_tokens' => $totalTokens,
+            'children' => $schemaChildren,
+        ];
     }
 
     /**
@@ -338,6 +577,7 @@ class ToolSelector
      * Shows which schemas the agent has access to.
      *
      * @param Agent|null $agent The agent to get schemas for
+     * @deprecated Use buildMemorySection() instead
      */
     private function buildAvailableSchemasSection(?Agent $agent): ?string
     {
@@ -367,12 +607,20 @@ class ToolSelector
      * Get available memory schemas for an agent.
      * If no agent, returns all schemas. If agent has workspace, filters by workspace then agent access.
      * Respects the agent's inherit_workspace_schemas setting.
+     *
+     * For preview agents (with pre-loaded memoryDatabases relation but no persisted ID),
+     * returns the pre-loaded schemas directly.
      */
-    private function getAvailableSchemas(?Agent $agent): Collection
+    public function getAvailableSchemas(?Agent $agent): Collection
     {
         if (!$agent) {
             // No agent context - return all schemas
             return MemoryDatabase::orderBy('name')->get();
+        }
+
+        // For preview agents (no ID means not persisted), use pre-loaded relation
+        if (!$agent->exists && $agent->relationLoaded('memoryDatabases')) {
+            return $agent->memoryDatabases->sortBy('name')->values();
         }
 
         // Use getEnabledMemoryDatabases() which respects inherit_workspace_schemas:

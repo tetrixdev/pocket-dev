@@ -9,7 +9,7 @@ use App\Models\MemoryDatabase;
 use App\Models\PocketTool;
 use App\Models\Workspace;
 use App\Services\NativeToolService;
-use App\Services\SystemPromptService;
+use App\Services\SystemPromptBuilder;
 use App\Services\ToolSelector;
 use App\Tools\Tool;
 use App\Tools\UserTool;
@@ -19,7 +19,8 @@ use Illuminate\Http\Request;
 class AgentController extends Controller
 {
     public function __construct(
-        private ToolSelector $toolSelector
+        private ToolSelector $toolSelector,
+        private SystemPromptBuilder $systemPromptBuilder
     ) {}
 
     /**
@@ -238,89 +239,54 @@ class AgentController extends Controller
 
     /**
      * Preview the assembled system prompt for an agent configuration.
+     * Uses the same SystemPromptBuilder as actual conversations for consistency.
      */
     public function previewSystemPrompt(Request $request): JsonResponse
     {
-        $provider = $request->input('provider', Agent::PROVIDER_ANTHROPIC);
+        $provider = $request->input('provider', Provider::Anthropic->value);
         $agentSystemPrompt = $request->input('agent_system_prompt', '');
         $allowedTools = $request->input('allowed_tools'); // null = all tools
-
-        $systemPromptService = app(SystemPromptService::class);
-
-        $sections = [];
-
-        // 1. Core system prompt
-        $corePrompt = $systemPromptService->getCore();
-        $sections[] = [
-            'title' => 'Core System Prompt',
-            'content' => $corePrompt,
-            'source' => 'resources/defaults/system-prompt.md',
-            'collapsible' => true,
-        ];
-
-        // 2. Additional system prompt (if any)
-        $additionalPrompt = $systemPromptService->getAdditional();
-        if (!empty($additionalPrompt)) {
-            $sections[] = [
-                'title' => 'Additional System Prompt',
-                'content' => $additionalPrompt,
-                'source' => 'storage/pocketdev/additional-system-prompt.md',
-                'collapsible' => true,
-            ];
-        }
-
-        // 3. Agent-specific system prompt
-        if (!empty($agentSystemPrompt)) {
-            $sections[] = [
-                'title' => 'Agent System Prompt',
-                'content' => $agentSystemPrompt,
-                'source' => 'Agent configuration',
-                'collapsible' => false,
-            ];
-        }
-
-        // 4. Tool instructions (for PocketDev tools)
-        // Pass allowedTools to filter (null = all tools, array = specific tools)
-        // Create a temporary agent model to preview memory schemas
         $memorySchemas = $request->input('memory_schemas', []);
-        $previewAgent = null;
-        if (!empty($memorySchemas)) {
-            $previewAgent = new Agent(['name' => 'preview']);
-            // Attach memory databases without saving (for preview purposes)
-            $previewAgent->setRelation('memoryDatabases', MemoryDatabase::whereIn('id', $memorySchemas)->get());
-        }
         $workspaceId = $request->input('workspace_id');
         $workspace = $workspaceId ? Workspace::find($workspaceId) : null;
-        $toolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, $workspace, $previewAgent);
-        if (!empty($toolPrompt)) {
-            $sections[] = [
-                'title' => 'PocketDev Tools',
-                'content' => $toolPrompt,
-                'source' => $allowedTools === null ? 'Dynamic (all tools enabled)' : 'Dynamic (based on selected tools)',
-                'collapsible' => true,
-            ];
-        }
 
-        // 5. Working directory context (example)
-        $workingDir = $workspace ? $workspace->getWorkingDirectoryPath() : '/workspace';
-        $sections[] = [
-            'title' => 'Working Directory Context',
-            'content' => "# Working Directory\n\nCurrent project: {$workingDir}\n\nAll file operations should be relative to or within this directory.",
-            'source' => 'Dynamic (set per conversation)',
-            'collapsible' => true,
-        ];
+        // Use the same builder that generates actual conversation prompts
+        $preview = $this->systemPromptBuilder->buildPreviewSections(
+            $provider,
+            $agentSystemPrompt,
+            $allowedTools,
+            $memorySchemas ?? [],
+            $workspace
+        );
 
-        // Combine all sections for full preview
-        $fullPrompt = collect($sections)
-            ->pluck('content')
-            ->implode("\n\n");
+        return response()->json($preview);
+    }
 
-        return response()->json([
-            'sections' => $sections,
-            'full_prompt' => $fullPrompt,
-            'total_length' => strlen($fullPrompt),
-            'estimated_tokens' => (int) ceil(strlen($fullPrompt) / 4), // Rough estimate
-        ]);
+    /**
+     * Get system prompt preview for an existing agent.
+     * Uses the agent's actual configuration to build the preview.
+     */
+    public function agentSystemPromptPreview(Agent $agent): JsonResponse
+    {
+        // Load the agent with its memory databases
+        $agent->load('memoryDatabases', 'workspace');
+
+        // Get the agent's allowed tools (null = all tools)
+        $allowedTools = $agent->allowed_tools;
+
+        // Get the agent's memory schema IDs using ToolSelector
+        $memorySchemaIds = $this->toolSelector->getAvailableSchemas($agent)->pluck('id')->toArray();
+
+        // Use the same builder that generates actual conversation prompts
+        $preview = $this->systemPromptBuilder->buildPreviewSections(
+            $agent->provider,
+            $agent->system_prompt ?? '',
+            $allowedTools,
+            $memorySchemaIds,
+            $agent->workspace
+        );
+
+        return response()->json($preview);
     }
 
     /**

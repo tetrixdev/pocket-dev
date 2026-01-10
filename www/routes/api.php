@@ -138,6 +138,7 @@ Route::get('agents/for-provider/{provider}', [AgentController::class, 'forProvid
 Route::get('agents/default/{provider}', [AgentController::class, 'defaultForProvider']);
 Route::get('agents/available-schemas', [AgentController::class, 'availableSchemas']);
 Route::get('agents/{agent}/available-schemas', [AgentController::class, 'availableSchemas']);
+Route::get('agents/{agent}/system-prompt-preview', [AgentController::class, 'agentSystemPromptPreview']);
 Route::get('agents/{agent}', [AgentController::class, 'show']);
 Route::get('tools', [AgentController::class, 'allTools']);
 Route::get('tools/for-provider/{provider}', [AgentController::class, 'availableTools']);

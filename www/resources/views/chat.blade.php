@@ -6,141 +6,9 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>PocketDev Chat</title>
 
-    @if (file_exists(public_path('build/manifest.json')))
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
-    @else
-        <script src="https://cdn.tailwindcss.com"></script>
-        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-        <script>
-            // Define Alpine store for CDN mode (before Alpine starts)
-            document.addEventListener('alpine:init', () => {
-                Alpine.store('debug', {
-                    logs: [],
-                    showPanel: false,
-                    maxLogs: 100,
-                    log(message, data = null) {
-                        const timestamp = new Date().toISOString().substr(11, 12);
-                        const entry = { timestamp, message, data };
-                        console.log(`[DEBUG ${timestamp}] ${message}`, data ?? '');
-                        this.logs.push(entry);
-                        if (this.logs.length > this.maxLogs) this.logs.shift();
-                    },
-                    clear() { this.logs = []; },
-                    copy() {
-                        const text = this.logs.map(log => {
-                            const dataStr = log.data !== null ? ' ' + (typeof log.data === 'object' ? JSON.stringify(log.data) : log.data) : '';
-                            return `[${log.timestamp}] ${log.message}${dataStr}`;
-                        }).join('\n');
-                        navigator.clipboard.writeText(text);
-                    },
-                    toggle() { this.showPanel = !this.showPanel; }
-                });
-                window.debugLog = (message, data = null) => Alpine.store('debug').log(message, data);
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
 
-                // File preview store for viewing files linked in chat messages
-                Alpine.store('filePreview', {
-                    isOpen: false,
-                    loading: false,
-                    path: '',
-                    filename: '',
-                    content: '',
-                    error: null,
-                    isMarkdown: false,
-                    sizeFormatted: '',
-                    copied: false,
-                    renderedContent: '',
-                    highlightedContent: '',
-
-                    async open(filePath) {
-                        debugLog('filePreview.open() called', { filePath });
-                        this.isOpen = true;
-                        this.loading = true;
-                        this.error = null;
-                        this.content = '';
-                        this.path = filePath;
-                        this.filename = filePath.split('/').pop();
-                        this.copied = false;
-
-                        try {
-                            debugLog('filePreview: fetching file content');
-                            const response = await fetch('/api/file/preview', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json',
-                                },
-                                body: JSON.stringify({ path: filePath }),
-                            });
-
-                            const data = await response.json();
-                            debugLog('filePreview: response received', { exists: data.exists, error: data.error, size: data.size_formatted });
-
-                            if (!data.exists) {
-                                this.error = 'File not found';
-                            } else if (data.too_large) {
-                                this.error = data.error;
-                                this.sizeFormatted = data.size_formatted;
-                            } else if (data.binary) {
-                                this.error = data.error;
-                            } else if (data.error) {
-                                this.error = data.error;
-                            } else {
-                                this.content = data.content;
-                                this.filename = data.filename;
-                                this.sizeFormatted = data.size_formatted;
-                                this.isMarkdown = data.is_markdown;
-
-                                // Render content (with linkification for nested file paths)
-                                if (this.isMarkdown) {
-                                    let html = marked.parse(this.content);
-                                    html = window.linkifyFilePaths(html);
-                                    this.renderedContent = DOMPurify.sanitize(html);
-                                } else {
-                                    // Try to detect language from extension for syntax highlighting
-                                    const ext = data.extension;
-                                    let highlighted;
-                                    if (ext && hljs.getLanguage(ext)) {
-                                        highlighted = hljs.highlight(this.content, { language: ext }).value;
-                                    } else {
-                                        highlighted = hljs.highlightAuto(this.content).value;
-                                    }
-                                    this.highlightedContent = window.linkifyFilePaths(highlighted);
-                                }
-                            }
-                        } catch (err) {
-                            console.error('File preview error:', err);
-                            this.error = 'Failed to load file';
-                        } finally {
-                            this.loading = false;
-                        }
-                    },
-
-                    close() {
-                        this.isOpen = false;
-                        this.content = '';
-                        this.renderedContent = '';
-                        this.highlightedContent = '';
-                    },
-
-                    async copyContent() {
-                        if (!this.content) return;
-                        try {
-                            await navigator.clipboard.writeText(this.content);
-                            this.copied = true;
-                            setTimeout(() => { this.copied = false; }, 1500);
-                        } catch (err) {
-                            console.error('Copy failed:', err);
-                        }
-                    }
-                });
-
-                // Global helper for opening file preview
-                window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
-            });
-        </script>
-    @endif
-
-    {{-- File preview store - always register regardless of Vite/CDN mode --}}
+    {{-- Global helpers --}}
     <script>
         // Global helper to linkify file paths in HTML content
         window.linkifyFilePaths = function(html) {
@@ -163,9 +31,7 @@
         };
 
         document.addEventListener('alpine:init', () => {
-            // Only register if not already defined (CDN mode defines it above)
-            if (!Alpine.store('filePreview')) {
-                Alpine.store('filePreview', {
+            Alpine.store('filePreview', {
                     // Stack of open files for nested navigation
                     stack: [],
                     loading: false,
@@ -289,9 +155,8 @@
                     }
                 });
 
-                // Global helper for opening file preview
-                window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
-            }
+            // Global helper for opening file preview
+            window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
 
             // File attachments store for managing uploaded files in chat
             Alpine.store('attachments', {
@@ -849,6 +714,17 @@
                 showClaudeCodeAuthModal: false,
                 showErrorModal: false,
                 showSearchModal: false,
+                showSystemPromptPreview: false,
+                systemPromptPreview: {
+                    loading: false,
+                    error: null,
+                    agentName: '',
+                    sections: [],
+                    totalTokens: 0,
+                    expandedSections: {},
+                    rawViewSections: {},
+                    copied: false,
+                },
                 errorMessage: '',
                 openAiKeyInput: '',
 
@@ -1339,6 +1215,114 @@
                     if (closeModal) {
                         this.showAgentSelector = false;
                     }
+                },
+
+                // ==================== System Prompt Preview Methods ====================
+
+                async openSystemPromptPreview() {
+                    if (!this.currentAgentId) return;
+
+                    // Get the current agent
+                    const agent = this.agents.find(a => a.id === this.currentAgentId);
+                    if (!agent) return;
+
+                    // Reset state
+                    this.systemPromptPreview = {
+                        loading: true,
+                        error: null,
+                        agentName: agent.name,
+                        sections: [],
+                        totalTokens: 0,
+                        expandedSections: {},
+                        rawViewSections: {},
+                        copied: false,
+                    };
+                    this.showSystemPromptPreview = true;
+
+                    try {
+                        const response = await fetch(`/api/agents/${this.currentAgentId}/system-prompt-preview`);
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch system prompt preview');
+                        }
+
+                        const data = await response.json();
+                        this.systemPromptPreview.sections = data.sections || [];
+                        this.systemPromptPreview.totalTokens = data.estimated_tokens || 0;
+                        this.systemPromptPreview.loading = false;
+                    } catch (err) {
+                        console.error('Failed to fetch system prompt preview:', err);
+                        this.systemPromptPreview.error = err.message || 'Failed to load system prompt';
+                        this.systemPromptPreview.loading = false;
+                    }
+                },
+
+                toggleSystemPromptSection(path) {
+                    if (this.systemPromptPreview.expandedSections[path]) {
+                        delete this.systemPromptPreview.expandedSections[path];
+                    } else {
+                        this.systemPromptPreview.expandedSections[path] = true;
+                    }
+                },
+
+                toggleSystemPromptRawView(path) {
+                    if (this.systemPromptPreview.rawViewSections[path]) {
+                        delete this.systemPromptPreview.rawViewSections[path];
+                    } else {
+                        this.systemPromptPreview.rawViewSections[path] = true;
+                    }
+                },
+
+                toggleAllSystemPromptSections() {
+                    const hasExpanded = Object.keys(this.systemPromptPreview.expandedSections).length > 0;
+                    if (hasExpanded) {
+                        // Collapse all
+                        this.systemPromptPreview.expandedSections = {};
+                    } else {
+                        // Expand all sections (recursively build paths)
+                        const expanded = {};
+                        const buildPaths = (sections, prefix = '') => {
+                            sections.forEach((section, idx) => {
+                                const path = prefix ? `${prefix}.${idx}` : String(idx);
+                                expanded[path] = true;
+                                if (section.children && section.children.length > 0) {
+                                    buildPaths(section.children, path);
+                                }
+                            });
+                        };
+                        buildPaths(this.systemPromptPreview.sections);
+                        this.systemPromptPreview.expandedSections = expanded;
+                    }
+                },
+
+                flattenSystemPromptSections(sections) {
+                    let parts = [];
+                    for (const section of sections) {
+                        if (section.content) parts.push(section.content);
+                        if (section.children && section.children.length > 0) {
+                            parts.push(this.flattenSystemPromptSections(section.children));
+                        }
+                    }
+                    return parts.filter(p => p).join('\n\n');
+                },
+
+                async copySystemPrompt() {
+                    const fullPrompt = this.flattenSystemPromptSections(this.systemPromptPreview.sections);
+                    try {
+                        await navigator.clipboard.writeText(fullPrompt);
+                        this.systemPromptPreview.copied = true;
+                        setTimeout(() => {
+                            this.systemPromptPreview.copied = false;
+                        }, 2000);
+                    } catch (err) {
+                        console.error('Failed to copy:', err);
+                    }
+                },
+
+                parseMarkdownForSystemPrompt(text) {
+                    if (!text) return '';
+                    // Use marked + DOMPurify for rendering
+                    let html = marked.parse(text);
+                    return DOMPurify.sanitize(html);
                 },
 
                 // ==================== Workspace Methods ====================
