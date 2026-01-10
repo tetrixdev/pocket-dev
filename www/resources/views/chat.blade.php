@@ -1041,18 +1041,29 @@
                         // Check for turn parameter in URL
                         const urlParams = new URLSearchParams(window.location.search);
                         const turnParam = urlParams.get('turn');
+                        let turnNumber = null;
                         if (turnParam) {
-                            const turnNumber = parseInt(turnParam, 10);
-                            if (!isNaN(turnNumber)) {
-                                this.pendingScrollToTurn = turnNumber;
-                                this.autoScrollEnabled = false;
+                            const parsed = parseInt(turnParam, 10);
+                            if (!isNaN(parsed)) {
+                                turnNumber = parsed;
                             }
                         }
 
                         if (event.state && event.state.conversationUuid) {
                             // Don't reload if we're already on this conversation
                             if (this.currentConversationUuid === event.state.conversationUuid) {
+                                // But still handle turn scrolling if requested
+                                if (turnNumber !== null) {
+                                    this.pendingScrollToTurn = turnNumber;
+                                    this.autoScrollEnabled = false;
+                                    this.scrollToTurn(turnNumber);
+                                }
                                 return;
+                            }
+                            // Set pending scroll for new conversation load
+                            if (turnNumber !== null) {
+                                this.pendingScrollToTurn = turnNumber;
+                                this.autoScrollEnabled = false;
                             }
                             this.loadConversation(event.state.conversationUuid);
                         } else {
@@ -1830,6 +1841,11 @@
                             throw new Error('Missing conversation payload');
                         }
 
+                        // Guard: abort if user switched to different conversation during fetch
+                        if (this._loadingConversationUuid !== uuid) {
+                            return;
+                        }
+
                         // Check if conversation belongs to a different workspace
                         const conversationWorkspaceId = data.conversation.workspace_id;
                         if (!skipWorkspaceCheck && conversationWorkspaceId && conversationWorkspaceId !== this.currentWorkspaceId) {
@@ -1875,6 +1891,8 @@
                                 } else {
                                     this.loadingConversation = false;
                                     this._loadingConversationUuid = null;
+                                    this.showError('Failed to switch workspace');
+                                    return;
                                 }
                             } catch (err) {
                                 console.error('Failed to switch workspace:', err);
@@ -1961,7 +1979,8 @@
                         if (data.conversation?.messages?.length > 0) {
                             await this.loadMessagesProgressively(
                                 data.conversation.messages,
-                                this.pendingScrollToTurn
+                                this.pendingScrollToTurn,
+                                uuid
                             );
                         } else {
                             // No messages - clear loading overlay immediately
@@ -2059,8 +2078,9 @@
                  * Progressive message loading - renders priority messages first, then fills in the rest.
                  * For normal load: shows last N messages immediately, then prepends older ones.
                  * For search: shows messages around target turn first, then fills in.
+                 * @param {string} loadUuid - UUID of conversation being loaded (for race condition guard)
                  */
-                async loadMessagesProgressively(dbMessages, targetTurn = null) {
+                async loadMessagesProgressively(dbMessages, targetTurn = null, loadUuid = null) {
                     const INITIAL_BATCH = 100;  // Messages to show immediately
                     const PREPEND_BATCH = 50;   // Messages per prepend batch
 
@@ -2113,6 +2133,11 @@
                     const messagesBefore = allUiMessages.slice(0, priorityStartIndex);
                     const priorityMessages = allUiMessages.slice(priorityStartIndex);
 
+                    // Guard: abort if user switched to different conversation during processing
+                    if (loadUuid && this.currentConversationUuid !== loadUuid) {
+                        return;
+                    }
+
                     // Phase 1: Render priority messages immediately
                     this.messages = priorityMessages;
 
@@ -2128,25 +2153,34 @@
 
                             // Hide loading overlay AFTER scroll has painted
                             requestAnimationFrame(() => {
-                                this.loadingConversation = false;
-                                this._loadingConversationUuid = null;
+                                // Guard: only clear if still on same conversation
+                                if (!loadUuid || this.currentConversationUuid === loadUuid) {
+                                    this.loadingConversation = false;
+                                    this._loadingConversationUuid = null;
+                                }
                             });
                         });
                     });
 
                     // Phase 2: Prepend older messages in batches (if any) - runs in background, don't await
                     if (messagesBefore.length > 0) {
-                        this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH);
+                        this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH, loadUuid);
                     }
                 },
 
                 /**
                  * Prepends messages in batches. Browser's scroll anchoring maintains scroll position.
+                 * @param {string} loadUuid - UUID of conversation being loaded (for race condition guard)
                  */
-                async prependMessagesInBatches(messages, batchSize) {
+                async prependMessagesInBatches(messages, batchSize, loadUuid = null) {
                     let remaining = [...messages];
 
                     while (remaining.length > 0) {
+                        // Guard: abort if user switched to different conversation
+                        if (loadUuid && this.currentConversationUuid !== loadUuid) {
+                            return;
+                        }
+
                         // Take a batch from the END (newest of the old messages)
                         const batch = remaining.slice(-batchSize);
                         remaining = remaining.slice(0, -batchSize);
