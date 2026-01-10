@@ -14,8 +14,9 @@
         window.linkifyFilePaths = function(html) {
             // Allowed paths from Laravel config (single source of truth)
             const allowedPaths = @json(config('ai.file_preview.allowed_paths', ['/var/www']));
-            // Build regex: strip leading /, escape internal /, join with |
-            const pathsPattern = allowedPaths.map(p => p.replace(/^\//, '').replace(/\//g, '\\/')).join('|');
+            // Escape all regex metacharacters, then strip leading /
+            const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pathsPattern = allowedPaths.map(p => escapeRegex(p).replace(/^\\\//, '')).join('|');
             const filePathPattern = new RegExp(`((?:^|[^"'=\\w])((?:\\/(?:${pathsPattern})|\\.\\.\\/|\\.\\/|~\\/)[^\\s<>"'\`\\)]+\\.[a-zA-Z0-9]+))`, 'g');
             const escapeHtml = (text) => String(text)
                 .replace(/&/g, '&amp;')
@@ -730,6 +731,7 @@
                 showErrorModal: false,
                 showSearchModal: false,
                 showSystemPromptPreview: false,
+                _systemPromptPreviewNonce: 0,
                 systemPromptPreview: {
                     loading: false,
                     error: null,
@@ -1241,6 +1243,9 @@
                     const agent = this.agents.find(a => a.id === this.currentAgentId);
                     if (!agent) return;
 
+                    // Increment nonce to handle rapid agent switching (stale response guard)
+                    const myNonce = ++this._systemPromptPreviewNonce;
+
                     // Reset state
                     this.systemPromptPreview = {
                         loading: true,
@@ -1260,11 +1265,17 @@
                             throw new Error('Failed to fetch system prompt preview');
                         }
 
+                        // Discard stale response if user switched agents while fetching
+                        if (myNonce !== this._systemPromptPreviewNonce) return;
+
                         const data = await response.json();
                         this.systemPromptPreview.sections = data.sections || [];
                         this.systemPromptPreview.totalTokens = data.estimated_tokens || 0;
                         this.systemPromptPreview.loading = false;
                     } catch (err) {
+                        // Discard stale error if user switched agents while fetching
+                        if (myNonce !== this._systemPromptPreviewNonce) return;
+
                         console.error('Failed to fetch system prompt preview:', err);
                         this.systemPromptPreview.error = err.message || 'Failed to load system prompt';
                         this.systemPromptPreview.loading = false;
