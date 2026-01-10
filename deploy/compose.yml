@@ -34,6 +34,8 @@ services:
       - user-data:/home/appuser
       - workspace-data:/workspace
       - proxy-config-data:/etc/nginx-proxy-config
+      - pocketdev-storage:/var/www/storage/pocketdev
+      - shared-tmp:/tmp
     networks:
       - pocket-dev
     depends_on:

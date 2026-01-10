@@ -17,7 +17,6 @@ services:
       - pocket-dev-nginx
     networks:
       - pocket-dev
-      - pocket-dev-public
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
       interval: 10s
@@ -34,20 +33,20 @@ services:
     working_dir: /var/www
     # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
     # This allows privileged operations (package install, permission fixes) before dropping privileges
-    group_add:
-      - "1000"
-      - "${DOCKER_GID:-1001}"
     environment:
       - HOME=/home/appuser
       - COMPOSER_HOME=/tmp/.composer
       - NPM_CONFIG_CACHE=/tmp/.npm
       - TARGET_UID=${USER_ID:-1000}
       - TARGET_GID=${GROUP_ID:-1000}
+      # TODO: Remove git credential env vars? git/gh CLI read from env directly.
+      # If removed, also clean up .env.example and docs.
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
       - GH_TOKEN=${GIT_TOKEN:-}
       - HOST_PROJECT_PATH=${PWD}
+      # TODO: Remove ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
       - DOCKER_GID=${DOCKER_GID:-}
     entrypoint: ["/entrypoint.sh"]
@@ -146,20 +145,20 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
-    group_add:
-      - "1000"
-      - "${DOCKER_GID:-1001}"
     entrypoint: ["/queue-entrypoint.sh"]
     # Command removed - supervisord in entrypoint manages multiple workers
     environment:
       - HOME=/home/appuser
       - TARGET_UID=${USER_ID:-1000}
       - TARGET_GID=${GROUP_ID:-1000}
+      # TODO: Remove git credential env vars? git/gh CLI read from env directly.
+      # If removed, also clean up .env.example and docs.
       - GIT_TOKEN=${GIT_TOKEN:-}
       - GIT_USER_NAME=${GIT_USER_NAME:-}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
       - GH_TOKEN=${GIT_TOKEN:-}
       - HOST_PROJECT_PATH=${PWD}
+      # TODO: Remove ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
       - DOCKER_GID=${DOCKER_GID:-}
     volumes:
@@ -185,9 +184,6 @@ services:
 networks:
   pocket-dev:
     name: pocket-dev
-    driver: bridge
-  pocket-dev-public:
-    name: pocket-dev-public
     driver: bridge
 
 volumes:
