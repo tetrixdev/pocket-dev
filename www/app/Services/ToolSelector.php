@@ -469,13 +469,17 @@ class ToolSelector
                 ];
             }
 
+            $groupContent = "## Custom Tools\n\nUser-created tools invoked via `tool:run`.";
+            $childChars = array_sum(array_column($toolChildren, 'chars'));
+            $childTokens = array_sum(array_column($toolChildren, 'estimated_tokens'));
+
             $groupChildren[] = [
                 'title' => 'Custom Tools',
-                'content' => "## Custom Tools\n\nUser-created tools invoked via `tool:run`.",
+                'content' => $groupContent,
                 'source' => 'custom',
                 'collapsed' => true,
-                'chars' => array_sum(array_column($toolChildren, 'chars')),
-                'estimated_tokens' => array_sum(array_column($toolChildren, 'estimated_tokens')),
+                'chars' => strlen($groupContent) + $childChars,
+                'estimated_tokens' => (int) ceil(strlen($groupContent) / 4) + $childTokens,
                 'children' => $toolChildren,
             ];
         }
@@ -542,13 +546,16 @@ class ToolSelector
             }
             $schemaContent .= "\n\n".count($tableChildren)." tables";
 
+            $childChars = array_sum(array_column($tableChildren, 'chars'));
+            $childTokens = array_sum(array_column($tableChildren, 'estimated_tokens'));
+
             $schemaChildren[] = [
                 'title' => $schema->schema_name,
                 'content' => $schemaContent,
                 'source' => $schema->getFullSchemaName(),
                 'collapsed' => true,
-                'chars' => array_sum(array_column($tableChildren, 'chars')),
-                'estimated_tokens' => array_sum(array_column($tableChildren, 'estimated_tokens')),
+                'chars' => strlen($schemaContent) + $childChars,
+                'estimated_tokens' => (int) ceil(strlen($schemaContent) / 4) + $childTokens,
                 'children' => $tableChildren,
             ];
         }
