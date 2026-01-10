@@ -534,7 +534,7 @@
         }
     </style>
 </head>
-<body class="antialiased bg-gray-900 text-gray-100 h-screen overflow-hidden" x-data="chatApp()" x-init="init()">
+<body class="antialiased bg-gray-900 text-gray-100 h-screen overflow-hidden" x-data="chatApp()">
 
     {{-- Main Layout Container --}}
     <div class="md:flex md:h-screen">
@@ -657,25 +657,36 @@
                     </div>
                 </div>
 
-                {{-- Loading Conversation Overlay (mobile: fixed like #messages, desktop: absolute) --}}
-                <style>@media (min-width: 768px) { .loading-conv-overlay { bottom: 0 !important; top: 0 !important; } }</style>
-                <div x-show="loadingConversation"
-                     x-cloak
-                     x-transition:enter="transition ease-out duration-150"
-                     x-transition:enter-start="opacity-0"
-                     x-transition:enter-end="opacity-100"
-                     x-transition:leave="transition ease-in duration-100"
-                     x-transition:leave-start="opacity-100"
-                     x-transition:leave-end="opacity-0"
-                     class="loading-conv-overlay fixed top-[60px] left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm
-                            md:absolute md:inset-0"
+                {{-- Loading Conversation Overlay (Mobile) - fixed position matching #messages --}}
+                {{-- REFACTORED: Uses ONLY :class for visibility (no x-show). --}}
+                {{-- When loadingConversation=true: 'flex md:hidden' shows on mobile, hides on desktop --}}
+                {{-- When loadingConversation=false: 'hidden' hides everywhere --}}
+                <div x-cloak
+                     class="fixed top-[60px] left-0 right-0 z-20 bg-gray-900/90 items-center justify-center backdrop-blur-sm transition-opacity duration-150"
+                     :class="loadingConversation ? 'flex md:hidden opacity-100' : 'hidden opacity-0'"
                      :style="'bottom: ' + mobileInputHeight + 'px'">
                     <div class="flex flex-col items-center gap-3">
                         <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                         </svg>
-                        <span class="text-gray-400 text-sm">Loading conversation...</span>
+                        <span class="text-gray-400 text-sm">Loading conversation... (M)</span>
+                    </div>
+                </div>
+
+                {{-- Loading Conversation Overlay (Desktop) - absolute within wrapper --}}
+                {{-- REFACTORED: Uses ONLY :class for visibility (no x-show). --}}
+                {{-- When loadingConversation=true: 'hidden md:flex' hides on mobile, shows on desktop --}}
+                {{-- When loadingConversation=false: 'hidden' hides everywhere --}}
+                <div x-cloak
+                     class="absolute inset-0 z-20 bg-gray-900/90 items-center justify-center backdrop-blur-sm transition-opacity duration-150"
+                     :class="loadingConversation ? 'hidden md:flex opacity-100' : 'hidden opacity-0'">
+                    <div class="flex flex-col items-center gap-3">
+                        <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-gray-400 text-sm">Loading conversation... (D)</span>
                     </div>
                 </div>
 
@@ -769,10 +780,18 @@
 
         function chatApp() {
             // Debug: Log when chatApp() is called (component creation)
-            console.log('[chatApp] Function called - creating component instance', new Error().stack?.split('\n').slice(1, 4).join(' <- '));
+            // Use debugLog if available, otherwise console.log
+            const earlyLog = (msg, data) => {
+                if (typeof debugLog === 'function') {
+                    debugLog(msg, data);
+                } else {
+                    console.log(`[EARLY] ${msg}`, data || '');
+                }
+            };
+            earlyLog('chatApp() function called', { stack: new Error().stack?.split('\n').slice(1, 4).join(' <- ') });
             if (window._chatAppCallCount === undefined) window._chatAppCallCount = 0;
             window._chatAppCallCount++;
-            console.log('[chatApp] Call count:', window._chatAppCallCount);
+            earlyLog('chatApp() call count', { count: window._chatAppCallCount });
 
             return {
                 // State
@@ -939,6 +958,15 @@
                     this._initDone = true;
                     this.debugLog('init() started', { alpineInfo, stack: stack?.split('\n').slice(1, 5).join(' <- ') });
 
+                    // DEBUG: Watch for loadingConversation changes - use *** prefix so it stands out
+                    this.$watch('loadingConversation', (value) => {
+                        this.debugLog('*** OVERLAY STATE CHANGED ***', {
+                            loadingConversation: value,
+                            currentUuid: this.currentConversationUuid,
+                            stack: new Error().stack?.split('\n').slice(1, 4).join(' <- ')
+                        });
+                    });
+
                     // Fetch pricing from database
                     await this.fetchPricing();
 
@@ -1019,11 +1047,18 @@
 
                         this.debugLog('init: calling loadConversation from URL', { uuid: urlConversationUuid, returningFromSettings: !!returningFromSettings });
                         await this.loadConversation(urlConversationUuid);
+                        this.debugLog('init: loadConversation completed', {
+                            uuid: urlConversationUuid,
+                            loadingConversation: this.loadingConversation,
+                            currentConversationUuid: this.currentConversationUuid
+                        });
 
                         // Scroll to bottom if returning from settings (only if not scrolling to turn)
                         if (returningFromSettings && this.pendingScrollToTurn === null) {
                             this.$nextTick(() => this.scrollToBottom());
                         }
+                    } else {
+                        this.debugLog('init: no URL conversation UUID, skipping loadConversation');
                     }
 
                     // Handle browser back/forward navigation
@@ -1042,20 +1077,65 @@
                         }
 
                         if (event.state && event.state.conversationUuid) {
+                            // Don't reload if we're already on this conversation
+                            if (this.currentConversationUuid === event.state.conversationUuid) {
+                                this.debugLog('popstate: skipping, already on this conversation', { uuid: event.state.conversationUuid });
+                                return;
+                            }
                             this.debugLog('popstate: calling loadConversation', { uuid: event.state.conversationUuid });
                             this.loadConversation(event.state.conversationUuid);
                         } else {
                             // Back to new conversation state
+                            this.debugLog('popstate: calling newConversation (no state uuid)');
                             this.newConversation();
                         }
+                    });
+                    this.debugLog('init: popstate handler registered');
+
+                    // Track visibility changes (for diagnosing background/foreground issues)
+                    document.addEventListener('visibilitychange', () => {
+                        this.debugLog('visibilitychange', {
+                            hidden: document.hidden,
+                            loadingConversation: this.loadingConversation,
+                            currentUuid: this.currentConversationUuid
+                        });
+                    });
+
+                    // Track pageshow (bfcache restoration)
+                    window.addEventListener('pageshow', (event) => {
+                        this.debugLog('pageshow', {
+                            persisted: event.persisted,
+                            loadingConversation: this.loadingConversation,
+                            currentUuid: this.currentConversationUuid
+                        });
                     });
 
                     // Track mobile input height for dynamic messages container bottom
                     this.$nextTick(() => {
                         if (this.$refs.mobileInput) {
+                            this.debugLog('ResizeObserver: setting up on mobileInput');
+                            let resizeLogThrottle = null;
+                            let lastLoggedHeight = this.mobileInputHeight;
                             const resizeObserver = new ResizeObserver((entries) => {
                                 for (const entry of entries) {
-                                    this.mobileInputHeight = entry.contentRect.height;
+                                    const oldHeight = this.mobileInputHeight;
+                                    const newHeight = entry.contentRect.height;
+                                    this.mobileInputHeight = newHeight;
+
+                                    // Throttle logging to once per 500ms, but always log if loadingConversation changed
+                                    if (!resizeLogThrottle) {
+                                        resizeLogThrottle = setTimeout(() => {
+                                            resizeLogThrottle = null;
+                                            if (this.mobileInputHeight !== lastLoggedHeight) {
+                                                this.debugLog('ResizeObserver: height changed', {
+                                                    from: lastLoggedHeight,
+                                                    to: this.mobileInputHeight,
+                                                    loadingConversation: this.loadingConversation
+                                                });
+                                                lastLoggedHeight = this.mobileInputHeight;
+                                            }
+                                        }, 500);
+                                    }
                                 }
                             });
                             resizeObserver.observe(this.$refs.mobileInput);
@@ -1084,6 +1164,12 @@
                                 }
                             }
                         }
+                    });
+
+                    this.debugLog('init: COMPLETED', {
+                        loadingConversation: this.loadingConversation,
+                        currentConversationUuid: this.currentConversationUuid,
+                        messagesCount: this.messages.length
                     });
                 },
 
@@ -1691,6 +1777,11 @@
                 },
 
                 async loadSearchResult(result) {
+                    this.debugLog('loadSearchResult: START', {
+                        uuid: result.conversation_uuid,
+                        turnNumber: result.turn_number
+                    });
+
                     // Close mobile drawer but keep search input visible while search is active
                     this.showMobileDrawer = false;
 
@@ -1705,6 +1796,11 @@
                 },
 
                 async newConversation() {
+                    this.debugLog('newConversation: START', {
+                        previousUuid: this.currentConversationUuid,
+                        loadingConversation: this.loadingConversation
+                    });
+
                     // Disconnect from any active stream
                     this.disconnectFromStream();
 
@@ -1832,6 +1928,8 @@
                             if (!targetWorkspace) {
                                 console.error('Workspace not found for conversation', { conversationWorkspaceId });
                                 this.showError('Cannot load conversation: workspace not found');
+                                this.loadingConversation = false;
+                                this._loadingConversationUuid = null;
                                 return;
                             }
 
@@ -1848,18 +1946,30 @@
                                 if (switchResponse.ok) {
                                     this.currentWorkspace = targetWorkspace;
                                     this.currentWorkspaceId = targetWorkspace.id;
-                                    this.debugLog('Auto-switched workspace', { workspace: targetWorkspace.name });
+                                    this.debugLog('Auto-switched workspace', { callId, workspace: targetWorkspace.name });
 
                                     // Reload conversations and agents for the new workspace
                                     await this.fetchConversations();
                                     await this.fetchAgents();
 
+                                    // IMPORTANT: Clear the loading state before recursive call
+                                    // Otherwise the duplicate load guard will block it
+                                    this.debugLog('loadConversation: clearing state before recursive call', { callId, uuid });
+                                    this._loadingConversationUuid = null;
+
                                     // Reload conversation with new workspace context to avoid stale data
+                                    this.debugLog('loadConversation: recursive call for workspace switch', { callId, uuid });
                                     return this.loadConversation(uuid, true);
+                                } else {
+                                    this.debugLog('loadConversation: workspace switch failed, overlay OFF', { callId, status: switchResponse.status });
+                                    this.loadingConversation = false;
+                                    this._loadingConversationUuid = null;
                                 }
                             } catch (err) {
                                 console.error('Failed to switch workspace:', err);
                                 this.showError('Failed to switch workspace');
+                                this.loadingConversation = false;
+                                this._loadingConversationUuid = null;
                                 return;
                             }
                         }
@@ -1944,6 +2054,11 @@
                                 data.conversation.messages,
                                 this.pendingScrollToTurn
                             );
+                        } else {
+                            // No messages - clear loading overlay immediately
+                            this.debugLog('loadConversation: 0 messages, overlay OFF');
+                            this.loadingConversation = false;
+                            this._loadingConversationUuid = null;
                         }
 
                         // Update provider/model from conversation
@@ -2039,6 +2154,13 @@
                  * For search: shows messages around target turn first, then fills in.
                  */
                 async loadMessagesProgressively(dbMessages, targetTurn = null) {
+                    this.debugLog('loadMessagesProgressively: START', {
+                        dbMessageCount: dbMessages?.length,
+                        targetTurn,
+                        loadingConversation: this.loadingConversation,
+                        _loadingConversationUuid: this._loadingConversationUuid
+                    });
+
                     const INITIAL_BATCH = 100;  // Messages to show immediately
                     const PREPEND_BATCH = 50;   // Messages per prepend batch
 
@@ -2054,6 +2176,7 @@
 
                     // Post-process: link any pending tool_results to their tool_use messages
                     // This handles cases where tool_result is in a separate db message from tool_use
+                    let orphanedToolResults = 0;
                     for (const pending of pendingToolResults) {
                         const toolMsgIndex = allUiMessages.findIndex(m => m.role === 'tool' && m.toolId === pending.tool_use_id);
                         if (toolMsgIndex >= 0) {
@@ -2062,13 +2185,11 @@
                                 toolResult: pending.content
                             };
                         } else {
-                            this.debugLog('[Progressive] Orphaned tool_result - no matching tool_use', {
-                                tool_use_id: pending.tool_use_id,
-                                content_preview: typeof pending.content === 'string'
-                                    ? pending.content.substring(0, 100)
-                                    : JSON.stringify(pending.content).substring(0, 100)
-                            });
+                            orphanedToolResults++;
                         }
+                    }
+                    if (orphanedToolResults > 0) {
+                        this.debugLog('[Progressive] Orphaned tool_results (no matching tool_use)', { count: orphanedToolResults });
                     }
 
                     if (allUiMessages.length === 0) {
@@ -2118,11 +2239,15 @@
                             } else {
                                 this.scrollToBottom();
                             }
-                            // Hide loading overlay - first batch is now visible
-                            this.debugLog('loadMessagesProgressively: first batch rendered, overlay OFF', { msgCount: this.messages.length });
-                            this.loadingConversation = false;
-                            this._loadingConversationUuid = null;
                             resolve();
+
+                            // Hide loading overlay AFTER scroll has painted
+                            // Using requestAnimationFrame to wait for the browser to complete the scroll paint
+                            requestAnimationFrame(() => {
+                                this.debugLog('loadMessagesProgressively: first batch rendered, overlay OFF', { msgCount: this.messages.length });
+                                this.loadingConversation = false;
+                                this._loadingConversationUuid = null;
+                            });
                         });
                     });
 
@@ -3244,12 +3369,16 @@
                     this.debugLog('scrollToBottom called', { autoScrollEnabled: this.autoScrollEnabled });
                     if (!this.autoScrollEnabled) return;
                     this.$nextTick(() => {
-                        const container = document.getElementById('messages');
-                        if (container) {
-                            container.scrollTop = container.scrollHeight;
-                            this.isAtBottom = true;
-                            this.debugLog('SET isAtBottom = true (scrollToBottom)', { scrollTop: container.scrollTop, scrollHeight: container.scrollHeight });
-                        }
+                        // Use requestAnimationFrame to wait for browser layout/paint completion
+                        // This fixes desktop where flexbox layout calculation may not be done after $nextTick
+                        requestAnimationFrame(() => {
+                            const container = document.getElementById('messages');
+                            if (container) {
+                                container.scrollTop = container.scrollHeight;
+                                this.isAtBottom = true;
+                                this.debugLog('SET isAtBottom = true (scrollToBottom)', { scrollTop: container.scrollTop, scrollHeight: container.scrollHeight });
+                            }
+                        });
                     });
                 },
 
@@ -3742,6 +3871,12 @@
 
                             if (msg.type === 'conversation.item.input_audio_transcription.delta') {
                                 if (msg.delta) {
+                                    this.debugLog('voice: transcription delta received', {
+                                        deltaLength: msg.delta.length,
+                                        loadingConversation: this.loadingConversation,
+                                        currentConversationUuid: this.currentConversationUuid
+                                    });
+
                                     // Sync with any manual edits the user made during recording
                                     this.realtimeTranscript = this.prompt;
 
@@ -3753,6 +3888,11 @@
                                     this.realtimeTranscript += msg.delta;
                                     this.prompt = this.realtimeTranscript;
                                     this.scrollPromptToEnd();
+
+                                    this.debugLog('voice: prompt updated', {
+                                        promptLength: this.prompt.length,
+                                        loadingConversation: this.loadingConversation
+                                    });
                                 }
                             } else if (msg.type === 'conversation.item.input_audio_transcription.completed') {
                                 // Don't close on completed - there might be more turns pending.
