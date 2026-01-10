@@ -90,7 +90,7 @@
                 <x-button
                     variant="ghost"
                     size="sm"
-                    @click="showAgentSelector = false; openSystemPromptPreview()"
+                    @click="showAgentSelector = false; $root.openSystemPromptPreview()"
                     x-show="currentAgentId"
                     title="View system prompt for selected agent"
                 >

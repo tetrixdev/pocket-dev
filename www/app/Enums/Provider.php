@@ -7,13 +7,22 @@ namespace App\Enums;
  *
  * This enum is the single source of truth for provider identifiers.
  * The string values match what's used in configs, database, and JavaScript.
+ *
+ * NOTE: API providers (Anthropic, OpenAI, OpenAI Compatible) are currently in a
+ * partially broken state. The system prompt building and tool formatting is
+ * optimized for CLI providers (Claude Code, Codex). API providers may not receive
+ * properly formatted tool instructions or memory schema documentation.
+ * TODO: Restore full support for API providers.
  */
 enum Provider: string
 {
-    case Anthropic = 'anthropic';
-    case OpenAI = 'openai';
+    // CLI providers - fully supported
     case ClaudeCode = 'claude_code';
     case Codex = 'codex';
+
+    // API providers - partially broken (tool formatting not optimized)
+    case Anthropic = 'anthropic';
+    case OpenAI = 'openai';
     case OpenAICompatible = 'openai_compatible';
 
     /**

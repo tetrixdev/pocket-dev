@@ -109,7 +109,7 @@
                     {{-- Footer info --}}
                     <div class="mt-4 pt-3 border-t border-gray-700 text-xs text-gray-500 flex items-center justify-between">
                         <span>Token estimate assumes ~4 characters per token</span>
-                        <a href="https://claude-tokenizer.vercel.app/" target="_blank" class="text-blue-400 hover:text-blue-300">
+                        <a href="https://claude-tokenizer.vercel.app/" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">
                             Claude Tokenizer <i class="fas fa-external-link-alt ml-1"></i>
                         </a>
                     </div>

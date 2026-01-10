@@ -270,9 +270,9 @@ class SystemPromptBuilder
             );
         }
 
-        // Calculate totals
-        $totalChars = array_sum(array_column($sections, 'chars'));
-        $totalTokens = (int) ceil($totalChars / 4);
+        // Calculate totals - sum estimated_tokens from top-level sections
+        // (each section's estimated_tokens already includes its children)
+        $totalTokens = array_sum(array_column($sections, 'estimated_tokens'));
 
         return [
             'sections' => $sections,

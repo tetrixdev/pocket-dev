@@ -313,8 +313,11 @@ class ToolSelector
      * Build the memory section for the system prompt.
      * This is a separate top-level section (not nested under tools).
      *
+     * TODO: Use $isCliProvider to conditionally format examples for non-CLI providers
+     * (currently always generates CLI/artisan examples, which may not suit API providers)
+     *
      * @param Agent|null $agent The agent to get schemas for
-     * @param bool $isCliProvider Whether to use CLI examples
+     * @param bool $isCliProvider Whether to use CLI examples (currently unused)
      */
     public function buildMemorySection(?Agent $agent, bool $isCliProvider = true): ?string
     {
