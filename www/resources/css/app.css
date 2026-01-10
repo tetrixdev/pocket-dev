@@ -10,13 +10,22 @@
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
 
-/* Custom gray shades for system prompt preview */
+/*
+ * TODO: Consider replacing custom gray shades with Tailwind's built-in opacity syntax:
+ * - bg-gray-750 → bg-gray-700/50
+ * - bg-gray-850 → bg-gray-800/80
+ * This would require updating all usages in Blade templates.
+ */
 .bg-gray-750 { background-color: rgb(55 65 81 / 0.5); }
 .bg-gray-850 { background-color: rgb(31 41 55 / 0.8); }
 .hover\:bg-gray-750:hover { background-color: rgb(55 65 81 / 0.5); }
 .hover\:bg-gray-850:hover { background-color: rgb(31 41 55 / 0.8); }
 
-/* System prompt preview prose styling */
+/*
+ * TODO: Consider using @tailwindcss/typography plugin instead of custom prose styles.
+ * Would use `prose prose-invert prose-sm` classes instead of .prose-preview.
+ * See: https://tailwindcss.com/docs/typography-plugin
+ */
 .prose-preview {
     line-height: 1.6;
     color: #d1d5db;

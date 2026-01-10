@@ -55,8 +55,13 @@
                         this.loading = true;
                         this.copied = false;
 
+                        // Generate unique ID for this entry to handle race conditions
+                        // (if user opens/closes files while fetch is in-flight)
+                        const entryId = crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
                         // Create new stack entry (placeholder while loading)
                         const entry = {
+                            id: entryId,
                             path: filePath,
                             filename: filePath.split('/').pop(),
                             content: '',
@@ -67,7 +72,6 @@
                             highlightedContent: '',
                         };
                         this.stack.push(entry);
-                        const entryIndex = this.stack.length - 1;
 
                         try {
                             if (window.debugLog) debugLog('filePreview: fetching file content');
@@ -82,6 +86,14 @@
 
                             const data = await response.json();
                             if (window.debugLog) debugLog('filePreview: response received', { exists: data.exists, error: data.error, size: data.size_formatted });
+
+                            // Find the entry by ID (handles race condition if stack changed during fetch)
+                            const entryIndex = this.stack.findIndex(e => e.id === entryId);
+                            if (entryIndex === -1) {
+                                // Entry was removed while we were fetching (user closed it)
+                                if (window.debugLog) debugLog('filePreview: entry no longer in stack, discarding result');
+                                return;
+                            }
 
                             // Build the updated entry
                             const updatedEntry = { ...entry };
@@ -124,8 +136,11 @@
 
                         } catch (err) {
                             console.error('File preview error:', err);
-                            // Replace with error entry
-                            this.stack.splice(entryIndex, 1, { ...entry, error: 'Failed to load file' });
+                            // Find entry by ID and replace with error (if still exists)
+                            const entryIndex = this.stack.findIndex(e => e.id === entryId);
+                            if (entryIndex !== -1) {
+                                this.stack.splice(entryIndex, 1, { ...entry, error: 'Failed to load file' });
+                            }
                         } finally {
                             this.loading = false;
                         }
