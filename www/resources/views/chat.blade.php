@@ -669,7 +669,6 @@
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
                          class="fixed top-[57px] left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         style="display: none;"
                          :style="{ bottom: mobileInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -692,7 +691,6 @@
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
                          class="fixed left-64 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         style="display: none;"
                          :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -741,7 +739,7 @@
             <button @click="autoScrollEnabled = true; scrollToBottom()"
                     :class="(!isAtBottom && messages.length > 0) ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'"
                     class="md:hidden fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 right-4"
-                    :style="{ bottom: (parseInt(mobileInputHeight) + 64) + 'px' }"
+                    :style="{ bottom: (mobileInputHeight + 64) + 'px' }"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
@@ -760,7 +758,7 @@
                     x-transition:leave-end="opacity-0 scale-75"
                     @click="autoScrollEnabled = true; scrollToBottom()"
                     class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 cursor-pointer right-6"
-                    :style="{ bottom: (parseInt(desktopInputHeight) + 8) + 'px' }"
+                    :style="{ bottom: (desktopInputHeight + 8) + 'px' }"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
@@ -2078,7 +2076,6 @@
 
                     // Post-process: link any pending tool_results to their tool_use messages
                     // This handles cases where tool_result is in a separate db message from tool_use
-                    let orphanedToolResults = 0;
                     for (const pending of pendingToolResults) {
                         const toolMsgIndex = allUiMessages.findIndex(m => m.role === 'tool' && m.toolId === pending.tool_use_id);
                         if (toolMsgIndex >= 0) {
@@ -2086,8 +2083,6 @@
                                 ...allUiMessages[toolMsgIndex],
                                 toolResult: pending.content
                             };
-                        } else {
-                            orphanedToolResults++;
                         }
                     }
 
