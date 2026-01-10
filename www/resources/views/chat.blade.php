@@ -788,6 +788,7 @@
                 isAtBottom: true, // Track if user is at bottom of messages
                 ignoreScrollEvents: false, // Ignore scroll events during conversation loading
                 loadingConversation: false, // Show loading overlay during conversation loading
+                _loadingConversationUuid: null, // UUID of conversation being loaded (prevents duplicate loads)
                 _initDone: false, // Guard against double initialization
                 sessionCost: 0,
                 totalTokens: 0,
@@ -1767,8 +1768,15 @@
                 },
 
                 async loadConversation(uuid, skipWorkspaceCheck = false) {
-                    // Show loading overlay
+                    // Skip if already loading this exact conversation
+                    if (this._loadingConversationUuid === uuid) {
+                        this.debugLog('loadConversation: skipping duplicate load', { uuid });
+                        return;
+                    }
+
+                    // Show loading overlay and track which conversation is loading
                     this.loadingConversation = true;
+                    this._loadingConversationUuid = uuid;
 
                     // Disconnect from any current stream before switching
                     this.disconnectFromStream();
@@ -1971,6 +1979,7 @@
 
                     } catch (err) {
                         this.loadingConversation = false;
+                        this._loadingConversationUuid = null;
                         console.error('Failed to load conversation:', err);
                         this.showError('Failed to load conversation');
                         // Reset local state and clear URL without creating a back-button loop
@@ -2038,7 +2047,11 @@
                         }
                     }
 
-                    if (allUiMessages.length === 0) return;
+                    if (allUiMessages.length === 0) {
+                        this.loadingConversation = false;
+                        this._loadingConversationUuid = null;
+                        return;
+                    }
 
                     // Determine which messages to render first based on context
                     let priorityStartIndex;
@@ -2082,6 +2095,7 @@
                             }
                             // Hide loading overlay - first batch is now visible
                             this.loadingConversation = false;
+                            this._loadingConversationUuid = null;
                             resolve();
                         });
                     });
