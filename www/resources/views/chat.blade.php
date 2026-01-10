@@ -917,13 +917,21 @@
                 },
 
                 async init() {
+                    // Debug: capture stack trace to find caller
+                    const stack = new Error().stack;
+                    const alpineInfo = {
+                        windowAlpine: typeof window.Alpine,
+                        alpineVersion: window.Alpine?.version,
+                        manifestExists: {{ file_exists(public_path('build/manifest.json')) ? 'true' : 'false' }},
+                    };
+
                     // Guard against double initialization
                     if (this._initDone) {
-                        this.debugLog('init() SKIPPED (already done)');
+                        this.debugLog('init() SKIPPED (already done)', { alpineInfo, stack: stack?.split('\n').slice(1, 5).join(' <- ') });
                         return;
                     }
                     this._initDone = true;
-                    this.debugLog('init() started');
+                    this.debugLog('init() started', { alpineInfo, stack: stack?.split('\n').slice(1, 5).join(' <- ') });
 
                     // Fetch pricing from database
                     await this.fetchPricing();
