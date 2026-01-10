@@ -3341,6 +3341,7 @@
                 copyDebugWithState() {
                     // Get current state
                     const state = {
+                        loadingConversation: this.loadingConversation,
                         isAtBottom: this.isAtBottom,
                         autoScrollEnabled: this.autoScrollEnabled,
                         ignoreScrollEvents: this.ignoreScrollEvents,
@@ -3359,6 +3360,7 @@
 
                     // Build output
                     let text = `=== Current State ===\n`;
+                    text += `loadingConversation: ${state.loadingConversation}\n`;
                     text += `isAtBottom: ${state.isAtBottom}\n`;
                     text += `autoScrollEnabled: ${state.autoScrollEnabled}\n`;
                     text += `ignoreScrollEvents: ${state.ignoreScrollEvents}\n`;
