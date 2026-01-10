@@ -75,7 +75,7 @@
                 <!-- Docker Exec Tab (Subscription) -->
                 <div id="content-docker" class="tab-content">
                     <p class="text-gray-300 mb-4">Sign in with your ChatGPT subscription (Plus, Pro, Team, Edu, or Enterprise):</p>
-                    @if(config('backup.user_id'))
+                    @if(config('backup.user_id') !== null)
                         <div class="bg-gray-900 rounded p-4 mb-4">
                             <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue codex login --device-auth</code>
                         </div>
@@ -100,7 +100,7 @@
                 <div id="content-json" class="tab-content hidden">
                     <p class="text-gray-300 mb-4">Use an OpenAI API key for pay-per-use access:</p>
 
-                    @if(config('backup.user_id'))
+                    @if(config('backup.user_id') !== null)
                         <div class="bg-gray-900/50 border border-gray-700 rounded p-4 mb-4 text-sm">
                             <p class="text-gray-400 mb-2"><strong>Option 1:</strong> CLI command</p>
                             <code class="text-green-400">echo "sk-your-key" | docker exec -i -u {{ config('backup.user_id') }} pocket-dev-queue codex login --with-api-key</code>

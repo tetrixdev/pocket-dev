@@ -106,7 +106,7 @@
                 <!-- Docker Exec Tab -->
                 <div id="content-docker" class="tab-content hidden">
                     <p class="text-gray-300 mb-4">Run this command on your host machine to authenticate:</p>
-                    @if(config('backup.user_id'))
+                    @if(config('backup.user_id') !== null)
                         <div class="bg-gray-900 rounded p-4 mb-4">
                             <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude</code>
                         </div>

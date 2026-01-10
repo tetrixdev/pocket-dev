@@ -10,7 +10,7 @@
             <p class="text-gray-300 text-sm mb-3">
                 Use your monthly subscription. Run this command in your terminal:
             </p>
-            @if(config('backup.user_id'))
+            @if(config('backup.user_id') !== null)
                 <div class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 select-all">
                     docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude
                 </div>

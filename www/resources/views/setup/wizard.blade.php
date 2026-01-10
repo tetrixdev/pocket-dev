@@ -108,7 +108,7 @@
                 <p class="text-sm text-gray-400 mb-4">
                     Run this command in your terminal to authenticate with your Claude Pro/Team subscription:
                 </p>
-                @if(config('backup.user_id'))
+                @if(config('backup.user_id') !== null)
                     <div class="relative">
                         <div
                             @click="copyCommand('docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude', 'claude')"
@@ -152,7 +152,7 @@
                 <p class="text-sm text-gray-400 mb-4">
                     Run this command on your <strong class="text-white">host machine</strong> (not in Docker) to authenticate:
                 </p>
-                @if(config('backup.user_id') && config('backup.group_id'))
+                @if(config('backup.user_id') !== null && config('backup.group_id') !== null)
                     <div class="relative">
                         <div
                             @click="copyCommand('sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json', 'codex')"
