@@ -1003,6 +1003,7 @@
                             }
                         }
 
+                        this.debugLog('init: calling loadConversation from URL', { uuid: urlConversationUuid, returningFromSettings: !!returningFromSettings });
                         await this.loadConversation(urlConversationUuid);
 
                         // Scroll to bottom if returning from settings (only if not scrolling to turn)
@@ -1013,6 +1014,8 @@
 
                     // Handle browser back/forward navigation
                     window.addEventListener('popstate', (event) => {
+                        this.debugLog('popstate: fired', { hasState: !!event.state, conversationUuid: event.state?.conversationUuid });
+
                         // Check for turn parameter in URL
                         const urlParams = new URLSearchParams(window.location.search);
                         const turnParam = urlParams.get('turn');
@@ -1025,6 +1028,7 @@
                         }
 
                         if (event.state && event.state.conversationUuid) {
+                            this.debugLog('popstate: calling loadConversation', { uuid: event.state.conversationUuid });
                             this.loadConversation(event.state.conversationUuid);
                         } else {
                             // Back to new conversation state
@@ -1360,6 +1364,7 @@
                                 // Check if conversation still exists in the loaded list
                                 const lastConvo = this.conversations.find(c => c.uuid === data.last_conversation_uuid);
                                 if (lastConvo) {
+                                    this.debugLog('switchWorkspace: calling loadConversation', { uuid: data.last_conversation_uuid });
                                     await this.loadConversation(data.last_conversation_uuid, true); // skipWorkspaceCheck=true
                                 } else {
                                     this.newConversation();
@@ -1768,15 +1773,19 @@
                 },
 
                 async loadConversation(uuid, skipWorkspaceCheck = false) {
+                    const callId = Math.random().toString(36).substr(2, 6);
+                    this.debugLog('loadConversation: START', { callId, uuid, skipWorkspaceCheck, alreadyLoading: this._loadingConversationUuid });
+
                     // Skip if already loading this exact conversation
                     if (this._loadingConversationUuid === uuid) {
-                        this.debugLog('loadConversation: skipping duplicate load', { uuid });
+                        this.debugLog('loadConversation: skipping duplicate load', { callId, uuid });
                         return;
                     }
 
                     // Show loading overlay and track which conversation is loading
                     this.loadingConversation = true;
                     this._loadingConversationUuid = uuid;
+                    this.debugLog('loadConversation: overlay ON', { callId, uuid });
 
                     // Disconnect from any current stream before switching
                     this.disconnectFromStream();
@@ -1978,6 +1987,7 @@
                         await this.checkAndReconnectStream(uuid);
 
                     } catch (err) {
+                        this.debugLog('loadConversation: ERROR, overlay OFF', { error: err.message });
                         this.loadingConversation = false;
                         this._loadingConversationUuid = null;
                         console.error('Failed to load conversation:', err);
@@ -2048,6 +2058,7 @@
                     }
 
                     if (allUiMessages.length === 0) {
+                        this.debugLog('loadMessagesProgressively: 0 messages, overlay OFF');
                         this.loadingConversation = false;
                         this._loadingConversationUuid = null;
                         return;
@@ -2094,6 +2105,7 @@
                                 this.scrollToBottom();
                             }
                             // Hide loading overlay - first batch is now visible
+                            this.debugLog('loadMessagesProgressively: first batch rendered, overlay OFF', { msgCount: this.messages.length });
                             this.loadingConversation = false;
                             this._loadingConversationUuid = null;
                             resolve();
