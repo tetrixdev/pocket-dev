@@ -534,7 +534,7 @@
         }
     </style>
 </head>
-<body class="antialiased bg-gray-900 text-gray-100 h-screen overflow-hidden" x-data="chatApp()" x-init="init()">
+<body class="antialiased bg-gray-900 text-gray-100 h-screen overflow-hidden" x-data="chatApp()">
 
     {{-- Main Layout Container --}}
     <div class="md:flex md:h-screen">
@@ -552,8 +552,8 @@
         {{-- Main Content Area --}}
         <div class="flex-1 flex flex-col min-h-0">
 
-            {{-- Desktop Header (hidden on mobile) --}}
-            <div class="hidden md:flex bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
+            {{-- Desktop Header (hidden on mobile) - fixed at top to match fixed #messages --}}
+            <div class="hidden md:flex md:fixed md:top-0 md:left-64 md:right-0 md:z-10 bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
                 <div class="flex items-center gap-3 pl-2">
                     <h2 class="text-base font-semibold">PocketDev</h2>
                     <button @click="showAgentSelector = true"
@@ -647,22 +647,66 @@
                  "
                  class="relative md:flex-1 md:flex md:flex-col md:min-h-0">
 
-                {{-- Drop Overlay (Desktop only) --}}
-                <div x-show="isDragging"
-                     x-cloak
-                     class="hidden md:flex absolute inset-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg">
+                {{-- Drop Overlay (Desktop only) - fixed position matching #messages --}}
+                <div x-cloak
+                     class="fixed left-64 right-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg hidden"
+                     :class="isDragging ? 'md:flex' : 'md:hidden'"
+                     :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
                     <div class="bg-gray-800 rounded-lg p-6 text-center shadow-xl border-2 border-dashed border-blue-400">
                         <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-400 mb-2"></i>
                         <p class="text-gray-200 font-medium">Drop files to attach</p>
                     </div>
                 </div>
 
+                {{-- Loading Conversation Overlay (Mobile) - visible below md breakpoint only --}}
+                <div class="md:hidden">
+                    <div x-cloak
+                         x-show="loadingConversation"
+                         x-transition:enter="transition ease-out duration-150"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-100"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         class="fixed top-[57px] left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
+                         :style="{ bottom: mobileInputHeight + 'px' }">
+                        <div class="flex flex-col items-center gap-3">
+                            <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span class="text-gray-400 text-sm">Loading conversation...</span>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- Loading Conversation Overlay (Desktop) - visible at md breakpoint and above only --}}
+                <div class="hidden md:block">
+                    <div x-cloak
+                         x-show="loadingConversation"
+                         x-transition:enter="transition ease-out duration-150"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+                         x-transition:leave="transition ease-in duration-100"
+                         x-transition:leave-start="opacity-100"
+                         x-transition:leave-end="opacity-0"
+                         class="fixed left-64 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
+                         :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
+                        <div class="flex flex-col items-center gap-3">
+                            <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span class="text-gray-400 text-sm">Loading conversation...</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div id="messages"
-                     class="p-4 space-y-4 overflow-y-auto bg-gray-900
-                            fixed top-[60px] left-0 right-0 z-0
-                            md:static md:pt-4 md:pb-4 md:flex-1"
+                     class="p-4 space-y-4 overflow-y-auto bg-gray-900 fixed left-0 right-0 z-0
+                            md:left-64 md:pt-4 md:pb-4"
                      :class="isDragging ? 'ring-2 ring-blue-500 ring-inset' : ''"
-                     :style="'bottom: ' + mobileInputHeight + 'px'"
+                     :style="{ top: '57px', bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px' }"
                      @scroll="handleMessagesScroll($event)">
 
                 {{-- Empty State --}}
@@ -695,7 +739,7 @@
             <button @click="autoScrollEnabled = true; scrollToBottom()"
                     :class="(!isAtBottom && messages.length > 0) ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'"
                     class="md:hidden fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 right-4"
-                    :style="'bottom: ' + (parseInt(mobileInputHeight) + 64) + 'px'"
+                    :style="{ bottom: (mobileInputHeight + 64) + 'px' }"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
@@ -713,13 +757,14 @@
                     x-transition:leave-start="opacity-100 scale-100"
                     x-transition:leave-end="opacity-0 scale-75"
                     @click="autoScrollEnabled = true; scrollToBottom()"
-                    class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 cursor-pointer right-6 bottom-20"
+                    class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 cursor-pointer right-6"
+                    :style="{ bottom: (desktopInputHeight + 8) + 'px' }"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
 
-            {{-- Desktop Input (hidden on mobile) --}}
-            <div class="hidden md:block">
+            {{-- Desktop Input (hidden on mobile) - fixed at bottom to match fixed #messages --}}
+            <div x-ref="desktopInput" class="hidden md:block md:fixed md:bottom-0 md:left-64 md:right-0 md:z-10">
                 @include('partials.chat.input-desktop')
             </div>
         </div>
@@ -765,6 +810,8 @@
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
                 ignoreScrollEvents: false, // Ignore scroll events during conversation loading
+                loadingConversation: false, // Show loading overlay during conversation loading
+                _loadingConversationUuid: null, // UUID of conversation being loaded (prevents duplicate loads)
                 _initDone: false, // Guard against double initialization
                 sessionCost: 0,
                 totalTokens: 0,
@@ -865,8 +912,10 @@
                 stopTimeout: null,
                 currentTranscriptItemId: null,
 
-                // Mobile input height tracking (for dynamic messages container bottom)
-                mobileInputHeight: 60,
+                // Input height tracking (for dynamic messages container bottom)
+                mobileInputHeight: 57,
+                desktopInputHeight: 65,
+                windowWidth: window.innerWidth,
 
                 // Anthropic API key state (for Claude Code)
                 anthropicKeyInput: '',
@@ -992,15 +1041,30 @@
                         // Check for turn parameter in URL
                         const urlParams = new URLSearchParams(window.location.search);
                         const turnParam = urlParams.get('turn');
+                        let turnNumber = null;
                         if (turnParam) {
-                            const turnNumber = parseInt(turnParam, 10);
-                            if (!isNaN(turnNumber)) {
-                                this.pendingScrollToTurn = turnNumber;
-                                this.autoScrollEnabled = false;
+                            const parsed = parseInt(turnParam, 10);
+                            if (!isNaN(parsed)) {
+                                turnNumber = parsed;
                             }
                         }
 
                         if (event.state && event.state.conversationUuid) {
+                            // Don't reload if we're already on this conversation
+                            if (this.currentConversationUuid === event.state.conversationUuid) {
+                                // But still handle turn scrolling if requested
+                                if (turnNumber !== null) {
+                                    this.pendingScrollToTurn = turnNumber;
+                                    this.autoScrollEnabled = false;
+                                    this.scrollToTurn(turnNumber);
+                                }
+                                return;
+                            }
+                            // Set pending scroll for new conversation load
+                            if (turnNumber !== null) {
+                                this.pendingScrollToTurn = turnNumber;
+                                this.autoScrollEnabled = false;
+                            }
                             this.loadConversation(event.state.conversationUuid);
                         } else {
                             // Back to new conversation state
@@ -1008,15 +1072,31 @@
                         }
                     });
 
-                    // Track mobile input height for dynamic messages container bottom
+                    // Track window resize for responsive layout calculations
+                    window.addEventListener('resize', () => {
+                        this.windowWidth = window.innerWidth;
+                    });
+
+                    // Track input heights for dynamic messages container positioning
                     this.$nextTick(() => {
                         if (this.$refs.mobileInput) {
                             const resizeObserver = new ResizeObserver((entries) => {
                                 for (const entry of entries) {
-                                    this.mobileInputHeight = entry.contentRect.height;
+                                    // Add 1px for border-top on input container
+                                    this.mobileInputHeight = entry.contentRect.height + 1;
                                 }
                             });
                             resizeObserver.observe(this.$refs.mobileInput);
+                        }
+
+                        if (this.$refs.desktopInput) {
+                            const desktopResizeObserver = new ResizeObserver((entries) => {
+                                for (const entry of entries) {
+                                    // Add 1px for border-top on input container
+                                    this.desktopInputHeight = entry.contentRect.height + 1;
+                                }
+                            });
+                            desktopResizeObserver.observe(this.$refs.desktopInput);
                         }
                     });
 
@@ -1026,18 +1106,13 @@
                         if (link) {
                             e.preventDefault();
                             const filePath = link.dataset.filePath;
-                            debugLog('File path link clicked', { path: filePath });
                             if (filePath) {
                                 try {
                                     const store = Alpine.store('filePreview');
-                                    debugLog('filePreview store accessed', { storeExists: !!store, isOpen: store?.isOpen });
                                     if (store) {
                                         store.open(filePath);
-                                    } else {
-                                        debugLog('ERROR: filePreview store is undefined');
                                     }
                                 } catch (err) {
-                                    debugLog('ERROR accessing filePreview store', { error: err.message });
                                     console.error('filePreview error:', err);
                                 }
                             }
@@ -1744,6 +1819,15 @@
                 },
 
                 async loadConversation(uuid, skipWorkspaceCheck = false) {
+                    // Skip if already loading this exact conversation
+                    if (this._loadingConversationUuid === uuid) {
+                        return;
+                    }
+
+                    // Show loading overlay and track which conversation is loading
+                    this.loadingConversation = true;
+                    this._loadingConversationUuid = uuid;
+
                     // Disconnect from any current stream before switching
                     this.disconnectFromStream();
 
@@ -1757,14 +1841,14 @@
                             throw new Error('Missing conversation payload');
                         }
 
+                        // Guard: abort if user switched to different conversation during fetch
+                        if (this._loadingConversationUuid !== uuid) {
+                            return;
+                        }
+
                         // Check if conversation belongs to a different workspace
                         const conversationWorkspaceId = data.conversation.workspace_id;
                         if (!skipWorkspaceCheck && conversationWorkspaceId && conversationWorkspaceId !== this.currentWorkspaceId) {
-                            this.debugLog('Conversation workspace mismatch, switching workspace', {
-                                conversationWorkspace: conversationWorkspaceId,
-                                currentWorkspace: this.currentWorkspaceId
-                            });
-
                             // Find workspace in list, or fetch it
                             let targetWorkspace = this.workspaces.find(w => w.id === conversationWorkspaceId);
                             if (!targetWorkspace) {
@@ -1775,6 +1859,8 @@
                             if (!targetWorkspace) {
                                 console.error('Workspace not found for conversation', { conversationWorkspaceId });
                                 this.showError('Cannot load conversation: workspace not found');
+                                this.loadingConversation = false;
+                                this._loadingConversationUuid = null;
                                 return;
                             }
 
@@ -1791,18 +1877,28 @@
                                 if (switchResponse.ok) {
                                     this.currentWorkspace = targetWorkspace;
                                     this.currentWorkspaceId = targetWorkspace.id;
-                                    this.debugLog('Auto-switched workspace', { workspace: targetWorkspace.name });
 
                                     // Reload conversations and agents for the new workspace
                                     await this.fetchConversations();
                                     await this.fetchAgents();
 
-                                    // Reload conversation with new workspace context to avoid stale data
+                                    // Clear the loading state before recursive call
+                                    // Otherwise the duplicate load guard will block it
+                                    this._loadingConversationUuid = null;
+
+                                    // Reload conversation with new workspace context
                                     return this.loadConversation(uuid, true);
+                                } else {
+                                    this.loadingConversation = false;
+                                    this._loadingConversationUuid = null;
+                                    this.showError('Failed to switch workspace');
+                                    return;
                                 }
                             } catch (err) {
                                 console.error('Failed to switch workspace:', err);
                                 this.showError('Failed to switch workspace');
+                                this.loadingConversation = false;
+                                this._loadingConversationUuid = null;
                                 return;
                             }
                         }
@@ -1814,13 +1910,11 @@
                         this.updateUrl(uuid);
                         this.messages = [];
                         this.isAtBottom = true; // Hide scroll button during load
-                        this.debugLog('SET isAtBottom = true (loadConversation reset)');
                         // Only enable auto-scroll if not coming from search result
                         if (this.pendingScrollToTurn === null) {
                             this.autoScrollEnabled = true;
                         }
                         this.ignoreScrollEvents = true; // Ignore scroll events until load complete
-                        this.debugLog('loadConversation: reset state, ignoreScrollEvents=true');
 
                         // Reset token counters
                         this.inputTokens = 0;
@@ -1885,8 +1979,13 @@
                         if (data.conversation?.messages?.length > 0) {
                             await this.loadMessagesProgressively(
                                 data.conversation.messages,
-                                this.pendingScrollToTurn
+                                this.pendingScrollToTurn,
+                                uuid
                             );
+                        } else {
+                            // No messages - clear loading overlay immediately
+                            this.loadingConversation = false;
+                            this._loadingConversationUuid = null;
                         }
 
                         // Update provider/model from conversation
@@ -1944,6 +2043,8 @@
                         await this.checkAndReconnectStream(uuid);
 
                     } catch (err) {
+                        this.loadingConversation = false;
+                        this._loadingConversationUuid = null;
                         console.error('Failed to load conversation:', err);
                         this.showError('Failed to load conversation');
                         // Reset local state and clear URL without creating a back-button loop
@@ -1977,8 +2078,9 @@
                  * Progressive message loading - renders priority messages first, then fills in the rest.
                  * For normal load: shows last N messages immediately, then prepends older ones.
                  * For search: shows messages around target turn first, then fills in.
+                 * @param {string} loadUuid - UUID of conversation being loaded (for race condition guard)
                  */
-                async loadMessagesProgressively(dbMessages, targetTurn = null) {
+                async loadMessagesProgressively(dbMessages, targetTurn = null, loadUuid = null) {
                     const INITIAL_BATCH = 100;  // Messages to show immediately
                     const PREPEND_BATCH = 50;   // Messages per prepend batch
 
@@ -2001,17 +2103,14 @@
                                 ...allUiMessages[toolMsgIndex],
                                 toolResult: pending.content
                             };
-                        } else {
-                            this.debugLog('[Progressive] Orphaned tool_result - no matching tool_use', {
-                                tool_use_id: pending.tool_use_id,
-                                content_preview: typeof pending.content === 'string'
-                                    ? pending.content.substring(0, 100)
-                                    : JSON.stringify(pending.content).substring(0, 100)
-                            });
                         }
                     }
 
-                    if (allUiMessages.length === 0) return;
+                    if (allUiMessages.length === 0) {
+                        this.loadingConversation = false;
+                        this._loadingConversationUuid = null;
+                        return;
+                    }
 
                     // Determine which messages to render first based on context
                     let priorityStartIndex;
@@ -2034,13 +2133,10 @@
                     const messagesBefore = allUiMessages.slice(0, priorityStartIndex);
                     const priorityMessages = allUiMessages.slice(priorityStartIndex);
 
-                    this.debugLog('[Progressive] Strategy', {
-                        total: allUiMessages.length,
-                        priorityStart: priorityStartIndex,
-                        priorityCount: priorityMessages.length,
-                        beforeCount: messagesBefore.length,
-                        targetTurn
-                    });
+                    // Guard: abort if user switched to different conversation during processing
+                    if (loadUuid && this.currentConversationUuid !== loadUuid) {
+                        return;
+                    }
 
                     // Phase 1: Render priority messages immediately
                     this.messages = priorityMessages;
@@ -2054,22 +2150,37 @@
                                 this.scrollToBottom();
                             }
                             resolve();
+
+                            // Hide loading overlay AFTER scroll has painted
+                            requestAnimationFrame(() => {
+                                // Guard: only clear if still on same conversation
+                                if (!loadUuid || this.currentConversationUuid === loadUuid) {
+                                    this.loadingConversation = false;
+                                    this._loadingConversationUuid = null;
+                                }
+                            });
                         });
                     });
 
                     // Phase 2: Prepend older messages in batches (if any) - runs in background, don't await
                     if (messagesBefore.length > 0) {
-                        this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH);
+                        this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH, loadUuid);
                     }
                 },
 
                 /**
                  * Prepends messages in batches. Browser's scroll anchoring maintains scroll position.
+                 * @param {string} loadUuid - UUID of conversation being loaded (for race condition guard)
                  */
-                async prependMessagesInBatches(messages, batchSize) {
+                async prependMessagesInBatches(messages, batchSize, loadUuid = null) {
                     let remaining = [...messages];
 
                     while (remaining.length > 0) {
+                        // Guard: abort if user switched to different conversation
+                        if (loadUuid && this.currentConversationUuid !== loadUuid) {
+                            return;
+                        }
+
                         // Take a batch from the END (newest of the old messages)
                         const batch = remaining.slice(-batchSize);
                         remaining = remaining.slice(0, -batchSize);
@@ -2080,10 +2191,6 @@
                         // Yield to main thread between batches (lets browser render and handle scroll anchoring)
                         await new Promise(resolve => requestAnimationFrame(resolve));
                     }
-
-                    this.debugLog('[Progressive] Prepend complete', {
-                        totalMessages: this.messages.length
-                    });
                 },
 
                 /**
@@ -3172,38 +3279,26 @@
                 },
 
                 scrollToBottom() {
-                    this.debugLog('scrollToBottom called', { autoScrollEnabled: this.autoScrollEnabled });
                     if (!this.autoScrollEnabled) return;
                     this.$nextTick(() => {
-                        const container = document.getElementById('messages');
-                        if (container) {
-                            container.scrollTop = container.scrollHeight;
-                            this.isAtBottom = true;
-                            this.debugLog('SET isAtBottom = true (scrollToBottom)', { scrollTop: container.scrollTop, scrollHeight: container.scrollHeight });
-                        }
+                        // Use requestAnimationFrame to wait for browser layout/paint completion
+                        // This fixes desktop where flexbox layout calculation may not be done after $nextTick
+                        requestAnimationFrame(() => {
+                            const container = document.getElementById('messages');
+                            if (container) {
+                                container.scrollTop = container.scrollHeight + 1; // +1 to handle sub-pixel rounding
+                                this.isAtBottom = true;
+                            }
+                        });
                     });
                 },
 
                 scrollToTurn(turnNumber) {
-                    this.debugLog('scrollToTurn called', { turnNumber, type: typeof turnNumber });
-
-                    // Debug: Check what turn_numbers exist in messages
-                    const turnNumbers = this.messages.map(m => m.turn_number);
-                    this.debugLog('scrollToTurn: available turn_numbers in messages', { turnNumbers });
-
                     this.$nextTick(() => {
                         // Small delay to ensure DOM is fully rendered
                         setTimeout(() => {
-                            // Debug: Check what data-turn values exist in DOM
-                            const allTurnElements = document.querySelectorAll('[data-turn]');
-                            const domTurns = Array.from(allTurnElements).map(el => el.getAttribute('data-turn'));
-                            this.debugLog('scrollToTurn: data-turn values in DOM', { domTurns, count: allTurnElements.length });
-
                             const selector = `[data-turn="${turnNumber}"]`;
-                            this.debugLog('scrollToTurn: using selector', { selector });
-
                             const turnElement = document.querySelector(selector);
-                            this.debugLog('scrollToTurn: element found?', { found: !!turnElement });
 
                             if (turnElement) {
                                 const container = document.getElementById('messages');
@@ -3214,28 +3309,15 @@
                                     const currentScrollTop = container.scrollTop;
                                     const topOffset = 16; // Small padding from top
                                     const newScrollTop = currentScrollTop + (elementRect.top - containerRect.top) - topOffset;
-                                    const finalScrollTop = Math.max(0, newScrollTop);
-
-                                    this.debugLog('scrollToTurn: scroll calculation', {
-                                        currentScrollTop,
-                                        containerHeight: containerRect.height,
-                                        elementTop: elementRect.top,
-                                        containerTop: containerRect.top,
-                                        newScrollTop,
-                                        finalScrollTop
-                                    });
-
-                                    container.scrollTop = finalScrollTop;
-                                    this.debugLog('scrollToTurn: scrollTop set to', { scrollTop: container.scrollTop });
+                                    container.scrollTop = Math.max(0, newScrollTop);
                                 }
                                 // Brief highlight effect
                                 turnElement.classList.add('bg-blue-900/30');
                                 setTimeout(() => turnElement.classList.remove('bg-blue-900/30'), 2000);
                                 this.isAtBottom = false;
-                                this.debugLog('scrollToTurn: SUCCESS - scrolled to turn', { turnNumber });
                             } else {
                                 // Fallback to bottom if turn not found
-                                this.debugLog('scrollToTurn: FAILED - turn not found', { turnNumber, selector });
+                                this.debugLog('scrollToTurn: turn not found', { turnNumber });
                                 this.autoScrollEnabled = true;
                                 this.scrollToBottom();
                             }
@@ -3245,26 +3327,12 @@
 
                 handleMessagesScroll(event) {
                     // Ignore scroll events during conversation loading
-                    if (this.ignoreScrollEvents) {
-                        this.debugLog('handleMessagesScroll IGNORED (ignoreScrollEvents=true)');
-                        return;
-                    }
+                    if (this.ignoreScrollEvents) return;
 
                     const container = event.target;
                     // Check if user is at bottom (within 50px threshold)
                     const diff = container.scrollHeight - container.scrollTop - container.clientHeight;
                     const atBottom = diff < 50;
-
-                    // Always log scroll events for debugging
-                    this.debugLog('handleMessagesScroll', {
-                        atBottom,
-                        wasAtBottom: this.isAtBottom,
-                        changed: this.isAtBottom !== atBottom,
-                        diff: Math.round(diff),
-                        scrollTop: Math.round(container.scrollTop),
-                        scrollHeight: container.scrollHeight,
-                        clientHeight: container.clientHeight
-                    });
 
                     this.isAtBottom = atBottom;
 
@@ -3286,6 +3354,7 @@
                 copyDebugWithState() {
                     // Get current state
                     const state = {
+                        loadingConversation: this.loadingConversation,
                         isAtBottom: this.isAtBottom,
                         autoScrollEnabled: this.autoScrollEnabled,
                         ignoreScrollEvents: this.ignoreScrollEvents,
@@ -3304,6 +3373,7 @@
 
                     // Build output
                     let text = `=== Current State ===\n`;
+                    text += `loadingConversation: ${state.loadingConversation}\n`;
                     text += `isAtBottom: ${state.isAtBottom}\n`;
                     text += `autoScrollEnabled: ${state.autoScrollEnabled}\n`;
                     text += `ignoreScrollEvents: ${state.ignoreScrollEvents}\n`;
