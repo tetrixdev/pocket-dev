@@ -552,8 +552,8 @@
         {{-- Main Content Area --}}
         <div class="flex-1 flex flex-col min-h-0">
 
-            {{-- Desktop Header (hidden on mobile) --}}
-            <div class="hidden md:flex bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
+            {{-- Desktop Header (hidden on mobile) - fixed at top to match fixed #messages --}}
+            <div class="hidden md:flex md:fixed md:top-0 md:left-64 md:right-0 md:z-10 bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
                 <div class="flex items-center gap-3 pl-2">
                     <h2 class="text-base font-semibold">PocketDev</h2>
                     <button @click="showAgentSelector = true"
@@ -647,10 +647,11 @@
                  "
                  class="relative md:flex-1 md:flex md:flex-col md:min-h-0">
 
-                {{-- Drop Overlay (Desktop only) --}}
-                <div x-show="isDragging"
-                     x-cloak
-                     class="hidden md:flex absolute inset-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg">
+                {{-- Drop Overlay (Desktop only) - fixed position matching #messages --}}
+                <div x-cloak
+                     class="fixed left-64 right-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg hidden"
+                     :class="isDragging ? 'md:flex' : 'md:hidden'"
+                     :style="'top: 57px; bottom: ' + desktopInputHeight + 'px'">
                     <div class="bg-gray-800 rounded-lg p-6 text-center shadow-xl border-2 border-dashed border-blue-400">
                         <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-400 mb-2"></i>
                         <p class="text-gray-200 font-medium">Drop files to attach</p>
@@ -662,7 +663,7 @@
                 {{-- When loadingConversation=true: 'flex md:hidden' shows on mobile, hides on desktop --}}
                 {{-- When loadingConversation=false: 'hidden' hides everywhere --}}
                 <div x-cloak
-                     class="fixed top-[60px] left-0 right-0 z-20 bg-gray-900/90 items-center justify-center backdrop-blur-sm transition-opacity duration-150"
+                     class="fixed top-[57px] left-0 right-0 z-20 bg-gray-900/90 items-center justify-center backdrop-blur-sm transition-opacity duration-150"
                      :class="loadingConversation ? 'flex md:hidden opacity-100' : 'hidden opacity-0'"
                      :style="'bottom: ' + mobileInputHeight + 'px'">
                     <div class="flex flex-col items-center gap-3">
@@ -674,13 +675,14 @@
                     </div>
                 </div>
 
-                {{-- Loading Conversation Overlay (Desktop) - absolute within wrapper --}}
+                {{-- Loading Conversation Overlay (Desktop) - fixed position matching #messages --}}
                 {{-- REFACTORED: Uses ONLY :class for visibility (no x-show). --}}
                 {{-- When loadingConversation=true: 'hidden md:flex' hides on mobile, shows on desktop --}}
                 {{-- When loadingConversation=false: 'hidden' hides everywhere --}}
                 <div x-cloak
-                     class="absolute inset-0 z-20 bg-gray-900/90 items-center justify-center backdrop-blur-sm transition-opacity duration-150"
-                     :class="loadingConversation ? 'hidden md:flex opacity-100' : 'hidden opacity-0'">
+                     class="fixed left-64 right-0 z-20 bg-gray-900/90 items-center justify-center backdrop-blur-sm transition-opacity duration-150 hidden md:hidden"
+                     :class="loadingConversation ? 'md:flex opacity-100' : 'md:hidden opacity-0'"
+                     :style="'top: 57px; bottom: ' + desktopInputHeight + 'px'">
                     <div class="flex flex-col items-center gap-3">
                         <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -691,11 +693,10 @@
                 </div>
 
                 <div id="messages"
-                     class="p-4 space-y-4 overflow-y-auto bg-gray-900
-                            fixed top-[60px] left-0 right-0 z-0
-                            md:static md:pt-4 md:pb-4 md:flex-1"
+                     class="p-4 space-y-4 overflow-y-auto bg-gray-900 fixed left-0 right-0 z-0
+                            md:left-64 md:pt-4 md:pb-4"
                      :class="isDragging ? 'ring-2 ring-blue-500 ring-inset' : ''"
-                     :style="'bottom: ' + mobileInputHeight + 'px'"
+                     :style="'top: 57px; bottom: ' + (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px'"
                      @scroll="handleMessagesScroll($event)">
 
                 {{-- Empty State --}}
@@ -746,13 +747,14 @@
                     x-transition:leave-start="opacity-100 scale-100"
                     x-transition:leave-end="opacity-0 scale-75"
                     @click="autoScrollEnabled = true; scrollToBottom()"
-                    class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 cursor-pointer right-6 bottom-20"
+                    class="hidden md:flex fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg items-center justify-center transition-colors duration-200 cursor-pointer right-6"
+                    :style="'bottom: ' + (parseInt(desktopInputHeight) + 8) + 'px'"
                     title="Scroll to bottom">
                 <i class="fas fa-arrow-down"></i>
             </button>
 
-            {{-- Desktop Input (hidden on mobile) --}}
-            <div class="hidden md:block">
+            {{-- Desktop Input (hidden on mobile) - fixed at bottom to match fixed #messages --}}
+            <div x-ref="desktopInput" class="hidden md:block md:fixed md:bottom-0 md:left-64 md:right-0 md:z-10">
                 @include('partials.chat.input-desktop')
             </div>
         </div>
@@ -914,8 +916,10 @@
                 stopTimeout: null,
                 currentTranscriptItemId: null,
 
-                // Mobile input height tracking (for dynamic messages container bottom)
-                mobileInputHeight: 60,
+                // Input height tracking (for dynamic messages container bottom)
+                mobileInputHeight: 57,
+                desktopInputHeight: 65,
+                windowWidth: window.innerWidth,
 
                 // Anthropic API key state (for Claude Code)
                 anthropicKeyInput: '',
@@ -1110,6 +1114,11 @@
                         });
                     });
 
+                    // Track window resize for responsive layout calculations
+                    window.addEventListener('resize', () => {
+                        this.windowWidth = window.innerWidth;
+                    });
+
                     // Track mobile input height for dynamic messages container bottom
                     this.$nextTick(() => {
                         if (this.$refs.mobileInput) {
@@ -1139,6 +1148,34 @@
                                 }
                             });
                             resizeObserver.observe(this.$refs.mobileInput);
+                        }
+
+                        // Track desktop input height for dynamic messages container bottom
+                        if (this.$refs.desktopInput) {
+                            this.debugLog('ResizeObserver: setting up on desktopInput');
+                            let desktopResizeLogThrottle = null;
+                            let lastLoggedDesktopHeight = this.desktopInputHeight;
+                            const desktopResizeObserver = new ResizeObserver((entries) => {
+                                for (const entry of entries) {
+                                    const newHeight = entry.contentRect.height;
+                                    this.desktopInputHeight = newHeight;
+
+                                    // Throttle logging to once per 500ms
+                                    if (!desktopResizeLogThrottle) {
+                                        desktopResizeLogThrottle = setTimeout(() => {
+                                            desktopResizeLogThrottle = null;
+                                            if (this.desktopInputHeight !== lastLoggedDesktopHeight) {
+                                                this.debugLog('ResizeObserver: desktop height changed', {
+                                                    from: lastLoggedDesktopHeight,
+                                                    to: this.desktopInputHeight,
+                                                });
+                                                lastLoggedDesktopHeight = this.desktopInputHeight;
+                                            }
+                                        }, 500);
+                                    }
+                                }
+                            });
+                            desktopResizeObserver.observe(this.$refs.desktopInput);
                         }
                     });
 
