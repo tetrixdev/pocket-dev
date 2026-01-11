@@ -192,8 +192,9 @@
                     },
 
                     startEditing() {
-                        if (!this.content || this.error) return;
-                        this.editContent = this.content;
+                        // Allow editing empty files (content can be empty string)
+                        if (this.error) return;
+                        this.editContent = this.content ?? '';
                         this.editing = true;
                         this.saveError = null;
                         if (window.debugLog) debugLog('filePreview.startEditing()', { path: this.path });
@@ -220,6 +221,7 @@
                                 headers: {
                                     'Content-Type': 'application/json',
                                     'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
                                 },
                                 body: JSON.stringify({
                                     path: this.path,

@@ -49,11 +49,11 @@
                 {{-- View mode buttons --}}
                 <template x-if="!$store.filePreview.editing">
                     <div class="flex items-center gap-2">
-                        {{-- Copy button --}}
+                        {{-- Copy button - show when file loaded (even if empty) --}}
                         <button @click="$store.filePreview.copyContent()"
                                 class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Copy content"
-                                x-show="$store.filePreview.stack.at(-1)?.content && !$store.filePreview.stack.at(-1)?.error">
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error">
                             <template x-if="!$store.filePreview.copied">
                                 <i class="fa-regular fa-copy"></i>
                             </template>
@@ -62,11 +62,11 @@
                             </template>
                         </button>
 
-                        {{-- Edit button --}}
+                        {{-- Edit button - show when file loaded (even if empty) --}}
                         <button @click="$store.filePreview.startEditing()"
                                 class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Edit file"
-                                x-show="$store.filePreview.stack.at(-1)?.content && !$store.filePreview.stack.at(-1)?.error">
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error">
                             <i class="fa-regular fa-pen-to-square"></i>
                         </button>
 

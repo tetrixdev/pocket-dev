@@ -113,7 +113,7 @@ class FilePreviewController extends Controller
     {
         $request->validate([
             'path' => 'required|string',
-            'content' => 'required|string',
+            'content' => 'present|string', // Allow empty files
         ]);
 
         $path = $request->input('path');
@@ -134,6 +134,7 @@ class FilePreviewController extends Controller
         $isAllowed = false;
         $allowedPaths = config('ai.file_preview.allowed_paths', ['/var/www']);
         foreach ($allowedPaths as $basePath) {
+            $basePath = rtrim($basePath, '/'); // Normalize trailing slashes
             if (str_starts_with($realPath, $basePath . '/') || $realPath === $basePath) {
                 $isAllowed = true;
                 break;
@@ -163,8 +164,8 @@ class FilePreviewController extends Controller
             ], 403);
         }
 
-        // Write the file
-        $result = file_put_contents($realPath, $content);
+        // Write the file with exclusive lock to prevent concurrent write corruption
+        $result = file_put_contents($realPath, $content, LOCK_EX);
 
         if ($result === false) {
             return response()->json([
