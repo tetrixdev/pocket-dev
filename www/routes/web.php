@@ -86,8 +86,6 @@ Route::post("/config/hooks", [ConfigController::class, "saveHooks"])->name("conf
 Route::get("/config/credentials", [CredentialsController::class, "show"])->name("config.credentials");
 Route::post("/config/credentials/api-keys", [CredentialsController::class, "saveApiKeys"])->name("config.credentials.api-keys");
 Route::delete("/config/credentials/api-keys/{provider}", [CredentialsController::class, "deleteApiKey"])->name("config.credentials.api-keys.delete");
-Route::post("/config/credentials/git", [CredentialsController::class, "saveGitCredentials"])->name("config.credentials.git");
-Route::delete("/config/credentials/git", [CredentialsController::class, "deleteGitCredentials"])->name("config.credentials.git.delete");
 
 // Environment: Custom credentials and system packages
 Route::get("/config/environment", [EnvironmentController::class, "index"])->name("config.environment");

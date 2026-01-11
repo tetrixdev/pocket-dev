@@ -23,14 +23,6 @@ Configuration files and environment variables for PocketDev.
 | `DOMAIN_NAME` | `localhost` | Server domain |
 | `IP_WHITELIST` | (empty) | Comma-separated allowed IPs |
 
-### Git Integration
-
-| Variable | Description |
-|----------|-------------|
-| `GIT_TOKEN` | GitHub personal access token |
-| `GIT_USER_NAME` | Git commit author name |
-| `GIT_USER_EMAIL` | Git commit author email |
-
 ### Claude Settings
 
 | Variable | Default | Description |
@@ -125,11 +117,6 @@ DOMAIN_NAME=localhost
 
 # Optional - IP whitelist (comma-separated)
 # IP_WHITELIST=192.168.1.100,10.0.0.50
-
-# Optional - Git
-GIT_TOKEN=ghp_xxxxxxxxxxxxx
-GIT_USER_NAME=Your Name
-GIT_USER_EMAIL=you@example.com
 
 # Optional - Claude
 CLAUDE_MODEL=claude-sonnet-4-5-20250929

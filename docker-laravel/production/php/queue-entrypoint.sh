@@ -144,29 +144,16 @@ else
     echo "WARNING: jq not available - skipping package installation"
 fi
 
-# =============================================================================
-# CONFIGURE AS WWW-DATA - Using gosu for proper environment
-# =============================================================================
-
-# Configure git and GitHub CLI if credentials are provided
-if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
-    echo "Configuring git credentials for queue worker..."
-
-    # Write git-credentials as root first (avoids exposing token in ps via gosu bash -c)
-    echo "https://token:$GIT_TOKEN@github.com" > /home/appuser/.git-credentials
-    chown www-data:www-data /home/appuser/.git-credentials
-    chmod 600 /home/appuser/.git-credentials
-
-    # Configure git as www-data (no secrets in command args)
-    gosu www-data bash -c "
-        export HOME=/home/appuser
-        git config --global user.name \"$GIT_USER_NAME\" 2>/dev/null && \
-        git config --global user.email \"$GIT_USER_EMAIL\" 2>/dev/null && \
-        git config --global credential.helper store 2>/dev/null
-    " && echo "Git and GitHub CLI configured for queue worker" \
-      || echo "Warning: Could not configure git credentials - continuing without"
+# Export user-configured credentials as environment variables
+# These will be inherited by supervisord and all queue workers
+echo "Loading credentials into environment..."
+cred_exports=$(cd /var/www && php artisan credential export 2>/dev/null)
+if [ -n "$cred_exports" ]; then
+    eval "$cred_exports"
+    cred_count=$(echo "$cred_exports" | wc -l)
+    echo "  Loaded $cred_count credential(s)"
 else
-    echo "Git credentials not provided - skipping git/GitHub CLI setup"
+    echo "  No credentials configured"
 fi
 
 # =============================================================================

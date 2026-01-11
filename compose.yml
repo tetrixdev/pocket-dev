@@ -39,12 +39,6 @@ services:
       - NPM_CONFIG_CACHE=/tmp/.npm
       - TARGET_UID=${USER_ID:-1000}
       - TARGET_GID=${GROUP_ID:-1000}
-      # TODO: Remove git credential env vars? git/gh CLI read from env directly.
-      # If removed, also clean up .env.example and docs.
-      - GIT_TOKEN=${GIT_TOKEN:-}
-      - GIT_USER_NAME=${GIT_USER_NAME:-}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
-      - GH_TOKEN=${GIT_TOKEN:-}
       - HOST_PROJECT_PATH=${PWD}
       # TODO: Remove ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
@@ -151,12 +145,6 @@ services:
       - HOME=/home/appuser
       - TARGET_UID=${USER_ID:-1000}
       - TARGET_GID=${GROUP_ID:-1000}
-      # TODO: Remove git credential env vars? git/gh CLI read from env directly.
-      # If removed, also clean up .env.example and docs.
-      - GIT_TOKEN=${GIT_TOKEN:-}
-      - GIT_USER_NAME=${GIT_USER_NAME:-}
-      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-}
-      - GH_TOKEN=${GIT_TOKEN:-}
       - HOST_PROJECT_PATH=${PWD}
       # TODO: Remove ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}

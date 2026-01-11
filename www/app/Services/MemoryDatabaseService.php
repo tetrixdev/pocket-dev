@@ -90,6 +90,7 @@ class MemoryDatabaseService
 
                 // Grant permissions to memory_ai user
                 DB::connection('pgsql')->statement("GRANT USAGE ON SCHEMA {$fullSchemaName} TO memory_ai");
+                DB::connection('pgsql')->statement("GRANT CREATE ON SCHEMA {$fullSchemaName} TO memory_ai");
                 DB::connection('pgsql')->statement("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA {$fullSchemaName} TO memory_ai");
                 DB::connection('pgsql')->statement("REVOKE DELETE ON {$fullSchemaName}.embeddings FROM memory_ai");
                 DB::connection('pgsql')->statement("REVOKE TRUNCATE ON {$fullSchemaName}.schema_registry FROM memory_ai");

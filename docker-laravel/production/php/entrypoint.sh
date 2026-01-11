@@ -18,24 +18,6 @@ mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 chown -R www-data:www-data "$HOME" 2>/dev/null || true
 chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
-# Configure git and GitHub CLI if credentials are provided (as root for now)
-if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
-    echo "Configuring git credentials..."
-
-    # Configure as www-data using gosu
-    gosu www-data bash -c "
-        export HOME=/home/appuser
-        git config --global user.name \"$GIT_USER_NAME\" 2>/dev/null && \
-        git config --global user.email \"$GIT_USER_EMAIL\" 2>/dev/null && \
-        git config --global credential.helper store 2>/dev/null && \
-        echo \"https://token:$GIT_TOKEN@github.com\" > ~/.git-credentials && \
-        chmod 600 ~/.git-credentials
-    " && echo "Git and GitHub CLI configured for user: $GIT_USER_NAME" \
-      || echo "Warning: Could not configure git credentials - continuing without"
-else
-    echo "Git credentials not provided - skipping git/GitHub CLI setup"
-fi
-
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
