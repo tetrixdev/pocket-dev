@@ -176,31 +176,6 @@ else
 fi
 
 # =============================================================================
-# CONFIGURE AS TARGET USER - Using gosu for proper environment
-# =============================================================================
-
-# Configure git and GitHub CLI if credentials are provided
-if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
-    echo "Configuring git credentials for queue worker..."
-
-    # Write git-credentials as root first (avoids exposing token in ps via gosu bash -c)
-    echo "https://token:$GIT_TOKEN@github.com" > /home/appuser/.git-credentials
-    chown "${TARGET_UID}:${TARGET_GID}" /home/appuser/.git-credentials
-    chmod 600 /home/appuser/.git-credentials
-
-    # Configure git as target user (no secrets in command args)
-    gosu appuser bash -c "
-        export HOME=/home/appuser
-        git config --global user.name \"$GIT_USER_NAME\" 2>/dev/null && \
-        git config --global user.email \"$GIT_USER_EMAIL\" 2>/dev/null && \
-        git config --global credential.helper store 2>/dev/null
-    " && echo "Git and GitHub CLI configured for queue worker" \
-      || echo "Warning: Could not configure git credentials - continuing without"
-else
-    echo "Git credentials not provided - skipping git/GitHub CLI setup"
-fi
-
-# =============================================================================
 # DROP PRIVILEGES AND START WORKERS
 # =============================================================================
 

@@ -286,52 +286,6 @@
                 </div>
             </div>
 
-            {{-- Git Credentials (optional) --}}
-            <div class="bg-gray-800 rounded-lg p-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-semibold">Git Credentials</h2>
-                    <span class="text-sm text-gray-500">Optional</span>
-                </div>
-                <p class="text-sm text-gray-400 mb-4">Required for git operations. You can configure this later.</p>
-
-                <div x-show="showGitCredentials" class="space-y-3">
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">GitHub Token</label>
-                        <input
-                            type="password"
-                            name="git_token"
-                            placeholder="ghp_..."
-                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">Name</label>
-                        <input
-                            type="text"
-                            name="git_user_name"
-                            placeholder="Your Name"
-                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                        >
-                    </div>
-                    <div>
-                        <label class="block text-sm text-gray-400 mb-1">Email</label>
-                        <input
-                            type="email"
-                            name="git_user_email"
-                            placeholder="you@example.com"
-                            class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-                        >
-                    </div>
-                </div>
-
-                <button
-                    type="button"
-                    @click="showGitCredentials = !showGitCredentials"
-                    class="text-blue-400 hover:text-blue-300 text-sm mt-2"
-                    x-text="showGitCredentials ? 'Hide Git credentials' : 'Add Git credentials'"
-                ></button>
-            </div>
-
             {{-- Actions --}}
             <div class="flex flex-col gap-3">
                 <button
@@ -367,7 +321,6 @@
 
             return {
                 provider: initialProvider,
-                showGitCredentials: false,
                 copiedCommand: null,
                 copyCommand(text, id) {
                     navigator.clipboard.writeText(text).then(() => {

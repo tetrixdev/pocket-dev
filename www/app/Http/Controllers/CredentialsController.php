@@ -31,8 +31,6 @@ class CredentialsController extends Controller
             'openAiCompatibleBaseUrl' => $this->settings->getOpenAiCompatibleBaseUrl(),
             'openAiCompatibleModel' => $this->settings->getOpenAiCompatibleModel(),
             'openAiCompatibleContextWindow' => $this->settings->getOpenAiCompatibleContextWindow(),
-            'hasGitCredentials' => $this->settings->hasGitCredentials(),
-            'gitCredentials' => $this->settings->getGitCredentials(),
         ]);
     }
 
@@ -111,45 +109,6 @@ class CredentialsController extends Controller
     }
 
     /**
-     * Save Git credentials
-     */
-    public function saveGitCredentials(Request $request)
-    {
-        try {
-            $validated = $request->validate([
-                'git_token' => 'required|string',
-                'git_user_name' => 'required|string',
-                'git_user_email' => 'required|email',
-            ]);
-
-            $this->settings->setGitCredentials(
-                $validated['git_token'],
-                $validated['git_user_name'],
-                $validated['git_user_email']
-            );
-
-            return redirect()->back()->with('success', 'Git credentials saved successfully');
-        } catch (\Exception $e) {
-            Log::error('Failed to save Git credentials', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to save Git credentials. Please check your input and try again.');
-        }
-    }
-
-    /**
-     * Delete Git credentials
-     */
-    public function deleteGitCredentials()
-    {
-        try {
-            $this->settings->deleteGitCredentials();
-            return redirect()->back()->with('success', 'Git credentials deleted');
-        } catch (\Exception $e) {
-            Log::error('Failed to delete Git credentials', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to delete Git credentials. Please try again.');
-        }
-    }
-
-    /**
      * Show setup wizard (first-run)
      */
     public function showSetup()
@@ -182,9 +141,6 @@ class CredentialsController extends Controller
                 'openai_compatible_api_key' => 'nullable|string',
                 'openai_compatible_model' => 'nullable|string',
                 'openai_compatible_context_window' => 'nullable|integer|min:1024|max:2000000',
-                'git_token' => 'nullable|string',
-                'git_user_name' => 'nullable|string',
-                'git_user_email' => 'nullable|email',
             ]);
 
             // Handle provider-specific setup
@@ -220,15 +176,6 @@ class CredentialsController extends Controller
                 if (!empty($validated['openai_compatible_context_window'])) {
                     $this->settings->setOpenAiCompatibleContextWindow((int) $validated['openai_compatible_context_window']);
                 }
-            }
-
-            // Save Git credentials if provided
-            if (!empty($validated['git_token']) && !empty($validated['git_user_name']) && !empty($validated['git_user_email'])) {
-                $this->settings->setGitCredentials(
-                    $validated['git_token'],
-                    $validated['git_user_name'],
-                    $validated['git_user_email']
-                );
             }
 
             // Create default agent for the selected provider (if none exists)

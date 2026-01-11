@@ -97,23 +97,6 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # PHASE 2: TARGET USER OPERATIONS (composer, npm, git, artisan)
     # =============================================================================
 
-    # Configure git as appuser
-    # Using username (not UID:GID) to properly initialize supplementary groups
-    if [[ -n "$GIT_TOKEN" && -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
-        echo "⚙️  Configuring git credentials..."
-        gosu appuser bash -c "
-            export HOME=/home/appuser
-            git config --global user.name \"$GIT_USER_NAME\" 2>/dev/null && \
-            git config --global user.email \"$GIT_USER_EMAIL\" 2>/dev/null && \
-            git config --global credential.helper store 2>/dev/null && \
-            echo \"https://token:$GIT_TOKEN@github.com\" > ~/.git-credentials && \
-            chmod 600 ~/.git-credentials
-        " && echo "✅ Git configured for user: $GIT_USER_NAME" \
-          || echo "⚠️  Could not configure git credentials - continuing without"
-    else
-        echo "ℹ️  Git credentials not provided - skipping git/GitHub CLI setup"
-    fi
-
     # Install composer dependencies as appuser
     echo "Installing composer dependencies..."
     gosu appuser bash -c "

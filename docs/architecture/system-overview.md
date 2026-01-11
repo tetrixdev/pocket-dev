@@ -77,14 +77,13 @@
 - Composer
 
 **Entrypoint actions:**
-1. Configure git credentials (if `GIT_TOKEN`, `GIT_USER_NAME`, `GIT_USER_EMAIL` provided)
-2. Set storage permissions
+1. Set storage permissions
+2. Run `composer install`
 3. Generate Laravel app key (if missing)
 4. Create storage symlink
 5. Run `npm install` and `npm run build`
-6. Run `composer install`
-7. Run migrations
-8. Start PHP-FPM
+6. Run migrations
+7. Start PHP-FPM
 
 **User context:** Runs as host user (via `USER_ID`/`GROUP_ID` env vars)
 
