@@ -142,4 +142,5 @@ if (app()->environment('local')) {
     Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");
     Route::post("/config/developer/force-recreate", [ConfigController::class, "forceRecreate"])->name("config.developer.force-recreate");
     Route::post("/config/developer/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.developer.rebuild");
+    Route::post("/config/developer/restart-php", [ConfigController::class, "restartPhpContainer"])->name("config.developer.restart-php");
 }

@@ -489,7 +489,16 @@ class ConversationController extends Controller
     public function updateTitle(Request $request, Conversation $conversation): JsonResponse
     {
         $validated = $request->validate([
-            'title' => 'required|string|max:50',
+            'title' => [
+                'required',
+                'string',
+                'max:50',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    if (trim((string) $value) === '') {
+                        $fail('Title cannot be empty.');
+                    }
+                },
+            ],
         ]);
 
         $conversation->update([

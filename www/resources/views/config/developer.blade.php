@@ -36,6 +36,21 @@
     </div>
 
     <div class="bg-gray-800 rounded-lg p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-2">Restart PHP Container</h2>
+        <p class="text-gray-400 text-sm mb-4">
+            Runs <code class="bg-gray-900 px-2 py-1 rounded">docker compose restart pocket-dev-php</code>.
+            Use this for quick restarts when only PHP code has changed. Faster than restarting all containers.
+        </p>
+
+        <form method="POST" action="{{ route('config.developer.restart-php') }}" id="restart-php-form">
+            @csrf
+            <x-button type="submit" variant="secondary">
+                Restart PHP Container
+            </x-button>
+        </form>
+    </div>
+
+    <div class="bg-gray-800 rounded-lg p-6 mb-6">
         <h2 class="text-lg font-semibold mb-2">Rebuild Containers</h2>
         <p class="text-gray-400 text-sm mb-4">
             Runs <code class="bg-gray-900 px-2 py-1 rounded">docker compose down && docker compose build --no-cache && docker compose up -d --force-recreate</code>.
@@ -64,6 +79,22 @@ document.getElementById('force-recreate-form').addEventListener('submit', functi
     e.preventDefault();
 
     if (!confirm('Restart all containers? This will briefly interrupt the application.')) {
+        return false;
+    }
+
+    @if($processingCount > 0)
+    if (!confirm('WARNING: {{ $processingCount }} conversation{{ $processingCount > 1 ? "s are" : " is" }} currently processing. Restarting will interrupt {{ $processingCount > 1 ? "them" : "it" }}. Continue anyway?')) {
+        return false;
+    }
+    @endif
+
+    HTMLFormElement.prototype.submit.call(this);
+});
+
+document.getElementById('restart-php-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    if (!confirm('Restart the PHP container? This will briefly interrupt the application.')) {
         return false;
     }
 

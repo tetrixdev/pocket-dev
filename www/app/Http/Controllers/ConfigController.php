@@ -1831,4 +1831,44 @@ class ConfigController extends Controller
             return redirect()->back()->with('error', 'Failed to rebuild: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Restart only the PHP container
+     * Use this for quick restarts when only PHP code has changed.
+     */
+    public function restartPhpContainer(Request $request)
+    {
+        try {
+            $hostProjectPath = env('HOST_PROJECT_PATH');
+
+            if (empty($hostProjectPath)) {
+                throw new \RuntimeException('HOST_PROJECT_PATH environment variable is not set');
+            }
+
+            // Spawn a helper container that survives container restarts
+            // Only restarts the pocket-dev-php container
+            $command = sprintf(
+                'docker run --rm -d ' .
+                '-v /var/run/docker.sock:/var/run/docker.sock ' .
+                '-v "%s:%s" ' .
+                '-w "%s" ' .
+                'docker:27-cli ' .
+                'docker compose restart pocket-dev-php 2>&1',
+                $hostProjectPath,
+                $hostProjectPath,
+                $hostProjectPath
+            );
+
+            exec($command, $output, $returnCode);
+
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
+            }
+
+            return redirect()->back()->with('success', 'PHP container restart initiated. It will be available again shortly.');
+        } catch (\Exception $e) {
+            Log::error('Failed to restart PHP container', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to restart PHP container: ' . $e->getMessage());
+        }
+    }
 }

@@ -10,6 +10,10 @@
 
     {{-- Global helpers --}}
     <script>
+        // Title length constants (centralized for consistency)
+        window.TITLE_MAX_LENGTH = 50;      // Maximum allowed characters
+        window.TITLE_MOBILE_LENGTH = 25;   // Approximate mobile truncation point
+
         // Global helper to linkify file paths in HTML content
         window.linkifyFilePaths = function(html) {
             // Allowed paths from Laravel config (single source of truth)
@@ -1860,9 +1864,9 @@
                 async saveConversationTitle() {
                     if (!this.currentConversationUuid || !this.renameTitle.trim()) return;
 
-                    // Enforce 50-character limit
-                    if (this.renameTitle.trim().length > 50) {
-                        this.showError('Title cannot exceed 50 characters');
+                    // Enforce max character limit
+                    if (this.renameTitle.trim().length > window.TITLE_MAX_LENGTH) {
+                        this.showError(`Title cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
                         return;
                     }
 
