@@ -9,12 +9,26 @@
             @keydown.escape="showRenameModal = false"
             placeholder="Enter conversation name..."
             label="Title"
-            maxlength="30"
+            maxlength="50"
         />
 
-        <p class="text-gray-500 text-xs">
-            Maximum 30 characters. This name will appear in the header and sidebar.
-        </p>
+        {{-- Preview with yellow highlighting for chars 26-50 --}}
+        <div x-show="renameTitle.length > 0" class="text-sm">
+            <span class="text-gray-400 text-xs">Preview:</span>
+            <div class="mt-1 font-medium">
+                <span class="text-white" x-text="renameTitle.slice(0, 25)"></span><span class="text-yellow-400" x-text="renameTitle.slice(25, 50)"></span>
+            </div>
+        </div>
+
+        <div class="text-xs space-y-1">
+            <p class="text-gray-500">
+                Maximum 50 characters. Desktop shows full title, mobile truncates at ~25.
+            </p>
+            <p class="text-yellow-400/80" x-show="renameTitle.length > 25">
+                <i class="fas fa-exclamation-triangle mr-1"></i>
+                Yellow characters may not be visible on mobile.
+            </p>
+        </div>
 
         <div class="flex gap-2">
             <x-button variant="secondary" class="flex-1" @click="showRenameModal = false">
@@ -24,7 +38,7 @@
                 variant="primary"
                 class="flex-1"
                 @click="saveConversationTitle()"
-                :disabled="!renameTitle.trim() || renameSaving"
+                x-bind:disabled="!renameTitle.trim() || renameSaving"
             >
                 <span x-show="!renameSaving">Save</span>
                 <span x-show="renameSaving">Saving...</span>

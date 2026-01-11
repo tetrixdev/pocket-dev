@@ -438,7 +438,7 @@
                 <div class="flex items-center gap-3 pl-2">
                     <button @click="openRenameModal()"
                             :disabled="!currentConversationUuid"
-                            class="text-base font-semibold hover:text-blue-400 transition-colors max-w-[30ch] truncate disabled:cursor-default disabled:hover:text-white"
+                            class="text-base font-semibold hover:text-blue-400 transition-colors max-w-[50ch] truncate disabled:cursor-default disabled:hover:text-white"
                             :class="{ 'cursor-pointer': currentConversationUuid }"
                             :title="currentConversationUuid ? 'Click to rename' : ''"
                             x-text="currentConversationTitle || 'New Conversation'">
@@ -1860,9 +1860,9 @@
                 async saveConversationTitle() {
                     if (!this.currentConversationUuid || !this.renameTitle.trim()) return;
 
-                    // Enforce 30-character limit
-                    if (this.renameTitle.trim().length > 30) {
-                        this.showError('Title cannot exceed 30 characters');
+                    // Enforce 50-character limit
+                    if (this.renameTitle.trim().length > 50) {
+                        this.showError('Title cannot exceed 50 characters');
                         return;
                     }
 

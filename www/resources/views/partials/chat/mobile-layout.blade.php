@@ -8,7 +8,7 @@
     <div class="flex flex-col items-center">
         <button @click="openRenameModal()"
                 :disabled="!currentConversationUuid"
-                class="text-base font-semibold leading-tight hover:text-blue-400 transition-colors max-w-[30ch] truncate disabled:cursor-default disabled:hover:text-white"
+                class="text-base font-semibold leading-tight hover:text-blue-400 transition-colors max-w-[25ch] truncate disabled:cursor-default disabled:hover:text-white"
                 :class="{ 'cursor-pointer': currentConversationUuid }"
                 :title="currentConversationUuid ? 'Click to rename' : ''"
                 x-text="currentConversationTitle || 'New Conversation'">

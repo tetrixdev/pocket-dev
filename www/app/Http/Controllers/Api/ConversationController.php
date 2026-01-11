@@ -489,7 +489,7 @@ class ConversationController extends Controller
     public function updateTitle(Request $request, Conversation $conversation): JsonResponse
     {
         $validated = $request->validate([
-            'title' => 'required|string|max:30',
+            'title' => 'required|string|max:50',
         ]);
 
         $conversation->update([
