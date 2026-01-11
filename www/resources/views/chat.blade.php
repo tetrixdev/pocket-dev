@@ -1860,11 +1860,20 @@
                 async saveConversationTitle() {
                     if (!this.currentConversationUuid || !this.renameTitle.trim()) return;
 
+                    // Enforce 30-character limit
+                    if (this.renameTitle.trim().length > 30) {
+                        this.showError('Title cannot exceed 30 characters');
+                        return;
+                    }
+
                     this.renameSaving = true;
                     try {
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/title`, {
                             method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
                             body: JSON.stringify({ title: this.renameTitle.trim() })
                         });
 
@@ -2644,6 +2653,7 @@
                             });
                             const data = await response.json();
                             this.currentConversationUuid = data.conversation.uuid;
+                            this.currentConversationTitle = data.conversation.title || null;
                             this.conversationProvider = this.provider; // Lock provider for this conversation
 
                             // Update URL with new conversation UUID
