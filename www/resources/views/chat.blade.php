@@ -1096,7 +1096,7 @@
                             if (this.agents.length > 0) {
                                 // Auto-select default agent or first available
                                 const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
-                                this.selectAgent(defaultAgent, false);
+                                await this.selectAgent(defaultAgent, false);
                             } else {
                                 // No agents in this workspace - clear selection
                                 this.currentAgentId = null;
@@ -1105,7 +1105,7 @@
                         } else if (!this.currentAgentId && this.agents.length > 0) {
                             // No agent selected but agents available - auto-select
                             const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
-                            this.selectAgent(defaultAgent, false);
+                            await this.selectAgent(defaultAgent, false);
                         }
                     } catch (err) {
                         console.error('Failed to fetch agents:', err);
@@ -1411,6 +1411,10 @@
                             this.currentWorkspaceId = workspace.id;
                             this.showWorkspaceSelector = false;
                             this.debugLog('Workspace switched', { workspace: workspace.name, lastConversation: data.last_conversation_uuid });
+
+                            // Clear old workspace state before loading new data
+                            this.agents = [];
+                            this.currentAgentId = null;
 
                             // Reload conversations and agents for the new workspace
                             await this.fetchConversations();
