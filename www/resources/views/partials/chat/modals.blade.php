@@ -10,6 +10,7 @@
 @include('partials.chat.modals.shortcuts')
 @include('partials.chat.modals.error')
 @include('partials.chat.modals.conversation-search')
+@include('partials.chat.modals.rename-conversation')
 
 {{-- File Preview Modal --}}
 <x-file-preview-modal />

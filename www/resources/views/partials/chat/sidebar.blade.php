@@ -1,7 +1,7 @@
 {{-- Desktop Sidebar --}}
 <div class="w-64 h-full bg-gray-800 border-r border-gray-700 flex flex-col">
     <div class="p-4 border-b border-gray-700">
-        <h2 class="text-lg font-semibold mb-3">Conversations</h2>
+        <h2 class="text-lg font-semibold mb-3">PocketDev</h2>
         <div class="flex items-center gap-2">
             {{-- New conversation button (green) --}}
             <button @click="newConversation()"

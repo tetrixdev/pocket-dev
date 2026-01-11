@@ -6,7 +6,13 @@
         </svg>
     </button>
     <div class="flex flex-col items-center">
-        <h2 class="text-base font-semibold leading-tight">PocketDev</h2>
+        <button @click="openRenameModal()"
+                :disabled="!currentConversationUuid"
+                class="text-base font-semibold leading-tight hover:text-blue-400 transition-colors max-w-[30ch] truncate disabled:cursor-default disabled:hover:text-white"
+                :class="{ 'cursor-pointer': currentConversationUuid }"
+                :title="currentConversationUuid ? 'Click to rename' : ''"
+                x-text="currentConversationTitle || 'New Conversation'">
+        </button>
         <div class="flex items-center gap-2">
             <button @click="showAgentSelector = true"
                     class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 underline decoration-gray-600 hover:decoration-gray-400"
@@ -120,7 +126,7 @@
      style="display: none;">
     <div class="p-4 border-b border-gray-700">
         <div class="flex items-center justify-between mb-3">
-            <h2 class="text-lg font-semibold">Conversations</h2>
+            <h2 class="text-lg font-semibold">PocketDev</h2>
             {{-- Close drawer --}}
             <button @click="showMobileDrawer = false" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

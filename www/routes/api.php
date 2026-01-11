@@ -83,6 +83,7 @@ Route::prefix('conversations/{conversation}')->group(function () {
     Route::post('archive', [ConversationController::class, 'archive']);
     Route::post('unarchive', [ConversationController::class, 'unarchive']);
     Route::patch('agent', [ConversationController::class, 'switchAgent']);
+    Route::patch('title', [ConversationController::class, 'updateTitle']);
 });
 
 /*

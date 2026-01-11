@@ -484,6 +484,25 @@ class ConversationController extends Controller
     }
 
     /**
+     * Update the conversation title.
+     */
+    public function updateTitle(Request $request, Conversation $conversation): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => 'required|string|max:30',
+        ]);
+
+        $conversation->update([
+            'title' => trim($validated['title']),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'title' => $conversation->title,
+        ]);
+    }
+
+    /**
      * Abort an active stream.
      *
      * Sets the abort flag which the job will check and terminate gracefully.

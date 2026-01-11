@@ -436,7 +436,13 @@
             {{-- Desktop Header (hidden on mobile) - fixed at top to match fixed #messages --}}
             <div class="hidden md:flex md:fixed md:top-0 md:left-64 md:right-0 md:z-10 bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
                 <div class="flex items-center gap-3 pl-2">
-                    <h2 class="text-base font-semibold">PocketDev</h2>
+                    <button @click="openRenameModal()"
+                            :disabled="!currentConversationUuid"
+                            class="text-base font-semibold hover:text-blue-400 transition-colors max-w-[30ch] truncate disabled:cursor-default disabled:hover:text-white"
+                            :class="{ 'cursor-pointer': currentConversationUuid }"
+                            :title="currentConversationUuid ? 'Click to rename' : ''"
+                            x-text="currentConversationTitle || 'New Conversation'">
+                    </button>
                     <button @click="showAgentSelector = true"
                             class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer"
                             aria-label="Select AI agent">
@@ -730,7 +736,13 @@
                 showClaudeCodeAuthModal: false,
                 showErrorModal: false,
                 showSearchModal: false,
+                showRenameModal: false,
                 showSystemPromptPreview: false,
+
+                // Conversation title (rename)
+                currentConversationTitle: null,
+                renameTitle: '',
+                renameSaving: false,
                 _systemPromptPreviewNonce: 0,
                 systemPromptPreview: {
                     loading: false,
@@ -1752,6 +1764,7 @@
 
                     this.currentConversationUuid = null;
                     this.currentConversationStatus = null; // Reset status for new conversation
+                    this.currentConversationTitle = null; // Reset title for new conversation
                     this.conversationProvider = null; // Reset for new conversation
                     this.messages = [];
                     this.sessionCost = 0;
@@ -1825,6 +1838,48 @@
                     } catch (err) {
                         console.error('Failed to delete conversation:', err);
                         this.showError('Failed to delete conversation');
+                    }
+                },
+
+                openRenameModal() {
+                    if (!this.currentConversationUuid) return;
+                    this.renameTitle = this.currentConversationTitle || '';
+                    this.showRenameModal = true;
+                    // Focus input after modal opens
+                    this.$nextTick(() => {
+                        this.$refs.renameTitleInput?.focus();
+                        this.$refs.renameTitleInput?.select();
+                    });
+                },
+
+                async saveConversationTitle() {
+                    if (!this.currentConversationUuid || !this.renameTitle.trim()) return;
+
+                    this.renameSaving = true;
+                    try {
+                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/title`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ title: this.renameTitle.trim() })
+                        });
+
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                        const data = await response.json();
+                        this.currentConversationTitle = data.title;
+
+                        // Update the conversation in the sidebar list
+                        const conv = this.conversations.find(c => c.uuid === this.currentConversationUuid);
+                        if (conv) {
+                            conv.title = data.title;
+                        }
+
+                        this.showRenameModal = false;
+                    } catch (err) {
+                        console.error('Failed to rename conversation:', err);
+                        this.showError('Failed to rename conversation');
+                    } finally {
+                        this.renameSaving = false;
                     }
                 },
 
@@ -2010,6 +2065,9 @@
 
                         // Update conversation status for header badge
                         this.currentConversationStatus = data.conversation?.status || 'idle';
+
+                        // Update conversation title for header
+                        this.currentConversationTitle = data.conversation?.title || null;
 
                         // Set agent from conversation (don't use selectAgent which would PATCH backend)
                         if (data.conversation?.agent_id) {
