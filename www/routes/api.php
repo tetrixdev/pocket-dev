@@ -9,6 +9,9 @@ use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\TranscriptionController;
 use Illuminate\Support\Facades\Route;
 
+// TODO: Migrate browser-only routes (like file/write) to web.php for proper CSRF protection.
+// Routes in api.php are stateless and don't validate CSRF tokens, even if the frontend sends them.
+
 /*
 |--------------------------------------------------------------------------
 | Voice / Transcription Routes
@@ -158,6 +161,7 @@ Route::post('agents/validate-clone', [AgentController::class, 'validateClone']);
 
 Route::prefix('file')->group(function () {
     Route::post('preview', [FilePreviewController::class, 'preview']);
+    Route::post('write', [FilePreviewController::class, 'write']);
     Route::post('check', [FilePreviewController::class, 'check']);
     Route::post('upload', [\App\Http\Controllers\Api\FileUploadController::class, 'upload']);
     Route::post('delete', [\App\Http\Controllers\Api\FileUploadController::class, 'delete']);

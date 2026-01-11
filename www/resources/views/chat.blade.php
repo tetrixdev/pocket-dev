@@ -42,6 +42,12 @@
                     loading: false,
                     copied: false,
 
+                    // Edit mode state
+                    editing: false,
+                    editContent: '',
+                    saving: false,
+                    saveError: null,
+
                     // Computed-like getters for current file
                     get isOpen() { return this.stack.length > 0; },
                     get current() { return this.stack[this.stack.length - 1] || {}; },
@@ -57,6 +63,10 @@
 
                     async open(filePath) {
                         if (window.debugLog) debugLog('filePreview.open() called', { filePath, stackDepth: this.stack.length });
+                        // Cancel editing if opening a new file
+                        if (this.editing) {
+                            this.cancelEditing();
+                        }
                         this.loading = true;
                         this.copied = false;
 
@@ -152,6 +162,10 @@
                     },
 
                     close() {
+                        // Cancel editing if active
+                        if (this.editing) {
+                            this.cancelEditing();
+                        }
                         // Pop the stack - if more items remain, show the previous file
                         this.stack.pop();
                         this.copied = false;
@@ -159,6 +173,9 @@
                     },
 
                     closeAll() {
+                        if (this.editing) {
+                            this.cancelEditing();
+                        }
                         this.stack = [];
                         this.copied = false;
                     },
@@ -171,6 +188,92 @@
                             setTimeout(() => { this.copied = false; }, 1500);
                         } catch (err) {
                             console.error('Copy failed:', err);
+                        }
+                    },
+
+                    startEditing() {
+                        // Allow editing empty files (content can be empty string)
+                        if (this.error) return;
+                        this.editContent = this.content ?? '';
+                        this.editing = true;
+                        this.saveError = null;
+                        if (window.debugLog) debugLog('filePreview.startEditing()', { path: this.path });
+                    },
+
+                    cancelEditing() {
+                        this.editing = false;
+                        this.editContent = '';
+                        this.saveError = null;
+                        if (window.debugLog) debugLog('filePreview.cancelEditing()');
+                    },
+
+                    async saveFile() {
+                        if (!this.editing || this.saving) return;
+
+                        this.saving = true;
+                        this.saveError = null;
+
+                        try {
+                            if (window.debugLog) debugLog('filePreview.saveFile()', { path: this.path, contentLength: this.editContent.length });
+
+                            const response = await fetch('/api/file/write', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                },
+                                body: JSON.stringify({
+                                    path: this.path,
+                                    content: this.editContent,
+                                }),
+                            });
+
+                            const data = await response.json();
+
+                            if (!response.ok || !data.success) {
+                                this.saveError = data.error || 'Failed to save file';
+                                if (window.debugLog) debugLog('filePreview.saveFile() error', { error: this.saveError });
+                                return;
+                            }
+
+                            if (window.debugLog) debugLog('filePreview.saveFile() success', { bytesWritten: data.bytes_written });
+
+                            // Update the current stack entry with new content
+                            const currentEntry = this.stack[this.stack.length - 1];
+                            if (currentEntry) {
+                                currentEntry.content = this.editContent;
+                                currentEntry.sizeFormatted = data.size_formatted;
+
+                                // Re-render highlighted content
+                                const ext = currentEntry.path.split('.').pop()?.toLowerCase();
+                                if (currentEntry.isMarkdown) {
+                                    let html = marked.parse(this.editContent);
+                                    html = window.linkifyFilePaths(html);
+                                    currentEntry.renderedContent = DOMPurify.sanitize(html);
+                                } else {
+                                    let highlighted;
+                                    if (ext && hljs.getLanguage(ext)) {
+                                        highlighted = hljs.highlight(this.editContent, { language: ext }).value;
+                                    } else {
+                                        highlighted = hljs.highlightAuto(this.editContent).value;
+                                    }
+                                    currentEntry.highlightedContent = window.linkifyFilePaths(highlighted);
+                                }
+
+                                // Trigger reactivity by replacing the entry
+                                this.stack.splice(this.stack.length - 1, 1, { ...currentEntry });
+                            }
+
+                            this.editing = false;
+                            this.editContent = '';
+
+                        } catch (err) {
+                            console.error('Save file error:', err);
+                            this.saveError = 'Failed to save file';
+                            if (window.debugLog) debugLog('filePreview.saveFile() exception', { error: err.message });
+                        } finally {
+                            this.saving = false;
                         }
                     }
                 });

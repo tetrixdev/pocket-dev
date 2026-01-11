@@ -41,35 +41,74 @@
 
             {{-- Actions --}}
             <div class="flex items-center gap-2 shrink-0 ml-2">
-                {{-- File size --}}
-                <span class="text-xs text-gray-500 hidden sm:inline" x-text="$store.filePreview.sizeFormatted"></span>
+                {{-- File size (hidden when editing) --}}
+                <span class="text-xs text-gray-500 hidden sm:inline"
+                      x-show="!$store.filePreview.editing"
+                      x-text="$store.filePreview.sizeFormatted"></span>
 
-                {{-- Copy button - access stack directly for Alpine reactivity --}}
-                <button @click="$store.filePreview.copyContent()"
-                        class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
-                        title="Copy content"
-                        x-show="$store.filePreview.stack.at(-1)?.content && !$store.filePreview.stack.at(-1)?.error">
-                    <template x-if="!$store.filePreview.copied">
-                        <i class="fa-regular fa-copy"></i>
-                    </template>
-                    <template x-if="$store.filePreview.copied">
-                        <i class="fa-solid fa-check text-green-400"></i>
-                    </template>
-                </button>
+                {{-- View mode buttons --}}
+                <template x-if="!$store.filePreview.editing">
+                    <div class="flex items-center gap-2">
+                        {{-- Copy button - show when file loaded (even if empty) --}}
+                        <button @click="$store.filePreview.copyContent()"
+                                class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                title="Copy content"
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error">
+                            <template x-if="!$store.filePreview.copied">
+                                <i class="fa-regular fa-copy"></i>
+                            </template>
+                            <template x-if="$store.filePreview.copied">
+                                <i class="fa-solid fa-check text-green-400"></i>
+                            </template>
+                        </button>
 
-                {{-- Close/Back button --}}
-                <button @click="$store.filePreview.close()"
-                        class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
-                        :title="$store.filePreview.stackDepth > 1 ? 'Back (Esc)' : 'Close (Esc)'">
-                    <i :class="$store.filePreview.stackDepth > 1 ? 'fa-solid fa-arrow-left' : 'fa-solid fa-xmark'"></i>
-                </button>
+                        {{-- Edit button - show when file loaded (even if empty) --}}
+                        <button @click="$store.filePreview.startEditing()"
+                                class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                title="Edit file"
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error">
+                            <i class="fa-regular fa-pen-to-square"></i>
+                        </button>
+
+                        {{-- Close/Back button --}}
+                        <button @click="$store.filePreview.close()"
+                                class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                :title="$store.filePreview.stackDepth > 1 ? 'Back (Esc)' : 'Close (Esc)'">
+                            <i :class="$store.filePreview.stackDepth > 1 ? 'fa-solid fa-arrow-left' : 'fa-solid fa-xmark'"></i>
+                        </button>
+                    </div>
+                </template>
+
+                {{-- Edit mode buttons --}}
+                <template x-if="$store.filePreview.editing">
+                    <div class="flex items-center gap-2">
+                        {{-- Cancel button --}}
+                        <button @click="$store.filePreview.cancelEditing()"
+                                class="px-3 py-1.5 text-sm text-gray-300 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                :disabled="$store.filePreview.saving">
+                            Cancel
+                        </button>
+
+                        {{-- Save button --}}
+                        <button @click="$store.filePreview.saveFile()"
+                                class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-2"
+                                :disabled="$store.filePreview.saving"
+                                :class="{ 'opacity-50 cursor-not-allowed': $store.filePreview.saving }">
+                            <template x-if="$store.filePreview.saving">
+                                <i class="fa-solid fa-spinner fa-spin"></i>
+                            </template>
+                            <span x-text="$store.filePreview.saving ? 'Saving...' : 'Save'"></span>
+                        </button>
+                    </div>
+                </template>
             </div>
         </div>
 
         {{-- Content Area --}}
         {{-- Handle file path link clicks here since @click.stop on modal prevents bubbling to document --}}
-        <div class="flex-1 overflow-auto"
+        <div class="flex-1 overflow-auto flex flex-col"
              @click="
+                if ($store.filePreview.editing) return;
                 const link = $event.target.closest('.file-path-link');
                 if (link) {
                     $event.preventDefault();
@@ -79,6 +118,14 @@
                     }
                 }
              ">
+            {{-- Save error banner --}}
+            <template x-if="$store.filePreview.saveError">
+                <div class="px-4 py-2 bg-red-900/50 border-b border-red-700 text-red-300 text-sm flex items-center gap-2">
+                    <i class="fa-solid fa-exclamation-circle"></i>
+                    <span x-text="$store.filePreview.saveError"></span>
+                </div>
+            </template>
+
             {{-- Loading state --}}
             <template x-if="$store.filePreview.loading">
                 <div class="flex items-center justify-center h-full">
@@ -98,8 +145,19 @@
                 </div>
             </template>
 
-            {{-- File content --}}
-            <template x-if="!$store.filePreview.loading && !$store.filePreview.error && $store.filePreview.content">
+            {{-- Edit mode - textarea --}}
+            <template x-if="!$store.filePreview.loading && !$store.filePreview.error && $store.filePreview.editing">
+                <div class="flex-1 flex flex-col min-h-0">
+                    <textarea x-model="$store.filePreview.editContent"
+                              class="flex-1 w-full p-4 bg-gray-900 text-gray-300 font-mono text-sm resize-none border-none focus:ring-0 focus:outline-none"
+                              :disabled="$store.filePreview.saving"
+                              spellcheck="false"
+                              x-init="$nextTick(() => $el.focus())"></textarea>
+                </div>
+            </template>
+
+            {{-- View mode - File content --}}
+            <template x-if="!$store.filePreview.loading && !$store.filePreview.error && $store.filePreview.content && !$store.filePreview.editing">
                 <div class="h-full">
                     {{-- Markdown rendering --}}
                     <template x-if="$store.filePreview.isMarkdown">

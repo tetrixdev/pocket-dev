@@ -107,6 +107,81 @@ class FilePreviewController extends Controller
     }
 
     /**
+     * Write content to a file.
+     */
+    public function write(Request $request): JsonResponse
+    {
+        $request->validate([
+            'path' => 'required|string',
+            'content' => 'present|string', // Allow empty files
+        ]);
+
+        $path = $request->input('path');
+        $content = $request->input('content');
+
+        // For new files, we can't use realpath (file doesn't exist yet)
+        // But for editing existing files via file preview, the file should exist
+        $realPath = realpath($path);
+
+        if ($realPath === false) {
+            return response()->json([
+                'success' => false,
+                'error' => 'File not found',
+            ], 404);
+        }
+
+        // Security: Restrict to allowed base directories
+        $isAllowed = false;
+        $allowedPaths = config('ai.file_preview.allowed_paths', ['/var/www']);
+        foreach ($allowedPaths as $basePath) {
+            $basePath = rtrim($basePath, '/'); // Normalize trailing slashes
+            if (str_starts_with($realPath, $basePath . '/') || $realPath === $basePath) {
+                $isAllowed = true;
+                break;
+            }
+        }
+
+        if (!$isAllowed) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Access denied',
+            ], 403);
+        }
+
+        // Require a regular file (not a directory, device, pipe, etc.)
+        if (!is_file($realPath)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Path is not a regular file',
+            ], 400);
+        }
+
+        // Check if writable
+        if (!is_writable($realPath)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'File is not writable',
+            ], 403);
+        }
+
+        // Write the file with exclusive lock to prevent concurrent write corruption
+        $result = file_put_contents($realPath, $content, LOCK_EX);
+
+        if ($result === false) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to write file',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'bytes_written' => $result,
+            'size_formatted' => $this->formatBytes($result),
+        ]);
+    }
+
+    /**
      * Check if a path exists and is readable (quick check without content).
      */
     public function check(Request $request): JsonResponse
