@@ -1096,7 +1096,7 @@
                             if (this.agents.length > 0) {
                                 // Auto-select default agent or first available
                                 const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
-                                await this.selectAgent(defaultAgent, false);
+                                await this.selectAgent(defaultAgent, false, { syncBackend: false });
                             } else {
                                 // No agents in this workspace - clear selection
                                 this.currentAgentId = null;
@@ -1105,7 +1105,7 @@
                         } else if (!this.currentAgentId && this.agents.length > 0) {
                             // No agent selected but agents available - auto-select
                             const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
-                            await this.selectAgent(defaultAgent, false);
+                            await this.selectAgent(defaultAgent, false, { syncBackend: false });
                         }
                     } catch (err) {
                         console.error('Failed to fetch agents:', err);
@@ -1176,13 +1176,13 @@
                     return icons[status] || 'fa-solid fa-check';
                 },
 
-                async selectAgent(agent, closeModal = true) {
+                async selectAgent(agent, closeModal = true, { syncBackend = true } = {}) {
                     if (!agent) return;
 
                     // If we have an active conversation AND we're switching to a different agent,
                     // update the backend first. This ensures the next message uses the new agent's
-                    // system prompt and tools.
-                    if (this.currentConversationUuid && agent.id !== this.currentAgentId) {
+                    // system prompt and tools. Skip backend sync for auto-select paths (e.g., workspace switch).
+                    if (syncBackend && this.currentConversationUuid && agent.id !== this.currentAgentId) {
                         try {
                             const response = await fetch(`/api/conversations/${this.currentConversationUuid}/agent`, {
                                 method: 'PATCH',
