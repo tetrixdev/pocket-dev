@@ -488,13 +488,18 @@ class ConversationController extends Controller
      */
     public function updateTitle(Request $request, Conversation $conversation): JsonResponse
     {
+        // Trim before validation to handle whitespace-only input
+        $request->merge([
+            'title' => is_string($request->input('title')) ? trim($request->input('title')) : $request->input('title'),
+        ]);
+
         $validated = $request->validate([
             'title' => [
                 'required',
                 'string',
                 'max:50',
-                function (string $attribute, mixed $value, \Closure $fail) {
-                    if (trim((string) $value) === '') {
+                function (string $_attribute, mixed $value, \Closure $fail) {
+                    if ((string) $value === '') {
                         $fail('Title cannot be empty.');
                     }
                 },
@@ -502,7 +507,7 @@ class ConversationController extends Controller
         ]);
 
         $conversation->update([
-            'title' => trim($validated['title']),
+            'title' => $validated['title'],
         ]);
 
         return response()->json([
