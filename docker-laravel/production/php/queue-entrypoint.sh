@@ -148,14 +148,17 @@ fi
 # These will be inherited by supervisord and all queue workers
 echo "Loading credentials into environment..."
 set +e  # Disable exit-on-error so we can handle failures gracefully
-cred_exports=$(cd /var/www && php artisan credential export 2>&1)
+cred_raw=$(cd /var/www && php artisan credential export 2>&1)
 cred_exit_code=$?
 set -e  # Re-enable exit-on-error
 if [ $cred_exit_code -ne 0 ]; then
     echo "  FATAL: Credential export failed (exit code $cred_exit_code)"
     echo "  Check database connectivity and credential configuration."
     exit 1
-elif [ -n "$cred_exports" ]; then
+fi
+# Filter to only valid export lines (ignores any warnings/noise in output)
+cred_exports=$(echo "$cred_raw" | grep '^export ' || true)
+if [ -n "$cred_exports" ]; then
     eval "$cred_exports"
     cred_count=$(echo "$cred_exports" | grep -c '^export ' || true)
     echo "  Loaded $cred_count credential(s)"
