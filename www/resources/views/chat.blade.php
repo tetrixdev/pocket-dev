@@ -16,7 +16,7 @@
             const allowedPaths = @json(config('ai.file_preview.allowed_paths', ['/var/www']));
             // Escape all regex metacharacters, then strip leading /
             const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const pathsPattern = allowedPaths.map(p => escapeRegex(p).replace(/^\\\//, '')).join('|');
+            const pathsPattern = allowedPaths.map(p => escapeRegex(p).replace(/^\//, '')).join('|');
             const filePathPattern = new RegExp(`((?:^|[^"'=\\w])((?:\\/(?:${pathsPattern})|\\.\\.\\/|\\.\\/|~\\/)[^\\s<>"'\`\\)]+\\.[a-zA-Z0-9]+))`, 'g');
             const escapeHtml = (text) => String(text)
                 .replace(/&/g, '&amp;')

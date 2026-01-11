@@ -249,6 +249,12 @@ class AgentController extends Controller
         $memorySchemas = $request->input('memory_schemas', []);
         $workspaceId = $request->input('workspace_id');
         $workspace = $workspaceId ? Workspace::find($workspaceId) : null;
+        $inheritWorkspaceSchemas = $request->boolean('inherit_workspace_schemas', false);
+
+        // If inheriting from workspace, use workspace's enabled schemas
+        if ($inheritWorkspaceSchemas && $workspace) {
+            $memorySchemas = $workspace->enabledMemoryDatabases()->pluck('memory_databases.id')->toArray();
+        }
 
         // Use the same builder that generates actual conversation prompts
         $preview = $this->systemPromptBuilder->buildPreviewSections(
