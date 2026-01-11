@@ -147,14 +147,21 @@ fi
 # Export user-configured credentials as environment variables
 # These will be inherited by supervisord and all queue workers
 echo "Loading credentials into environment..."
-cred_exports=$(cd /var/www && php artisan credential export 2>/dev/null)
-if [ -n "$cred_exports" ]; then
+cred_error=$(mktemp)
+cred_exports=$(cd /var/www && php artisan credential export 2>"$cred_error")
+cred_exit_code=$?
+if [ $cred_exit_code -ne 0 ] || [ -s "$cred_error" ]; then
+    echo "  WARNING: Credential export failed (exit code $cred_exit_code)"
+    [ -s "$cred_error" ] && echo "  Error: $(cat "$cred_error")"
+    echo "  Continuing without credentials..."
+elif [ -n "$cred_exports" ]; then
     eval "$cred_exports"
-    cred_count=$(echo "$cred_exports" | wc -l)
+    cred_count=$(echo "$cred_exports" | grep -c '^export ' || echo 0)
     echo "  Loaded $cred_count credential(s)"
 else
     echo "  No credentials configured"
 fi
+rm -f "$cred_error"
 
 # =============================================================================
 # DROP PRIVILEGES AND START WORKERS

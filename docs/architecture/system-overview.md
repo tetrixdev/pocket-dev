@@ -78,10 +78,10 @@
 
 **Entrypoint actions:**
 1. Set storage permissions
-2. Generate Laravel app key (if missing)
-3. Create storage symlink
-4. Run `npm install` and `npm run build`
-5. Run `composer install`
+2. Run `composer install`
+3. Generate Laravel app key (if missing)
+4. Create storage symlink
+5. Run `npm install` and `npm run build`
 6. Run migrations
 7. Start PHP-FPM
 
