@@ -488,12 +488,26 @@ class ConversationController extends Controller
      */
     public function updateTitle(Request $request, Conversation $conversation): JsonResponse
     {
+        // Trim before validation to handle whitespace-only input
+        $request->merge([
+            'title' => is_string($request->input('title')) ? trim($request->input('title')) : $request->input('title'),
+        ]);
+
         $validated = $request->validate([
-            'title' => 'required|string|max:30',
+            'title' => [
+                'required',
+                'string',
+                'max:50',
+                function (string $_attribute, mixed $value, \Closure $fail) {
+                    if ((string) $value === '') {
+                        $fail('Title cannot be empty.');
+                    }
+                },
+            ],
         ]);
 
         $conversation->update([
-            'title' => trim($validated['title']),
+            'title' => $validated['title'],
         ]);
 
         return response()->json([
