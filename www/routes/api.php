@@ -9,6 +9,9 @@ use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\TranscriptionController;
 use Illuminate\Support\Facades\Route;
 
+// TODO: Migrate browser-only routes (like file/write) to web.php for proper CSRF protection.
+// Routes in api.php are stateless and don't validate CSRF tokens, even if the frontend sends them.
+
 /*
 |--------------------------------------------------------------------------
 | Voice / Transcription Routes

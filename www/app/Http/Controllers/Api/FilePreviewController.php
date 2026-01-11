@@ -148,11 +148,11 @@ class FilePreviewController extends Controller
             ], 403);
         }
 
-        // Check if it's a file (not directory)
-        if (is_dir($realPath)) {
+        // Require a regular file (not a directory, device, pipe, etc.)
+        if (!is_file($realPath)) {
             return response()->json([
                 'success' => false,
-                'error' => 'Path is a directory, not a file',
+                'error' => 'Path is not a regular file',
             ], 400);
         }
 
