@@ -33,7 +33,6 @@
                     @include('config.agents.partials.agent-list', [
                         'agents' => $workspace->agents,
                         'workspace' => $workspace,
-                        'showCreateButton' => true,
                     ])
                 </div>
             </div>
