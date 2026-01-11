@@ -70,14 +70,6 @@ Route::delete("/config/agents/{agent}", [ConfigController::class, "deleteAgent"]
 Route::post("/config/agents/{agent}/toggle-default", [ConfigController::class, "toggleAgentDefault"])->name("config.agents.toggle-default");
 Route::post("/config/agents/{agent}/toggle-enabled", [ConfigController::class, "toggleAgentEnabled"])->name("config.agents.toggle-enabled");
 
-// Commands management
-Route::get("/config/commands", [ConfigController::class, "listCommands"])->name("config.commands");
-Route::get("/config/commands/create", [ConfigController::class, "createCommandForm"])->name("config.commands.create");
-Route::post("/config/commands", [ConfigController::class, "storeCommand"])->name("config.commands.store");
-Route::get("/config/commands/{filename}/edit", [ConfigController::class, "editCommandForm"])->name("config.commands.edit");
-Route::put("/config/commands/{filename}", [ConfigController::class, "updateCommand"])->name("config.commands.update");
-Route::delete("/config/commands/{filename}", [ConfigController::class, "deleteCommand"])->name("config.commands.delete");
-
 // Hooks editor
 Route::get("/config/hooks", [ConfigController::class, "showHooks"])->name("config.hooks");
 Route::post("/config/hooks", [ConfigController::class, "saveHooks"])->name("config.hooks.save");

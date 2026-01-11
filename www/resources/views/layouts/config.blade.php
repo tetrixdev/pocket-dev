@@ -157,42 +157,6 @@
                        class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.agents') ? 'active' : '' }}">
                         🤖 Agents
                     </a>
-                    <div class="bg-gray-900">
-                        <a href="{{ route('config.agents.create') }}"
-                           class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
-                            + New Agent
-                        </a>
-                        @if(isset($agents))
-                            @foreach($agents as $agent)
-                                <a href="{{ route('config.agents.edit', $agent['filename']) }}"
-                                   class="file-item w-full text-sm block {{ isset($activeAgent) && $activeAgent == $agent['filename'] ? 'active' : '' }}">
-                                    {{ $agent['name'] }}
-                                </a>
-                            @endforeach
-                        @endif
-                    </div>
-                </div>
-
-                <!-- Commands Category -->
-                <div class="border-b border-gray-700">
-                    <a href="{{ route('config.commands') }}"
-                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.commands') ? 'active' : '' }}">
-                        ⚡ Commands
-                    </a>
-                    <div class="bg-gray-900">
-                        <a href="{{ route('config.commands.create') }}"
-                           class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
-                            + New Command
-                        </a>
-                        @if(isset($commands))
-                            @foreach($commands as $command)
-                                <a href="{{ route('config.commands.edit', $command['filename']) }}"
-                                   class="file-item w-full text-sm block {{ isset($activeCommand) && $activeCommand == $command['filename'] ? 'active' : '' }}">
-                                    {{ $command['name'] }}
-                                </a>
-                            @endforeach
-                        @endif
-                    </div>
                 </div>
 
                 <!-- Hooks Category -->
@@ -409,47 +373,6 @@
                    class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.agents') ? 'active' : '' }}">
                     🤖 Agents
                 </a>
-                <div class="bg-gray-900">
-                    <a href="{{ route('config.agents.create') }}"
-                       @click="showMobileDrawer = false"
-                       class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
-                        + New Agent
-                    </a>
-                    @if(isset($agents))
-                        @foreach($agents as $agent)
-                            <a href="{{ route('config.agents.edit', $agent['filename']) }}"
-                               @click="showMobileDrawer = false"
-                               class="file-item w-full text-sm block {{ isset($activeAgent) && $activeAgent == $agent['filename'] ? 'active' : '' }}">
-                                {{ $agent['name'] }}
-                            </a>
-                        @endforeach
-                    @endif
-                </div>
-            </div>
-
-            <!-- Commands Category -->
-            <div class="border-b border-gray-700">
-                <a href="{{ route('config.commands') }}"
-                   @click="showMobileDrawer = false"
-                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'config.commands') ? 'active' : '' }}">
-                    ⚡ Commands
-                </a>
-                <div class="bg-gray-900">
-                    <a href="{{ route('config.commands.create') }}"
-                       @click="showMobileDrawer = false"
-                       class="file-item w-full text-sm text-blue-400 hover:text-blue-300 block">
-                        + New Command
-                    </a>
-                    @if(isset($commands))
-                        @foreach($commands as $command)
-                            <a href="{{ route('config.commands.edit', $command['filename']) }}"
-                               @click="showMobileDrawer = false"
-                               class="file-item w-full text-sm block {{ isset($activeCommand) && $activeCommand == $command['filename'] ? 'active' : '' }}">
-                                {{ $command['name'] }}
-                            </a>
-                        @endforeach
-                    @endif
-                </div>
             </div>
 
             <!-- Hooks Category -->
