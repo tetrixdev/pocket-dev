@@ -1415,6 +1415,7 @@
                             // Clear old workspace state before loading new data
                             this.agents = [];
                             this.currentAgentId = null;
+                            this.currentConversationUuid = null;
 
                             // Reload conversations and agents for the new workspace
                             await this.fetchConversations();
