@@ -316,48 +316,20 @@ class ToolSelector
      * TODO: Use $isCliProvider to conditionally format examples for non-CLI providers
      * (currently always generates CLI/artisan examples, which may not suit API providers)
      *
+     * Uses buildMemoryPreviewHierarchy() as single source of truth, then flattens it.
+     *
      * @param Agent|null $agent The agent to get schemas for
      * @param bool $isCliProvider Whether to use CLI examples (currently unused)
      */
     public function buildMemorySection(?Agent $agent, bool $isCliProvider = true): ?string
     {
-        $schemas = $this->getAvailableSchemas($agent);
+        $hierarchy = $this->buildMemoryPreviewHierarchy($agent);
 
-        if ($schemas->isEmpty()) {
+        if (!$hierarchy) {
             return null;
         }
 
-        $lines = [];
-        $lines[] = "# Memory\n";
-        $lines[] = "PocketDev provides a PostgreSQL-based memory system for persistent storage.\n";
-
-        // Schema overview
-        $lines[] = "## Available Schemas\n";
-        $lines[] = "Use `--schema=<name>` with all memory tools.\n";
-
-        foreach ($schemas as $schema) {
-            $shortName = $schema->schema_name;
-            $lines[] = "- **{$shortName}**".($schema->description ? ": {$schema->description}" : "");
-        }
-
-        $lines[] = "";
-
-        // Technical notes
-        $lines[] = "## Schema Details\n";
-        $lines[] = "**Naming**: Tables use `{schema}.tablename` format (e.g., `memory_default.characters`)\n";
-        $lines[] = "**System tables** (per schema):";
-        $lines[] = "- `schema_registry` - table metadata and embed field config";
-        $lines[] = "- `embeddings` - vector storage for semantic search (never SELECT the embedding column directly)\n";
-        $lines[] = "**Extensions**: PostGIS (spatial), pg_trgm (fuzzy text search)\n";
-
-        // Example
-        $first = $schemas->first();
-        $lines[] = "**Example**:";
-        $lines[] = "```bash";
-        $lines[] = "php artisan memory:query --schema={$first->schema_name} --sql=\"SELECT * FROM {$first->getFullSchemaName()}.schema_registry\"";
-        $lines[] = "```";
-
-        return implode("\n", $lines);
+        return $this->flattenHierarchy($hierarchy);
     }
 
     /**

@@ -783,6 +783,7 @@
                             allowed_tools: this.allToolsSelected ? null : this.selectedTools,
                             memory_schemas: this.selectedSchemas,
                             workspace_id: workspaceId,
+                            inherit_workspace_schemas: this.inheritWorkspaceSchemas === '1' || this.inheritWorkspaceSchemas === true,
                         }),
                     });
                     if (!response.ok) {
