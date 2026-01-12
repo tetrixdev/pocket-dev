@@ -250,6 +250,8 @@ class ClaudeCodeProvider implements AIProviderInterface
             '--output-format', 'stream-json',
             '--include-partial-messages',
             '--dangerously-skip-permissions',
+            '--setting-sources', 'user,project,local',
+            '--settings', escapeshellarg('/home/appuser/.claude/settings.json'),
             '--model', escapeshellarg($model),
         ];
 
@@ -266,6 +268,9 @@ class ClaudeCodeProvider implements AIProviderInterface
             $parts[] = '--tools';
             $parts[] = escapeshellarg(implode(',', $allowedTools));
         }
+
+        // Note: permissions.deny patterns in ~/.claude/settings.json are respected natively
+        // when loaded via --settings flag. No need to pass --disallowedTools explicitly.
 
         // Add system prompt if provided
         // Using --system-prompt instead of --append-system-prompt because:

@@ -1,16 +1,20 @@
 @extends('layouts.config')
 
-@section('title', 'hooks.json')
+@section('title', 'Hooks')
 
 @section('content')
 <form method="POST" action="{{ route('config.hooks.save') }}">
     @csrf
     <div class="mb-4">
-        <label for="content" class="block text-sm font-medium mb-2">hooks.json Content</label>
+        <label for="content" class="block text-sm font-medium mb-2">~/.claude/settings.json</label>
+        <p class="text-sm text-zinc-400 mb-3">
+            Claude Code settings file. See <a href="https://docs.anthropic.com/en/docs/claude-code/settings" target="_blank" class="text-blue-400 hover:underline">docs.anthropic.com/en/docs/claude-code/settings</a> for available options.
+        </p>
         <textarea
             id="content"
             name="content"
             class="config-editor w-full"
+            rows="20"
             required
         >{{ $content }}</textarea>
     </div>

@@ -653,18 +653,29 @@ class ConfigController extends Controller
     }
 
     /**
-     * Show hooks editor
+     * Show hooks editor (~/.claude/settings.json)
      */
     public function showHooks(Request $request)
     {
         $request->session()->put('config_last_section', 'hooks');
 
         try {
-            $settings = $this->readSettings();
-            $hooks = $settings['hooks'] ?? [];
+            $path = '/home/appuser/.claude/settings.json';
 
-            // Convert hooks to pretty JSON for editing
-            $content = json_encode($hooks, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            if (file_exists($path)) {
+                $content = file_get_contents($path);
+                // Re-encode to ensure pretty formatting
+                $decoded = json_decode($content, true);
+                if (is_array($decoded)) {
+                    $content = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+                }
+            } else {
+                // Default content with .env protection
+                $content = json_encode(
+                    ['permissions' => ['deny' => ['Read(**/.env)']]],
+                    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+                );
+            }
 
             return view('config.hooks', [
                 'content' => $content,
@@ -677,7 +688,7 @@ class ConfigController extends Controller
     }
 
     /**
-     * Save hooks
+     * Save hooks (~/.claude/settings.json)
      */
     public function saveHooks(Request $request)
     {
@@ -686,14 +697,19 @@ class ConfigController extends Controller
                 'content' => 'required|json',
             ]);
 
-            // Read current settings
-            $settings = $this->readSettings();
+            $path = '/home/appuser/.claude/settings.json';
 
-            // Update hooks section
-            $settings['hooks'] = json_decode($validated['content'], true);
+            // Validate it's valid JSON object
+            $decoded = json_decode($validated['content'], true);
+            if (!is_array($decoded)) {
+                throw new \InvalidArgumentException('Content must be a valid JSON object');
+            }
 
-            // Write back to settings.json
-            $this->writeSettings($settings);
+            // Write with pretty formatting
+            file_put_contents(
+                $path,
+                json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+            );
 
             return redirect()->back()->with('success', 'Hooks saved successfully');
         } catch (\Exception $e) {
