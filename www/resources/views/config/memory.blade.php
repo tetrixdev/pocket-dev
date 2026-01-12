@@ -196,6 +196,7 @@
                     x-cloak
                     class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
                     @click.self="showDeleteConfirm = false"
+                    @keydown.escape.window="showDeleteConfirm = false"
                 >
                     <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full shadow-xl border border-gray-700" @click.stop>
                         <h3 class="text-lg font-semibold text-white mb-4">Delete Memory Schema</h3>

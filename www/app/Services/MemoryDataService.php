@@ -188,7 +188,7 @@ class MemoryDataService
      * @param array<string, mixed> $data Column => value pairs to update
      * @param string $whereClause WHERE clause (without 'WHERE' keyword)
      * @param array<mixed> $whereParams Parameters for WHERE clause
-     * @return array{success: bool, affected_rows: int, message: string, embedded_rows?: int}
+     * @return array{success: bool, affected_rows: int, message: string, embedded_rows?: int, embedding_errors?: array}
      */
     public function update(string $tableName, array $data, string $whereClause, array $whereParams = []): array
     {

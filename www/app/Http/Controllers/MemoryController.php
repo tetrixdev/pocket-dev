@@ -746,11 +746,14 @@ class MemoryController extends Controller
             // Get counts for logging
             $workspaceCount = $memoryDatabase->workspaces()->count();
 
-            // Detach from all workspaces (pivot table cleanup for soft delete)
-            $memoryDatabase->workspaces()->detach();
+            // Wrap detach and delete in transaction for atomicity
+            $result = DB::transaction(function () use ($memoryDatabase) {
+                // Detach from all workspaces (pivot table cleanup for soft delete)
+                $memoryDatabase->workspaces()->detach();
 
-            // Soft delete only - never drop the PostgreSQL schema
-            $result = $this->databaseService->delete($memoryDatabase, dropSchema: false);
+                // Soft delete only - never drop the PostgreSQL schema
+                return $this->databaseService->delete($memoryDatabase, dropSchema: false);
+            });
 
             if ($result['success']) {
                 Log::info('Memory database deleted', [

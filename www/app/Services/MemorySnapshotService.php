@@ -785,10 +785,10 @@ class MemorySnapshotService
                 // Replace qualified names: source_schema.table -> target_schema.table
                 $sql = str_replace($sourceSchema . '.', $targetSchema . '.', $sql);
 
-                // Replace CREATE SCHEMA statements
+                // Replace CREATE SCHEMA statements (preserve IF NOT EXISTS)
                 $sql = preg_replace(
-                    '/CREATE SCHEMA\s+(?:IF NOT EXISTS\s+)?' . preg_quote($sourceSchema, '/') . '(\s|;)/i',
-                    'CREATE SCHEMA $1' . $targetSchema . '$1',
+                    '/CREATE SCHEMA(\s+IF NOT EXISTS)?\s+' . preg_quote($sourceSchema, '/') . '(\s|;)/i',
+                    'CREATE SCHEMA$1 ' . $targetSchema . '$2',
                     $sql
                 );
 
@@ -821,7 +821,13 @@ class MemorySnapshotService
 
             // Write transformed SQL to temp file
             $transformedPath = $this->directory . '/transformed_' . $filename;
-            file_put_contents($transformedPath, $sql);
+            if (file_put_contents($transformedPath, $sql) === false) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to write transformed SQL file',
+                    'backup_filename' => $backupFilename,
+                ];
+            }
 
             // Drop existing schema if overwriting
             if ($schemaExists) {
