@@ -653,18 +653,29 @@ class ConfigController extends Controller
     }
 
     /**
-     * Show hooks editor
+     * Show hooks editor (~/.claude/settings.json)
      */
     public function showHooks(Request $request)
     {
         $request->session()->put('config_last_section', 'hooks');
 
         try {
-            $settings = $this->readSettings();
-            $hooks = $settings['hooks'] ?? [];
+            $path = $this->getSettingsPath();
 
-            // Convert hooks to pretty JSON for editing
-            $content = json_encode($hooks, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            if (file_exists($path)) {
+                $content = file_get_contents($path);
+                // Re-encode to ensure pretty formatting
+                $decoded = json_decode($content, true);
+                if (is_array($decoded)) {
+                    $content = json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+                }
+            } else {
+                // Default content with .env protection
+                $content = json_encode(
+                    ['permissions' => ['deny' => ['Read(**/.env)']]],
+                    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+                );
+            }
 
             return view('config.hooks', [
                 'content' => $content,
@@ -677,7 +688,7 @@ class ConfigController extends Controller
     }
 
     /**
-     * Save hooks
+     * Save hooks (~/.claude/settings.json)
      */
     public function saveHooks(Request $request)
     {
@@ -686,61 +697,27 @@ class ConfigController extends Controller
                 'content' => 'required|json',
             ]);
 
-            // Read current settings
-            $settings = $this->readSettings();
+            $path = $this->getSettingsPath();
 
-            // Update hooks section
-            $settings['hooks'] = json_decode($validated['content'], true);
+            // Validate it's valid JSON (object or array)
+            $decoded = json_decode($validated['content'], true);
+            if (!is_array($decoded)) {
+                throw new \InvalidArgumentException('Content must be valid JSON');
+            }
 
-            // Write back to settings.json
-            $this->writeSettings($settings);
+            // Write with pretty formatting
+            $result = file_put_contents(
+                $path,
+                json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+            );
+            if ($result === false) {
+                throw new \RuntimeException('Failed to write settings file');
+            }
 
             return redirect()->back()->with('success', 'Hooks saved successfully');
         } catch (\Exception $e) {
             Log::error('Failed to save hooks', ['error' => $e->getMessage()]);
             return redirect()->back()->with('error', 'Failed to save hooks: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Read settings.json
-     */
-    protected function readSettings(): array
-    {
-        $settingsPath = $this->getSettingsPath();
-
-        if (!file_exists($settingsPath)) {
-            return [];
-        }
-
-        $content = file_get_contents($settingsPath);
-        if ($content === false) {
-            throw new \RuntimeException("Failed to read settings file");
-        }
-
-        $settings = json_decode($content, true);
-        if ($settings === null) {
-            throw new \RuntimeException("Failed to parse settings JSON");
-        }
-
-        return $settings;
-    }
-
-    /**
-     * Write settings.json
-     */
-    protected function writeSettings(array $settings): void
-    {
-        $settingsPath = $this->getSettingsPath();
-
-        $json = json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            throw new \RuntimeException("Failed to encode settings to JSON");
-        }
-
-        $result = file_put_contents($settingsPath, $json);
-        if ($result === false) {
-            throw new \RuntimeException("Failed to write settings file");
         }
     }
 

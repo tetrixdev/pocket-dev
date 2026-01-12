@@ -28,3 +28,7 @@ If a PocketDev tool returns an unexpected error or response:
 2. Quote the exact error or response
 3. Explain what you expected vs. what happened
 4. Wait for confirmation before trying workarounds
+
+## Hooks (File Protection)
+
+Claude Code CLI loads settings from `~/.claude/settings.json`. Users can view and configure settings via Settings → Hooks in the PocketDev UI. You can also edit this file on the user's request. See docs.anthropic.com/en/docs/claude-code/settings for available options.

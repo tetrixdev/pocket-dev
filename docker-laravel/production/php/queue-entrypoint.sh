@@ -46,6 +46,17 @@ mkdir -p /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 chown -R www-data:www-data /home/appuser 2>/dev/null || true
 chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 
+# Set up default Claude Code permissions.deny to protect .env files
+# This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
+CLAUDE_SETTINGS="/home/appuser/.claude/settings.json"
+if [ ! -f "$CLAUDE_SETTINGS" ]; then
+    # Create minimal settings with default deny patterns
+    echo '{"permissions":{"deny":["Read(**/.env)"]}}' > "$CLAUDE_SETTINGS"
+    chown www-data:www-data "$CLAUDE_SETTINGS"
+    chmod 644 "$CLAUDE_SETTINGS"
+    echo "Created default Claude settings with .env protection"
+fi
+
 # Ensure workspace directory is writable by www-data
 chown www-data:www-data /workspace 2>/dev/null || true
 chmod 775 /workspace 2>/dev/null || true
