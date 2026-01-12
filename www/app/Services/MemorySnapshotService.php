@@ -786,57 +786,85 @@ class MemorySnapshotService
         }
 
         try {
-            // Read and transform SQL
-            $sql = file_get_contents($path);
-
-            // Replace schema references if source differs from target
-            if ($sourceSchema !== $targetSchema) {
-                // Replace qualified names: source_schema.table -> target_schema.table
-                $sql = str_replace($sourceSchema . '.', $targetSchema . '.', $sql);
-
-                // Replace CREATE SCHEMA statements (preserve IF NOT EXISTS)
-                $sql = preg_replace(
-                    '/CREATE SCHEMA(\s+IF NOT EXISTS)?\s+' . preg_quote($sourceSchema, '/') . '(\s|;)/i',
-                    'CREATE SCHEMA$1 ' . $targetSchema . '$2',
-                    $sql
-                );
-
-                // Replace SET search_path statements
-                $sql = preg_replace(
-                    '/SET\s+search_path\s*=\s*' . preg_quote($sourceSchema, '/') . '/i',
-                    'SET search_path = ' . $targetSchema,
-                    $sql
-                );
-
-                // Replace GRANT/REVOKE ON SCHEMA statements
-                $sql = preg_replace(
-                    '/ON SCHEMA\s+' . preg_quote($sourceSchema, '/') . '/i',
-                    'ON SCHEMA ' . $targetSchema,
-                    $sql
-                );
-
-                // Replace IN SCHEMA statements (for default privileges)
-                $sql = preg_replace(
-                    '/IN SCHEMA\s+' . preg_quote($sourceSchema, '/') . '/i',
-                    'IN SCHEMA ' . $targetSchema,
-                    $sql
-                );
-
-                // Replace index names that include schema prefix: idx_schemaname_
-                $sourceSchemaShort = str_replace('memory_', '', $sourceSchema);
-                $targetSchemaShort = str_replace('memory_', '', $targetSchema);
-                $sql = str_replace('idx_' . $sourceSchemaShort . '_', 'idx_' . $targetSchemaShort . '_', $sql);
-            }
-
-            // Write transformed SQL to temp file
+            // Stream-transform SQL line by line to handle large files (1GB+)
             $transformedPath = $this->directory . '/transformed_' . $filename;
-            if (file_put_contents($transformedPath, $sql) === false) {
+
+            $sourceHandle = @fopen($path, 'r');
+            if ($sourceHandle === false) {
                 return [
                     'success' => false,
-                    'message' => 'Failed to write transformed SQL file',
+                    'message' => 'Failed to open source SQL file for reading',
                     'backup_filename' => $backupFilename,
                 ];
             }
+
+            $destHandle = @fopen($transformedPath, 'w');
+            if ($destHandle === false) {
+                fclose($sourceHandle);
+                return [
+                    'success' => false,
+                    'message' => 'Failed to create transformed SQL file',
+                    'backup_filename' => $backupFilename,
+                ];
+            }
+
+            // Prepare transformation patterns if schemas differ
+            $needsTransform = $sourceSchema !== $targetSchema;
+            $sourceSchemaShort = str_replace('memory_', '', $sourceSchema);
+            $targetSchemaShort = str_replace('memory_', '', $targetSchema);
+
+            // Stream line by line
+            while (($line = fgets($sourceHandle)) !== false) {
+                if ($needsTransform) {
+                    // Replace qualified names: source_schema.table -> target_schema.table
+                    $line = str_replace($sourceSchema . '.', $targetSchema . '.', $line);
+
+                    // Replace CREATE SCHEMA statements (preserve IF NOT EXISTS)
+                    $line = preg_replace(
+                        '/CREATE SCHEMA(\s+IF NOT EXISTS)?\s+' . preg_quote($sourceSchema, '/') . '(\s|;)/i',
+                        'CREATE SCHEMA$1 ' . $targetSchema . '$2',
+                        $line
+                    );
+
+                    // Replace SET search_path statements
+                    $line = preg_replace(
+                        '/SET\s+search_path\s*=\s*' . preg_quote($sourceSchema, '/') . '/i',
+                        'SET search_path = ' . $targetSchema,
+                        $line
+                    );
+
+                    // Replace GRANT/REVOKE ON SCHEMA statements
+                    $line = preg_replace(
+                        '/ON SCHEMA\s+' . preg_quote($sourceSchema, '/') . '/i',
+                        'ON SCHEMA ' . $targetSchema,
+                        $line
+                    );
+
+                    // Replace IN SCHEMA statements (for default privileges)
+                    $line = preg_replace(
+                        '/IN SCHEMA\s+' . preg_quote($sourceSchema, '/') . '/i',
+                        'IN SCHEMA ' . $targetSchema,
+                        $line
+                    );
+
+                    // Replace index names that include schema prefix: idx_schemaname_
+                    $line = str_replace('idx_' . $sourceSchemaShort . '_', 'idx_' . $targetSchemaShort . '_', $line);
+                }
+
+                if (fwrite($destHandle, $line) === false) {
+                    fclose($sourceHandle);
+                    fclose($destHandle);
+                    @unlink($transformedPath);
+                    return [
+                        'success' => false,
+                        'message' => 'Failed to write to transformed SQL file',
+                        'backup_filename' => $backupFilename,
+                    ];
+                }
+            }
+
+            fclose($sourceHandle);
+            fclose($destHandle);
 
             // Drop existing schema if overwriting
             if ($schemaExists) {
