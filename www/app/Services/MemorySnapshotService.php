@@ -637,6 +637,14 @@ class MemorySnapshotService
         // Read first 100KB of file (schema info is always near the top)
         $content = file_get_contents($filePath, false, null, 0, 102400);
 
+        if ($content === false) {
+            return [
+                'success' => false,
+                'schema_name' => null,
+                'message' => 'Failed to read file',
+            ];
+        }
+
         // Pattern 1: CREATE SCHEMA memory_xxx
         if (preg_match('/CREATE SCHEMA\s+(?:IF NOT EXISTS\s+)?(memory_[a-z][a-z0-9_]*)/i', $content, $matches)) {
             return [
@@ -682,9 +690,10 @@ class MemorySnapshotService
     {
         $this->ensureDirectory();
 
-        // Generate new filename with timestamp
+        // Generate new filename with timestamp and random suffix to prevent collisions
         $timestamp = now()->format('Ymd_His');
-        $filename = "pending_import_{$timestamp}.sql";
+        $randomSuffix = bin2hex(random_bytes(4));
+        $filename = "pending_import_{$timestamp}_{$randomSuffix}.sql";
         $destinationPath = $this->directory . '/' . $filename;
 
         // Copy file (not move, since temp file may be needed)
@@ -726,8 +735,8 @@ class MemorySnapshotService
         string $targetSchema,
         bool $overwrite = false
     ): array {
-        // Validate filename format
-        if (!preg_match('/^pending_import_\d{8}_\d{6}\.sql$/', $filename)) {
+        // Validate filename format (supports both old and new format with random suffix)
+        if (!preg_match('/^pending_import_\d{8}_\d{6}(_[a-f0-9]{8})?\.sql$/', $filename)) {
             return ['success' => false, 'message' => 'Invalid import file format'];
         }
 
@@ -852,7 +861,7 @@ class MemorySnapshotService
                 }
             }
 
-            // Execute transformed SQL
+            // Execute transformed SQL with ON_ERROR_STOP to fail fast on errors
             $restoreResult = Process::env(['PGPASSWORD' => $dbPassword])
                 ->timeout(300)
                 ->run([
@@ -861,20 +870,24 @@ class MemorySnapshotService
                     '-p', (string) $dbPort,
                     '-U', $dbUser,
                     '-d', $dbName,
+                    '-v', 'ON_ERROR_STOP=1',
                     '-f', $transformedPath,
                 ]);
 
-            // Clean up temp files
+            // Clean up transformed file (always)
             @unlink($transformedPath);
-            @unlink($path);
 
             if (!$restoreResult->successful()) {
+                // Keep pending file for retry - don't delete $path here
                 return [
                     'success' => false,
                     'message' => 'Import failed: ' . $restoreResult->errorOutput(),
                     'backup_filename' => $backupFilename,
                 ];
             }
+
+            // Only delete pending file on success
+            @unlink($path);
 
             Log::info('Schema imported with transformation', [
                 'source_schema' => $sourceSchema,
@@ -907,7 +920,8 @@ class MemorySnapshotService
      */
     public function deletePendingImport(string $filename): bool
     {
-        if (!preg_match('/^pending_import_\d{8}_\d{6}\.sql$/', $filename)) {
+        // Supports both old and new format with random suffix
+        if (!preg_match('/^pending_import_\d{8}_\d{6}(_[a-f0-9]{8})?\.sql$/', $filename)) {
             return false;
         }
 

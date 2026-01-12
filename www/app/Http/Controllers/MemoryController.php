@@ -343,10 +343,10 @@ class MemoryController extends Controller
                 $request->boolean('overwrite', false)
             );
 
-            // Clear pending import
-            $request->session()->forget('import_pending');
-
             if ($result['success']) {
+                // Only clear pending import on success - allow retry on failure
+                $request->session()->forget('import_pending');
+
                 return redirect()
                     ->route('config.memory')
                     ->with('success', $result['message']);
@@ -740,7 +740,7 @@ class MemoryController extends Controller
     /**
      * Delete a memory database (soft delete only).
      */
-    public function deleteDatabase(Request $request, MemoryDatabase $memoryDatabase)
+    public function deleteDatabase(MemoryDatabase $memoryDatabase)
     {
         try {
             // Get counts for logging

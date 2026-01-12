@@ -295,7 +295,12 @@ class MemoryDataService
                             if ($embeddedResult['success']) {
                                 $embeddedRows++;
                             } else {
-                                $embeddingErrors = array_merge($embeddingErrors, $embeddedResult['errors'] ?? []);
+                                // Add row context to errors for easier debugging
+                                $rowErrors = array_map(
+                                    fn($err) => "[row {$rowId}] {$err}",
+                                    $embeddedResult['errors'] ?? []
+                                );
+                                $embeddingErrors = array_merge($embeddingErrors, $rowErrors);
                             }
                         }
                     }
