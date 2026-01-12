@@ -660,7 +660,7 @@ class ConfigController extends Controller
         $request->session()->put('config_last_section', 'hooks');
 
         try {
-            $path = '/home/appuser/.claude/settings.json';
+            $path = $this->getSettingsPath();
 
             if (file_exists($path)) {
                 $content = file_get_contents($path);
@@ -697,66 +697,27 @@ class ConfigController extends Controller
                 'content' => 'required|json',
             ]);
 
-            $path = '/home/appuser/.claude/settings.json';
+            $path = $this->getSettingsPath();
 
-            // Validate it's valid JSON object
+            // Validate it's valid JSON (object or array)
             $decoded = json_decode($validated['content'], true);
             if (!is_array($decoded)) {
-                throw new \InvalidArgumentException('Content must be a valid JSON object');
+                throw new \InvalidArgumentException('Content must be valid JSON');
             }
 
             // Write with pretty formatting
-            file_put_contents(
+            $result = file_put_contents(
                 $path,
                 json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
             );
+            if ($result === false) {
+                throw new \RuntimeException('Failed to write settings file');
+            }
 
             return redirect()->back()->with('success', 'Hooks saved successfully');
         } catch (\Exception $e) {
             Log::error('Failed to save hooks', ['error' => $e->getMessage()]);
             return redirect()->back()->with('error', 'Failed to save hooks: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Read settings.json
-     */
-    protected function readSettings(): array
-    {
-        $settingsPath = $this->getSettingsPath();
-
-        if (!file_exists($settingsPath)) {
-            return [];
-        }
-
-        $content = file_get_contents($settingsPath);
-        if ($content === false) {
-            throw new \RuntimeException("Failed to read settings file");
-        }
-
-        $settings = json_decode($content, true);
-        if ($settings === null) {
-            throw new \RuntimeException("Failed to parse settings JSON");
-        }
-
-        return $settings;
-    }
-
-    /**
-     * Write settings.json
-     */
-    protected function writeSettings(array $settings): void
-    {
-        $settingsPath = $this->getSettingsPath();
-
-        $json = json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            throw new \RuntimeException("Failed to encode settings to JSON");
-        }
-
-        $result = file_put_contents($settingsPath, $json);
-        if ($result === false) {
-            throw new \RuntimeException("Failed to write settings file");
         }
     }
 
