@@ -934,6 +934,11 @@ class MemorySnapshotService
                 'backup_filename' => $backupFilename,
             ];
         } catch (\Exception $e) {
+            // Clean up transformed file if it exists
+            if (isset($transformedPath) && file_exists($transformedPath)) {
+                @unlink($transformedPath);
+            }
+
             Log::error('Import failed', ['error' => $e->getMessage()]);
             return [
                 'success' => false,
