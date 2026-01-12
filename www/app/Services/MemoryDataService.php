@@ -273,6 +273,7 @@ class MemoryDataService
 
             // Regenerate embeddings for affected rows
             $embeddedRows = 0;
+            $embeddingErrors = [];
             if (!empty($updatedEmbedFields) && !empty($affectedIds)) {
                 foreach ($affectedIds as $rowId) {
                     // Get updated row data
@@ -290,8 +291,12 @@ class MemoryDataService
                         }
 
                         if (!empty($fieldsToEmbed)) {
-                            $this->embeddingService->embedFields($tableName, $rowId, $fieldsToEmbed);
-                            $embeddedRows++;
+                            $embeddedResult = $this->embeddingService->embedFields($tableName, $rowId, $fieldsToEmbed);
+                            if ($embeddedResult['success']) {
+                                $embeddedRows++;
+                            } else {
+                                $embeddingErrors = array_merge($embeddingErrors, $embeddedResult['errors'] ?? []);
+                            }
                         }
                     }
                 }
@@ -302,6 +307,7 @@ class MemoryDataService
                 'schema' => $schemaName,
                 'affected_rows' => $affectedRows,
                 'embedded_rows' => $embeddedRows,
+                'embedding_errors' => $embeddingErrors,
             ]);
 
             return [
@@ -309,6 +315,7 @@ class MemoryDataService
                 'affected_rows' => $affectedRows,
                 'message' => "Updated {$affectedRows} row(s) in {$schemaName}.{$tableName}",
                 'embedded_rows' => $embeddedRows,
+                'embedding_errors' => $embeddingErrors,
             ];
         } catch (\Exception $e) {
             Log::error('Failed to update memory rows', [

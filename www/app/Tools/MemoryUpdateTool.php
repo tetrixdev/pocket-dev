@@ -187,6 +187,14 @@ API;
                 $output[] = "Re-embedded {$result['embedded_rows']} row(s)";
             }
 
+            // Report embedding errors if any occurred
+            if (!empty($result['embedding_errors'])) {
+                $output[] = "\nEmbedding errors:";
+                foreach ($result['embedding_errors'] as $error) {
+                    $output[] = "- " . $error;
+                }
+            }
+
             return ToolResult::success(implode("\n", $output));
         }
 
