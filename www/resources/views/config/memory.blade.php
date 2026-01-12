@@ -174,14 +174,79 @@
                     </form>
                 </div>
 
-                {{-- Edit button --}}
-                <button
-                    x-show="!editing"
-                    @click="startEditing()"
-                    class="text-sm text-blue-400 hover:text-blue-300 whitespace-nowrap"
+                {{-- Action buttons --}}
+                <div x-show="!editing" class="flex items-center gap-3">
+                    <button
+                        @click="startEditing()"
+                        class="text-sm text-blue-400 hover:text-blue-300 whitespace-nowrap"
+                    >
+                        Edit Description
+                    </button>
+                    <button
+                        @click="showDeleteConfirm = true"
+                        class="text-sm text-red-400 hover:text-red-300 whitespace-nowrap"
+                    >
+                        Delete
+                    </button>
+                </div>
+
+                {{-- Delete confirmation modal --}}
+                <div
+                    x-show="showDeleteConfirm"
+                    x-cloak
+                    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+                    @click.self="showDeleteConfirm = false"
+                    @keydown.escape.window="showDeleteConfirm = false"
+                    x-trap.inert.noscroll="showDeleteConfirm"
                 >
-                    Edit Description
-                </button>
+                    <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full shadow-xl border border-gray-700" @click.stop>
+                        <h3 class="text-lg font-semibold text-white mb-4">Delete Memory Schema</h3>
+
+                        <p class="text-gray-300 mb-4">
+                            Are you sure you want to delete <strong>{{ $selectedDatabase->name }}</strong>?
+                        </p>
+
+                        @php
+                            $wsCount = $selectedDatabase->workspaces()->count();
+                        @endphp
+
+                        @if($wsCount > 0)
+                            <div class="bg-yellow-900/50 border border-yellow-700 rounded p-3 mb-4">
+                                <p class="text-yellow-200 text-sm">
+                                    This schema is currently linked to <strong>{{ $wsCount }}</strong> workspace{{ $wsCount > 1 ? 's' : '' }}.
+                                    It will be unlinked automatically.
+                                </p>
+                            </div>
+                        @endif
+
+                        <div class="bg-gray-700/50 border border-gray-600 rounded p-3 mb-4">
+                            <p class="text-gray-300 text-sm">
+                                The PostgreSQL schema and all data will be preserved. Only the database record is removed.
+                            </p>
+                        </div>
+
+                        <form method="POST" action="{{ route('config.memory.delete-database', $selectedDatabase) }}">
+                            @csrf
+                            @method('DELETE')
+
+                            <div class="flex gap-3 justify-end">
+                                <button
+                                    type="button"
+                                    @click="showDeleteConfirm = false"
+                                    class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm rounded"
+                                >
+                                    Delete
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -414,10 +479,10 @@
             <div class="bg-gray-800 rounded-lg p-4">
                 <h3 class="font-medium text-white mb-3">Export</h3>
                 <div class="space-y-2">
-                    <a href="{{ route('config.memory.export') }}" class="block w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded text-center">
+                    <a href="{{ route('config.memory.export', ['db' => $selectedDatabase->id]) }}" class="block w-full px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded text-center">
                         Full Backup
                     </a>
-                    <a href="{{ route('config.memory.export', ['schema_only' => 1]) }}" class="block w-full px-3 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded text-center">
+                    <a href="{{ route('config.memory.export', ['db' => $selectedDatabase->id, 'schema_only' => 1]) }}" class="block w-full px-3 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded text-center">
                         Schema Only
                     </a>
                 </div>
@@ -461,6 +526,7 @@
     function memoryDatabaseEditor() {
         return {
             editing: false,
+            showDeleteConfirm: false,
             startEditing() {
                 this.editing = true;
                 this.$nextTick(() => {

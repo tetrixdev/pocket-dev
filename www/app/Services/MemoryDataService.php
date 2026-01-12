@@ -188,7 +188,7 @@ class MemoryDataService
      * @param array<string, mixed> $data Column => value pairs to update
      * @param string $whereClause WHERE clause (without 'WHERE' keyword)
      * @param array<mixed> $whereParams Parameters for WHERE clause
-     * @return array{success: bool, affected_rows: int, message: string, embedded_rows?: int}
+     * @return array{success: bool, affected_rows: int, message: string, embedded_rows?: int, embedding_errors?: array}
      */
     public function update(string $tableName, array $data, string $whereClause, array $whereParams = []): array
     {
@@ -273,6 +273,7 @@ class MemoryDataService
 
             // Regenerate embeddings for affected rows
             $embeddedRows = 0;
+            $embeddingErrors = [];
             if (!empty($updatedEmbedFields) && !empty($affectedIds)) {
                 foreach ($affectedIds as $rowId) {
                     // Get updated row data
@@ -290,8 +291,17 @@ class MemoryDataService
                         }
 
                         if (!empty($fieldsToEmbed)) {
-                            $this->embeddingService->embedFields($tableName, $rowId, $fieldsToEmbed);
-                            $embeddedRows++;
+                            $embeddedResult = $this->embeddingService->embedFields($tableName, $rowId, $fieldsToEmbed);
+                            if ($embeddedResult['success']) {
+                                $embeddedRows++;
+                            } else {
+                                // Add row context to errors for easier debugging
+                                $rowErrors = array_map(
+                                    fn($err) => "[row {$rowId}] {$err}",
+                                    $embeddedResult['errors'] ?? []
+                                );
+                                $embeddingErrors = array_merge($embeddingErrors, $rowErrors);
+                            }
                         }
                     }
                 }
@@ -302,6 +312,7 @@ class MemoryDataService
                 'schema' => $schemaName,
                 'affected_rows' => $affectedRows,
                 'embedded_rows' => $embeddedRows,
+                'embedding_errors' => $embeddingErrors,
             ]);
 
             return [
@@ -309,6 +320,7 @@ class MemoryDataService
                 'affected_rows' => $affectedRows,
                 'message' => "Updated {$affectedRows} row(s) in {$schemaName}.{$tableName}",
                 'embedded_rows' => $embeddedRows,
+                'embedding_errors' => $embeddingErrors,
             ];
         } catch (\Exception $e) {
             Log::error('Failed to update memory rows', [

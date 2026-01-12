@@ -266,30 +266,114 @@ class MemoryController extends Controller
     }
 
     /**
-     * Import memory schema (upload).
+     * Import memory schema - Step 1: Upload file and detect schema.
      */
     public function import(Request $request)
     {
-        $selectedDatabase = $this->getSelectedDatabase($request);
-        $this->configureServices($selectedDatabase);
-
         $request->validate([
             'snapshot_file' => 'required|file|mimes:sql,txt|max:102400', // 100MB max
         ]);
 
         try {
             $file = $request->file('snapshot_file');
-            $result = $this->snapshotService->import($file->getRealPath());
+            $result = $this->snapshotService->importForConfiguration($file->getRealPath());
 
             if ($result['success']) {
-                return redirect()->back()->with('success', $result['message']);
+                // Store in session for configuration step
+                $request->session()->put('import_pending', [
+                    'filename' => $result['filename'],
+                    'detected_schema' => $result['detected_schema'],
+                ]);
+
+                return redirect()
+                    ->route('config.memory.import.configure')
+                    ->with('success', 'File uploaded. Configure import options below.');
             } else {
                 return redirect()->back()->with('error', $result['message']);
             }
         } catch (\Exception $e) {
-            Log::error('Failed to import snapshot', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to import snapshot');
+            Log::error('Failed to upload import', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to upload file');
         }
+    }
+
+    /**
+     * Import memory schema - Step 2: Show configuration form.
+     */
+    public function importConfigure(Request $request)
+    {
+        $pending = $request->session()->get('import_pending');
+        if (!$pending) {
+            return redirect()->route('config.memory')->with('error', 'No pending import');
+        }
+
+        // Get existing schemas for validation
+        $existingSchemas = MemoryDatabase::pluck('schema_name')
+            ->map(fn($s) => 'memory_' . $s)
+            ->toArray();
+
+        return view('config.memory-import', [
+            'filename' => $pending['filename'],
+            'detectedSchema' => $pending['detected_schema'],
+            'existingSchemas' => $existingSchemas,
+        ]);
+    }
+
+    /**
+     * Import memory schema - Step 3: Apply import with transformation.
+     */
+    public function importApply(Request $request)
+    {
+        $pending = $request->session()->get('import_pending');
+        if (!$pending) {
+            return redirect()->route('config.memory')->with('error', 'No pending import');
+        }
+
+        $validated = $request->validate([
+            'source_schema' => 'required|string|regex:/^memory_[a-z][a-z0-9_]*$/',
+            'target_schema' => 'required|string|regex:/^memory_[a-z][a-z0-9_]*$/',
+            'overwrite' => 'boolean',
+        ]);
+
+        try {
+            $result = $this->snapshotService->applyImportWithTransform(
+                $pending['filename'],
+                $validated['source_schema'],
+                $validated['target_schema'],
+                $request->boolean('overwrite', false)
+            );
+
+            if ($result['success']) {
+                // Only clear pending import on success - allow retry on failure
+                $request->session()->forget('import_pending');
+
+                return redirect()
+                    ->route('config.memory')
+                    ->with('success', $result['message']);
+            } else {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', $result['message']);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to apply import', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to apply import');
+        }
+    }
+
+    /**
+     * Cancel pending import.
+     */
+    public function importCancel(Request $request)
+    {
+        $pending = $request->session()->get('import_pending');
+        if ($pending && isset($pending['filename'])) {
+            // Clean up uploaded file
+            $this->snapshotService->deletePendingImport($pending['filename']);
+        }
+
+        $request->session()->forget('import_pending');
+        return redirect()->route('config.memory')->with('info', 'Import cancelled');
     }
 
     /**
@@ -650,6 +734,47 @@ class MemoryController extends Controller
                 ->back()
                 ->withInput()
                 ->with('error', $result['message']);
+        }
+    }
+
+    /**
+     * Delete a memory database (soft delete only).
+     */
+    public function deleteDatabase(MemoryDatabase $memoryDatabase)
+    {
+        try {
+            // Get counts for logging
+            $workspaceCount = $memoryDatabase->workspaces()->count();
+
+            // Wrap detach and delete in transaction for atomicity
+            $result = DB::transaction(function () use ($memoryDatabase) {
+                // Detach from all workspaces (pivot table cleanup for soft delete)
+                $memoryDatabase->workspaces()->detach();
+
+                // Soft delete only - never drop the PostgreSQL schema
+                return $this->databaseService->delete($memoryDatabase, dropSchema: false);
+            });
+
+            if ($result['success']) {
+                Log::info('Memory database deleted', [
+                    'id' => $memoryDatabase->id,
+                    'name' => $memoryDatabase->name,
+                    'affected_workspaces' => $workspaceCount,
+                ]);
+
+                return redirect()
+                    ->route('config.memory')
+                    ->with('success', $result['message']);
+            } else {
+                return redirect()->back()->with('error', $result['message']);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to delete memory database', [
+                'id' => $memoryDatabase->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()->with('error', 'Failed to delete: ' . $e->getMessage());
         }
     }
 

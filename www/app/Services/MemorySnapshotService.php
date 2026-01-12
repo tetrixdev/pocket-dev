@@ -616,4 +616,352 @@ class MemorySnapshotService
             return 'expired';
         }
     }
+
+    /**
+     * Detect the source schema name from a SQL dump file.
+     * Looks for CREATE SCHEMA, SET search_path, or qualified table names.
+     *
+     * @param string $filePath Path to the SQL file
+     * @return array{success: bool, schema_name: ?string, message: string}
+     */
+    public function detectSourceSchema(string $filePath): array
+    {
+        if (!file_exists($filePath)) {
+            return [
+                'success' => false,
+                'schema_name' => null,
+                'message' => 'File not found',
+            ];
+        }
+
+        // Read first 100KB of file (schema info is always near the top)
+        $content = file_get_contents($filePath, false, null, 0, 102400);
+
+        if ($content === false) {
+            return [
+                'success' => false,
+                'schema_name' => null,
+                'message' => 'Failed to read file',
+            ];
+        }
+
+        // Pattern 1: CREATE SCHEMA memory_xxx
+        if (preg_match('/CREATE SCHEMA\s+(?:IF NOT EXISTS\s+)?(memory_[a-z][a-z0-9_]*)/i', $content, $matches)) {
+            return [
+                'success' => true,
+                'schema_name' => strtolower($matches[1]),
+                'message' => 'Schema detected from CREATE SCHEMA statement',
+            ];
+        }
+
+        // Pattern 2: SET search_path = memory_xxx
+        if (preg_match('/SET\s+search_path\s*=\s*(memory_[a-z][a-z0-9_]*)/i', $content, $matches)) {
+            return [
+                'success' => true,
+                'schema_name' => strtolower($matches[1]),
+                'message' => 'Schema detected from search_path',
+            ];
+        }
+
+        // Pattern 3: memory_xxx.table_name in any statement
+        if (preg_match('/(memory_[a-z][a-z0-9_]*)\./', $content, $matches)) {
+            return [
+                'success' => true,
+                'schema_name' => strtolower($matches[1]),
+                'message' => 'Schema detected from qualified table name',
+            ];
+        }
+
+        return [
+            'success' => false,
+            'schema_name' => null,
+            'message' => 'Could not detect schema name from SQL file',
+        ];
+    }
+
+    /**
+     * Import a snapshot file and store it for configuration.
+     * Returns information needed for the configuration step.
+     *
+     * @param string $uploadedPath Path to the uploaded SQL file
+     * @return array{success: bool, filename?: string, detected_schema?: string, message: string}
+     */
+    public function importForConfiguration(string $uploadedPath): array
+    {
+        $this->ensureDirectory();
+
+        // Generate new filename with timestamp and random suffix to prevent collisions
+        $timestamp = now()->format('Ymd_His');
+        $randomSuffix = bin2hex(random_bytes(4));
+        $filename = "pending_import_{$timestamp}_{$randomSuffix}.sql";
+        $destinationPath = $this->directory . '/' . $filename;
+
+        // Copy file (not move, since temp file may be needed)
+        if (!copy($uploadedPath, $destinationPath)) {
+            return [
+                'success' => false,
+                'message' => 'Failed to copy uploaded file to snapshots directory',
+            ];
+        }
+
+        // Detect source schema
+        $detection = $this->detectSourceSchema($destinationPath);
+
+        Log::info('Snapshot uploaded for configuration', [
+            'filename' => $filename,
+            'detected_schema' => $detection['schema_name'],
+        ]);
+
+        return [
+            'success' => true,
+            'filename' => $filename,
+            'detected_schema' => $detection['schema_name'],
+            'message' => 'File uploaded. Configure import options.',
+        ];
+    }
+
+    /**
+     * Apply import with schema transformation.
+     *
+     * @param string $filename The pending import file
+     * @param string $sourceSchema Original schema name in file
+     * @param string $targetSchema Target schema name
+     * @param bool $overwrite Whether to overwrite existing schema
+     * @return array{success: bool, message: string, backup_filename?: string}
+     */
+    public function applyImportWithTransform(
+        string $filename,
+        string $sourceSchema,
+        string $targetSchema,
+        bool $overwrite = false
+    ): array {
+        // Validate filename format (supports both old and new format with random suffix)
+        if (!preg_match('/^pending_import_\d{8}_\d{6}(_[a-f0-9]{8})?\.sql$/', $filename)) {
+            return ['success' => false, 'message' => 'Invalid import file format'];
+        }
+
+        $path = $this->directory . '/' . $filename;
+        if (!file_exists($path)) {
+            return ['success' => false, 'message' => 'Import file not found'];
+        }
+
+        // Validate schema names
+        if (!preg_match('/^memory_[a-z][a-z0-9_]*$/', $sourceSchema)) {
+            return ['success' => false, 'message' => 'Invalid source schema name format'];
+        }
+        if (!preg_match('/^memory_[a-z][a-z0-9_]*$/', $targetSchema)) {
+            return ['success' => false, 'message' => 'Invalid target schema name format'];
+        }
+
+        $dbHost = config('database.connections.pgsql.host');
+        $dbPort = config('database.connections.pgsql.port');
+        $dbName = config('database.connections.pgsql.database');
+        $dbUser = config('database.connections.pgsql.username');
+        $dbPassword = config('database.connections.pgsql.password');
+
+        // Check if target exists
+        $schemaExists = \Illuminate\Support\Facades\DB::connection('pgsql')->selectOne(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.schemata WHERE schema_name = ?) as exists",
+            [$targetSchema]
+        )->exists;
+
+        if ($schemaExists && !$overwrite) {
+            return [
+                'success' => false,
+                'message' => "Schema '{$targetSchema}' already exists. Enable overwrite to replace it.",
+            ];
+        }
+
+        // Create backup if overwriting
+        $backupFilename = null;
+        if ($schemaExists && $overwrite) {
+            $memoryDb = MemoryDatabase::where('schema_name', str_replace('memory_', '', $targetSchema))->first();
+            if ($memoryDb) {
+                $this->setMemoryDatabase($memoryDb);
+                $backupResult = $this->create();
+                if ($backupResult['success']) {
+                    $backupFilename = $backupResult['filename'];
+                }
+            }
+        }
+
+        try {
+            // Stream-transform SQL line by line to handle large files (1GB+)
+            $transformedPath = $this->directory . '/transformed_' . $filename;
+
+            $sourceHandle = @fopen($path, 'r');
+            if ($sourceHandle === false) {
+                return [
+                    'success' => false,
+                    'message' => 'Failed to open source SQL file for reading',
+                    'backup_filename' => $backupFilename,
+                ];
+            }
+
+            $destHandle = @fopen($transformedPath, 'w');
+            if ($destHandle === false) {
+                fclose($sourceHandle);
+                return [
+                    'success' => false,
+                    'message' => 'Failed to create transformed SQL file',
+                    'backup_filename' => $backupFilename,
+                ];
+            }
+
+            // Prepare transformation patterns if schemas differ
+            $needsTransform = $sourceSchema !== $targetSchema;
+            $sourceSchemaShort = str_replace('memory_', '', $sourceSchema);
+            $targetSchemaShort = str_replace('memory_', '', $targetSchema);
+
+            // Stream line by line
+            while (($line = fgets($sourceHandle)) !== false) {
+                if ($needsTransform) {
+                    // Replace qualified names: source_schema.table -> target_schema.table
+                    $line = str_replace($sourceSchema . '.', $targetSchema . '.', $line);
+
+                    // Replace CREATE SCHEMA statements (preserve IF NOT EXISTS)
+                    $line = preg_replace(
+                        '/CREATE SCHEMA(\s+IF NOT EXISTS)?\s+' . preg_quote($sourceSchema, '/') . '(\s|;)/i',
+                        'CREATE SCHEMA$1 ' . $targetSchema . '$2',
+                        $line
+                    );
+
+                    // Replace SET search_path statements
+                    $line = preg_replace(
+                        '/SET\s+search_path\s*=\s*' . preg_quote($sourceSchema, '/') . '/i',
+                        'SET search_path = ' . $targetSchema,
+                        $line
+                    );
+
+                    // Replace GRANT/REVOKE ON SCHEMA statements
+                    $line = preg_replace(
+                        '/ON SCHEMA\s+' . preg_quote($sourceSchema, '/') . '/i',
+                        'ON SCHEMA ' . $targetSchema,
+                        $line
+                    );
+
+                    // Replace IN SCHEMA statements (for default privileges)
+                    $line = preg_replace(
+                        '/IN SCHEMA\s+' . preg_quote($sourceSchema, '/') . '/i',
+                        'IN SCHEMA ' . $targetSchema,
+                        $line
+                    );
+
+                    // Replace index names that include schema prefix: idx_schemaname_
+                    $line = str_replace('idx_' . $sourceSchemaShort . '_', 'idx_' . $targetSchemaShort . '_', $line);
+                }
+
+                if (fwrite($destHandle, $line) === false) {
+                    fclose($sourceHandle);
+                    fclose($destHandle);
+                    @unlink($transformedPath);
+                    return [
+                        'success' => false,
+                        'message' => 'Failed to write to transformed SQL file',
+                        'backup_filename' => $backupFilename,
+                    ];
+                }
+            }
+
+            fclose($sourceHandle);
+            fclose($destHandle);
+
+            // Drop existing schema if overwriting
+            if ($schemaExists) {
+                $dropResult = Process::env(['PGPASSWORD' => $dbPassword])
+                    ->timeout(60)
+                    ->run([
+                        'psql',
+                        '-h', $dbHost,
+                        '-p', (string) $dbPort,
+                        '-U', $dbUser,
+                        '-d', $dbName,
+                        '-c', "DROP SCHEMA IF EXISTS {$targetSchema} CASCADE;",
+                    ]);
+
+                if (!$dropResult->successful()) {
+                    @unlink($transformedPath);
+                    return [
+                        'success' => false,
+                        'message' => 'Failed to drop existing schema: ' . $dropResult->errorOutput(),
+                        'backup_filename' => $backupFilename,
+                    ];
+                }
+            }
+
+            // Execute transformed SQL with ON_ERROR_STOP to fail fast on errors
+            $restoreResult = Process::env(['PGPASSWORD' => $dbPassword])
+                ->timeout(300)
+                ->run([
+                    'psql',
+                    '-h', $dbHost,
+                    '-p', (string) $dbPort,
+                    '-U', $dbUser,
+                    '-d', $dbName,
+                    '-v', 'ON_ERROR_STOP=1',
+                    '-f', $transformedPath,
+                ]);
+
+            // Clean up transformed file (always)
+            @unlink($transformedPath);
+
+            if (!$restoreResult->successful()) {
+                // Keep pending file for retry - don't delete $path here
+                return [
+                    'success' => false,
+                    'message' => 'Import failed: ' . $restoreResult->errorOutput(),
+                    'backup_filename' => $backupFilename,
+                ];
+            }
+
+            // Only delete pending file on success
+            @unlink($path);
+
+            Log::info('Schema imported with transformation', [
+                'source_schema' => $sourceSchema,
+                'target_schema' => $targetSchema,
+                'overwrite' => $overwrite,
+            ]);
+
+            $message = "Successfully imported to schema '{$targetSchema}'";
+            if ($backupFilename) {
+                $message .= ". Previous state backed up to {$backupFilename}";
+            }
+
+            return [
+                'success' => true,
+                'message' => $message,
+                'backup_filename' => $backupFilename,
+            ];
+        } catch (\Exception $e) {
+            // Clean up transformed file if it exists
+            if (isset($transformedPath) && file_exists($transformedPath)) {
+                @unlink($transformedPath);
+            }
+
+            Log::error('Import failed', ['error' => $e->getMessage()]);
+            return [
+                'success' => false,
+                'message' => 'Import failed: ' . $e->getMessage(),
+                'backup_filename' => $backupFilename,
+            ];
+        }
+    }
+
+    /**
+     * Delete a pending import file.
+     */
+    public function deletePendingImport(string $filename): bool
+    {
+        // Supports both old and new format with random suffix
+        if (!preg_match('/^pending_import_\d{8}_\d{6}(_[a-f0-9]{8})?\.sql$/', $filename)) {
+            return false;
+        }
+
+        $path = $this->directory . '/' . $filename;
+        if (file_exists($path)) {
+            return @unlink($path);
+        }
+        return true;
+    }
 }
