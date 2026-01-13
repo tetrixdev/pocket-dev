@@ -3331,11 +3331,14 @@
                             // Claude Code auto-compacted the conversation context
                             this.debugLog('Context compacted', event.metadata);
                             // Show a system message about compaction
+                            const preTokens = event.metadata?.pre_tokens;
+                            const preTokensDisplay = preTokens != null ? preTokens.toLocaleString() : 'unknown';
                             this.messages.push({
                                 id: 'msg-compacted-' + Date.now(),
                                 role: 'system',
-                                content: `Context was automatically compacted (${event.metadata?.trigger || 'auto'}). Previous context: ${event.metadata?.pre_tokens?.toLocaleString() || 'unknown'} tokens.`,
-                                isCompactionNotice: true
+                                content: `Context was automatically compacted (${event.metadata?.trigger ?? 'auto'}). Previous context: ${preTokensDisplay} tokens.`,
+                                isCompactionNotice: true,
+                                timestamp: event.timestamp || Date.now()
                             });
                             this.scrollToBottom();
                             break;
@@ -3609,6 +3612,26 @@
 
                     try {
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/stream-log-path`);
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error('Failed to get stream log path:', response.status, response.statusText, errorText);
+                            this.debugLog('Failed to get log path', {
+                                status: response.status,
+                                statusText: response.statusText,
+                                body: errorText.substring(0, 200)
+                            });
+                            return;
+                        }
+
+                        const contentType = response.headers.get('content-type');
+                        if (!contentType || !contentType.includes('application/json')) {
+                            const text = await response.text();
+                            console.error('Unexpected response type:', contentType, text);
+                            this.debugLog('Unexpected response type', { contentType, body: text.substring(0, 200) });
+                            return;
+                        }
+
                         const data = await response.json();
 
                         if (data.path) {
