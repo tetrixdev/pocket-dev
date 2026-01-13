@@ -733,9 +733,11 @@ class ConfigController extends Controller
         try {
             // Clean up any stale preview directories older than 1 hour
             $staleDirectories = glob(sys_get_temp_dir() . '/claude-config-preview-*');
-            foreach ($staleDirectories as $staleDir) {
-                if (is_dir($staleDir) && filemtime($staleDir) < time() - 3600) {
-                    $this->removeDirectoryRecursive($staleDir);
+            if ($staleDirectories !== false) {
+                foreach ($staleDirectories as $staleDir) {
+                    if (is_dir($staleDir) && filemtime($staleDir) < time() - 3600) {
+                        $this->removeDirectoryRecursive($staleDir);
+                    }
                 }
             }
 
@@ -764,6 +766,9 @@ class ConfigController extends Controller
                 }
 
                 $exportDirs = glob($extractDir . '/claude-config-export-*');
+                if ($exportDirs === false) {
+                    throw new \RuntimeException('Failed to read extracted archive directory');
+                }
                 if (empty($exportDirs)) {
                     throw new \RuntimeException('Invalid archive format');
                 }
@@ -898,14 +903,16 @@ class ConfigController extends Controller
 
             $extractDir = $tempDir . '/extracted';
             $exportDirs = glob($extractDir . '/claude-config-export-*');
-            if (empty($exportDirs)) {
+            if ($exportDirs === false || empty($exportDirs)) {
                 throw new \RuntimeException('Import session invalid.');
             }
             $sourceDir = $exportDirs[0];
 
             $claudeDir = '/home/appuser/.claude';
             if (!is_dir($claudeDir)) {
-                mkdir($claudeDir, 0755, true);
+                if (!mkdir($claudeDir, 0755, true)) {
+                    throw new \RuntimeException('Failed to create Claude config directory');
+                }
             }
 
             $imported = [];
@@ -914,7 +921,9 @@ class ConfigController extends Controller
 
             // Import settings.json
             if (($options['settings'] ?? 'skip') === 'overwrite' && file_exists($sourceDir . '/settings.json')) {
-                copy($sourceDir . '/settings.json', $claudeDir . '/settings.json');
+                if (!copy($sourceDir . '/settings.json', $claudeDir . '/settings.json')) {
+                    throw new \RuntimeException('Failed to copy settings.json');
+                }
                 $imported[] = 'settings.json';
             } elseif (file_exists($sourceDir . '/settings.json')) {
                 $skipped[] = 'settings.json';
@@ -922,7 +931,9 @@ class ConfigController extends Controller
 
             // Import CLAUDE.md
             if (($options['claude_md'] ?? 'skip') === 'overwrite' && file_exists($sourceDir . '/CLAUDE.md')) {
-                copy($sourceDir . '/CLAUDE.md', $claudeDir . '/CLAUDE.md');
+                if (!copy($sourceDir . '/CLAUDE.md', $claudeDir . '/CLAUDE.md')) {
+                    throw new \RuntimeException('Failed to copy CLAUDE.md');
+                }
                 $imported[] = 'CLAUDE.md';
             } elseif (file_exists($sourceDir . '/CLAUDE.md')) {
                 $skipped[] = 'CLAUDE.md';
@@ -1053,8 +1064,9 @@ class ConfigController extends Controller
                 }
             } else {
                 if (!file_exists($targetPath) || $overwriteExisting) {
-                    copy($item->getPathname(), $targetPath);
-                    $count++;
+                    if (copy($item->getPathname(), $targetPath)) {
+                        $count++;
+                    }
                 }
             }
         }

@@ -1,4 +1,5 @@
 .env
 .vscode/
 .idea/
-.claude/
+.claude/worktrees/
+docs/proposals/system-prompt-optimization-tracker.md
