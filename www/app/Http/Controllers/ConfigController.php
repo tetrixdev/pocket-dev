@@ -952,7 +952,9 @@ class ConfigController extends Controller
                 if (is_dir($sourceDir . '/' . $dir)) {
                     $targetDir = $claudeDir . '/' . $dir;
                     if (!is_dir($targetDir)) {
-                        mkdir($targetDir, 0755, true);
+                        if (!mkdir($targetDir, 0755, true)) {
+                            throw new \RuntimeException("Failed to create directory: {$dir}");
+                        }
                     }
 
                     $overwriteExisting = ($option === 'merge_overwrite');
@@ -967,7 +969,8 @@ class ConfigController extends Controller
             $mcpOption = $options['mcp_servers'] ?? 'skip';
             if ($mcpOption !== 'skip' && file_exists($sourceDir . '/mcp-servers.json')) {
                 $newServers = json_decode(file_get_contents($sourceDir . '/mcp-servers.json'), true);
-                if ($newServers && !empty($newServers)) {
+                // Validate $newServers is an associative array (server name => config)
+                if (is_array($newServers) && !empty($newServers) && !array_is_list($newServers)) {
                     $claudeJsonPath = '/home/appuser/.claude.json';
                     $claudeJson = [];
                     if (file_exists($claudeJsonPath)) {
@@ -1060,7 +1063,9 @@ class ConfigController extends Controller
 
             if ($item->isDir()) {
                 if (!is_dir($targetPath)) {
-                    mkdir($targetPath, 0755, true);
+                    if (!mkdir($targetPath, 0755, true)) {
+                        throw new \RuntimeException("Failed to create directory: {$targetPath}");
+                    }
                 }
             } else {
                 if (!file_exists($targetPath) || $overwriteExisting) {
