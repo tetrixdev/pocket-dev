@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Route;
 // Setup wizard (first-run)
 Route::get("/setup", [CredentialsController::class, "showSetup"])->name("setup");
 Route::post("/setup", [CredentialsController::class, "processSetup"])->name("setup.process");
+Route::post("/setup/import-config", [CredentialsController::class, "importConfig"])->name("setup.import-config");
 
 // Claude authentication routes - MUST be before wildcard routes
 Route::get("/claude/auth", [ClaudeAuthController::class, "index"])->name("claude.auth");
