@@ -25,10 +25,18 @@
         </div>
     </x-slot:stateDisplay>
     <x-slot:customCopy>
-        <button @click="copyDebugWithState()"
-                class="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
-                title="Copy to clipboard with state">
-            <i class="fas fa-copy mr-1"></i>Copy
-        </button>
+        <div class="flex gap-2">
+            <button @click="copyDebugWithState()"
+                    class="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+                    title="Copy to clipboard with state">
+                <i class="fas fa-copy mr-1"></i>Copy
+            </button>
+            <button @click="copyStreamLogPath()"
+                    x-show="currentConversationUuid"
+                    class="text-xs text-gray-400 hover:text-white px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
+                    title="Copy stream log file path to clipboard">
+                <i class="fas fa-file-code mr-1"></i>Log Path
+            </button>
+        </div>
     </x-slot:customCopy>
 </x-debug-panel>

@@ -6,6 +6,7 @@ use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
 use App\Models\Credential;
 use App\Models\Message;
+use App\Services\ConversationStreamLogger;
 use App\Services\ModelRepository;
 use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
@@ -348,9 +349,23 @@ class ClaudeCodeProvider implements AIProviderInterface
 
         $this->activeProcess = $process;
 
+        // Initialize per-conversation stream logger (only in debug mode)
+        $debugLogging = config('app.debug');
+        $streamLogger = $debugLogging ? app(ConversationStreamLogger::class) : null;
+        $uuid = $conversation->uuid;
+        if ($streamLogger) {
+            $streamLogger->init($uuid);
+            $streamLogger->logCommand($uuid, $command);
+        }
+
         // Write user message to stdin (required for --tools flag to work correctly)
         fwrite($pipes[0], $userMessage);
         fclose($pipes[0]); // Close stdin to signal EOF - CLI needs this to start processing
+
+        // Log stdin after writing
+        if ($streamLogger) {
+            $streamLogger->logStdin($uuid, $userMessage);
+        }
 
         // Set stdout to non-blocking
         stream_set_blocking($pipes[1], false);
@@ -389,6 +404,12 @@ class ClaudeCodeProvider implements AIProviderInterface
                             continue;
                         }
 
+                        // Log each JSONL line for debugging
+                        if ($streamLogger) {
+                            $parsedLine = json_decode($line, true);
+                            $streamLogger->logStream($uuid, $line, $parsedLine);
+                        }
+
                         yield from $this->parseJsonLine($line, $state);
 
                         // Save session ID immediately when captured (for abort sync support)
@@ -414,6 +435,10 @@ class ClaudeCodeProvider implements AIProviderInterface
 
             // Process any remaining buffer
             if (!empty(trim($buffer))) {
+                if ($streamLogger) {
+                    $parsedLine = json_decode($buffer, true);
+                    $streamLogger->logStream($uuid, $buffer, $parsedLine);
+                }
                 yield from $this->parseJsonLine($buffer, $state);
             }
 
@@ -461,6 +486,17 @@ class ClaudeCodeProvider implements AIProviderInterface
                 ]);
             }
 
+            // Log completion with summary
+            if ($streamLogger) {
+                $streamLogger->logComplete($uuid, [
+                    'exit_code' => $exitCode,
+                    'session_id' => $state['sessionId'],
+                    'total_cost' => $state['totalCost'],
+                    'input_tokens' => $state['inputTokens'],
+                    'output_tokens' => $state['outputTokens'],
+                ]);
+            }
+
             yield StreamEvent::done('end_turn');
 
         } catch (\Throwable $e) {
@@ -468,6 +504,11 @@ class ClaudeCodeProvider implements AIProviderInterface
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
+            // Log error to conversation stream log
+            if ($streamLogger) {
+                $streamLogger->logError($uuid, $e->getMessage());
+            }
 
             yield StreamEvent::error($e->getMessage());
 
@@ -816,6 +857,17 @@ class ClaudeCodeProvider implements AIProviderInterface
                 // System init message - capture session_id
                 if (isset($data['session_id'])) {
                     $state['sessionId'] = $data['session_id'];
+                }
+                // Detect compaction event (type: system, subtype: compact_boundary)
+                if (($data['subtype'] ?? '') === 'compact_boundary') {
+                    $compactMetadata = $data['compact_metadata'] ?? [];
+                    $preTokens = is_array($compactMetadata) ? ($compactMetadata['pre_tokens'] ?? null) : null;
+                    $trigger = is_array($compactMetadata) ? ($compactMetadata['trigger'] ?? 'auto') : 'auto';
+                    Log::channel('api')->info('ClaudeCodeProvider: Context compaction detected', [
+                        'pre_tokens' => $preTokens,
+                        'trigger' => $trigger,
+                    ]);
+                    yield StreamEvent::contextCompacted($preTokens, $trigger);
                 }
                 break;
 

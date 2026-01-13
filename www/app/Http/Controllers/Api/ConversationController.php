@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ProcessConversationStream;
 use App\Models\Agent;
 use App\Models\Conversation;
+use App\Services\ConversationStreamLogger;
 use App\Services\NativeToolService;
 use App\Services\ProviderFactory;
 use App\Services\StreamManager;
@@ -681,6 +682,23 @@ class ConversationController extends Controller
             'default' => config('ai.default_provider', 'anthropic'),
             'providers' => $providers,
             'response_levels' => config('ai.response.levels'),
+        ]);
+    }
+
+    /**
+     * Get the stream log file path for a conversation.
+     *
+     * Returns the path to the per-conversation JSONL log file
+     * that contains all Claude Code CLI stream data.
+     */
+    public function streamLogPath(Conversation $conversation): JsonResponse
+    {
+        $logger = app(ConversationStreamLogger::class);
+
+        return response()->json([
+            'path' => $logger->getLogPath($conversation->uuid),
+            'exists' => $logger->exists($conversation->uuid),
+            'size' => $logger->getSize($conversation->uuid),
         ]);
     }
 }
