@@ -87,6 +87,7 @@ Route::prefix('conversations/{conversation}')->group(function () {
     Route::post('unarchive', [ConversationController::class, 'unarchive']);
     Route::patch('agent', [ConversationController::class, 'switchAgent']);
     Route::patch('title', [ConversationController::class, 'updateTitle']);
+    Route::get('stream-log-path', [ConversationController::class, 'streamLogPath']);
 });
 
 /*

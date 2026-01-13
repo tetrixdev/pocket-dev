@@ -25,6 +25,7 @@ class StreamEvent
     public const ERROR = 'error';
     public const DEBUG = 'debug';
     public const SYSTEM_INFO = 'system_info';
+    public const CONTEXT_COMPACTED = 'context_compacted';
 
     public function __construct(
         public string $type,
@@ -139,6 +140,22 @@ class StreamEvent
     public static function systemInfo(string $content, ?string $command = null): self
     {
         return new self(self::SYSTEM_INFO, null, $content, $command ? ['command' => $command] : null);
+    }
+
+    /**
+     * Create a context compaction event.
+     *
+     * Emitted when Claude Code auto-compacts the conversation context.
+     *
+     * @param int|null $preTokens Token count before compaction
+     * @param string $trigger What triggered compaction ('auto' or 'manual')
+     */
+    public static function contextCompacted(?int $preTokens, string $trigger = 'auto'): self
+    {
+        return new self(self::CONTEXT_COMPACTED, null, 'Context was automatically compacted', [
+            'pre_tokens' => $preTokens,
+            'trigger' => $trigger,
+        ]);
     }
 
     public function toArray(): array

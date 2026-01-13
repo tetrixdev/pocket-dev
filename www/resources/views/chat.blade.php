@@ -3327,6 +3327,19 @@
                             }
                             break;
 
+                        case 'context_compacted':
+                            // Claude Code auto-compacted the conversation context
+                            this.debugLog('Context compacted', event.metadata);
+                            // Show a system message about compaction
+                            this.messages.push({
+                                id: 'msg-compacted-' + Date.now(),
+                                role: 'system',
+                                content: `Context was automatically compacted (${event.metadata?.trigger || 'auto'}). Previous context: ${event.metadata?.pre_tokens?.toLocaleString() || 'unknown'} tokens.`,
+                                isCompactionNotice: true
+                            });
+                            this.scrollToBottom();
+                            break;
+
                         case 'done':
                             if (state.textMsgIndex >= 0) {
                                 this.messages[state.textMsgIndex] = {
@@ -3586,6 +3599,30 @@
                     }).join('\n');
 
                     navigator.clipboard.writeText(text);
+                },
+
+                async copyStreamLogPath() {
+                    if (!this.currentConversationUuid) {
+                        this.debugLog('No conversation selected');
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/stream-log-path`);
+                        const data = await response.json();
+
+                        if (data.path) {
+                            await navigator.clipboard.writeText(data.path);
+                            this.debugLog('Stream log path copied', {
+                                path: data.path,
+                                exists: data.exists,
+                                size: data.size
+                            });
+                        }
+                    } catch (err) {
+                        console.error('Failed to get stream log path:', err);
+                        this.debugLog('Failed to copy log path', { error: err.message });
+                    }
                 },
 
                 renderMarkdown(text) {

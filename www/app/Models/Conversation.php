@@ -69,6 +69,11 @@ class Conversation extends Model
                 $conversation->uuid = (string) Str::uuid();
             }
         });
+
+        // Clean up stream log file when conversation is deleted
+        static::deleting(function (Conversation $conversation) {
+            app(\App\Services\ConversationStreamLogger::class)->delete($conversation->uuid);
+        });
     }
 
     public function messages(): HasMany
