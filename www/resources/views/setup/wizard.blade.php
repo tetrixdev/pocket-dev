@@ -117,20 +117,50 @@
                     Have an existing Claude Code setup? Import your settings, CLAUDE.md, agents, commands, and rules.
                 </p>
 
-                @if(session('success') && str_contains(session('success'), 'imported'))
-                    <div class="mb-4 p-3 bg-green-900/50 border border-green-500/50 rounded text-green-300 text-sm">
-                        {{ session('success') }}
-                    </div>
-                @endif
+                <div
+                    x-data="{
+                        fileName: '',
+                        uploading: false,
+                        message: '{{ session('success') && str_contains(session('success'), 'imported') ? session('success') : '' }}',
+                        messageType: 'success',
+                        fileInput: null,
+                        async upload() {
+                            if (!this.fileInput?.files[0]) return;
+                            this.uploading = true;
+                            this.message = '';
 
-                <form
-                    action="{{ route('setup.import-config') }}"
-                    method="POST"
-                    enctype="multipart/form-data"
+                            const formData = new FormData();
+                            formData.append('config_archive', this.fileInput.files[0]);
+                            formData.append('_token', '{{ csrf_token() }}');
+
+                            try {
+                                const response = await fetch('{{ route('setup.import-config') }}', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+
+                                // Handle redirect response by following it
+                                if (response.redirected) {
+                                    window.location.href = response.url;
+                                    return;
+                                }
+
+                                // For non-redirect responses, reload to show flash message
+                                window.location.reload();
+                            } catch (error) {
+                                this.message = 'Upload failed: ' + error.message;
+                                this.messageType = 'error';
+                                this.uploading = false;
+                            }
+                        }
+                    }"
                     class="space-y-4"
-                    x-data="{ fileName: '', uploading: false }"
                 >
-                    @csrf
+                    <div x-show="message" x-cloak class="mb-4 p-3 rounded text-sm"
+                        :class="messageType === 'success' ? 'bg-green-900/50 border border-green-500/50 text-green-300' : 'bg-red-900/50 border border-red-500/50 text-red-300'">
+                        <span x-text="message"></span>
+                    </div>
+
                     <div class="flex gap-3">
                         <label class="flex-1">
                             <div
@@ -144,18 +174,18 @@
                             </div>
                             <input
                                 type="file"
-                                name="config_archive"
                                 accept=".tar.gz,.gz"
                                 class="hidden"
-                                @change="fileName = $event.target.files[0]?.name || ''"
+                                x-ref="fileInput"
+                                @change="fileName = $event.target.files[0]?.name || ''; fileInput = $refs.fileInput"
                             >
                         </label>
                         <button
-                            type="submit"
+                            type="button"
                             class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded transition-colors"
                             :disabled="!fileName || uploading"
                             :class="{ 'opacity-50 cursor-not-allowed': !fileName || uploading }"
-                            @click="uploading = true"
+                            @click="upload()"
                         >
                             <span x-show="!uploading">Import</span>
                             <span x-show="uploading" class="flex items-center gap-2">
@@ -167,7 +197,7 @@
                             </span>
                         </button>
                     </div>
-                </form>
+                </div>
 
                 <details class="mt-4 text-sm">
                     <summary class="text-gray-500 cursor-pointer hover:text-gray-400">How to export your config</summary>

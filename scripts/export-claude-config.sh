@@ -16,6 +16,12 @@
 
 set -e
 
+# Cleanup trap - ensures temp directory is removed on exit
+cleanup() {
+    [[ -d "$TEMP_DIR" ]] && rm -rf "$TEMP_DIR"
+}
+trap cleanup EXIT
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -78,7 +84,8 @@ copy_dir_if_exists() {
 
     if [[ -d "$src" ]] && [[ -n "$(ls -A "$src" 2>/dev/null)" ]]; then
         cp -r "$src" "$dest"
-        local count=$(find "$dest" -type f | wc -l | tr -d ' ')
+        local count
+        count=$(find "$dest" -type f | wc -l | tr -d ' ')
         EXPORTED_ITEMS+=("$name ($count files)")
         echo -e "  ${GREEN}✓${NC} $name ($count files)"
     else
@@ -122,8 +129,22 @@ echo
 if [[ ${#EXPORTED_ITEMS[@]} -eq 0 ]]; then
     echo -e "${RED}No configuration files found to export.${NC}"
     echo -e "Expected files in: $CLAUDE_DIR"
-    rm -rf "$TEMP_DIR"
-    exit 1
+    exit 1  # Cleanup handled by trap
+fi
+
+# Build exportedItems JSON array (bash fallback if jq unavailable)
+if [[ "$HAS_JQ" == true ]]; then
+    ITEMS_JSON=$(printf '%s\n' "${EXPORTED_ITEMS[@]}" | jq -R . | jq -s .)
+else
+    ITEMS_JSON='['
+    for i in "${!EXPORTED_ITEMS[@]}"; do
+        [[ $i -gt 0 ]] && ITEMS_JSON+=','
+        # Basic JSON escaping for the item
+        escaped="${EXPORTED_ITEMS[$i]//\\/\\\\}"
+        escaped="${escaped//\"/\\\"}"
+        ITEMS_JSON+="\"$escaped\""
+    done
+    ITEMS_JSON+=']'
 fi
 
 # Create manifest
@@ -133,7 +154,7 @@ cat > "$EXPORT_DIR/manifest.json" << EOF
     "exportDate": "$EXPORT_DATE",
     "exportedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
     "hostname": "$(hostname)",
-    "exportedItems": $(printf '%s\n' "${EXPORTED_ITEMS[@]}" | jq -R . 2>/dev/null | jq -s . 2>/dev/null || echo '[]')
+    "exportedItems": $ITEMS_JSON
 }
 EOF
 
@@ -141,8 +162,7 @@ EOF
 echo -e "${BLUE}Creating archive...${NC}"
 tar -czf "$OUTPUT_FILE" -C "$TEMP_DIR" "$EXPORT_NAME"
 
-# Cleanup
-rm -rf "$TEMP_DIR"
+# Cleanup handled by EXIT trap
 
 # Summary
 echo

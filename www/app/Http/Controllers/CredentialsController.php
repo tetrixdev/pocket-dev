@@ -220,7 +220,7 @@ class CredentialsController extends Controller
                 // Extract archive
                 $output = [];
                 $returnCode = 0;
-                exec("tar -xzf " . escapeshellarg($archivePath) . " -C " . escapeshellarg($extractDir) . " 2>&1", $output, $returnCode);
+                exec("tar --no-absolute-names --no-same-owner -xzf " . escapeshellarg($archivePath) . " -C " . escapeshellarg($extractDir) . " 2>&1", $output, $returnCode);
 
                 if ($returnCode !== 0) {
                     throw new \RuntimeException('Failed to extract archive: ' . implode("\n", $output));
@@ -334,6 +334,11 @@ class CredentialsController extends Controller
         );
 
         foreach ($iterator as $item) {
+            // Skip symlinks for security
+            if ($item->isLink()) {
+                continue;
+            }
+
             $targetPath = $dest . '/' . $iterator->getSubPathname();
             if ($item->isDir()) {
                 if (!is_dir($targetPath)) {
