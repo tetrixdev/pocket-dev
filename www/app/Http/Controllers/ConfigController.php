@@ -731,6 +731,14 @@ class ConfigController extends Controller
     public function importConfigPreview(Request $request)
     {
         try {
+            // Clean up any stale preview directories older than 1 hour
+            $staleDirectories = glob(sys_get_temp_dir() . '/claude-config-preview-*');
+            foreach ($staleDirectories as $staleDir) {
+                if (is_dir($staleDir) && filemtime($staleDir) < time() - 3600) {
+                    $this->removeDirectoryRecursive($staleDir);
+                }
+            }
+
             $request->validate([
                 'config_archive' => 'required|file|mimes:gz,gzip,tar|max:10240',
             ]);
@@ -967,7 +975,10 @@ class ConfigController extends Controller
                     }
 
                     $claudeJson['mcpServers'] = $currentServers;
-                    file_put_contents($claudeJsonPath, json_encode($claudeJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                    $result = file_put_contents($claudeJsonPath, json_encode($claudeJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                    if ($result === false) {
+                        throw new \RuntimeException('Failed to write MCP servers configuration');
+                    }
 
                     if ($addedCount > 0) {
                         $imported[] = "mcp-servers ({$addedCount} servers)";
