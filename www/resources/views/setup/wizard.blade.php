@@ -20,6 +20,12 @@
             </div>
         @endif
 
+        @if(session('warning'))
+            <div class="mb-6 p-4 bg-yellow-900 border-l-4 border-yellow-500 text-yellow-200 rounded">
+                {{ session('warning') }}
+            </div>
+        @endif
+
         <form method="POST" action="{{ route('setup.process') }}" class="space-y-6">
             @csrf
 
@@ -99,6 +105,78 @@
                         </div>
                     </label>
                 </div>
+            </div>
+
+            {{-- Import Configuration (optional) --}}
+            <div x-show="provider === 'claude_code' || provider === 'codex'" x-cloak class="bg-gray-800 rounded-lg p-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-lg font-semibold">Import Configuration</h3>
+                    <span class="text-xs text-gray-500">Optional</span>
+                </div>
+                <p class="text-sm text-gray-400 mb-4">
+                    Have an existing Claude Code setup? Import your settings, CLAUDE.md, agents, commands, and rules.
+                </p>
+
+                @if(session('success') && str_contains(session('success'), 'imported'))
+                    <div class="mb-4 p-3 bg-green-900/50 border border-green-500/50 rounded text-green-300 text-sm">
+                        {{ session('success') }}
+                    </div>
+                @endif
+
+                <form
+                    action="{{ route('setup.import-config') }}"
+                    method="POST"
+                    enctype="multipart/form-data"
+                    class="space-y-4"
+                    x-data="{ fileName: '', uploading: false }"
+                >
+                    @csrf
+                    <div class="flex gap-3">
+                        <label class="flex-1">
+                            <div
+                                class="flex items-center gap-2 px-4 py-2 bg-gray-700 border border-gray-600 rounded cursor-pointer hover:bg-gray-600 transition-colors"
+                                :class="{ 'border-blue-500': fileName }"
+                            >
+                                <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                                </svg>
+                                <span x-text="fileName || 'Choose archive...'" class="text-sm truncate" :class="fileName ? 'text-white' : 'text-gray-400'"></span>
+                            </div>
+                            <input
+                                type="file"
+                                name="config_archive"
+                                accept=".tar.gz,.gz"
+                                class="hidden"
+                                @change="fileName = $event.target.files[0]?.name || ''"
+                            >
+                        </label>
+                        <button
+                            type="submit"
+                            class="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white text-sm rounded transition-colors"
+                            :disabled="!fileName || uploading"
+                            :class="{ 'opacity-50 cursor-not-allowed': !fileName || uploading }"
+                            @click="uploading = true"
+                        >
+                            <span x-show="!uploading">Import</span>
+                            <span x-show="uploading" class="flex items-center gap-2">
+                                <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                Importing...
+                            </span>
+                        </button>
+                    </div>
+                </form>
+
+                <details class="mt-4 text-sm">
+                    <summary class="text-gray-500 cursor-pointer hover:text-gray-400">How to export your config</summary>
+                    <div class="mt-2 p-3 bg-gray-900 rounded text-gray-400">
+                        <p class="mb-2">Run this on your machine where Claude Code is installed:</p>
+                        <code class="block text-green-400 text-xs break-all">curl -sL https://raw.githubusercontent.com/PocketDevAI/pocketdev/main/scripts/export-claude-config.sh | bash</code>
+                        <p class="mt-2 text-xs">This creates <code>~/claude-config-export-*.tar.gz</code> which you can upload here.</p>
+                    </div>
+                </details>
             </div>
 
             {{-- Claude Code Setup (conditional) --}}

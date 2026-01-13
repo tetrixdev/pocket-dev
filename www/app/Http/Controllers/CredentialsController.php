@@ -194,6 +194,211 @@ class CredentialsController extends Controller
     }
 
     /**
+     * Import Claude Code configuration from exported archive
+     */
+    public function importConfig(Request $request)
+    {
+        try {
+            $request->validate([
+                'config_archive' => 'required|file|mimes:gz,gzip,tar|max:10240', // 10MB max
+            ]);
+
+            $file = $request->file('config_archive');
+            $tempDir = sys_get_temp_dir() . '/claude-config-import-' . uniqid();
+            $extractDir = $tempDir . '/extracted';
+
+            // Create temp directories
+            if (!mkdir($tempDir, 0755, true) || !mkdir($extractDir, 0755, true)) {
+                throw new \RuntimeException('Failed to create temporary directories');
+            }
+
+            try {
+                // Save uploaded file
+                $archivePath = $tempDir . '/archive.tar.gz';
+                $file->move($tempDir, 'archive.tar.gz');
+
+                // Extract archive
+                $output = [];
+                $returnCode = 0;
+                exec("tar -xzf " . escapeshellarg($archivePath) . " -C " . escapeshellarg($extractDir) . " 2>&1", $output, $returnCode);
+
+                if ($returnCode !== 0) {
+                    throw new \RuntimeException('Failed to extract archive: ' . implode("\n", $output));
+                }
+
+                // Find the export directory (should be claude-config-export-*)
+                $exportDirs = glob($extractDir . '/claude-config-export-*');
+                if (empty($exportDirs)) {
+                    throw new \RuntimeException('Invalid archive: expected claude-config-export-* directory');
+                }
+                $sourceDir = $exportDirs[0];
+
+                // Validate manifest exists
+                if (!file_exists($sourceDir . '/manifest.json')) {
+                    throw new \RuntimeException('Invalid archive: manifest.json not found');
+                }
+
+                $manifest = json_decode(file_get_contents($sourceDir . '/manifest.json'), true);
+                if (!$manifest || !isset($manifest['version'])) {
+                    throw new \RuntimeException('Invalid manifest.json');
+                }
+
+                // Target directory
+                $claudeDir = '/home/appuser/.claude';
+                if (!is_dir($claudeDir)) {
+                    mkdir($claudeDir, 0755, true);
+                }
+
+                $imported = [];
+
+                // Import settings.json
+                if (file_exists($sourceDir . '/settings.json')) {
+                    copy($sourceDir . '/settings.json', $claudeDir . '/settings.json');
+                    $imported[] = 'settings.json';
+                }
+
+                // Import CLAUDE.md
+                if (file_exists($sourceDir . '/CLAUDE.md')) {
+                    copy($sourceDir . '/CLAUDE.md', $claudeDir . '/CLAUDE.md');
+                    $imported[] = 'CLAUDE.md';
+                }
+
+                // Import directories
+                foreach (['agents', 'commands', 'rules'] as $dir) {
+                    if (is_dir($sourceDir . '/' . $dir)) {
+                        $targetDir = $claudeDir . '/' . $dir;
+                        if (!is_dir($targetDir)) {
+                            mkdir($targetDir, 0755, true);
+                        }
+
+                        // Copy files recursively
+                        $this->copyDirectory($sourceDir . '/' . $dir, $targetDir);
+                        $count = iterator_count(new \RecursiveIteratorIterator(
+                            new \RecursiveDirectoryIterator($targetDir, \RecursiveDirectoryIterator::SKIP_DOTS)
+                        ));
+                        if ($count > 0) {
+                            $imported[] = "{$dir}/ ({$count} files)";
+                        }
+                    }
+                }
+
+                // Import MCP servers into claude.json
+                if (file_exists($sourceDir . '/mcp-servers.json')) {
+                    $mcpServers = json_decode(file_get_contents($sourceDir . '/mcp-servers.json'), true);
+                    if ($mcpServers && !empty($mcpServers)) {
+                        $claudeJsonPath = '/home/appuser/.claude.json';
+                        $claudeJson = [];
+                        if (file_exists($claudeJsonPath)) {
+                            $claudeJson = json_decode(file_get_contents($claudeJsonPath), true) ?? [];
+                        }
+                        $claudeJson['mcpServers'] = $mcpServers;
+                        file_put_contents($claudeJsonPath, json_encode($claudeJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                        $imported[] = 'mcp-servers.json';
+                    }
+                }
+
+                // Set proper ownership (www-data)
+                $this->setOwnership($claudeDir);
+
+                // Clean up
+                $this->removeDirectory($tempDir);
+
+                if (empty($imported)) {
+                    return redirect()->back()->with('warning', 'Archive was valid but contained no configuration files.');
+                }
+
+                return redirect()->back()->with('success', 'Configuration imported: ' . implode(', ', $imported));
+            } catch (\Exception $e) {
+                // Clean up on error
+                if (is_dir($tempDir)) {
+                    $this->removeDirectory($tempDir);
+                }
+                throw $e;
+            }
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()->back()->with('error', 'Please upload a valid .tar.gz archive.');
+        } catch (\Exception $e) {
+            Log::error('Config import failed', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Import failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Recursively copy a directory
+     */
+    protected function copyDirectory(string $source, string $dest): void
+    {
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($source, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            $targetPath = $dest . '/' . $iterator->getSubPathname();
+            if ($item->isDir()) {
+                if (!is_dir($targetPath)) {
+                    mkdir($targetPath, 0755, true);
+                }
+            } else {
+                copy($item->getPathname(), $targetPath);
+            }
+        }
+    }
+
+    /**
+     * Set ownership of files to www-data
+     */
+    protected function setOwnership(string $path): void
+    {
+        // Get www-data uid/gid
+        $wwwDataInfo = posix_getpwnam('www-data');
+        if (!$wwwDataInfo) {
+            return; // Can't set ownership if www-data doesn't exist
+        }
+
+        $uid = $wwwDataInfo['uid'];
+        $gid = $wwwDataInfo['gid'];
+
+        // Set ownership recursively
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        chown($path, $uid);
+        chgrp($path, $gid);
+
+        foreach ($iterator as $item) {
+            @chown($item->getPathname(), $uid);
+            @chgrp($item->getPathname(), $gid);
+        }
+    }
+
+    /**
+     * Recursively remove a directory
+     */
+    protected function removeDirectory(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            if ($item->isDir()) {
+                rmdir($item->getPathname());
+            } else {
+                unlink($item->getPathname());
+            }
+        }
+        rmdir($dir);
+    }
+
+    /**
      * Create a default agent for the given provider.
      */
     protected function createDefaultAgentForProvider(string $provider): void
