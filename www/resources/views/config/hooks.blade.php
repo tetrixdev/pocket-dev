@@ -280,6 +280,11 @@ function configImport() {
                     body: formData
                 });
 
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errText}`);
+                }
+
                 const data = await response.json();
 
                 if (data.success) {
@@ -311,6 +316,11 @@ function configImport() {
                         options: this.options
                     })
                 });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(`Server error ${response.status}: ${errText}`);
+                }
 
                 const data = await response.json();
 

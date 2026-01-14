@@ -815,19 +815,19 @@ class ConfigController extends Controller
                         $currentDir = '/home/appuser/.claude/' . $dir;
                         $currentFiles = is_dir($currentDir) ? $this->listFilesRecursive($currentDir) : [];
 
+                        // Use relative paths for accurate conflict detection (not just basename)
+                        $sourceBase = $sourceDir . '/' . $dir . '/';
+                        $currentBase = $currentDir . '/';
+                        $relativeFiles = array_map(fn($f) => str_replace($sourceBase, '', $f), $files);
+                        $relativeCurrentFiles = array_map(fn($f) => str_replace($currentBase, '', $f), $currentFiles);
+
                         $preview['sections'][$dir] = [
                             'exists' => true,
                             'current_exists' => is_dir($currentDir),
-                            'files' => array_map(fn($f) => basename($f), $files),
-                            'current_files' => array_map(fn($f) => basename($f), $currentFiles),
-                            'new_files' => array_values(array_diff(
-                                array_map(fn($f) => basename($f), $files),
-                                array_map(fn($f) => basename($f), $currentFiles)
-                            )),
-                            'conflict_files' => array_values(array_intersect(
-                                array_map(fn($f) => basename($f), $files),
-                                array_map(fn($f) => basename($f), $currentFiles)
-                            )),
+                            'files' => $relativeFiles,
+                            'current_files' => $relativeCurrentFiles,
+                            'new_files' => array_values(array_diff($relativeFiles, $relativeCurrentFiles)),
+                            'conflict_files' => array_values(array_intersect($relativeFiles, $relativeCurrentFiles)),
                         ];
                     }
                 }
