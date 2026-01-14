@@ -1071,6 +1071,8 @@ class ConfigController extends Controller
                 if (!file_exists($targetPath) || $overwriteExisting) {
                     if (copy($item->getPathname(), $targetPath)) {
                         $count++;
+                    } else {
+                        \Log::warning("Config import: failed to copy {$item->getPathname()} to {$targetPath}");
                     }
                 }
             }
@@ -1122,12 +1124,12 @@ class ConfigController extends Controller
 
         foreach ($iterator as $item) {
             if ($item->isDir()) {
-                rmdir($item->getPathname());
+                @rmdir($item->getPathname());
             } else {
-                unlink($item->getPathname());
+                @unlink($item->getPathname());
             }
         }
-        rmdir($dir);
+        @rmdir($dir);
     }
 
     // =========================================================================
