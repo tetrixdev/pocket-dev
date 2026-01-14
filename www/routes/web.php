@@ -75,6 +75,10 @@ Route::post("/config/agents/{agent}/toggle-enabled", [ConfigController::class, "
 Route::get("/config/hooks", [ConfigController::class, "showHooks"])->name("config.hooks");
 Route::post("/config/hooks", [ConfigController::class, "saveHooks"])->name("config.hooks.save");
 
+// Config import (Claude Code export archive)
+Route::post("/config/import/preview", [ConfigController::class, "importConfigPreview"])->name("config.import.preview");
+Route::post("/config/import/apply", [ConfigController::class, "importConfigApply"])->name("config.import.apply");
+
 // Credentials management
 Route::get("/config/credentials", [CredentialsController::class, "show"])->name("config.credentials");
 Route::post("/config/credentials/api-keys", [CredentialsController::class, "saveApiKeys"])->name("config.credentials.api-keys");

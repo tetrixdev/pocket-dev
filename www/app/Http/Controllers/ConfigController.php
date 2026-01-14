@@ -722,6 +722,417 @@ class ConfigController extends Controller
     }
 
     // =========================================================================
+    // CONFIG IMPORT (from Claude Code export archive)
+    // =========================================================================
+
+    /**
+     * Preview contents of an uploaded config archive
+     */
+    public function importConfigPreview(Request $request)
+    {
+        try {
+            // Clean up any stale preview directories older than 1 hour
+            $staleDirectories = glob(sys_get_temp_dir() . '/claude-config-preview-*');
+            if ($staleDirectories !== false) {
+                foreach ($staleDirectories as $staleDir) {
+                    if (is_dir($staleDir) && filemtime($staleDir) < time() - 3600) {
+                        $this->removeDirectoryRecursive($staleDir);
+                    }
+                }
+            }
+
+            $request->validate([
+                'config_archive' => 'required|file|mimes:gz,gzip,tar|max:10240',
+            ]);
+
+            $file = $request->file('config_archive');
+            $tempDir = sys_get_temp_dir() . '/claude-config-preview-' . uniqid();
+            $extractDir = $tempDir . '/extracted';
+
+            if (!mkdir($tempDir, 0755, true) || !mkdir($extractDir, 0755, true)) {
+                throw new \RuntimeException('Failed to create temporary directories');
+            }
+
+            try {
+                $archivePath = $tempDir . '/archive.tar.gz';
+                $file->move($tempDir, 'archive.tar.gz');
+
+                $output = [];
+                $returnCode = 0;
+                exec("tar --no-absolute-names --no-same-owner -xzf " . escapeshellarg($archivePath) . " -C " . escapeshellarg($extractDir) . " 2>&1", $output, $returnCode);
+
+                if ($returnCode !== 0) {
+                    throw new \RuntimeException('Failed to extract archive');
+                }
+
+                $exportDirs = glob($extractDir . '/claude-config-export-*');
+                if ($exportDirs === false) {
+                    throw new \RuntimeException('Failed to read extracted archive directory');
+                }
+                if (empty($exportDirs)) {
+                    throw new \RuntimeException('Invalid archive format');
+                }
+                $sourceDir = $exportDirs[0];
+
+                // Analyze archive contents
+                $preview = [
+                    'manifest' => null,
+                    'sections' => [],
+                ];
+
+                // Read manifest
+                if (file_exists($sourceDir . '/manifest.json')) {
+                    $preview['manifest'] = json_decode(file_get_contents($sourceDir . '/manifest.json'), true);
+                }
+
+                // Check settings.json
+                if (file_exists($sourceDir . '/settings.json')) {
+                    $content = json_decode(file_get_contents($sourceDir . '/settings.json'), true);
+                    $currentPath = $this->getSettingsPath();
+                    $preview['sections']['settings'] = [
+                        'exists' => true,
+                        'current_exists' => file_exists($currentPath),
+                        'keys' => is_array($content) ? array_keys($content) : [],
+                    ];
+                }
+
+                // Check CLAUDE.md
+                if (file_exists($sourceDir . '/CLAUDE.md')) {
+                    $content = file_get_contents($sourceDir . '/CLAUDE.md');
+                    $currentPath = '/home/appuser/.claude/CLAUDE.md';
+                    $preview['sections']['claude_md'] = [
+                        'exists' => true,
+                        'current_exists' => file_exists($currentPath),
+                        'lines' => substr_count($content, "\n") + 1,
+                        'size' => strlen($content),
+                    ];
+                }
+
+                // Check directories (agents, commands, rules)
+                foreach (['agents', 'commands', 'rules'] as $dir) {
+                    if (is_dir($sourceDir . '/' . $dir)) {
+                        $files = $this->listFilesRecursive($sourceDir . '/' . $dir);
+                        $currentDir = '/home/appuser/.claude/' . $dir;
+                        $currentFiles = is_dir($currentDir) ? $this->listFilesRecursive($currentDir) : [];
+
+                        // Use relative paths for accurate conflict detection (not just basename)
+                        $sourceBase = $sourceDir . '/' . $dir . '/';
+                        $currentBase = $currentDir . '/';
+                        $relativeFiles = array_map(fn($f) => str_replace($sourceBase, '', $f), $files);
+                        $relativeCurrentFiles = array_map(fn($f) => str_replace($currentBase, '', $f), $currentFiles);
+
+                        $preview['sections'][$dir] = [
+                            'exists' => true,
+                            'current_exists' => is_dir($currentDir),
+                            'files' => $relativeFiles,
+                            'current_files' => $relativeCurrentFiles,
+                            'new_files' => array_values(array_diff($relativeFiles, $relativeCurrentFiles)),
+                            'conflict_files' => array_values(array_intersect($relativeFiles, $relativeCurrentFiles)),
+                        ];
+                    }
+                }
+
+                // Check MCP servers
+                if (file_exists($sourceDir . '/mcp-servers.json')) {
+                    $content = json_decode(file_get_contents($sourceDir . '/mcp-servers.json'), true);
+                    $claudeJsonPath = '/home/appuser/.claude.json';
+                    $currentServers = [];
+                    if (file_exists($claudeJsonPath)) {
+                        $claudeJson = json_decode(file_get_contents($claudeJsonPath), true);
+                        $currentServers = $claudeJson['mcpServers'] ?? [];
+                    }
+
+                    $preview['sections']['mcp_servers'] = [
+                        'exists' => true,
+                        'current_exists' => !empty($currentServers),
+                        'servers' => is_array($content) ? array_keys($content) : [],
+                        'current_servers' => array_keys($currentServers),
+                        'new_servers' => array_values(array_diff(
+                            is_array($content) ? array_keys($content) : [],
+                            array_keys($currentServers)
+                        )),
+                        'conflict_servers' => array_values(array_intersect(
+                            is_array($content) ? array_keys($content) : [],
+                            array_keys($currentServers)
+                        )),
+                    ];
+                }
+
+                // Store archive path in session for apply step
+                $sessionKey = 'config_import_' . uniqid();
+                session([$sessionKey => $tempDir]);
+
+                return response()->json([
+                    'success' => true,
+                    'preview' => $preview,
+                    'session_key' => $sessionKey,
+                ]);
+            } catch (\Exception $e) {
+                $this->removeDirectoryRecursive($tempDir);
+                throw $e;
+            }
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'error' => 'Please upload a valid .tar.gz archive.'], 400);
+        } catch (\Exception $e) {
+            Log::error('Config import preview failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Apply config import with selected options
+     */
+    public function importConfigApply(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'session_key' => 'required|string',
+                'options' => 'required|array',
+                'options.settings' => 'nullable|in:skip,overwrite',
+                'options.claude_md' => 'nullable|in:skip,overwrite',
+                'options.agents' => 'nullable|in:skip,merge_skip,merge_overwrite',
+                'options.commands' => 'nullable|in:skip,merge_skip,merge_overwrite',
+                'options.rules' => 'nullable|in:skip,merge_skip,merge_overwrite',
+                'options.mcp_servers' => 'nullable|in:skip,merge_skip,merge_overwrite',
+            ]);
+
+            $tempDir = session($validated['session_key']);
+            if (!$tempDir || !is_dir($tempDir)) {
+                throw new \RuntimeException('Import session expired. Please upload the archive again.');
+            }
+
+            $extractDir = $tempDir . '/extracted';
+            $exportDirs = glob($extractDir . '/claude-config-export-*');
+            if ($exportDirs === false || empty($exportDirs)) {
+                throw new \RuntimeException('Import session invalid.');
+            }
+            $sourceDir = $exportDirs[0];
+
+            $claudeDir = '/home/appuser/.claude';
+            if (!is_dir($claudeDir)) {
+                if (!mkdir($claudeDir, 0755, true)) {
+                    throw new \RuntimeException('Failed to create Claude config directory');
+                }
+            }
+
+            $imported = [];
+            $skipped = [];
+            $options = $validated['options'];
+
+            // Import settings.json
+            if (($options['settings'] ?? 'skip') === 'overwrite' && file_exists($sourceDir . '/settings.json')) {
+                if (!copy($sourceDir . '/settings.json', $claudeDir . '/settings.json')) {
+                    throw new \RuntimeException('Failed to copy settings.json');
+                }
+                $imported[] = 'settings.json';
+            } elseif (file_exists($sourceDir . '/settings.json')) {
+                $skipped[] = 'settings.json';
+            }
+
+            // Import CLAUDE.md
+            if (($options['claude_md'] ?? 'skip') === 'overwrite' && file_exists($sourceDir . '/CLAUDE.md')) {
+                if (!copy($sourceDir . '/CLAUDE.md', $claudeDir . '/CLAUDE.md')) {
+                    throw new \RuntimeException('Failed to copy CLAUDE.md');
+                }
+                $imported[] = 'CLAUDE.md';
+            } elseif (file_exists($sourceDir . '/CLAUDE.md')) {
+                $skipped[] = 'CLAUDE.md';
+            }
+
+            // Import directories (agents, commands, rules)
+            foreach (['agents', 'commands', 'rules'] as $dir) {
+                $option = $options[$dir] ?? 'skip';
+                if ($option === 'skip') {
+                    if (is_dir($sourceDir . '/' . $dir)) {
+                        $skipped[] = $dir . '/';
+                    }
+                    continue;
+                }
+
+                if (is_dir($sourceDir . '/' . $dir)) {
+                    $targetDir = $claudeDir . '/' . $dir;
+                    if (!is_dir($targetDir)) {
+                        if (!mkdir($targetDir, 0755, true)) {
+                            throw new \RuntimeException("Failed to create directory: {$dir}");
+                        }
+                    }
+
+                    $overwriteExisting = ($option === 'merge_overwrite');
+                    $count = $this->mergeDirectory($sourceDir . '/' . $dir, $targetDir, $overwriteExisting);
+                    if ($count > 0) {
+                        $imported[] = "{$dir}/ ({$count} files)";
+                    }
+                }
+            }
+
+            // Import MCP servers
+            $mcpOption = $options['mcp_servers'] ?? 'skip';
+            if ($mcpOption !== 'skip' && file_exists($sourceDir . '/mcp-servers.json')) {
+                $newServers = json_decode(file_get_contents($sourceDir . '/mcp-servers.json'), true);
+                // Validate $newServers is an associative array (server name => config)
+                if (is_array($newServers) && !empty($newServers) && !array_is_list($newServers)) {
+                    $claudeJsonPath = '/home/appuser/.claude.json';
+                    $claudeJson = [];
+                    if (file_exists($claudeJsonPath)) {
+                        $claudeJson = json_decode(file_get_contents($claudeJsonPath), true) ?? [];
+                    }
+
+                    $currentServers = $claudeJson['mcpServers'] ?? [];
+                    $overwriteExisting = ($mcpOption === 'merge_overwrite');
+
+                    $addedCount = 0;
+                    foreach ($newServers as $name => $config) {
+                        if (!isset($currentServers[$name]) || $overwriteExisting) {
+                            $currentServers[$name] = $config;
+                            $addedCount++;
+                        }
+                    }
+
+                    $claudeJson['mcpServers'] = $currentServers;
+                    $result = file_put_contents($claudeJsonPath, json_encode($claudeJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                    if ($result === false) {
+                        throw new \RuntimeException('Failed to write MCP servers configuration');
+                    }
+
+                    if ($addedCount > 0) {
+                        $imported[] = "mcp-servers ({$addedCount} servers)";
+                    }
+                }
+            } elseif (file_exists($sourceDir . '/mcp-servers.json')) {
+                $skipped[] = 'mcp-servers';
+            }
+
+            // Set ownership
+            $this->setClaudeOwnership($claudeDir);
+
+            // Cleanup
+            session()->forget($validated['session_key']);
+            $this->removeDirectoryRecursive($tempDir);
+
+            return response()->json([
+                'success' => true,
+                'imported' => $imported,
+                'skipped' => $skipped,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Config import apply failed', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * List files recursively in a directory
+     */
+    protected function listFilesRecursive(string $dir): array
+    {
+        $files = [];
+        if (!is_dir($dir)) {
+            return $files;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS)
+        );
+
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $files[] = $file->getPathname();
+            }
+        }
+
+        return $files;
+    }
+
+    /**
+     * Merge a source directory into target, optionally overwriting existing files
+     */
+    protected function mergeDirectory(string $source, string $dest, bool $overwriteExisting): int
+    {
+        $count = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($source, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            if ($item->isLink()) {
+                continue;
+            }
+
+            $targetPath = $dest . '/' . $iterator->getSubPathname();
+
+            if ($item->isDir()) {
+                if (!is_dir($targetPath)) {
+                    if (!mkdir($targetPath, 0755, true)) {
+                        throw new \RuntimeException("Failed to create directory: {$targetPath}");
+                    }
+                }
+            } else {
+                if (!file_exists($targetPath) || $overwriteExisting) {
+                    if (copy($item->getPathname(), $targetPath)) {
+                        $count++;
+                    } else {
+                        \Log::warning("Config import: failed to copy {$item->getPathname()} to {$targetPath}");
+                    }
+                }
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * Set ownership of Claude config files to www-data
+     */
+    protected function setClaudeOwnership(string $path): void
+    {
+        $wwwDataInfo = posix_getpwnam('www-data');
+        if (!$wwwDataInfo) {
+            return;
+        }
+
+        $uid = $wwwDataInfo['uid'];
+        $gid = $wwwDataInfo['gid'];
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+
+        @chown($path, $uid);
+        @chgrp($path, $gid);
+
+        foreach ($iterator as $item) {
+            @chown($item->getPathname(), $uid);
+            @chgrp($item->getPathname(), $gid);
+        }
+    }
+
+    /**
+     * Recursively remove a directory
+     */
+    protected function removeDirectoryRecursive(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($iterator as $item) {
+            if ($item->isDir()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+        @rmdir($dir);
+    }
+
+    // =========================================================================
     // SKILLS CRUD
     // =========================================================================
 
