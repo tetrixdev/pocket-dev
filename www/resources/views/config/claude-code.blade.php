@@ -3,252 +3,14 @@
 @section('title', 'Claude Code')
 
 @section('content')
-{{-- Global Settings Section --}}
-<form method="POST" action="{{ route('config.claude-code.save') }}">
-    @csrf
-    <div class="mb-4">
-        <label for="content" class="block text-sm font-medium mb-2">~/.claude/settings.json</label>
-        <p class="text-sm text-zinc-400 mb-3">
-            Claude Code settings file. See <a href="https://docs.anthropic.com/en/docs/claude-code/settings" target="_blank" class="text-blue-400 hover:underline">docs.anthropic.com/en/docs/claude-code/settings</a> for available options.
-        </p>
-        <textarea
-            id="content"
-            name="content"
-            class="config-editor w-full"
-            rows="20"
-            required
-        >{{ $content }}</textarea>
-    </div>
-    <button
-        type="submit"
-        class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
-    >
-        Save
-    </button>
-</form>
-
-{{-- Base Prompt Section (CLAUDE.md equivalent) --}}
-@if($workspaces->count() > 0)
-<div
-    x-data="basePromptEditor()"
-    x-init="loadBasePrompt()"
-    class="mt-8 pt-8 border-t border-gray-700"
->
-    <h3 class="text-lg font-semibold mb-2">CLAUDE.md</h3>
-    <p class="text-sm text-gray-400 mb-4">
-        Workspace-specific base prompt. This content is included in the system prompt for all conversations in the selected workspace.
-    </p>
-
-    {{-- Workspace Selector --}}
-    <div class="mb-4">
-        <label for="base_prompt_workspace" class="block text-sm font-medium text-gray-300 mb-1">Workspace</label>
-        <select
-            id="base_prompt_workspace"
-            x-model="selectedWorkspaceId"
-            @change="loadBasePrompt()"
-            class="w-full max-w-xs bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-        >
-            @foreach($workspaces as $workspace)
-            <option value="{{ $workspace->id }}">{{ $workspace->name }}</option>
-            @endforeach
-        </select>
-    </div>
-
-    {{-- Base Prompt Textarea --}}
-    <div class="mb-4">
-        <textarea
-            x-model="basePrompt"
-            :disabled="loading"
-            placeholder="Enter CLAUDE.md content for this workspace..."
-            class="config-editor w-full"
-            rows="15"
-        ></textarea>
-    </div>
-
-    {{-- Save Button and Status --}}
-    <div class="flex items-center gap-4">
-        <button
-            type="button"
-            @click="saveBasePrompt()"
-            :disabled="loading || saving"
-            class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-            <span x-show="!saving">Save Base Prompt</span>
-            <span x-show="saving" class="flex items-center gap-2">
-                <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
-                Saving...
-            </span>
-        </button>
-        <span x-show="success" x-cloak class="text-green-400 text-sm" x-text="success"></span>
-        <span x-show="error" x-cloak class="text-red-400 text-sm" x-text="error"></span>
-    </div>
-</div>
-
-<script>
-function basePromptEditor() {
-    return {
-        selectedWorkspaceId: '{{ $workspaces->first()?->id ?? '' }}',
-        basePrompt: '',
-        loading: false,
-        saving: false,
-        success: '',
-        error: '',
-
-        async loadBasePrompt() {
-            if (!this.selectedWorkspaceId) return;
-
-            this.loading = true;
-            this.success = '';
-            this.error = '';
-
-            try {
-                const response = await fetch('{{ route("config.claude-code.base-prompt.get") }}?workspace_id=' + this.selectedWorkspaceId);
-                if (!response.ok) throw new Error('Failed to load');
-                const data = await response.json();
-                this.basePrompt = data.base_prompt || '';
-            } catch (err) {
-                this.error = 'Failed to load base prompt: ' + err.message;
-            } finally {
-                this.loading = false;
-            }
-        },
-
-        async saveBasePrompt() {
-            if (!this.selectedWorkspaceId) return;
-
-            this.saving = true;
-            this.success = '';
-            this.error = '';
-
-            try {
-                const response = await fetch('{{ route("config.claude-code.base-prompt.save") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    },
-                    body: JSON.stringify({
-                        workspace_id: this.selectedWorkspaceId,
-                        base_prompt: this.basePrompt,
-                    }),
-                });
-
-                if (!response.ok) {
-                    const data = await response.json();
-                    throw new Error(data.error || 'Failed to save');
-                }
-
-                this.success = 'Saved successfully!';
-                setTimeout(() => this.success = '', 3000);
-            } catch (err) {
-                this.error = 'Failed to save: ' + err.message;
-            } finally {
-                this.saving = false;
-            }
-        }
-    };
-}
-</script>
-@endif
-
-{{-- Skills Section --}}
-@if(!empty($memorySkills))
-<div class="mt-8 pt-8 border-t border-gray-700">
-    <h3 class="text-lg font-semibold mb-2">Skills</h3>
-    <p class="text-sm text-gray-400 mb-4">
-        Skills stored in memory schemas. These are available as slash commands in conversations.
-        Use <code class="text-gray-300">/skill-name</code> to invoke a skill.
-    </p>
-
-    @foreach($memorySkills as $schemaGroup)
-    <div class="mb-4">
-        <h4 class="text-sm font-medium text-gray-300 mb-2">
-            {{ $schemaGroup['schema']->name }}
-            <span class="text-gray-500">({{ $schemaGroup['schema']->schema_name }})</span>
-        </h4>
-        <div class="bg-gray-900 rounded overflow-hidden">
-            <table class="w-full text-sm">
-                <thead class="bg-gray-800">
-                    <tr>
-                        <th class="px-4 py-2 text-left text-gray-400 font-medium">Name</th>
-                        <th class="px-4 py-2 text-left text-gray-400 font-medium">Description</th>
-                        <th class="px-4 py-2 text-right text-gray-400 font-medium">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($schemaGroup['skills'] as $skill)
-                    <tr class="border-t border-gray-800 hover:bg-gray-800/50">
-                        <td class="px-4 py-2">
-                            <code class="text-green-400">/{{ $skill->name }}</code>
-                        </td>
-                        <td class="px-4 py-2 text-gray-400 truncate max-w-md">
-                            {{ \Illuminate\Support\Str::limit($skill->description, 80) }}
-                        </td>
-                        <td class="px-4 py-2 text-right">
-                            <button
-                                type="button"
-                                class="text-red-400 hover:text-red-300 text-xs"
-                                onclick="if(confirm('Delete skill /{{ $skill->name }}?')) { deleteSkill('{{ $schemaGroup['schema']->schema_name }}', '{{ $skill->id }}'); }"
-                            >
-                                Delete
-                            </button>
-                        </td>
-                    </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-    </div>
-    @endforeach
-
-    <p class="text-xs text-gray-500 mt-2">
-        To add or edit skills, use the memory tools:
-        <code class="text-gray-400">php artisan memory:insert --schema=&lt;name&gt; --table=skills --data='{...}'</code>
-    </p>
-</div>
-
-<script>
-async function deleteSkill(schemaName, skillId) {
-    try {
-        const response = await fetch('{{ route("config.claude-code") }}/skill/' + schemaName + '/' + skillId, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                'Accept': 'application/json',
-            }
-        });
-
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            const data = await response.json();
-            alert('Failed to delete skill: ' + (data.error || 'Unknown error'));
-        }
-    } catch (err) {
-        alert('Failed to delete skill: ' + err.message);
-    }
-}
-</script>
-@else
-<div class="mt-8 pt-8 border-t border-gray-700">
-    <h3 class="text-lg font-semibold mb-2">Skills</h3>
-    <p class="text-sm text-gray-400">
-        No skills found in memory schemas. Import skills from a Claude Code export or add them using memory tools.
-    </p>
-</div>
-@endif
-
 {{-- Import Configuration Section --}}
 <div
     x-data="configImport()"
-    class="mt-8 pt-8 border-t border-gray-700"
+    class="mb-8"
 >
     <h3 class="text-lg font-semibold mb-2">Import Configuration</h3>
     <p class="text-sm text-gray-400 mb-4">
-        Import settings from a Claude Code export archive. This can update settings.json, CLAUDE.md, agents, commands, rules, and MCP servers.
+        Import settings from a Claude Code export archive. This can update settings.json, CLAUDE.md (to workspace), MCP servers, and skills (to memory).
     </p>
 
     {{-- Upload Section --}}
@@ -336,62 +98,55 @@ async function deleteSkill(schemaName, skillId) {
                             <div class="flex items-center justify-between mb-2">
                                 <div>
                                     <span class="font-medium">settings.json</span>
-                                    <span x-show="preview?.sections?.settings?.current_exists" class="ml-2 text-xs text-yellow-500">(will overwrite existing)</span>
-                                    <span x-show="!preview?.sections?.settings?.current_exists" class="ml-2 text-xs text-green-500">(new file)</span>
+                                    <span class="ml-2 text-xs text-gray-500">
+                                        (<span x-text="(preview?.sections?.settings?.content || '').split('\\n').length"></span> lines,
+                                        <span x-text="Math.round((preview?.sections?.settings?.content?.length || 0) / 1024 * 10) / 10"></span> KB)
+                                    </span>
                                 </div>
                                 <select x-model="options.settings" class="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1">
-                                    <option value="overwrite">Overwrite</option>
+                                    <option value="overwrite">Import (overwrite existing)</option>
                                     <option value="skip">Skip</option>
                                 </select>
                             </div>
-                            <p class="text-xs text-gray-500">Keys: <span x-text="preview?.sections?.settings?.keys?.join(', ') || 'none'"></span></p>
+                            <div class="text-xs text-gray-500 flex gap-3">
+                                <button type="button" @click="showSettingsPreview = 'new'" class="text-blue-400 hover:text-blue-300 hover:underline">View new</button>
+                                <button x-show="preview?.sections?.settings?.current_exists" type="button" @click="showSettingsPreview = 'current'" class="text-blue-400 hover:text-blue-300 hover:underline">View current</button>
+                            </div>
                         </div>
 
-                        {{-- CLAUDE.md --}}
+                        {{-- CLAUDE.md / Workspace Prompt --}}
                         <div x-show="preview?.sections?.claude_md" class="bg-gray-900 rounded p-4">
                             <div class="flex items-center justify-between mb-2">
                                 <div>
-                                    <span class="font-medium">CLAUDE.md</span>
-                                    <span x-show="preview?.sections?.claude_md?.current_exists" class="ml-2 text-xs text-yellow-500">(will overwrite existing)</span>
-                                    <span x-show="!preview?.sections?.claude_md?.current_exists" class="ml-2 text-xs text-green-500">(new file)</span>
+                                    <span class="font-medium">Workspace Prompt</span>
+                                    <span class="ml-2 text-xs text-gray-500">
+                                        (<span x-text="preview?.sections?.claude_md?.lines"></span> lines,
+                                        <span x-text="Math.round((preview?.sections?.claude_md?.size || 0) / 1024)"></span> KB)
+                                    </span>
                                 </div>
                                 <select x-model="options.claude_md" class="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1">
-                                    <option value="overwrite">Overwrite</option>
+                                    <option value="overwrite">Import (overwrite existing)</option>
+                                    <option value="append">Import (append to existing)</option>
                                     <option value="skip">Skip</option>
                                 </select>
                             </div>
-                            <p class="text-xs text-gray-500">
-                                <span x-text="preview?.sections?.claude_md?.lines"></span> lines,
-                                <span x-text="Math.round((preview?.sections?.claude_md?.size || 0) / 1024)"></span> KB
-                            </p>
-                        </div>
-
-                        {{-- Agents --}}
-                        <template x-for="dir in ['agents', 'commands', 'rules']" :key="dir">
-                            <div x-show="preview?.sections?.[dir]" class="bg-gray-900 rounded p-4">
-                                <div class="flex items-center justify-between mb-2">
-                                    <div>
-                                        <span class="font-medium" x-text="dir + '/'"></span>
-                                        <span class="ml-2 text-xs text-gray-500" x-text="'(' + (preview?.sections?.[dir]?.files?.length || 0) + ' files)'"></span>
-                                    </div>
-                                    <select x-model="options[dir]" class="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1">
-                                        <option value="merge_skip">Merge (skip existing)</option>
-                                        <option value="merge_overwrite">Merge (overwrite existing)</option>
-                                        <option value="skip">Skip all</option>
-                                    </select>
-                                </div>
-                                <div class="text-xs text-gray-500 space-y-1">
-                                    <p x-show="preview?.sections?.[dir]?.new_files?.length">
-                                        <span class="text-green-500">New:</span>
-                                        <span x-text="preview?.sections?.[dir]?.new_files?.join(', ')"></span>
-                                    </p>
-                                    <p x-show="preview?.sections?.[dir]?.conflict_files?.length">
-                                        <span class="text-yellow-500">Conflicts:</span>
-                                        <span x-text="preview?.sections?.[dir]?.conflict_files?.join(', ')"></span>
-                                    </p>
-                                </div>
+                            <div class="text-xs text-gray-500 flex gap-3 mb-2">
+                                <span>From CLAUDE.md</span>
+                                <span class="text-gray-600">|</span>
+                                <button type="button" @click="showClaudeMdPreview = 'new'" class="text-blue-400 hover:text-blue-300 hover:underline">View new</button>
+                                <button x-show="options.claude_md_workspace && getWorkspacePrompt(options.claude_md_workspace)" type="button" @click="showClaudeMdPreview = 'current'" class="text-blue-400 hover:text-blue-300 hover:underline">View current</button>
                             </div>
-                        </template>
+                            {{-- Workspace selector for CLAUDE.md --}}
+                            <div x-show="options.claude_md !== 'skip'">
+                                <label class="text-xs text-gray-400 block mb-1">Import to workspace:</label>
+                                <select x-model="options.claude_md_workspace" class="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1 w-full">
+                                    <option value="">Select a workspace...</option>
+                                    @foreach($workspaces as $workspace)
+                                    <option value="{{ $workspace->id }}" data-prompt="{{ $workspace->claude_base_prompt ?? '' }}">{{ $workspace->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                        </div>
 
                         {{-- MCP Servers --}}
                         <div x-show="preview?.sections?.mcp_servers" class="bg-gray-900 rounded p-4">
@@ -401,21 +156,30 @@ async function deleteSkill(schemaName, skillId) {
                                     <span class="ml-2 text-xs text-gray-500" x-text="'(' + (preview?.sections?.mcp_servers?.servers?.length || 0) + ' servers)'"></span>
                                 </div>
                                 <select x-model="options.mcp_servers" class="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1">
-                                    <option value="merge_skip">Merge (skip existing)</option>
-                                    <option value="merge_overwrite">Merge (overwrite existing)</option>
+                                    <option value="merge_skip">Import (skip existing)</option>
+                                    <option value="merge_overwrite">Import (overwrite existing)</option>
                                     <option value="skip">Skip all</option>
                                 </select>
                             </div>
-                            <div class="text-xs text-gray-500 space-y-1">
-                                <p x-show="preview?.sections?.mcp_servers?.new_servers?.length">
-                                    <span class="text-green-500">New:</span>
-                                    <span x-text="preview?.sections?.mcp_servers?.new_servers?.join(', ')"></span>
-                                </p>
-                                <p x-show="preview?.sections?.mcp_servers?.conflict_servers?.length">
-                                    <span class="text-yellow-500">Conflicts:</span>
-                                    <span x-text="preview?.sections?.mcp_servers?.conflict_servers?.join(', ')"></span>
-                                </p>
-                            </div>
+                            <ul class="text-xs space-y-1 mt-2">
+                                <template x-for="server in preview?.sections?.mcp_servers?.servers || []" :key="server">
+                                    <li class="flex items-center gap-2">
+                                        <template x-if="options.mcp_servers === 'skip'">
+                                            <span class="text-gray-500 font-medium">Skip</span>
+                                        </template>
+                                        <template x-if="options.mcp_servers !== 'skip' && preview?.sections?.mcp_servers?.new_servers?.includes(server)">
+                                            <span class="text-green-500 font-medium">Import (new)</span>
+                                        </template>
+                                        <template x-if="options.mcp_servers === 'merge_skip' && preview?.sections?.mcp_servers?.conflict_servers?.includes(server)">
+                                            <span class="text-yellow-500 font-medium">Skip (existing)</span>
+                                        </template>
+                                        <template x-if="options.mcp_servers === 'merge_overwrite' && preview?.sections?.mcp_servers?.conflict_servers?.includes(server)">
+                                            <span class="text-orange-500 font-medium">Import (overwrite)</span>
+                                        </template>
+                                        <span class="text-gray-300" x-text="server"></span>
+                                    </li>
+                                </template>
+                            </ul>
                         </div>
 
                         {{-- Skills to Memory --}}
@@ -426,9 +190,9 @@ async function deleteSkill(schemaName, skillId) {
                                     <span class="ml-2 text-xs text-gray-500" x-text="'(' + (preview?.sections?.parsed_skills?.count || 0) + ' skills found)'"></span>
                                 </div>
                                 <select x-model="options.skills_to_memory" class="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1">
-                                    <option value="skip">Skip</option>
                                     <option value="merge_skip">Import (skip existing)</option>
                                     <option value="merge_overwrite">Import (overwrite existing)</option>
+                                    <option value="skip">Skip all</option>
                                 </select>
                             </div>
                             <div x-show="options.skills_to_memory !== 'skip'" class="mt-2">
@@ -440,13 +204,25 @@ async function deleteSkill(schemaName, skillId) {
                                     </template>
                                 </select>
                             </div>
-                            <div class="text-xs text-gray-500 mt-2">
-                                <p>Skills parsed from commands/ and skills/ directories:</p>
-                                <ul class="list-disc list-inside mt-1">
+                            <div class="text-xs mt-2">
+                                <p class="text-gray-500 mb-1">Skills parsed from commands/ and skills/ directories:</p>
+                                <ul class="space-y-1">
                                     <template x-for="skill in preview?.sections?.parsed_skills?.skills?.slice(0, 10)" :key="skill.name">
-                                        <li>
+                                        <li class="flex items-center gap-2">
+                                            <template x-if="options.skills_to_memory === 'skip'">
+                                                <span class="text-gray-500 font-medium">Skip</span>
+                                            </template>
+                                            <template x-if="options.skills_to_memory !== 'skip' && !isExistingSkill(skill.name)">
+                                                <span class="text-green-500 font-medium">Import (new)</span>
+                                            </template>
+                                            <template x-if="options.skills_to_memory === 'merge_skip' && isExistingSkill(skill.name)">
+                                                <span class="text-yellow-500 font-medium">Skip (existing)</span>
+                                            </template>
+                                            <template x-if="options.skills_to_memory === 'merge_overwrite' && isExistingSkill(skill.name)">
+                                                <span class="text-orange-500 font-medium">Import (overwrite)</span>
+                                            </template>
                                             <span class="text-gray-300" x-text="skill.name"></span>
-                                            <span class="text-gray-500" x-text="' (' + skill.source + ')'"></span>
+                                            <span class="text-gray-600" x-text="'(' + skill.source + ')'"></span>
                                         </li>
                                     </template>
                                     <li x-show="(preview?.sections?.parsed_skills?.count || 0) > 10" class="text-gray-500">
@@ -470,7 +246,8 @@ async function deleteSkill(schemaName, skillId) {
                         <button
                             type="button"
                             class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded transition-colors"
-                            :disabled="applying"
+                            :disabled="applying || (options.claude_md !== 'skip' && !options.claude_md_workspace)"
+                            :class="{ 'opacity-50 cursor-not-allowed': applying || (options.claude_md !== 'skip' && !options.claude_md_workspace) }"
                             @click="applyImport()"
                         >
                             <span x-show="!applying">Apply Import</span>
@@ -487,6 +264,72 @@ async function deleteSkill(schemaName, skillId) {
             </div>
         </div>
     </div>
+
+    {{-- CLAUDE.md / Workspace Prompt Preview Modal --}}
+    <div
+        x-show="showClaudeMdPreview"
+        x-cloak
+        class="fixed inset-0 z-[60] overflow-y-auto"
+        @keydown.escape.stop="showClaudeMdPreview = null"
+    >
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            {{-- Backdrop --}}
+            <div class="fixed inset-0 bg-black/80 transition-opacity" @click="showClaudeMdPreview = null"></div>
+
+            {{-- Modal Content --}}
+            <div class="relative bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-4xl sm:w-full border border-gray-700 z-[61]">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold" x-text="showClaudeMdPreview === 'new' ? 'New Workspace Prompt (from CLAUDE.md)' : 'Current Workspace Prompt'"></h3>
+                        <button
+                            type="button"
+                            @click="showClaudeMdPreview = null"
+                            class="text-gray-400 hover:text-white"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="max-h-[70vh] overflow-y-auto bg-gray-900 rounded p-4 prose prose-invert prose-sm max-w-none" x-html="renderMarkdown(showClaudeMdPreview === 'new' ? (preview?.sections?.claude_md?.content || '') : getWorkspacePrompt(options.claude_md_workspace))"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- settings.json Preview Modal --}}
+    <div
+        x-show="showSettingsPreview"
+        x-cloak
+        class="fixed inset-0 z-[60] overflow-y-auto"
+        @keydown.escape.stop="showSettingsPreview = null"
+    >
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            {{-- Backdrop --}}
+            <div class="fixed inset-0 bg-black/80 transition-opacity" @click="showSettingsPreview = null"></div>
+
+            {{-- Modal Content --}}
+            <div class="relative bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:max-w-4xl sm:w-full border border-gray-700 z-[61]">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold" x-text="showSettingsPreview === 'new' ? 'New settings.json' : 'Current settings.json'"></h3>
+                        <button
+                            type="button"
+                            @click="showSettingsPreview = null"
+                            class="text-gray-400 hover:text-white"
+                        >
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="max-h-[70vh] overflow-y-auto bg-gray-900 rounded p-4">
+                        <pre class="text-sm text-gray-300 whitespace-pre-wrap font-mono" x-text="formatJson(showSettingsPreview === 'new' ? preview?.sections?.settings?.content : preview?.sections?.settings?.current_content)"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -498,18 +341,74 @@ function configImport() {
         error: '',
         success: '',
         showPreview: false,
+        showClaudeMdPreview: null, // null, 'new', or 'current'
+        showSettingsPreview: null, // null, 'new', or 'current'
         preview: null,
         sessionKey: null,
         availableSchemas: [],
+        workspacePrompts: {
+            @foreach($workspaces as $workspace)
+            '{{ $workspace->id }}': @json($workspace->claude_base_prompt ?? ''),
+            @endforeach
+        },
         options: {
             settings: 'overwrite',
             claude_md: 'overwrite',
-            agents: 'merge_skip',
-            commands: 'merge_skip',
-            rules: 'merge_skip',
+            claude_md_workspace: '{{ $workspaces->first()?->id ?? '' }}',
             mcp_servers: 'merge_skip',
-            skills_to_memory: 'skip',
+            skills_to_memory: 'merge_skip',
             skills_schema: '',
+        },
+
+        // Get workspace prompt by ID
+        getWorkspacePrompt(workspaceId) {
+            return this.workspacePrompts[workspaceId] || '';
+        },
+
+        // Check if skill already exists in selected schema
+        isExistingSkill(skillName) {
+            if (!this.options.skills_schema || !this.preview?.sections?.parsed_skills?.existing_by_schema) {
+                return false;
+            }
+            const existingSkills = this.preview.sections.parsed_skills.existing_by_schema[this.options.skills_schema] || [];
+            return existingSkills.includes(skillName);
+        },
+
+        // Format JSON for display
+        formatJson(jsonStr) {
+            if (!jsonStr) return '';
+            try {
+                return JSON.stringify(JSON.parse(jsonStr), null, 2);
+            } catch {
+                return jsonStr;
+            }
+        },
+
+        // Simple markdown renderer for preview
+        renderMarkdown(text) {
+            if (!text) return '';
+            // Escape HTML first
+            let html = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            // Headers
+            html = html.replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold mt-4 mb-2">$1</h3>');
+            html = html.replace(/^## (.+)$/gm, '<h2 class="text-lg font-semibold mt-4 mb-2">$1</h2>');
+            html = html.replace(/^# (.+)$/gm, '<h1 class="text-xl font-bold mt-4 mb-2">$1</h1>');
+            // Code blocks
+            html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre class="bg-gray-800 p-3 rounded my-2 overflow-x-auto"><code>$2</code></pre>');
+            // Inline code
+            html = html.replace(/`([^`]+)`/g, '<code class="bg-gray-800 px-1 rounded">$1</code>');
+            // Bold
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            // Italic
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            // Lists
+            html = html.replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>');
+            html = html.replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4">$2</li>');
+            // Paragraphs (double newlines)
+            html = html.replace(/\n\n/g, '</p><p class="my-2">');
+            // Single newlines in remaining text
+            html = html.replace(/\n/g, '<br>');
+            return '<p class="my-2">' + html + '</p>';
         },
 
         async init() {
@@ -630,4 +529,53 @@ function configImport() {
     };
 }
 </script>
+
+{{-- Global Settings Section --}}
+<form method="POST" action="{{ route('config.claude-code.save') }}" class="mt-8 pt-8 border-t border-gray-700">
+    @csrf
+    <div class="mb-4">
+        <label for="content" class="block text-sm font-medium mb-2">~/.claude/settings.json</label>
+        <p class="text-sm text-zinc-400 mb-3">
+            Claude Code settings file. See <a href="https://docs.anthropic.com/en/docs/claude-code/settings" target="_blank" class="text-blue-400 hover:underline">docs.anthropic.com/en/docs/claude-code/settings</a> for available options.
+        </p>
+        <textarea
+            id="content"
+            name="content"
+            class="config-editor w-full"
+            style="min-height: 180px; height: auto;"
+            required
+        >{{ $content }}</textarea>
+    </div>
+    <button
+        type="submit"
+        class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
+    >
+        Save
+    </button>
+</form>
+
+{{-- MCP Servers Section --}}
+<form method="POST" action="{{ route('config.claude-code.mcp.save') }}" class="mt-8 pt-8 border-t border-gray-700">
+    @csrf
+    <div class="mb-4">
+        <label for="mcp_content" class="block text-sm font-medium mb-2">MCP Servers</label>
+        <p class="text-sm text-zinc-400 mb-3">
+            MCP (Model Context Protocol) servers configuration. Stored in <code class="text-gray-300">~/.claude.json</code> under <code class="text-gray-300">mcpServers</code>.
+        </p>
+        <textarea
+            id="mcp_content"
+            name="mcp_content"
+            class="config-editor w-full"
+            style="min-height: 180px; height: auto;"
+            required
+        >{{ $mcpContent }}</textarea>
+    </div>
+    <button
+        type="submit"
+        class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium"
+    >
+        Save
+    </button>
+</form>
+
 @endsection

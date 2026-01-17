@@ -341,6 +341,20 @@
                 @endif
             </div>
 
+            <!-- Workspace Prompt -->
+            <div class="space-y-4">
+                <h3 class="text-lg font-semibold text-white border-b border-gray-700 pb-2">Workspace Prompt</h3>
+                <p class="text-sm text-gray-400">
+                    Workspace-specific instructions included in every conversation's system prompt.
+                </p>
+                <textarea
+                    name="claude_base_prompt"
+                    rows="10"
+                    class="config-editor w-full"
+                    placeholder="Enter additional instructions for this workspace..."
+                >{{ old('claude_base_prompt', $workspace->claude_base_prompt ?? '') }}</textarea>
+            </div>
+
             @if(isset($workspace))
             <!-- Credentials -->
             <div class="space-y-4">

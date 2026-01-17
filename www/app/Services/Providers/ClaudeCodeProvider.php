@@ -480,6 +480,13 @@ class ClaudeCodeProvider implements AIProviderInterface
             $exitCode = proc_close($process);
             $this->activeProcess = null;
 
+            // Fix permissions on Claude config files so PHP-FPM (www-data) can read/write them
+            // Claude CLI creates these with 600, we need 660 for group (appgroup) write access
+            $home = getenv('HOME') ?: '/home/appuser';
+            @chmod($home . '/.claude.json', 0660);
+            @chmod($home . '/.claude.json.backup', 0660);
+            @chmod($home . '/.claude/settings.json', 0664);
+
             if ($exitCode !== 0) {
                 Log::channel('api')->warning('ClaudeCodeProvider: CLI exited with non-zero code', [
                     'exit_code' => $exitCode,

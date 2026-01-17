@@ -819,6 +819,7 @@
                 skillSuggestions: [],
                 showSkillSuggestions: false,
                 selectedSkillIndex: 0,
+                activeSkill: null, // Currently selected skill (shown as chip above textarea)
 
                 // Provider/Model - Dual architecture: agent-based (new) + direct provider/model (legacy)
                 // This supports backwards compatibility while transitioning to full agent-based system
@@ -1253,6 +1254,13 @@
                 },
 
                 updateSkillSuggestions() {
+                    // Don't show suggestions if a skill is already active
+                    if (this.activeSkill) {
+                        this.showSkillSuggestions = false;
+                        this.skillSuggestions = [];
+                        return;
+                    }
+
                     if (!this.prompt.startsWith('/')) {
                         this.showSkillSuggestions = false;
                         this.skillSuggestions = [];
@@ -1264,7 +1272,7 @@
                     // Filter skills matching the query
                     this.skillSuggestions = this.skills.filter(skill =>
                         skill.name.toLowerCase().includes(query) ||
-                        skill.description.toLowerCase().includes(query)
+                        skill.when_to_use.toLowerCase().includes(query)
                     ).slice(0, 8);
 
                     this.showSkillSuggestions = this.skillSuggestions.length > 0;
@@ -1272,16 +1280,45 @@
                 },
 
                 selectSkill(skill) {
-                    // Inject the full skill content when selected
-                    // Prefix with the skill name for clarity
-                    this.prompt = `/${skill.name}\n\n${skill.content}`;
+                    // Set active skill and clear prompt (skill shown as chip above textarea)
+                    this.activeSkill = skill;
+                    this.prompt = '';
                     this.showSkillSuggestions = false;
                     this.$nextTick(() => {
                         this.$refs.promptInput?.focus();
                     });
                 },
 
+                clearActiveSkill() {
+                    this.activeSkill = null;
+                },
+
+                findSkillByName(name) {
+                    return this.skills.find(s => s.name.toLowerCase() === name.toLowerCase());
+                },
+
                 handleSkillKeydown(event) {
+                    // Handle backspace on empty textarea to restore skill to prompt
+                    if (event.key === 'Backspace' && this.activeSkill && this.prompt === '') {
+                        event.preventDefault();
+                        // Restore skill name to prompt (minus last char for natural backspace feel)
+                        const skillName = '/' + this.activeSkill.name;
+                        this.prompt = skillName.slice(0, -1);
+                        this.activeSkill = null;
+                        return;
+                    }
+
+                    // Handle space to activate skill when typing /command directly
+                    if (event.key === ' ' && this.prompt.startsWith('/') && !this.activeSkill) {
+                        const skillName = this.prompt.slice(1).trim();
+                        const skill = this.findSkillByName(skillName);
+                        if (skill) {
+                            event.preventDefault();
+                            this.selectSkill(skill);
+                            return;
+                        }
+                    }
+
                     if (!this.showSkillSuggestions) return;
 
                     if (event.key === 'ArrowDown') {
@@ -2770,9 +2807,23 @@
                 async sendMessage() {
                     const attachments = Alpine.store('attachments');
 
-                    // Allow sending if there's text OR files
-                    if (!this.prompt.trim() && !attachments.hasFiles) return;
+                    // Allow sending if there's text OR files OR active skill
+                    if (!this.prompt.trim() && !attachments.hasFiles && !this.activeSkill) return;
                     if (this.isStreaming) return;
+
+                    // Block unmatched /commands - if prompt starts with / but no skill is active
+                    if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
+                        const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0];
+                        const matchedSkill = this.findSkillByName(potentialSkillName);
+                        if (!matchedSkill) {
+                            this.showError(`Unknown skill: /${potentialSkillName}. Type / to see available skills.`);
+                            return;
+                        }
+                        // If it matches, activate it and continue
+                        this.activeSkill = matchedSkill;
+                        // Remove the /command from prompt, keep any text after it
+                        this.prompt = this.prompt.trim().slice(1 + potentialSkillName.length).trim();
+                    }
 
                     // Block if uploads still in progress
                     if (attachments.isUploading) {
@@ -2780,8 +2831,17 @@
                         return;
                     }
 
-                    // Build the prompt with file paths if attachments exist
+                    // Build the prompt - prepend skill instructions if active
                     let userPrompt = this.prompt;
+                    if (this.activeSkill) {
+                        const skillHeader = `**PocketDev Skill: ${this.activeSkill.name}**\n\n${this.activeSkill.instructions}`;
+                        if (userPrompt.trim()) {
+                            userPrompt = skillHeader + '\n\n---\n\n' + userPrompt;
+                        } else {
+                            userPrompt = skillHeader;
+                        }
+                        this.activeSkill = null; // Clear after use
+                    }
                     const filePaths = attachments.getFilePaths();
 
                     if (filePaths.length > 0) {

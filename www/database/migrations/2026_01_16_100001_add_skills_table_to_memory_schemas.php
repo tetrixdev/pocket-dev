@@ -45,8 +45,8 @@ return new class extends Migration
                 CREATE TABLE {$schemaName}.skills (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     name TEXT NOT NULL,
-                    description TEXT NOT NULL,
-                    content TEXT NOT NULL,
+                    when_to_use TEXT NOT NULL,
+                    instructions TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT NOW(),
                     updated_at TIMESTAMP DEFAULT NOW(),
                     CONSTRAINT skills_name_unique UNIQUE (name)
@@ -63,8 +63,16 @@ return new class extends Migration
                 INSERT INTO {$schemaName}.schema_registry (table_name, description, embeddable_fields, created_at, updated_at)
                 VALUES (
                     'skills',
-                    'Slash commands and skills that can be invoked via /name. Each skill has a name (the command), description (when to use), and content (full instructions).',
-                    '{\"description\",\"content\"}',
+                    'PocketDev Skills - slash commands invoked via /name.
+
+Columns:
+- name: The exact trigger name (e.g., \"commit\", \"review-pr\")
+- when_to_use: Conditions/situations when this skill should be invoked
+- instructions: Full skill instructions in markdown format
+
+To retrieve a skill, query by exact name match:
+SELECT instructions FROM skills WHERE name = ''skill-name''',
+                    '{\"when_to_use\",\"instructions\"}',
                     NOW(),
                     NOW()
                 )

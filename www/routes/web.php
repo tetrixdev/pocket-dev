@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\Route;
 // Setup wizard (first-run)
 Route::get("/setup", [CredentialsController::class, "showSetup"])->name("setup");
 Route::post("/setup", [CredentialsController::class, "processSetup"])->name("setup.process");
-Route::post("/setup/import-config", [CredentialsController::class, "importConfig"])->name("setup.import-config");
 
 // Claude authentication routes - MUST be before wildcard routes
 Route::get("/claude/auth", [ClaudeAuthController::class, "index"])->name("claude.auth");
@@ -74,11 +73,10 @@ Route::post("/config/agents/{agent}/toggle-enabled", [ConfigController::class, "
 // Claude Code settings (settings.json, CLAUDE.md, skills, import)
 Route::get("/config/claude-code", [ConfigController::class, "showClaudeCode"])->name("config.claude-code");
 Route::post("/config/claude-code", [ConfigController::class, "saveClaudeCode"])->name("config.claude-code.save");
+Route::post("/config/claude-code/mcp", [ConfigController::class, "saveMcpServers"])->name("config.claude-code.mcp.save");
 Route::delete("/config/claude-code/skill/{schema}/{skillId}", [ConfigController::class, "deleteMemorySkill"])->name("config.claude-code.skill.delete");
 Route::post("/config/claude-code/base-prompt", [ConfigController::class, "saveBasePrompt"])->name("config.claude-code.base-prompt.save");
 Route::get("/config/claude-code/base-prompt", [ConfigController::class, "getBasePrompt"])->name("config.claude-code.base-prompt.get");
-// Legacy redirect for old bookmarks
-Route::get("/config/hooks", fn() => redirect()->route('config.claude-code'));
 
 // Config import (Claude Code export archive)
 Route::post("/config/import/preview", [ConfigController::class, "importConfigPreview"])->name("config.import.preview");

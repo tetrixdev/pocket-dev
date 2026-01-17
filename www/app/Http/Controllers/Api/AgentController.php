@@ -429,8 +429,8 @@ class AgentController extends Controller
         return response()->json([
             'skills' => $skills->map(fn($skill) => [
                 'name' => $skill['name'],
-                'description' => $skill['description'],
-                'content' => $skill['content'], // Full content for injection on selection
+                'when_to_use' => $skill['when_to_use'],
+                'instructions' => $skill['instructions'], // Full instructions for injection on selection
             ])->values(),
         ]);
     }

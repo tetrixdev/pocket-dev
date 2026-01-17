@@ -25,7 +25,7 @@ use App\Models\Workspace;
  *
  * RECENCY ZONE (end - high attention, task-relevant):
  * 5. Additional system prompt - project-wide customs (global)
- * 6. CLAUDE.md - workspace-level base prompt
+ * 6. Workspace Prompt - workspace-level base prompt
  * 7. Agent instructions - task-specific behavior
  * 8. Working directory - current context
  * 9. Environment - available resources
@@ -80,9 +80,9 @@ class SystemPromptBuilder
             $sections[] = $additionalPrompt;
         }
 
-        // 6. Workspace base prompt (CLAUDE.md equivalent)
+        // 6. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
-            $sections[] = $this->buildClaudeMdSection($workspace->claude_base_prompt);
+            $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
         }
 
         // 7. Agent-specific instructions
@@ -150,9 +150,9 @@ class SystemPromptBuilder
             $sections[] = $additionalPrompt;
         }
 
-        // 6. Workspace base prompt (CLAUDE.md equivalent)
+        // 6. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
-            $sections[] = $this->buildClaudeMdSection($workspace->claude_base_prompt);
+            $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
         }
 
         // 7. Agent-specific instructions
@@ -271,11 +271,11 @@ class SystemPromptBuilder
             );
         }
 
-        // 6. Workspace base prompt (CLAUDE.md equivalent)
+        // 6. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
             $sections[] = $createSection(
-                'CLAUDE.md',
-                $this->buildClaudeMdSection($workspace->claude_base_prompt),
+                'Workspace Prompt',
+                $this->buildWorkspacePromptSection($workspace->claude_base_prompt),
                 'Workspace settings'
             );
         }
@@ -326,10 +326,10 @@ class SystemPromptBuilder
 PROMPT;
     }
 
-    private function buildClaudeMdSection(string $prompt): string
+    private function buildWorkspacePromptSection(string $prompt): string
     {
         return <<<PROMPT
-# CLAUDE.md
+# Workspace Prompt
 
 {$prompt}
 PROMPT;

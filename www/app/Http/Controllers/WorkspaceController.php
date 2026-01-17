@@ -77,6 +77,7 @@ class WorkspaceController extends Controller
                 'disabled_tools.*' => 'string|max:100',
                 'selected_packages' => 'nullable|array',
                 'selected_packages.*' => 'string|max:255',
+                'claude_base_prompt' => 'nullable|string|max:100000',
             ]);
 
             // Check for duplicate directory
@@ -101,6 +102,7 @@ class WorkspaceController extends Controller
                 'description' => $validated['description'] ?? null,
                 'directory' => $directory,
                 'selected_packages' => !empty($selectedPackages) ? $selectedPackages : null,
+                'claude_base_prompt' => $validated['claude_base_prompt'] ?? null,
             ]);
 
             // Attach memory databases
@@ -186,6 +188,7 @@ class WorkspaceController extends Controller
                 'disabled_tools.*' => 'string|max:100',
                 'selected_packages' => 'nullable|array',
                 'selected_packages.*' => 'string|max:255',
+                'claude_base_prompt' => 'nullable|string|max:100000',
             ]);
 
             // Check for duplicate directory (excluding current workspace)
@@ -218,6 +221,7 @@ class WorkspaceController extends Controller
                 'description' => $validated['description'] ?? null,
                 'directory' => $directory,
                 'selected_packages' => !empty($selectedPackages) ? $selectedPackages : null,
+                'claude_base_prompt' => $validated['claude_base_prompt'] ?? null,
             ]);
 
             // Sync memory databases

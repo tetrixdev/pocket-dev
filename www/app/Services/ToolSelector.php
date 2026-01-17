@@ -760,14 +760,14 @@ GUIDE;
             try {
                 $skills = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
                     ->table("{$fullSchemaName}.skills")
-                    ->select(['name', 'description'])
+                    ->select(['name', 'when_to_use'])
                     ->orderBy('name')
                     ->get();
 
                 foreach ($skills as $skill) {
                     $allSkills[] = [
                         'name' => $skill->name,
-                        'description' => $skill->description,
+                        'when_to_use' => $skill->when_to_use,
                         'schema' => $schema->schema_name,
                     ];
                 }
@@ -784,7 +784,7 @@ GUIDE;
         // Build skill children
         $skillChildren = [];
         foreach ($allSkills as $skill) {
-            $skillContent = "- {$skill['name']}: {$skill['description']}";
+            $skillContent = "- name: {$skill['name']}, when_to_use: {$skill['when_to_use']}";
 
             $skillChildren[] = [
                 'title' => $skill['name'],
@@ -797,25 +797,22 @@ GUIDE;
             ];
         }
 
-        // Build intro content
+        // Build intro content (skill list comes from children, not duplicated here)
         $introContent = "# Skills\n\n";
-        $introContent .= "Available skills that can be invoked via slash commands:\n\n";
+        $introContent .= "PocketDev Skills should **always** be retrieved by querying the `skills` table in memory, matching by exact `name`.\n";
+        $introContent .= "Example: `SELECT instructions FROM {schema}.skills WHERE name = 'skill-name'`\n\n";
+        $introContent .= "Available skills:";
 
-        // Add the skill list to intro
-        foreach ($allSkills as $skill) {
-            $introContent .= "- {$skill['name']}: {$skill['description']}\n";
-        }
-
-        $introContent .= "\nWhen the user invokes a skill via /name, the full skill content will be provided.";
-
-        $totalTokens = (int) ceil(strlen($introContent) / 4);
+        $childChars = array_sum(array_column($skillChildren, 'chars'));
+        $childTokens = array_sum(array_column($skillChildren, 'estimated_tokens'));
+        $totalTokens = (int) ceil(strlen($introContent) / 4) + $childTokens;
 
         return [
             'title' => 'Skills',
             'content' => $introContent,
             'source' => 'Dynamic (from memory schemas)',
             'collapsed' => true,
-            'chars' => strlen($introContent),
+            'chars' => strlen($introContent) + $childChars,
             'estimated_tokens' => $totalTokens,
             'children' => $skillChildren,
         ];
@@ -845,8 +842,8 @@ GUIDE;
                 if ($skill) {
                     return [
                         'name' => $skill->name,
-                        'description' => $skill->description,
-                        'content' => $skill->content,
+                        'when_to_use' => $skill->when_to_use,
+                        'instructions' => $skill->instructions,
                         'schema' => $schema->schema_name,
                     ];
                 }
@@ -876,15 +873,15 @@ GUIDE;
             try {
                 $skills = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
                     ->table("{$fullSchemaName}.skills")
-                    ->select(['name', 'description', 'content'])
+                    ->select(['name', 'when_to_use', 'instructions'])
                     ->orderBy('name')
                     ->get();
 
                 foreach ($skills as $skill) {
                     $allSkills->push([
                         'name' => $skill->name,
-                        'description' => $skill->description,
-                        'content' => $skill->content,
+                        'when_to_use' => $skill->when_to_use,
+                        'instructions' => $skill->instructions,
                         'schema' => $schema->schema_name,
                     ]);
                 }
