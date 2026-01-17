@@ -58,6 +58,7 @@ ALTER TABLE is supported for modifying existing tables:
 Cannot DROP, TRUNCATE, or ALTER:
 - {schema}.embeddings
 - {schema}.schema_registry
+- {schema}.skills
 
 ## Index Types
 

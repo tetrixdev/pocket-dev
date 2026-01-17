@@ -154,18 +154,41 @@
             </div>
         </div>
 
-        {{-- Input Field (auto-grow, max 6 rows) --}}
-        <textarea x-model="prompt"
-                  x-ref="promptInput"
-                  :disabled="isStreaming"
-                  placeholder="Hey PocketDev, can you..."
-                  rows="1"
-                  class="flex-1 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none"
-                  style="height: 40px; min-height: 40px; max-height: 168px; overflow-y: hidden;"
-                  x-effect="prompt; $nextTick(() => { $el.style.height = 'auto'; const sh = $el.scrollHeight; $el.style.height = Math.min(sh, 168) + 'px'; $el.style.overflowY = sh > 168 ? 'auto' : 'hidden'; if (prompt) $el.scrollTop = $el.scrollHeight; })"
-                  @keydown.ctrl.t.prevent="cycleReasoningLevel()"
-                  @keydown.ctrl.space.prevent="toggleVoiceRecording()"
-                  @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); sendMessage(); }"></textarea>
+        {{-- Input Field with Skill Autocomplete --}}
+        <div class="flex-1 relative">
+            <textarea x-model="prompt"
+                      x-ref="promptInput"
+                      :disabled="isStreaming"
+                      placeholder="Hey PocketDev, can you... (type / for skills)"
+                      rows="1"
+                      class="block w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none"
+                      style="height: 40px; min-height: 40px; max-height: 168px; overflow-y: hidden;"
+                      x-effect="prompt; $nextTick(() => { $el.style.height = 'auto'; const sh = $el.scrollHeight; $el.style.height = Math.min(sh, 168) + 'px'; $el.style.overflowY = sh > 168 ? 'auto' : 'hidden'; if (prompt) $el.scrollTop = $el.scrollHeight; }); updateSkillSuggestions();"
+                      @keydown.ctrl.t.prevent="cycleReasoningLevel()"
+                      @keydown.ctrl.space.prevent="toggleVoiceRecording()"
+                      @keydown="handleSkillKeydown($event)"
+                      @keydown.enter="if (!$event.shiftKey && !showSkillSuggestions) { $event.preventDefault(); sendMessage(); }"></textarea>
+
+            {{-- Skill Suggestions Dropdown --}}
+            <div x-show="showSkillSuggestions"
+                 x-cloak
+                 @click.outside="showSkillSuggestions = false"
+                 class="absolute bottom-full left-0 right-0 mb-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-50 max-h-64 overflow-y-auto">
+                <template x-for="(skill, index) in skillSuggestions" :key="skill.name">
+                    <button type="button"
+                            @click="selectSkill(skill)"
+                            :class="index === selectedSkillIndex ? 'bg-blue-600/50' : 'hover:bg-gray-700'"
+                            class="w-full px-3 py-2 text-left flex flex-col gap-0.5 border-b border-gray-700 last:border-0 transition-colors">
+                        <span class="text-sm font-medium text-green-400" x-text="'/' + skill.name"></span>
+                        <span class="text-xs text-gray-400 truncate" x-text="skill.description"></span>
+                    </button>
+                </template>
+                <div x-show="skillSuggestions.length === 0 && prompt.startsWith('/')"
+                     class="px-3 py-2 text-xs text-gray-500">
+                    No matching skills found
+                </div>
+            </div>
+        </div>
 
         {{-- Reasoning Toggle - DISABLED: Now relying on agent's thinking level instead of per-message override.
              Uncomment to re-enable per-message reasoning control.

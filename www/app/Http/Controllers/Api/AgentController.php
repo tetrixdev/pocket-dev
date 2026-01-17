@@ -418,4 +418,20 @@ class AgentController extends Controller
             ],
         ]);
     }
+
+    /**
+     * Get skills available to an agent for autocomplete
+     */
+    public function skills(Agent $agent): JsonResponse
+    {
+        $skills = $this->toolSelector->getAllSkills($agent);
+
+        return response()->json([
+            'skills' => $skills->map(fn($skill) => [
+                'name' => $skill['name'],
+                'description' => $skill['description'],
+                'content' => $skill['content'], // Full content for injection on selection
+            ])->values(),
+        ]);
+    }
 }

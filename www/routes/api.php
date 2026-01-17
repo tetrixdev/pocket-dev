@@ -150,6 +150,7 @@ Route::get('tools/for-provider/{provider}', [AgentController::class, 'availableT
 Route::post('agents/preview-system-prompt', [AgentController::class, 'previewSystemPrompt']);
 Route::post('agents/check-schema-affected', [AgentController::class, 'checkSchemaAffectedAgents']);
 Route::post('agents/validate-clone', [AgentController::class, 'validateClone']);
+Route::get('agents/{agent}/skills', [AgentController::class, 'skills']);
 
 /*
 |--------------------------------------------------------------------------

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  */
 class MemorySchemaService
 {
-    private const PROTECTED_TABLES = ['embeddings', 'schema_registry'];
+    private const PROTECTED_TABLES = ['embeddings', 'schema_registry', 'skills'];
 
     private ?MemoryDatabase $memoryDatabase = null;
 

@@ -1,9 +1,10 @@
 @extends('layouts.config')
 
-@section('title', 'Hooks')
+@section('title', 'Claude Code')
 
 @section('content')
-<form method="POST" action="{{ route('config.hooks.save') }}">
+{{-- Global Settings Section --}}
+<form method="POST" action="{{ route('config.claude-code.save') }}">
     @csrf
     <div class="mb-4">
         <label for="content" class="block text-sm font-medium mb-2">~/.claude/settings.json</label>
@@ -25,6 +26,220 @@
         Save
     </button>
 </form>
+
+{{-- Base Prompt Section (CLAUDE.md equivalent) --}}
+@if($workspaces->count() > 0)
+<div
+    x-data="basePromptEditor()"
+    x-init="loadBasePrompt()"
+    class="mt-8 pt-8 border-t border-gray-700"
+>
+    <h3 class="text-lg font-semibold mb-2">CLAUDE.md</h3>
+    <p class="text-sm text-gray-400 mb-4">
+        Workspace-specific base prompt. This content is included in the system prompt for all conversations in the selected workspace.
+    </p>
+
+    {{-- Workspace Selector --}}
+    <div class="mb-4">
+        <label for="base_prompt_workspace" class="block text-sm font-medium text-gray-300 mb-1">Workspace</label>
+        <select
+            id="base_prompt_workspace"
+            x-model="selectedWorkspaceId"
+            @change="loadBasePrompt()"
+            class="w-full max-w-xs bg-gray-900 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+        >
+            @foreach($workspaces as $workspace)
+            <option value="{{ $workspace->id }}">{{ $workspace->name }}</option>
+            @endforeach
+        </select>
+    </div>
+
+    {{-- Base Prompt Textarea --}}
+    <div class="mb-4">
+        <textarea
+            x-model="basePrompt"
+            :disabled="loading"
+            placeholder="Enter CLAUDE.md content for this workspace..."
+            class="config-editor w-full"
+            rows="15"
+        ></textarea>
+    </div>
+
+    {{-- Save Button and Status --}}
+    <div class="flex items-center gap-4">
+        <button
+            type="button"
+            @click="saveBasePrompt()"
+            :disabled="loading || saving"
+            class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+            <span x-show="!saving">Save Base Prompt</span>
+            <span x-show="saving" class="flex items-center gap-2">
+                <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Saving...
+            </span>
+        </button>
+        <span x-show="success" x-cloak class="text-green-400 text-sm" x-text="success"></span>
+        <span x-show="error" x-cloak class="text-red-400 text-sm" x-text="error"></span>
+    </div>
+</div>
+
+<script>
+function basePromptEditor() {
+    return {
+        selectedWorkspaceId: '{{ $workspaces->first()?->id ?? '' }}',
+        basePrompt: '',
+        loading: false,
+        saving: false,
+        success: '',
+        error: '',
+
+        async loadBasePrompt() {
+            if (!this.selectedWorkspaceId) return;
+
+            this.loading = true;
+            this.success = '';
+            this.error = '';
+
+            try {
+                const response = await fetch('{{ route("config.claude-code.base-prompt.get") }}?workspace_id=' + this.selectedWorkspaceId);
+                if (!response.ok) throw new Error('Failed to load');
+                const data = await response.json();
+                this.basePrompt = data.base_prompt || '';
+            } catch (err) {
+                this.error = 'Failed to load base prompt: ' + err.message;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async saveBasePrompt() {
+            if (!this.selectedWorkspaceId) return;
+
+            this.saving = true;
+            this.success = '';
+            this.error = '';
+
+            try {
+                const response = await fetch('{{ route("config.claude-code.base-prompt.save") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    },
+                    body: JSON.stringify({
+                        workspace_id: this.selectedWorkspaceId,
+                        base_prompt: this.basePrompt,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Failed to save');
+                }
+
+                this.success = 'Saved successfully!';
+                setTimeout(() => this.success = '', 3000);
+            } catch (err) {
+                this.error = 'Failed to save: ' + err.message;
+            } finally {
+                this.saving = false;
+            }
+        }
+    };
+}
+</script>
+@endif
+
+{{-- Skills Section --}}
+@if(!empty($memorySkills))
+<div class="mt-8 pt-8 border-t border-gray-700">
+    <h3 class="text-lg font-semibold mb-2">Skills</h3>
+    <p class="text-sm text-gray-400 mb-4">
+        Skills stored in memory schemas. These are available as slash commands in conversations.
+        Use <code class="text-gray-300">/skill-name</code> to invoke a skill.
+    </p>
+
+    @foreach($memorySkills as $schemaGroup)
+    <div class="mb-4">
+        <h4 class="text-sm font-medium text-gray-300 mb-2">
+            {{ $schemaGroup['schema']->name }}
+            <span class="text-gray-500">({{ $schemaGroup['schema']->schema_name }})</span>
+        </h4>
+        <div class="bg-gray-900 rounded overflow-hidden">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-800">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-gray-400 font-medium">Name</th>
+                        <th class="px-4 py-2 text-left text-gray-400 font-medium">Description</th>
+                        <th class="px-4 py-2 text-right text-gray-400 font-medium">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($schemaGroup['skills'] as $skill)
+                    <tr class="border-t border-gray-800 hover:bg-gray-800/50">
+                        <td class="px-4 py-2">
+                            <code class="text-green-400">/{{ $skill->name }}</code>
+                        </td>
+                        <td class="px-4 py-2 text-gray-400 truncate max-w-md">
+                            {{ \Illuminate\Support\Str::limit($skill->description, 80) }}
+                        </td>
+                        <td class="px-4 py-2 text-right">
+                            <button
+                                type="button"
+                                class="text-red-400 hover:text-red-300 text-xs"
+                                onclick="if(confirm('Delete skill /{{ $skill->name }}?')) { deleteSkill('{{ $schemaGroup['schema']->schema_name }}', '{{ $skill->id }}'); }"
+                            >
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+    @endforeach
+
+    <p class="text-xs text-gray-500 mt-2">
+        To add or edit skills, use the memory tools:
+        <code class="text-gray-400">php artisan memory:insert --schema=&lt;name&gt; --table=skills --data='{...}'</code>
+    </p>
+</div>
+
+<script>
+async function deleteSkill(schemaName, skillId) {
+    try {
+        const response = await fetch('{{ route("config.claude-code") }}/skill/' + schemaName + '/' + skillId, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+            }
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const data = await response.json();
+            alert('Failed to delete skill: ' + (data.error || 'Unknown error'));
+        }
+    } catch (err) {
+        alert('Failed to delete skill: ' + err.message);
+    }
+}
+</script>
+@else
+<div class="mt-8 pt-8 border-t border-gray-700">
+    <h3 class="text-lg font-semibold mb-2">Skills</h3>
+    <p class="text-sm text-gray-400">
+        No skills found in memory schemas. Import skills from a Claude Code export or add them using memory tools.
+    </p>
+</div>
+@endif
 
 {{-- Import Configuration Section --}}
 <div
@@ -203,6 +418,44 @@
                             </div>
                         </div>
 
+                        {{-- Skills to Memory --}}
+                        <div x-show="preview?.sections?.parsed_skills" class="bg-gray-900 rounded p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <div>
+                                    <span class="font-medium">Skills to Memory</span>
+                                    <span class="ml-2 text-xs text-gray-500" x-text="'(' + (preview?.sections?.parsed_skills?.count || 0) + ' skills found)'"></span>
+                                </div>
+                                <select x-model="options.skills_to_memory" class="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1">
+                                    <option value="skip">Skip</option>
+                                    <option value="merge_skip">Import (skip existing)</option>
+                                    <option value="merge_overwrite">Import (overwrite existing)</option>
+                                </select>
+                            </div>
+                            <div x-show="options.skills_to_memory !== 'skip'" class="mt-2">
+                                <label class="text-xs text-gray-400 block mb-1">Target Schema:</label>
+                                <select x-model="options.skills_schema" class="text-sm bg-gray-700 border border-gray-600 rounded px-2 py-1 w-full">
+                                    <option value="">Select a schema...</option>
+                                    <template x-for="schema in availableSchemas" :key="schema.schema_name">
+                                        <option :value="schema.schema_name" x-text="schema.name + ' (' + schema.schema_name + ')'"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-2">
+                                <p>Skills parsed from commands/ and skills/ directories:</p>
+                                <ul class="list-disc list-inside mt-1">
+                                    <template x-for="skill in preview?.sections?.parsed_skills?.skills?.slice(0, 10)" :key="skill.name">
+                                        <li>
+                                            <span class="text-gray-300" x-text="skill.name"></span>
+                                            <span class="text-gray-500" x-text="' (' + skill.source + ')'"></span>
+                                        </li>
+                                    </template>
+                                    <li x-show="(preview?.sections?.parsed_skills?.count || 0) > 10" class="text-gray-500">
+                                        ... and <span x-text="(preview?.sections?.parsed_skills?.count || 0) - 10"></span> more
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
                     </div>
 
                     {{-- Actions --}}
@@ -247,6 +500,7 @@ function configImport() {
         showPreview: false,
         preview: null,
         sessionKey: null,
+        availableSchemas: [],
         options: {
             settings: 'overwrite',
             claude_md: 'overwrite',
@@ -254,6 +508,26 @@ function configImport() {
             commands: 'merge_skip',
             rules: 'merge_skip',
             mcp_servers: 'merge_skip',
+            skills_to_memory: 'skip',
+            skills_schema: '',
+        },
+
+        async init() {
+            // Fetch available memory schemas
+            try {
+                const response = await fetch('{{ route("config.import.schemas") }}');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.availableSchemas = data.schemas || [];
+                    // Set default schema if available
+                    if (this.availableSchemas.length > 0) {
+                        const defaultSchema = this.availableSchemas.find(s => s.schema_name === 'default');
+                        this.options.skills_schema = defaultSchema?.schema_name || this.availableSchemas[0].schema_name;
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to fetch memory schemas:', err);
+            }
         },
 
         handleFileSelect(event) {

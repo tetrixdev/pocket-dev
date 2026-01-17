@@ -814,6 +814,12 @@
                 agents: [],
                 currentAgentId: null,
 
+                // Skills autocomplete
+                skills: [],
+                skillSuggestions: [],
+                showSkillSuggestions: false,
+                selectedSkillIndex: 0,
+
                 // Provider/Model - Dual architecture: agent-based (new) + direct provider/model (legacy)
                 // This supports backwards compatibility while transitioning to full agent-based system
                 provider: 'anthropic',
@@ -1231,6 +1237,69 @@
                     }
                 },
 
+                async fetchSkills() {
+                    if (!this.currentAgentId) {
+                        this.skills = [];
+                        return;
+                    }
+                    try {
+                        const response = await fetch(`/api/agents/${this.currentAgentId}/skills`);
+                        const data = await response.json();
+                        this.skills = data.skills || [];
+                    } catch (err) {
+                        console.error('Failed to fetch skills:', err);
+                        this.skills = [];
+                    }
+                },
+
+                updateSkillSuggestions() {
+                    if (!this.prompt.startsWith('/')) {
+                        this.showSkillSuggestions = false;
+                        this.skillSuggestions = [];
+                        return;
+                    }
+
+                    const query = this.prompt.slice(1).toLowerCase();
+
+                    // Filter skills matching the query
+                    this.skillSuggestions = this.skills.filter(skill =>
+                        skill.name.toLowerCase().includes(query) ||
+                        skill.description.toLowerCase().includes(query)
+                    ).slice(0, 8);
+
+                    this.showSkillSuggestions = this.skillSuggestions.length > 0;
+                    this.selectedSkillIndex = 0;
+                },
+
+                selectSkill(skill) {
+                    // Inject the full skill content when selected
+                    // Prefix with the skill name for clarity
+                    this.prompt = `/${skill.name}\n\n${skill.content}`;
+                    this.showSkillSuggestions = false;
+                    this.$nextTick(() => {
+                        this.$refs.promptInput?.focus();
+                    });
+                },
+
+                handleSkillKeydown(event) {
+                    if (!this.showSkillSuggestions) return;
+
+                    if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        this.selectedSkillIndex = Math.min(this.selectedSkillIndex + 1, this.skillSuggestions.length - 1);
+                    } else if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        this.selectedSkillIndex = Math.max(this.selectedSkillIndex - 1, 0);
+                    } else if (event.key === 'Tab' || event.key === 'Enter') {
+                        if (this.skillSuggestions.length > 0) {
+                            event.preventDefault();
+                            this.selectSkill(this.skillSuggestions[this.selectedSkillIndex]);
+                        }
+                    } else if (event.key === 'Escape') {
+                        this.showSkillSuggestions = false;
+                    }
+                },
+
                 // Agent helper methods
                 get currentAgent() {
                     return this.agents.find(a => a.id === this.currentAgentId);
@@ -1338,6 +1407,9 @@
                     this.currentAgentId = agent.id;
                     this.provider = agent.provider;
                     this.model = agent.model;
+
+                    // Fetch skills for autocomplete
+                    this.fetchSkills();
 
                     // Load agent's reasoning settings
                     this.anthropicThinkingBudget = agent.anthropic_thinking_budget || 0;

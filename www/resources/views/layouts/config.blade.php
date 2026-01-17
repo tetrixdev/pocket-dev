@@ -159,11 +159,11 @@
                     </a>
                 </div>
 
-                <!-- Hooks Category -->
+                <!-- Claude Code Category -->
                 <div class="border-b border-gray-700">
-                    <a href="{{ route('config.hooks') }}"
-                       class="category-button w-full block {{ Route::currentRouteName() == 'config.hooks' ? 'active' : '' }}">
-                        🪝 Hooks
+                    <a href="{{ route('config.claude-code') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.claude-code' ? 'active' : '' }}">
+                        ⚡ Claude Code
                     </a>
                 </div>
 
@@ -375,12 +375,12 @@
                 </a>
             </div>
 
-            <!-- Hooks Category -->
+            <!-- Claude Code Category -->
             <div class="border-b border-gray-700">
-                <a href="{{ route('config.hooks') }}"
+                <a href="{{ route('config.claude-code') }}"
                    @click="showMobileDrawer = false"
-                   class="category-button w-full block {{ Route::currentRouteName() == 'config.hooks' ? 'active' : '' }}">
-                    🪝 Hooks
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.claude-code' ? 'active' : '' }}">
+                    ⚡ Claude Code
                 </a>
             </div>
 
