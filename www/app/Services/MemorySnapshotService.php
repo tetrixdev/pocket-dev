@@ -918,7 +918,8 @@ class MemorySnapshotService
             @unlink($path);
 
             // Ensure MemoryDatabase record exists for the target schema
-            $targetSchemaShortName = str_replace('memory_', '', $targetSchema);
+            // Use preg_replace to only strip leading 'memory_' prefix, not all occurrences
+            $targetSchemaShortName = preg_replace('/^memory_/', '', $targetSchema);
             $memoryDb = MemoryDatabase::where('schema_name', $targetSchemaShortName)->first();
             if (!$memoryDb) {
                 // Check if there's a soft-deleted record we can restore
