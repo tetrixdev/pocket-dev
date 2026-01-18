@@ -688,7 +688,7 @@ class ConfigController extends Controller
             $claudeJsonPath = '/home/appuser/.claude.json';
             if (file_exists($claudeJsonPath)) {
                 $claudeJson = json_decode(file_get_contents($claudeJsonPath), true);
-                $mcpServers = $claudeJson['mcpServers'] ?? [];
+                $mcpServers = is_array($claudeJson) ? ($claudeJson['mcpServers'] ?? []) : [];
                 $mcpContent = json_encode($mcpServers, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
             }
 
