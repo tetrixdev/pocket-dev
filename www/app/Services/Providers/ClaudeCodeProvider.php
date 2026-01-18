@@ -352,6 +352,7 @@ class ClaudeCodeProvider implements AIProviderInterface
         // Initialize per-conversation stream logger (only in debug mode)
         $debugLogging = config('app.debug');
         $streamLogger = $debugLogging ? app(ConversationStreamLogger::class) : null;
+        $verboseLogging = false; // Set to true for full delta logging when debugging
         $uuid = $conversation->uuid;
         if ($streamLogger) {
             $streamLogger->init($uuid);
@@ -379,6 +380,8 @@ class ClaudeCodeProvider implements AIProviderInterface
             'sessionId' => null,
             'totalCost' => null,
             'gotStreamEvents' => false, // Track if we got stream_events (to skip duplicate assistant message)
+            'awaitingCompactionSummary' => false, // Track if next user message is compaction summary
+            'compactionMetadata' => null, // Store compaction metadata to attach to summary
             // Token tracking for context window calculation
             'inputTokens' => 0,
             'outputTokens' => 0,
@@ -404,10 +407,13 @@ class ClaudeCodeProvider implements AIProviderInterface
                             continue;
                         }
 
-                        // Log each JSONL line for debugging
+                        // Log JSONL lines for debugging (skip stream_event deltas unless verbose)
                         if ($streamLogger) {
                             $parsedLine = json_decode($line, true);
-                            $streamLogger->logStream($uuid, $line, $parsedLine);
+                            $eventType = $parsedLine['type'] ?? null;
+                            if ($verboseLogging || $eventType !== 'stream_event') {
+                                $streamLogger->logStream($uuid, $line, $parsedLine);
+                            }
                         }
 
                         yield from $this->parseJsonLine($line, $state);
@@ -437,7 +443,10 @@ class ClaudeCodeProvider implements AIProviderInterface
             if (!empty(trim($buffer))) {
                 if ($streamLogger) {
                     $parsedLine = json_decode($buffer, true);
-                    $streamLogger->logStream($uuid, $buffer, $parsedLine);
+                    $eventType = $parsedLine['type'] ?? null;
+                    if ($verboseLogging || $eventType !== 'stream_event') {
+                        $streamLogger->logStream($uuid, $buffer, $parsedLine);
+                    }
                 }
                 yield from $this->parseJsonLine($buffer, $state);
             }
@@ -874,7 +883,13 @@ class ClaudeCodeProvider implements AIProviderInterface
                         'pre_tokens' => $preTokens,
                         'trigger' => $trigger,
                     ]);
-                    yield StreamEvent::contextCompacted($preTokens, $trigger);
+                    // Store metadata and flag to capture the summary in the next user message
+                    $state['awaitingCompactionSummary'] = true;
+                    $state['compactionMetadata'] = [
+                        'pre_tokens' => $preTokens,
+                        'trigger' => $trigger,
+                    ];
+                    // Don't yield contextCompacted here - we'll yield compactionSummary with full data
                 }
                 break;
 
@@ -1126,6 +1141,35 @@ class ClaudeCodeProvider implements AIProviderInterface
     {
         $message = $data['message'] ?? [];
         $content = $message['content'] ?? [];
+
+        // Check if this is a compaction summary (user message immediately after compact_boundary)
+        if ($state['awaitingCompactionSummary']) {
+            $state['awaitingCompactionSummary'] = false;
+            $summaryText = '';
+
+            // Extract text content from the message
+            if (is_string($content)) {
+                $summaryText = $content;
+            } elseif (is_array($content)) {
+                foreach ($content as $block) {
+                    if (($block['type'] ?? '') === 'text') {
+                        $summaryText = $block['text'] ?? '';
+                        break;
+                    }
+                }
+            }
+
+            if (!empty($summaryText)) {
+                $metadata = $state['compactionMetadata'] ?? [];
+                Log::channel('api')->info('ClaudeCodeProvider: Compaction summary captured', [
+                    'summary_length' => strlen($summaryText),
+                    'pre_tokens' => $metadata['pre_tokens'] ?? null,
+                ]);
+                yield StreamEvent::compactionSummary($summaryText, $metadata);
+                $state['compactionMetadata'] = null;
+                return; // Don't process as regular user message
+            }
+        }
 
         // Handle string content (e.g., local command outputs)
         if (is_string($content)) {
