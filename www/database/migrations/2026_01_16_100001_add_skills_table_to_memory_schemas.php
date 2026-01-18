@@ -26,13 +26,13 @@ return new class extends Migration
 
             // Check if skills table already exists
             $exists = DB::connection('pgsql')->selectOne("
-                SELECT EXISTS (
+                SELECT (EXISTS (
                     SELECT 1 FROM information_schema.tables
                     WHERE table_schema = ? AND table_name = 'skills'
-                ) as exists
+                ))::int as exists
             ", [$schemaName]);
 
-            if ($exists->exists) {
+            if ((int) $exists->exists === 1) {
                 continue;
             }
 
@@ -95,13 +95,13 @@ return new class extends Migration
 
             // Check if skills table exists
             $exists = DB::connection('pgsql')->selectOne("
-                SELECT EXISTS (
+                SELECT (EXISTS (
                     SELECT 1 FROM information_schema.tables
                     WHERE table_schema = ? AND table_name = 'skills'
-                ) as exists
+                ))::int as exists
             ", [$schemaName]);
 
-            if (!$exists->exists) {
+            if ((int) $exists->exists !== 1) {
                 continue;
             }
 

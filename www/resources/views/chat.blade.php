@@ -1243,13 +1243,20 @@
                         this.skills = [];
                         return;
                     }
+                    // Capture agent ID to detect stale responses
+                    const agentId = this.currentAgentId;
                     try {
-                        const response = await fetch(`/api/agents/${this.currentAgentId}/skills`);
+                        const response = await fetch(`/api/agents/${agentId}/skills`);
                         const data = await response.json();
+                        // Ignore stale response if agent changed during fetch
+                        if (this.currentAgentId !== agentId) return;
                         this.skills = data.skills || [];
                     } catch (err) {
                         console.error('Failed to fetch skills:', err);
-                        this.skills = [];
+                        // Only clear skills if still on same agent
+                        if (this.currentAgentId === agentId) {
+                            this.skills = [];
+                        }
                     }
                 },
 

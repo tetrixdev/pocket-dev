@@ -955,6 +955,28 @@ class ConfigController extends Controller
                     'extract_dir_writable' => is_writable($extractDir),
                 ]);
 
+                // Validate archive entries to prevent path traversal attacks
+                $listing = [];
+                $listCode = 0;
+                $listCommand = "tar -tzf " . escapeshellarg($archivePath) . " 2>&1";
+                exec($listCommand, $listing, $listCode);
+
+                if ($listCode !== 0) {
+                    throw new \RuntimeException('Failed to list archive contents: ' . implode("\n", $listing));
+                }
+
+                foreach ($listing as $entry) {
+                    // Reject absolute paths, path traversal, and Windows paths
+                    if (
+                        str_contains($entry, '..') ||
+                        str_starts_with($entry, '/') ||
+                        str_starts_with($entry, '\\') ||
+                        preg_match('/^[A-Za-z]:[\\\\\\/]/', $entry)
+                    ) {
+                        throw new \RuntimeException("Unsafe archive entry detected: {$entry}");
+                    }
+                }
+
                 $output = [];
                 $returnCode = 0;
                 $tarCommand = "tar --no-same-owner -xzf " . escapeshellarg($archivePath) . " -C " . escapeshellarg($extractDir) . " 2>&1";
@@ -1536,6 +1558,7 @@ class ConfigController extends Controller
 
         $fullSchemaName = $memoryDb->getFullSchemaName();
         $importedCount = 0;
+        $importedSkills = [];
 
         foreach ($skills as $skill) {
             try {
@@ -1556,6 +1579,7 @@ class ConfigController extends Controller
                                 'updated_at' => now(),
                             ]);
                         $importedCount++;
+                        $importedSkills[] = $skill;
                     }
                     // Skip if not overwriting
                 } else {
@@ -1570,6 +1594,7 @@ class ConfigController extends Controller
                             'updated_at' => now(),
                         ]);
                     $importedCount++;
+                    $importedSkills[] = $skill;
                 }
             } catch (\Exception $e) {
                 Log::warning("Skills import: Failed to import skill '{$skill['name']}'", [
@@ -1578,10 +1603,10 @@ class ConfigController extends Controller
             }
         }
 
-        // Regenerate embeddings for imported skills
+        // Regenerate embeddings only for skills that were actually imported
         if ($importedCount > 0) {
             try {
-                $this->regenerateSkillEmbeddings($memoryDb, $skills);
+                $this->regenerateSkillEmbeddings($memoryDb, $importedSkills);
             } catch (\Exception $e) {
                 Log::warning("Skills import: Failed to regenerate embeddings", [
                     'error' => $e->getMessage(),

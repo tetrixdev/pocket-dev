@@ -793,7 +793,8 @@ GUIDE;
         // Build skill children
         $skillChildren = [];
         foreach ($allSkills as $skill) {
-            $skillContent = "- name: {$skill['name']}, when_to_use: {$skill['when_to_use']}";
+            $whenToUse = $skill['when_to_use'] ?? '(not specified)';
+            $skillContent = "- name: {$skill['name']}, when_to_use: {$whenToUse}";
 
             $skillChildren[] = [
                 'title' => $skill['name'],

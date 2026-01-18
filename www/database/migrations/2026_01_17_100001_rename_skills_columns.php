@@ -29,25 +29,25 @@ return new class extends Migration
 
             // Check if skills table exists
             $exists = DB::connection('pgsql')->selectOne("
-                SELECT EXISTS (
+                SELECT (EXISTS (
                     SELECT 1 FROM information_schema.tables
                     WHERE table_schema = ? AND table_name = 'skills'
-                ) as exists
+                ))::int as exists
             ", [$schemaName]);
 
-            if (!$exists->exists) {
+            if ((int) $exists->exists !== 1) {
                 continue;
             }
 
             // Check if columns need renaming (description exists, when_to_use doesn't)
             $hasOldColumns = DB::connection('pgsql')->selectOne("
-                SELECT EXISTS (
+                SELECT (EXISTS (
                     SELECT 1 FROM information_schema.columns
                     WHERE table_schema = ? AND table_name = 'skills' AND column_name = 'description'
-                ) as exists
+                ))::int as exists
             ", [$schemaName]);
 
-            if (!$hasOldColumns->exists) {
+            if ((int) $hasOldColumns->exists !== 1) {
                 continue;
             }
 
@@ -124,13 +124,13 @@ return new class extends Migration
 
             // Check if skills table exists with new column names
             $hasNewColumns = DB::connection('pgsql')->selectOne("
-                SELECT EXISTS (
+                SELECT (EXISTS (
                     SELECT 1 FROM information_schema.columns
                     WHERE table_schema = ? AND table_name = 'skills' AND column_name = 'when_to_use'
-                ) as exists
+                ))::int as exists
             ", [$schemaName]);
 
-            if (!$hasNewColumns->exists) {
+            if ((int) $hasNewColumns->exists !== 1) {
                 continue;
             }
 
