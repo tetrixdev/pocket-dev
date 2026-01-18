@@ -720,6 +720,7 @@
                         <x-chat.assistant-message />
                         <x-chat.thinking-block />
                         <x-chat.tool-block />
+                        <x-chat.compaction-block />
                         <x-chat.system-block />
                         <x-chat.interrupted-block />
                         <x-chat.error-block />
@@ -3487,17 +3488,30 @@
                             break;
 
                         case 'context_compacted':
+                            // Legacy event - now replaced by compaction_summary
+                            // Keep for backwards compatibility with older conversations
+                            this.debugLog('Context compacted (legacy)', event.metadata);
+                            break;
+
+                        case 'compaction_summary':
                             // Claude Code auto-compacted the conversation context
-                            this.debugLog('Context compacted', event.metadata);
-                            // Show a system message about compaction
-                            const preTokens = event.metadata?.pre_tokens;
-                            const preTokensDisplay = preTokens != null ? preTokens.toLocaleString() : 'unknown';
+                            // This event contains the full summary that Claude continues with
+                            this.debugLog('Compaction summary received', {
+                                contentLength: event.content?.length,
+                                preTokens: event.metadata?.pre_tokens,
+                                trigger: event.metadata?.trigger
+                            });
+                            const compactPreTokens = event.metadata?.pre_tokens;
+                            const compactPreTokensDisplay = compactPreTokens != null ? compactPreTokens.toLocaleString() : 'unknown';
                             this.messages.push({
-                                id: 'msg-compacted-' + Date.now(),
-                                role: 'system',
-                                content: `Context was automatically compacted (${event.metadata?.trigger ?? 'auto'}). Previous context: ${preTokensDisplay} tokens.`,
-                                isCompactionNotice: true,
-                                timestamp: event.timestamp || Date.now()
+                                id: 'msg-compaction-' + Date.now(),
+                                role: 'compaction',
+                                content: event.content || '',
+                                preTokens: compactPreTokens,
+                                preTokensDisplay: compactPreTokensDisplay,
+                                trigger: event.metadata?.trigger ?? 'auto',
+                                timestamp: event.timestamp || Date.now(),
+                                collapsed: true // Collapsed by default
                             });
                             this.scrollToBottom();
                             break;

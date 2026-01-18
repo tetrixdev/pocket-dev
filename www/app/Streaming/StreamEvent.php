@@ -26,6 +26,7 @@ class StreamEvent
     public const DEBUG = 'debug';
     public const SYSTEM_INFO = 'system_info';
     public const CONTEXT_COMPACTED = 'context_compacted';
+    public const COMPACTION_SUMMARY = 'compaction_summary';
 
     public function __construct(
         public string $type,
@@ -155,6 +156,24 @@ class StreamEvent
         return new self(self::CONTEXT_COMPACTED, null, 'Context was automatically compacted', [
             'pre_tokens' => $preTokens,
             'trigger' => $trigger,
+        ]);
+    }
+
+    /**
+     * Create a compaction summary event.
+     *
+     * Contains the full summary that Claude continues with after compaction.
+     * This replaces the previous context_compacted event - it has the same
+     * metadata plus the full summary content.
+     *
+     * @param string $summary The full compaction summary text
+     * @param array $metadata Compaction metadata (pre_tokens, trigger)
+     */
+    public static function compactionSummary(string $summary, array $metadata = []): self
+    {
+        return new self(self::COMPACTION_SUMMARY, null, $summary, [
+            'pre_tokens' => $metadata['pre_tokens'] ?? null,
+            'trigger' => $metadata['trigger'] ?? 'auto',
         ]);
     }
 
