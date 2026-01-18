@@ -917,6 +917,37 @@ class MemorySnapshotService
             // Only delete pending file on success
             @unlink($path);
 
+            // Ensure MemoryDatabase record exists for the target schema
+            $targetSchemaShortName = str_replace('memory_', '', $targetSchema);
+            $memoryDb = MemoryDatabase::where('schema_name', $targetSchemaShortName)->first();
+            if (!$memoryDb) {
+                // Check if there's a soft-deleted record we can restore
+                $trashedDb = MemoryDatabase::withTrashed()
+                    ->where('schema_name', $targetSchemaShortName)
+                    ->whereNotNull('deleted_at')
+                    ->first();
+
+                if ($trashedDb) {
+                    $trashedDb->restore();
+                    $trashedDb->update(['description' => 'Restored via import from ' . $sourceSchema]);
+                    $memoryDb = $trashedDb;
+                    Log::info('Restored soft-deleted MemoryDatabase record for imported schema', [
+                        'schema_name' => $targetSchemaShortName,
+                        'memory_database_id' => $memoryDb->id,
+                    ]);
+                } else {
+                    $memoryDb = MemoryDatabase::create([
+                        'name' => ucfirst(str_replace('_', ' ', $targetSchemaShortName)),
+                        'schema_name' => $targetSchemaShortName,
+                        'description' => 'Imported from ' . $sourceSchema,
+                    ]);
+                    Log::info('Created MemoryDatabase record for imported schema', [
+                        'schema_name' => $targetSchemaShortName,
+                        'memory_database_id' => $memoryDb->id,
+                    ]);
+                }
+            }
+
             Log::info('Schema imported with transformation', [
                 'source_schema' => $sourceSchema,
                 'target_schema' => $targetSchema,
