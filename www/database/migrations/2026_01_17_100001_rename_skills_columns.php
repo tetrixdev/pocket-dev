@@ -5,9 +5,11 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Rename skills table columns for clarity:
+ * Rename skills table columns for clarity and add proper documentation:
  * - description -> when_to_use (conditions when skill should be used)
  * - content -> instructions (the full skill instructions/template)
+ * - Add COMMENT ON COLUMN for AI-consumable documentation
+ * - Update schema_registry with proper format
  */
 return new class extends Migration
 {
@@ -64,39 +66,47 @@ return new class extends Migration
                 RENAME COLUMN content TO instructions
             ");
 
-            // Update schema_registry description and embeddable fields
+            // Add column comments for AI-consumable documentation
+            DB::connection('pgsql')->statement("
+                COMMENT ON COLUMN {$schemaName}.skills.name IS 'The exact trigger name (e.g., \"commit\", \"review-pr\")'
+            ");
+
+            DB::connection('pgsql')->statement("
+                COMMENT ON COLUMN {$schemaName}.skills.when_to_use IS 'Conditions/situations when this skill should be invoked'
+            ");
+
+            DB::connection('pgsql')->statement("
+                COMMENT ON COLUMN {$schemaName}.skills.instructions IS 'Full skill instructions in markdown format'
+            ");
+
+            // Update schema_registry with proper description format
             DB::connection('pgsql')->statement("
                 UPDATE {$schemaName}.schema_registry
                 SET
-                    description = 'PocketDev Skills - slash commands invoked via /name.
-
-Columns:
-- name: The exact trigger name (e.g., \"commit\", \"review-pr\")
-- when_to_use: Conditions/situations when this skill should be invoked
-- instructions: Full skill instructions in markdown format
-
-To retrieve a skill, query by exact name match:
-SELECT instructions FROM skills WHERE name = ''skill-name''',
+                    description = 'PocketDev Skills - slash commands that can be invoked via /name in chat.
+**Typical queries:** Get skill by exact name match
+**Relationships:** None (standalone table)
+**Example:** php artisan memory:query --schema={$schemaName} --sql=\"SELECT instructions FROM skills WHERE name = ''example-skill''\"',
                     embeddable_fields = '{\"when_to_use\",\"instructions\"}',
                     updated_at = NOW()
                 WHERE table_name = 'skills'
             ");
 
-            // Update embeddings source_field references (if column exists)
+            // Update embeddings field_name references
             try {
                 DB::connection('pgsql')->statement("
                     UPDATE {$schemaName}.embeddings
-                    SET source_field = 'when_to_use'
-                    WHERE source_table = 'skills' AND source_field = 'description'
+                    SET field_name = 'when_to_use'
+                    WHERE source_table = 'skills' AND field_name = 'description'
                 ");
 
                 DB::connection('pgsql')->statement("
                     UPDATE {$schemaName}.embeddings
-                    SET source_field = 'instructions'
-                    WHERE source_table = 'skills' AND source_field = 'content'
+                    SET field_name = 'instructions'
+                    WHERE source_table = 'skills' AND field_name = 'content'
                 ");
             } catch (\Exception $e) {
-                // source_field column may not exist in older schemas - skip
+                // field_name column may not exist in older schemas - skip
                 Log::info("Skipping embeddings update in {$schemaName}: " . $e->getMessage());
             }
 
@@ -144,6 +154,19 @@ SELECT instructions FROM skills WHERE name = ''skill-name''',
                 RENAME COLUMN instructions TO content
             ");
 
+            // Remove column comments (set to null)
+            DB::connection('pgsql')->statement("
+                COMMENT ON COLUMN {$schemaName}.skills.name IS NULL
+            ");
+
+            DB::connection('pgsql')->statement("
+                COMMENT ON COLUMN {$schemaName}.skills.description IS NULL
+            ");
+
+            DB::connection('pgsql')->statement("
+                COMMENT ON COLUMN {$schemaName}.skills.content IS NULL
+            ");
+
             // Revert schema_registry
             DB::connection('pgsql')->statement("
                 UPDATE {$schemaName}.schema_registry
@@ -154,21 +177,21 @@ SELECT instructions FROM skills WHERE name = ''skill-name''',
                 WHERE table_name = 'skills'
             ");
 
-            // Revert embeddings source_field references (if column exists)
+            // Revert embeddings field_name references
             try {
                 DB::connection('pgsql')->statement("
                     UPDATE {$schemaName}.embeddings
-                    SET source_field = 'description'
-                    WHERE source_table = 'skills' AND source_field = 'when_to_use'
+                    SET field_name = 'description'
+                    WHERE source_table = 'skills' AND field_name = 'when_to_use'
                 ");
 
                 DB::connection('pgsql')->statement("
                     UPDATE {$schemaName}.embeddings
-                    SET source_field = 'content'
-                    WHERE source_table = 'skills' AND source_field = 'instructions'
+                    SET field_name = 'content'
+                    WHERE source_table = 'skills' AND field_name = 'instructions'
                 ");
             } catch (\Exception $e) {
-                // source_field column may not exist in older schemas - skip
+                // field_name column may not exist in older schemas - skip
                 Log::info("Skipping embeddings revert in {$schemaName}: " . $e->getMessage());
             }
 

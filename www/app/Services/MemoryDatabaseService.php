@@ -106,20 +106,26 @@ class MemoryDatabaseService
                     CREATE INDEX idx_{$schemaName}_skills_name ON {$fullSchemaName}.skills(name)
                 ");
 
-                // Register skills in schema_registry
+                // Add column comments for AI-consumable documentation
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.name IS 'The exact trigger name (e.g., \"commit\", \"review-pr\")'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.when_to_use IS 'Conditions/situations when this skill should be invoked'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.instructions IS 'Full skill instructions in markdown format'
+                ");
+
+                // Register skills in schema_registry with proper description format
                 DB::connection('pgsql')->statement("
                     INSERT INTO {$fullSchemaName}.schema_registry (table_name, description, embeddable_fields, created_at, updated_at)
                     VALUES (
                         'skills',
-                        'PocketDev Skills - slash commands invoked via /name.
-
-Columns:
-- name: The exact trigger name (e.g., \"commit\", \"review-pr\")
-- when_to_use: Conditions/situations when this skill should be invoked
-- instructions: Full skill instructions in markdown format
-
-To retrieve a skill, query by exact name match:
-SELECT instructions FROM skills WHERE name = ''skill-name''',
+                        'PocketDev Skills - slash commands that can be invoked via /name in chat.
+**Typical queries:** Get skill by exact name match
+**Relationships:** None (standalone table)
+**Example:** php artisan memory:query --schema={$schemaName} --sql=\"SELECT instructions FROM skills WHERE name = ''example-skill''\"',
                         '{\"when_to_use\",\"instructions\"}',
                         NOW(),
                         NOW()
