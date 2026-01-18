@@ -21,6 +21,19 @@ Everything else may be reset on container rebuild.
 - **Docker**: May or may not be available depending on deployment. If available, don't modify PocketDev's own containers (`pocket-dev-*`).
 - **User access**: The user cannot directly access files. Include all relevant context in your response, or use full file paths (which are clickable and show a preview).
 
+## JSON in Artisan Commands
+
+When passing JSON to artisan commands (e.g., `--data=`, `--column-descriptions=`), you MUST write it to a temp file first. Direct inline JSON will fail due to bash escaping issues.
+
+**Required pattern:**
+```bash
+cat > /tmp/data.json << 'ENDJSON'
+{"name": "Example", "notes": "Any content here"}
+ENDJSON
+
+php artisan memory:insert --schema=default --table=example --data="$(cat /tmp/data.json)"
+```
+
 ## Error Handling for PocketDev Tools
 
 If a PocketDev tool returns an unexpected error or response:
