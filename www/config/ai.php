@@ -47,6 +47,8 @@ return [
                 'Read', 'Write', 'Edit', 'MultiEdit', 'Glob', 'Grep', 'LS',
                 'Bash', 'Task', 'WebFetch', 'WebSearch', 'NotebookRead', 'NotebookEdit',
             ],
+            // Log all streaming deltas (very verbose, for debugging stream issues)
+            'verbose_logging' => env('CLAUDE_CODE_VERBOSE_LOGGING', false),
         ],
 
         'codex' => [

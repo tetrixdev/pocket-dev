@@ -352,7 +352,7 @@ class ClaudeCodeProvider implements AIProviderInterface
         // Initialize per-conversation stream logger (only in debug mode)
         $debugLogging = config('app.debug');
         $streamLogger = $debugLogging ? app(ConversationStreamLogger::class) : null;
-        $verboseLogging = false; // Set to true for full delta logging when debugging
+        $verboseLogging = config('ai.providers.claude_code.verbose_logging', false);
         $uuid = $conversation->uuid;
         if ($streamLogger) {
             $streamLogger->init($uuid);
@@ -1145,30 +1145,32 @@ class ClaudeCodeProvider implements AIProviderInterface
         // Check if this is a compaction summary (user message immediately after compact_boundary)
         if ($state['awaitingCompactionSummary']) {
             $state['awaitingCompactionSummary'] = false;
-            $summaryText = '';
+            $summaryParts = [];
 
-            // Extract text content from the message
+            // Extract text content from the message (concatenate all text blocks)
             if (is_string($content)) {
-                $summaryText = $content;
+                $summaryParts[] = $content;
             } elseif (is_array($content)) {
                 foreach ($content as $block) {
                     if (($block['type'] ?? '') === 'text') {
-                        $summaryText = $block['text'] ?? '';
-                        break;
+                        $summaryParts[] = $block['text'] ?? '';
                     }
                 }
             }
 
-            if (!empty($summaryText)) {
-                $metadata = $state['compactionMetadata'] ?? [];
+            $summaryText = trim(implode("\n", array_filter($summaryParts, fn($part) => $part !== '')));
+            $metadata = $state['compactionMetadata'] ?? [];
+            $state['compactionMetadata'] = null; // Always clear metadata
+
+            if ($summaryText !== '') {
                 Log::channel('api')->info('ClaudeCodeProvider: Compaction summary captured', [
                     'summary_length' => strlen($summaryText),
                     'pre_tokens' => $metadata['pre_tokens'] ?? null,
                 ]);
                 yield StreamEvent::compactionSummary($summaryText, $metadata);
-                $state['compactionMetadata'] = null;
-                return; // Don't process as regular user message
             }
+
+            return; // Don't process as regular user message
         }
 
         // Handle string content (e.g., local command outputs)
