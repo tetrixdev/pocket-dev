@@ -4209,6 +4209,7 @@
                     } finally {
                         this.isProcessing = false;
                         this.audioChunks = [];
+                        this.autoSendAfterTranscription = false;
                     }
                 },
 
