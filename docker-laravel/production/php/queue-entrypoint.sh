@@ -61,6 +61,12 @@ fi
 chown www-data:www-data /workspace 2>/dev/null || true
 chmod 775 /workspace 2>/dev/null || true
 
+# Safety net: Ensure all workspace subdirectories have correct permissions
+# Normally, Workspace model sets group=appgroup and mode=0775 on creation/restore.
+# This catches edge cases like silent mkdir failures or race conditions.
+find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp appgroup {} \; 2>/dev/null || true
+find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
+
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."
 max_attempts=60

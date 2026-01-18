@@ -44,10 +44,24 @@ class Workspace extends Model
         });
 
         // Create workspace directory on creation
+        // Owner will be www-data (PHP process), group will be www-data's primary group
+        // We set group to appgroup and mode to 0775 so appuser (Claude CLI) can write
         static::created(function (Workspace $workspace) {
             $path = $workspace->getWorkingDirectoryPath();
             if (!is_dir($path)) {
-                @mkdir($path, 0755, true);
+                @mkdir($path, 0775, true);
+                // Set group to appgroup so both www-data and appuser can write
+                // (www-data as owner, appuser as group member)
+                @chgrp($path, 'appgroup');
+            }
+        });
+
+        // Ensure correct permissions when workspace is restored from soft-delete
+        static::restored(function (Workspace $workspace) {
+            $path = $workspace->getWorkingDirectoryPath();
+            if (is_dir($path)) {
+                @chmod($path, 0775);
+                @chgrp($path, 'appgroup');
             }
         });
     }
