@@ -50,6 +50,12 @@ Transforms a Docker Compose file to use PocketDev workspace volume mounts instea
 4. Creates `compose.override.yaml` in the same directory (original unchanged)
 
 **Important:** The input path must be within `/workspace/` so the tool can calculate the correct subpath for volume mounts.
+
+**Known Limitations:**
+- File vs directory detection uses extension-based heuristics. Directories with extensions (e.g., `./configs.d`) may be misclassified as files, and files without extensions (e.g., `./Makefile`) may be misclassified as directories.
+- Service command guessing assumes standard naming (php, nginx, mysql, redis, node). Services with custom names or entrypoints may need manual adjustment in the override file.
+
+**After running this tool:** Read both the original compose file and the generated override file. Warn the user if any volume mounts might be affected by the limitations above (e.g., extensionless files, directories with extensions, or non-standard service names with file mounts). Suggest manual adjustments if needed.
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
@@ -367,30 +373,6 @@ CLI;
         $lines[] = "  " . self::VOLUME_NAME . ":";
         $lines[] = "    external: true";
 
-        return implode("\n", $lines);
-    }
-
-    /**
-     * Generate entrypoint override for services with file mounts.
-     */
-    private function injectEntrypoint(string $service, array $mounts, int $serviceIndent): string
-    {
-        $copyCommands = [];
-        foreach ($mounts as $mount) {
-            $stagingPath = $mount['staging'];
-            $targetPath = $mount['target'];
-            $filename = $mount['filename'];
-            $copyCommands[] = "cp {$stagingPath}/{$filename} {$targetPath}";
-        }
-
-        $serviceCommand = $this->getServiceCommand($service);
-        $indent = str_repeat(" ", $serviceIndent + 2);
-
-        // Build the entrypoint with copy commands, running as root for permission to write system dirs
-        $copyScript = implode(" && ", $copyCommands);
-        $lines = [];
-        $lines[] = "{$indent}user: root";
-        $lines[] = "{$indent}entrypoint: [\"/bin/sh\", \"-c\", \"{$copyScript} && {$serviceCommand}\"]";
         return implode("\n", $lines);
     }
 

@@ -45,6 +45,22 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Safety check: Ensure no duplicate slugs exist before restoring unique constraint
+        // This would happen if the same slug exists both globally and per-workspace
+        $duplicates = DB::table('credentials')
+            ->select('slug')
+            ->groupBy('slug')
+            ->havingRaw('COUNT(*) > 1')
+            ->pluck('slug');
+
+        if ($duplicates->isNotEmpty()) {
+            throw new \RuntimeException(
+                'Cannot rollback: duplicate slugs exist that would violate unique constraint. ' .
+                'Slugs with duplicates: ' . $duplicates->implode(', ') . '. ' .
+                'Delete workspace-specific overrides first, then retry rollback.'
+            );
+        }
+
         // Drop the partial indexes
         DB::statement('DROP INDEX IF EXISTS credentials_slug_workspace_unique');
         DB::statement('DROP INDEX IF EXISTS credentials_slug_global_unique');
