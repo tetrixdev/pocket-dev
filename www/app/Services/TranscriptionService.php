@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -102,6 +103,58 @@ class TranscriptionService
         } catch (\Exception $e) {
             Log::error('OpenAI Realtime session error', [
                 'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Transcribe an audio file using OpenAI Whisper API.
+     * This is an alternative to real-time streaming - records full audio then transcribes.
+     *
+     * @param UploadedFile $audioFile The audio file to transcribe
+     * @return string The transcribed text
+     * @throws \Exception
+     */
+    public function transcribeAudio(UploadedFile $audioFile): string
+    {
+        if (empty($this->apiKey)) {
+            throw new \Exception('OpenAI API key is not configured. Set it in Config → Credentials.');
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+            ])
+            ->timeout(1800) // 30 minutes for long recordings
+            ->attach('file', file_get_contents($audioFile->getRealPath()), $audioFile->getClientOriginalName())
+            ->post($this->baseUrl . '/v1/audio/transcriptions', [
+                'model' => 'gpt-4o-transcribe',
+                'response_format' => 'text',
+                'language' => 'en', // Force English to avoid detection issues on short segments
+            ]);
+
+            if (!$response->successful()) {
+                $responseBody = $response->body();
+                $errorDetails = json_decode($responseBody, true);
+
+                Log::error('OpenAI transcription failed', [
+                    'status' => $response->status(),
+                    'response' => $responseBody,
+                    'filename' => $audioFile->getClientOriginalName(),
+                    'size' => $audioFile->getSize(),
+                ]);
+
+                $errorMessage = $errorDetails['error']['message'] ?? $responseBody;
+                throw new \Exception('Transcription failed: ' . $errorMessage);
+            }
+
+            return $response->body();
+
+        } catch (\Exception $e) {
+            Log::error('OpenAI transcription error', [
+                'error' => $e->getMessage(),
+                'filename' => $audioFile->getClientOriginalName(),
             ]);
             throw $e;
         }

@@ -920,8 +920,11 @@
                 audioChunks: [],
                 openAiKeyConfigured: false,
                 autoSendAfterTranscription: false,
+                // File upload mode: true = record full audio then transcribe (better for pauses)
+                // false = realtime streaming (live transcription)
+                useFileUploadTranscription: true,
 
-                // Realtime transcription state (WebSocket-based)
+                // Realtime transcription state (WebSocket-based, used when useFileUploadTranscription=false)
                 realtimeWs: null,
                 realtimeTranscript: '',
                 realtimeAudioContext: null,
@@ -4094,6 +4097,125 @@
                 },
 
                 async startVoiceRecording() {
+                    if (this.useFileUploadTranscription) {
+                        await this.startFileUploadRecording();
+                    } else {
+                        await this.startRealtimeRecording();
+                    }
+                },
+
+                // ==================== File Upload Recording ====================
+                // Records full audio, then uploads for transcription (better for pauses)
+
+                async startFileUploadRecording() {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({
+                            audio: {
+                                echoCancellation: true,
+                                noiseSuppression: true,
+                                autoGainControl: true
+                            }
+                        });
+
+                        // Find supported MIME type
+                        const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+                        const selectedMimeType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+
+                        this.mediaRecorder = new MediaRecorder(stream,
+                            selectedMimeType ? { mimeType: selectedMimeType } : {}
+                        );
+                        this.audioChunks = [];
+
+                        this.mediaRecorder.ondataavailable = (e) => {
+                            if (e.data.size > 0) this.audioChunks.push(e.data);
+                        };
+
+                        this.mediaRecorder.onstop = () => this.processFileUploadRecording();
+
+                        this.mediaRecorder.start(1000); // 1-second chunks
+                        this.isRecording = true;
+                    } catch (err) {
+                        console.error('Error starting recording:', err);
+                        this.showError('Could not access microphone. Please check permissions.');
+                    }
+                },
+
+                stopFileUploadRecording() {
+                    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                        this.mediaRecorder.stop();
+                        this.isRecording = false;
+                        this.isProcessing = true; // Show processing state while uploading
+                        this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                    }
+                },
+
+                async processFileUploadRecording() {
+                    try {
+                        const mimeType = this.mediaRecorder?.mimeType || 'audio/webm';
+                        const audioBlob = new Blob(this.audioChunks, { type: mimeType });
+
+                        if (audioBlob.size < 1000) {
+                            this.showError('Recording too short. Please speak for at least 1 second.');
+                            this.isProcessing = false;
+                            return;
+                        }
+
+                        if (audioBlob.size > 25 * 1024 * 1024) {
+                            this.showError('Recording too large (max 25MB). Please record a shorter message.');
+                            this.isProcessing = false;
+                            return;
+                        }
+
+                        // Determine file extension from MIME type
+                        let ext = 'webm';
+                        if (mimeType.includes('mp4')) ext = 'm4a';
+                        else if (mimeType.includes('ogg')) ext = 'ogg';
+
+                        const formData = new FormData();
+                        formData.append('audio', audioBlob, `recording.${ext}`);
+
+                        const response = await fetch('/api/claude/transcribe', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
+                            body: formData
+                        });
+
+                        if (response.status === 428) {
+                            this.openAiKeyConfigured = false;
+                            this.showOpenAiModal = true;
+                            this.isProcessing = false;
+                            return;
+                        }
+
+                        const data = await response.json();
+
+                        if (data.success && data.transcription) {
+                            // Append to existing prompt (preserve what user typed)
+                            const existing = this.prompt.trim();
+                            this.prompt = existing ? existing + ' ' + data.transcription : data.transcription;
+
+                            if (this.autoSendAfterTranscription) {
+                                this.autoSendAfterTranscription = false;
+                                setTimeout(() => this.sendMessage(), 100);
+                            }
+                        } else {
+                            this.showError('Transcription failed: ' + (data.error || 'Unknown error'));
+                        }
+                    } catch (err) {
+                        console.error('Error processing recording:', err);
+                        this.showError('Error processing audio: ' + err.message);
+                    } finally {
+                        this.isProcessing = false;
+                        this.audioChunks = [];
+                    }
+                },
+
+                // ==================== Realtime Streaming Recording ====================
+                // Streams audio in real-time for live transcription (kept for future use)
+
+                async startRealtimeRecording() {
                     try {
                         this.isProcessing = true;
                         // Preserve existing prompt text, add space if needed
@@ -4280,6 +4402,14 @@
                 },
 
                 stopVoiceRecording() {
+                    if (this.useFileUploadTranscription) {
+                        this.stopFileUploadRecording();
+                    } else {
+                        this.stopRealtimeRecording();
+                    }
+                },
+
+                stopRealtimeRecording() {
                     if (!this.isRecording) return;
 
                     this.isRecording = false;

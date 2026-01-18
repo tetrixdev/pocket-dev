@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('claude')->group(function () {
+    Route::post('transcribe', [TranscriptionController::class, 'transcribe']);
     Route::post('transcribe/realtime-session', [TranscriptionController::class, 'createRealtimeSession']);
     Route::get('openai-key/check', [TranscriptionController::class, 'checkOpenAiKey']);
     Route::post('openai-key', [TranscriptionController::class, 'setOpenAiKey']);
