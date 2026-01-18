@@ -814,6 +814,13 @@
                 agents: [],
                 currentAgentId: null,
 
+                // Skills autocomplete
+                skills: [],
+                skillSuggestions: [],
+                showSkillSuggestions: false,
+                selectedSkillIndex: 0,
+                activeSkill: null, // Currently selected skill (shown as chip above textarea)
+
                 // Provider/Model - Dual architecture: agent-based (new) + direct provider/model (legacy)
                 // This supports backwards compatibility while transitioning to full agent-based system
                 provider: 'anthropic',
@@ -1231,6 +1238,113 @@
                     }
                 },
 
+                async fetchSkills() {
+                    if (!this.currentAgentId) {
+                        this.skills = [];
+                        return;
+                    }
+                    // Capture agent ID to detect stale responses
+                    const agentId = this.currentAgentId;
+                    try {
+                        const response = await fetch(`/api/agents/${agentId}/skills`);
+                        const data = await response.json();
+                        // Ignore stale response if agent changed during fetch
+                        if (this.currentAgentId !== agentId) return;
+                        this.skills = data.skills || [];
+                    } catch (err) {
+                        console.error('Failed to fetch skills:', err);
+                        // Only clear skills if still on same agent
+                        if (this.currentAgentId === agentId) {
+                            this.skills = [];
+                        }
+                    }
+                },
+
+                updateSkillSuggestions() {
+                    // Don't show suggestions if a skill is already active
+                    if (this.activeSkill) {
+                        this.showSkillSuggestions = false;
+                        this.skillSuggestions = [];
+                        return;
+                    }
+
+                    if (!this.prompt.startsWith('/')) {
+                        this.showSkillSuggestions = false;
+                        this.skillSuggestions = [];
+                        return;
+                    }
+
+                    const query = this.prompt.slice(1).toLowerCase();
+
+                    // Filter skills matching the query (guard against null when_to_use)
+                    this.skillSuggestions = this.skills.filter(skill => {
+                        const name = (skill.name || '').toLowerCase();
+                        const whenToUse = (skill.when_to_use || '').toLowerCase();
+                        return name.includes(query) || whenToUse.includes(query);
+                    }).slice(0, 8);
+
+                    this.showSkillSuggestions = this.skillSuggestions.length > 0;
+                    this.selectedSkillIndex = 0;
+                },
+
+                selectSkill(skill) {
+                    // Set active skill and clear prompt (skill shown as chip above textarea)
+                    this.activeSkill = skill;
+                    this.prompt = '';
+                    this.showSkillSuggestions = false;
+                    this.$nextTick(() => {
+                        this.$refs.promptInput?.focus();
+                    });
+                },
+
+                clearActiveSkill() {
+                    this.activeSkill = null;
+                },
+
+                findSkillByName(name) {
+                    return this.skills.find(s => s.name.toLowerCase() === name.toLowerCase());
+                },
+
+                handleSkillKeydown(event) {
+                    // Handle backspace on empty textarea to restore skill to prompt
+                    if (event.key === 'Backspace' && this.activeSkill && this.prompt === '') {
+                        event.preventDefault();
+                        // Restore skill name to prompt (minus last char for natural backspace feel)
+                        const skillName = '/' + this.activeSkill.name;
+                        this.prompt = skillName.slice(0, -1);
+                        this.activeSkill = null;
+                        return;
+                    }
+
+                    // Handle space to activate skill when typing /command directly
+                    if (event.key === ' ' && this.prompt.startsWith('/') && !this.activeSkill) {
+                        const skillName = this.prompt.slice(1).trim();
+                        const skill = this.findSkillByName(skillName);
+                        if (skill) {
+                            event.preventDefault();
+                            this.selectSkill(skill);
+                            return;
+                        }
+                    }
+
+                    if (!this.showSkillSuggestions) return;
+
+                    if (event.key === 'ArrowDown') {
+                        event.preventDefault();
+                        this.selectedSkillIndex = Math.min(this.selectedSkillIndex + 1, this.skillSuggestions.length - 1);
+                    } else if (event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        this.selectedSkillIndex = Math.max(this.selectedSkillIndex - 1, 0);
+                    } else if (event.key === 'Tab' || event.key === 'Enter') {
+                        if (this.skillSuggestions.length > 0) {
+                            event.preventDefault();
+                            this.selectSkill(this.skillSuggestions[this.selectedSkillIndex]);
+                        }
+                    } else if (event.key === 'Escape') {
+                        this.showSkillSuggestions = false;
+                    }
+                },
+
                 // Agent helper methods
                 get currentAgent() {
                     return this.agents.find(a => a.id === this.currentAgentId);
@@ -1338,6 +1452,9 @@
                     this.currentAgentId = agent.id;
                     this.provider = agent.provider;
                     this.model = agent.model;
+
+                    // Fetch skills for autocomplete
+                    this.fetchSkills();
 
                     // Load agent's reasoning settings
                     this.anthropicThinkingBudget = agent.anthropic_thinking_budget || 0;
@@ -2203,6 +2320,9 @@
                                 // would try to PATCH the backend (designed for user-initiated switches)
                                 this.currentAgentId = agent.id;
                                 this.claudeCodeAllowedTools = agent.allowed_tools || [];
+                                // Clear any stale skill state and refresh for this agent
+                                this.clearActiveSkill();
+                                this.fetchSkills();
                             } else {
                                 console.warn(`Agent ${data.conversation.agent_id} not found in available agents`);
                                 this.currentAgentId = null;
@@ -2698,9 +2818,23 @@
                 async sendMessage() {
                     const attachments = Alpine.store('attachments');
 
-                    // Allow sending if there's text OR files
-                    if (!this.prompt.trim() && !attachments.hasFiles) return;
+                    // Allow sending if there's text OR files OR active skill
+                    if (!this.prompt.trim() && !attachments.hasFiles && !this.activeSkill) return;
                     if (this.isStreaming) return;
+
+                    // Block unmatched /commands - if prompt starts with / but no skill is active
+                    if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
+                        const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0];
+                        const matchedSkill = this.findSkillByName(potentialSkillName);
+                        if (!matchedSkill) {
+                            this.showError(`Unknown skill: /${potentialSkillName}. Type / to see available skills.`);
+                            return;
+                        }
+                        // If it matches, activate it and continue
+                        this.activeSkill = matchedSkill;
+                        // Remove the /command from prompt, keep any text after it
+                        this.prompt = this.prompt.trim().slice(1 + potentialSkillName.length).trim();
+                    }
 
                     // Block if uploads still in progress
                     if (attachments.isUploading) {
@@ -2708,8 +2842,17 @@
                         return;
                     }
 
-                    // Build the prompt with file paths if attachments exist
+                    // Build the prompt - prepend skill instructions if active
                     let userPrompt = this.prompt;
+                    if (this.activeSkill) {
+                        const skillHeader = `**PocketDev Skill: ${this.activeSkill.name}**\n\n${this.activeSkill.instructions}`;
+                        if (userPrompt.trim()) {
+                            userPrompt = skillHeader + '\n\n---\n\n' + userPrompt;
+                        } else {
+                            userPrompt = skillHeader;
+                        }
+                        this.activeSkill = null; // Clear after use
+                    }
                     const filePaths = attachments.getFilePaths();
 
                     if (filePaths.length > 0) {

@@ -21,13 +21,15 @@ use App\Models\Workspace;
  * MIDDLE ZONE (reference material - retrievable):
  * 2. Tools - capabilities and how to use them
  * 3. Memory - available data schemas
+ * 4. Skills - slash commands that can be invoked
  *
  * RECENCY ZONE (end - high attention, task-relevant):
- * 4. Additional system prompt - project-wide customs
- * 5. Agent instructions - task-specific behavior
- * 6. Working directory - current context
- * 7. Environment - available resources
- * 8. Context usage - current state
+ * 5. Additional system prompt - project-wide customs (global)
+ * 6. Workspace Prompt - workspace-level base prompt
+ * 7. Agent instructions - task-specific behavior
+ * 8. Working directory - current context
+ * 9. Environment - available resources
+ * 10. Context usage - current state
  */
 class SystemPromptBuilder
 {
@@ -66,28 +68,38 @@ class SystemPromptBuilder
             $sections[] = $memorySection;
         }
 
+        // 4. Skills section (slash commands)
+        if ($skillsSection = $this->toolSelector->buildSkillsSection($agent)) {
+            $sections[] = $skillsSection;
+        }
+
         // === RECENCY ZONE (task-relevant) ===
-        // 4. Additional system prompt
+        // 5. Additional system prompt (global)
         $additionalPrompt = $this->systemPromptService->getAdditional();
         if (!empty($additionalPrompt)) {
             $sections[] = $additionalPrompt;
         }
 
-        // 5. Agent-specific instructions
+        // 6. Workspace Prompt
+        if ($workspace?->claude_base_prompt) {
+            $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
+        }
+
+        // 7. Agent-specific instructions
         $agentPrompt = $agent?->system_prompt;
         if (!empty($agentPrompt)) {
             $sections[] = $this->buildAgentSection($agentPrompt);
         }
 
-        // 6. Working directory context
+        // 8. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 7. Environment (credentials and packages)
+        // 9. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 8. Context usage (dynamic)
+        // 10. Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -126,28 +138,38 @@ class SystemPromptBuilder
             $sections[] = $memorySection;
         }
 
+        // 4. Skills section (slash commands)
+        if ($skillsSection = $this->toolSelector->buildSkillsSection($agent)) {
+            $sections[] = $skillsSection;
+        }
+
         // === RECENCY ZONE (task-relevant) ===
-        // 4. Additional system prompt
+        // 5. Additional system prompt (global)
         $additionalPrompt = $this->systemPromptService->getAdditional();
         if (!empty($additionalPrompt)) {
             $sections[] = $additionalPrompt;
         }
 
-        // 5. Agent-specific instructions
+        // 6. Workspace Prompt
+        if ($workspace?->claude_base_prompt) {
+            $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
+        }
+
+        // 7. Agent-specific instructions
         $agentPrompt = $agent?->system_prompt;
         if (!empty($agentPrompt)) {
             $sections[] = $this->buildAgentSection($agentPrompt);
         }
 
-        // 6. Working directory context
+        // 8. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 7. Environment (credentials and packages)
+        // 9. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 8. Context usage (dynamic)
+        // 10. Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -232,8 +254,14 @@ class SystemPromptBuilder
             $sections[] = $memoryHierarchy;
         }
 
+        // 4. Skills (from memory schemas)
+        $skillsHierarchy = $this->toolSelector->buildSkillsPreviewHierarchy($previewAgent);
+        if ($skillsHierarchy) {
+            $sections[] = $skillsHierarchy;
+        }
+
         // === RECENCY ZONE (task-relevant) ===
-        // 4. Additional system prompt
+        // 5. Additional system prompt (global)
         $additionalPrompt = $this->systemPromptService->getAdditional();
         if (!empty($additionalPrompt)) {
             $sections[] = $createSection(
@@ -243,7 +271,16 @@ class SystemPromptBuilder
             );
         }
 
-        // 5. Agent instructions
+        // 6. Workspace Prompt
+        if ($workspace?->claude_base_prompt) {
+            $sections[] = $createSection(
+                'Workspace Prompt',
+                $this->buildWorkspacePromptSection($workspace->claude_base_prompt),
+                'Workspace settings'
+            );
+        }
+
+        // 7. Agent instructions
         if (!empty($agentSystemPrompt)) {
             $sections[] = $createSection(
                 'Agent Instructions',
@@ -252,7 +289,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 6. Working directory
+        // 8. Working directory
         $workingDir = $workspace?->getWorkingDirectoryPath() ?? '/workspace';
         $sections[] = $createSection(
             'Working Directory',
@@ -260,7 +297,7 @@ class SystemPromptBuilder
             'Dynamic (per conversation)'
         );
 
-        // 7. Environment
+        // 9. Environment
         $envContent = $this->buildEnvironmentSection($workspace);
         if (!empty($envContent)) {
             $sections[] = $createSection(
@@ -284,6 +321,15 @@ class SystemPromptBuilder
     {
         return <<<PROMPT
 # Agent Instructions
+
+{$prompt}
+PROMPT;
+    }
+
+    private function buildWorkspacePromptSection(string $prompt): string
+    {
+        return <<<PROMPT
+# Workspace Prompt
 
 {$prompt}
 PROMPT;

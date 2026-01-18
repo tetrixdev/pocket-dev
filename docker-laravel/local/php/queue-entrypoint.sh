@@ -63,7 +63,7 @@ if [ ! -f "$CLAUDE_SETTINGS" ]; then
     # Create minimal settings with default deny patterns
     echo '{"permissions":{"deny":["Read(**/.env)"]}}' > "$CLAUDE_SETTINGS"
     chown "${TARGET_UID}:${TARGET_GID}" "$CLAUDE_SETTINGS"
-    chmod 644 "$CLAUDE_SETTINGS"
+    chmod 664 "$CLAUDE_SETTINGS"
     echo "Created default Claude settings with .env protection"
 fi
 
@@ -87,6 +87,12 @@ while [ $attempt -lt $max_attempts ]; do
     fi
     sleep 1
 done
+
+# Fix permissions on Claude config files so PHP-FPM (www-data) can read/write them
+# Claude CLI creates these with 600, we need 660 for group (appgroup) write access
+# Done after DB wait to ensure volumes are fully mounted
+chmod 660 /home/appuser/.claude.json /home/appuser/.claude.json.backup 2>/dev/null || true
+chmod 664 /home/appuser/.claude/settings.json 2>/dev/null || true
 
 # =============================================================================
 # SYSTEM PACKAGE INSTALLATION

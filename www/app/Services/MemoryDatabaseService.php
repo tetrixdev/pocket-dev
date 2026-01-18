@@ -76,7 +76,7 @@ class MemoryDatabaseService
                     )
                 ");
 
-                // Create indexes
+                // Create indexes for embeddings
                 DB::connection('pgsql')->statement("
                     CREATE INDEX idx_{$schemaName}_embeddings_source
                     ON {$fullSchemaName}.embeddings(source_table, source_id)
@@ -88,12 +88,57 @@ class MemoryDatabaseService
                     USING hnsw (embedding vector_cosine_ops)
                 ");
 
+                // Create skills table for slash commands
+                DB::connection('pgsql')->statement("
+                    CREATE TABLE {$fullSchemaName}.skills (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        name TEXT NOT NULL,
+                        when_to_use TEXT NOT NULL,
+                        instructions TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT NOW(),
+                        updated_at TIMESTAMP DEFAULT NOW(),
+                        CONSTRAINT skills_name_unique UNIQUE (name)
+                    )
+                ");
+
+                // Create index for skills name lookups
+                DB::connection('pgsql')->statement("
+                    CREATE INDEX idx_{$schemaName}_skills_name ON {$fullSchemaName}.skills(name)
+                ");
+
+                // Add column comments for AI-consumable documentation
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.name IS 'The exact trigger name (e.g., \"commit\", \"review-pr\")'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.when_to_use IS 'Conditions/situations when this skill should be invoked'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.instructions IS 'Full skill instructions in markdown format'
+                ");
+
+                // Register skills in schema_registry with proper description format
+                DB::connection('pgsql')->statement("
+                    INSERT INTO {$fullSchemaName}.schema_registry (table_name, description, embeddable_fields, created_at, updated_at)
+                    VALUES (
+                        'skills',
+                        'PocketDev Skills - slash commands that can be invoked via /name in chat.
+**Typical queries:** Get skill by exact name match
+**Relationships:** None (standalone table)
+**Example:** php artisan memory:query --schema={$schemaName} --sql=\"SELECT instructions FROM skills WHERE name = ''example-skill''\"',
+                        '{\"when_to_use\",\"instructions\"}',
+                        NOW(),
+                        NOW()
+                    )
+                ");
+
                 // Grant permissions to memory_ai user
                 DB::connection('pgsql')->statement("GRANT USAGE ON SCHEMA {$fullSchemaName} TO memory_ai");
                 DB::connection('pgsql')->statement("GRANT CREATE ON SCHEMA {$fullSchemaName} TO memory_ai");
                 DB::connection('pgsql')->statement("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA {$fullSchemaName} TO memory_ai");
                 DB::connection('pgsql')->statement("REVOKE DELETE ON {$fullSchemaName}.embeddings FROM memory_ai");
                 DB::connection('pgsql')->statement("REVOKE TRUNCATE ON {$fullSchemaName}.schema_registry FROM memory_ai");
+                DB::connection('pgsql')->statement("REVOKE TRUNCATE ON {$fullSchemaName}.skills FROM memory_ai");
 
                 // Grant permissions to memory_readonly user
                 DB::connection('pgsql')->statement("GRANT USAGE ON SCHEMA {$fullSchemaName} TO memory_readonly");

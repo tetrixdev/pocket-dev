@@ -721,4 +721,205 @@ GUIDE;
 
         return implode("\n", $lines);
     }
+
+    /**
+     * Build the skills section for the system prompt.
+     * Skills are slash commands that can be invoked via /name.
+     *
+     * @param Agent|null $agent The agent to get skills for
+     */
+    public function buildSkillsSection(?Agent $agent): ?string
+    {
+        $hierarchy = $this->buildSkillsPreviewHierarchy($agent);
+
+        if (!$hierarchy) {
+            return null;
+        }
+
+        return $this->flattenHierarchy($hierarchy);
+    }
+
+    /**
+     * Build hierarchical preview data for skills.
+     * Returns nested structure for preview display.
+     */
+    public function buildSkillsPreviewHierarchy(?Agent $agent): ?array
+    {
+        $schemas = $this->getAvailableSchemas($agent);
+
+        if ($schemas->isEmpty()) {
+            return null;
+        }
+
+        $allSkills = [];
+
+        // Gather skills from all available schemas
+        foreach ($schemas as $schema) {
+            $fullSchemaName = $schema->getFullSchemaName();
+
+            try {
+                $skills = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
+                    ->table("{$fullSchemaName}.skills")
+                    ->select(['name', 'when_to_use'])
+                    ->orderBy('name')
+                    ->get();
+
+                foreach ($skills as $skill) {
+                    $allSkills[] = [
+                        'name' => $skill->name,
+                        'when_to_use' => $skill->when_to_use,
+                        'schema' => $schema->schema_name,
+                    ];
+                }
+            } catch (\Illuminate\Database\QueryException $e) {
+                $msg = $e->getMessage();
+                // Missing skills table in older schemas - skip silently
+                if (str_contains($msg, 'relation') && str_contains($msg, 'skills')) {
+                    continue;
+                }
+                // Log unexpected DB errors
+                \Illuminate\Support\Facades\Log::warning('Failed to load skills for prompt', [
+                    'schema' => $schema->schema_name,
+                    'error' => $msg,
+                ]);
+                continue;
+            }
+        }
+
+        if (empty($allSkills)) {
+            return null;
+        }
+
+        // Build skill children
+        $skillChildren = [];
+        foreach ($allSkills as $skill) {
+            $whenToUse = $skill['when_to_use'] ?? '(not specified)';
+            $skillContent = "- name: {$skill['name']}, when_to_use: {$whenToUse}";
+
+            $skillChildren[] = [
+                'title' => $skill['name'],
+                'content' => $skillContent,
+                'source' => "{$skill['schema']}.skills",
+                'collapsed' => true,
+                'chars' => strlen($skillContent),
+                'estimated_tokens' => (int) ceil(strlen($skillContent) / 4),
+                'children' => [],
+            ];
+        }
+
+        // Build intro content (skill list comes from children, not duplicated here)
+        $introContent = "# Skills\n\n";
+        $introContent .= "PocketDev Skills should **always** be retrieved by querying the `skills` table in memory, matching by exact `name`.\n";
+        $introContent .= "Example: `SELECT instructions FROM {schema}.skills WHERE name = 'skill-name'`\n\n";
+        $introContent .= "Available skills:";
+
+        $childChars = array_sum(array_column($skillChildren, 'chars'));
+        $childTokens = array_sum(array_column($skillChildren, 'estimated_tokens'));
+        $totalTokens = (int) ceil(strlen($introContent) / 4) + $childTokens;
+
+        return [
+            'title' => 'Skills',
+            'content' => $introContent,
+            'source' => 'Dynamic (from memory schemas)',
+            'collapsed' => true,
+            'chars' => strlen($introContent) + $childChars,
+            'estimated_tokens' => $totalTokens,
+            'children' => $skillChildren,
+        ];
+    }
+
+    /**
+     * Get a specific skill by name from available schemas.
+     * Returns the full skill content if found.
+     *
+     * @param Agent|null $agent The agent context
+     * @param string $skillName The skill name to look up
+     * @return array|null The skill data or null if not found
+     */
+    public function getSkillByName(?Agent $agent, string $skillName): ?array
+    {
+        $schemas = $this->getAvailableSchemas($agent);
+
+        foreach ($schemas as $schema) {
+            $fullSchemaName = $schema->getFullSchemaName();
+
+            try {
+                $skill = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
+                    ->table("{$fullSchemaName}.skills")
+                    ->where('name', $skillName)
+                    ->first();
+
+                if ($skill) {
+                    return [
+                        'name' => $skill->name,
+                        'when_to_use' => $skill->when_to_use,
+                        'instructions' => $skill->instructions,
+                        'schema' => $schema->schema_name,
+                    ];
+                }
+            } catch (\Illuminate\Database\QueryException $e) {
+                $msg = $e->getMessage();
+                // Missing skills table in older schemas - skip silently
+                if (str_contains($msg, 'relation') && str_contains($msg, 'skills')) {
+                    continue;
+                }
+                // Log unexpected DB errors
+                \Illuminate\Support\Facades\Log::warning('Failed to get skill by name', [
+                    'schema' => $schema->schema_name,
+                    'skill' => $skillName,
+                    'error' => $msg,
+                ]);
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Get all skills from available schemas.
+     *
+     * @param Agent|null $agent The agent context
+     * @return Collection Collection of skill arrays
+     */
+    public function getAllSkills(?Agent $agent): Collection
+    {
+        $schemas = $this->getAvailableSchemas($agent);
+        $allSkills = collect();
+
+        foreach ($schemas as $schema) {
+            $fullSchemaName = $schema->getFullSchemaName();
+
+            try {
+                $skills = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
+                    ->table("{$fullSchemaName}.skills")
+                    ->select(['name', 'when_to_use', 'instructions'])
+                    ->orderBy('name')
+                    ->get();
+
+                foreach ($skills as $skill) {
+                    $allSkills->push([
+                        'name' => $skill->name,
+                        'when_to_use' => $skill->when_to_use,
+                        'instructions' => $skill->instructions,
+                        'schema' => $schema->schema_name,
+                    ]);
+                }
+            } catch (\Illuminate\Database\QueryException $e) {
+                $msg = $e->getMessage();
+                // Missing skills table in older schemas - skip silently
+                if (str_contains($msg, 'relation') && str_contains($msg, 'skills')) {
+                    continue;
+                }
+                // Log unexpected DB errors
+                \Illuminate\Support\Facades\Log::warning('Failed to get all skills', [
+                    'schema' => $schema->schema_name,
+                    'error' => $msg,
+                ]);
+                continue;
+            }
+        }
+
+        return $allSkills;
+    }
 }

@@ -24,6 +24,7 @@ class Workspace extends Model
         'owner_id',
         'settings',
         'selected_packages',
+        'claude_base_prompt',
     ];
 
     protected $casts = [

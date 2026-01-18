@@ -653,11 +653,11 @@ class ConfigController extends Controller
     }
 
     /**
-     * Show hooks editor (~/.claude/settings.json)
+     * Show Claude Code settings (settings.json, CLAUDE.md, skills, import)
      */
-    public function showHooks(Request $request)
+    public function showClaudeCode(Request $request)
     {
-        $request->session()->put('config_last_section', 'hooks');
+        $request->session()->put('config_last_section', 'claude-code');
 
         try {
             $path = $this->getSettingsPath();
@@ -677,20 +677,154 @@ class ConfigController extends Controller
                 );
             }
 
-            return view('config.hooks', [
+            // Get memory skills from all schemas
+            $memorySkills = $this->getMemorySkillsBySchema();
+
+            // Get workspaces for base prompt editing
+            $workspaces = Workspace::orderBy('name')->get();
+
+            // Get MCP servers from .claude.json
+            $mcpContent = '{}';
+            $claudeJsonPath = '/home/appuser/.claude.json';
+            if (file_exists($claudeJsonPath)) {
+                $claudeJson = json_decode(file_get_contents($claudeJsonPath), true);
+                $mcpServers = is_array($claudeJson) ? ($claudeJson['mcpServers'] ?? []) : [];
+                $mcpContent = json_encode($mcpServers, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            }
+
+            return view('config.claude-code', [
                 'content' => $content,
+                'mcpContent' => $mcpContent,
+                'memorySkills' => $memorySkills,
+                'workspaces' => $workspaces,
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to load hooks', ['error' => $e->getMessage()]);
+            Log::error('Failed to load Claude Code settings', ['error' => $e->getMessage()]);
             return redirect()->route('config.index')
-                ->with('error', 'Failed to load hooks: ' . $e->getMessage());
+                ->with('error', 'Failed to load Claude Code settings: ' . $e->getMessage());
         }
     }
 
     /**
-     * Save hooks (~/.claude/settings.json)
+     * Save workspace base prompt (CLAUDE.md equivalent)
      */
-    public function saveHooks(Request $request)
+    public function saveBasePrompt(Request $request)
+    {
+        $validated = $request->validate([
+            'workspace_id' => 'required|uuid|exists:workspaces,id',
+            'base_prompt' => 'nullable|string|max:100000',
+        ]);
+
+        try {
+            $workspace = Workspace::findOrFail($validated['workspace_id']);
+            $workspace->claude_base_prompt = $validated['base_prompt'] ?: null;
+            $workspace->save();
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Failed to save base prompt', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Failed to save: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Get workspace base prompt
+     */
+    public function getBasePrompt(Request $request)
+    {
+        $validated = $request->validate([
+            'workspace_id' => 'required|uuid|exists:workspaces,id',
+        ]);
+
+        try {
+            $workspace = Workspace::findOrFail($validated['workspace_id']);
+            return response()->json([
+                'success' => true,
+                'base_prompt' => $workspace->claude_base_prompt ?? '',
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to load: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Get skills from all memory schemas
+     */
+    protected function getMemorySkillsBySchema(): array
+    {
+        $schemas = \App\Models\MemoryDatabase::orderBy('name')->get();
+        $result = [];
+
+        foreach ($schemas as $schema) {
+            $fullSchemaName = $schema->getFullSchemaName();
+
+            try {
+                $skills = DB::connection('pgsql_readonly')
+                    ->table("{$fullSchemaName}.skills")
+                    ->select(['id', 'name', 'when_to_use', 'created_at', 'updated_at'])
+                    ->orderBy('name')
+                    ->get()
+                    ->toArray();
+
+                if (!empty($skills)) {
+                    $result[] = [
+                        'schema' => $schema,
+                        'skills' => $skills,
+                    ];
+                }
+            } catch (\Exception $e) {
+                // Skills table might not exist - skip
+                continue;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Delete a skill from a memory schema
+     */
+    public function deleteMemorySkill(string $schemaName, string $skillId)
+    {
+        try {
+            $memoryDb = \App\Models\MemoryDatabase::where('schema_name', $schemaName)->first();
+            if (!$memoryDb) {
+                return response()->json(['error' => 'Schema not found'], 404);
+            }
+
+            $fullSchemaName = $memoryDb->getFullSchemaName();
+
+            // Delete embeddings and skill in a transaction for atomicity
+            $deleted = DB::connection('pgsql')->transaction(function () use ($fullSchemaName, $skillId) {
+                // Delete associated embeddings first
+                DB::connection('pgsql')
+                    ->table("{$fullSchemaName}.embeddings")
+                    ->where('source_table', 'skills')
+                    ->where('source_id', $skillId)
+                    ->delete();
+
+                // Delete the skill
+                return DB::connection('pgsql')
+                    ->table("{$fullSchemaName}.skills")
+                    ->where('id', $skillId)
+                    ->delete();
+            });
+
+            if ($deleted) {
+                return response()->json(['success' => true]);
+            } else {
+                return response()->json(['error' => 'Skill not found'], 404);
+            }
+        } catch (\Exception $e) {
+            Log::error("Failed to delete skill {$skillId} from {$schemaName}", ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Save Claude Code settings (~/.claude/settings.json)
+     */
+    public function saveClaudeCode(Request $request)
     {
         try {
             $validated = $request->validate([
@@ -714,10 +848,53 @@ class ConfigController extends Controller
                 throw new \RuntimeException('Failed to write settings file');
             }
 
-            return redirect()->back()->with('success', 'Hooks saved successfully');
+            return redirect()->back()->with('success', 'Settings saved successfully');
         } catch (\Exception $e) {
-            Log::error('Failed to save hooks', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to save hooks: ' . $e->getMessage());
+            Log::error('Failed to save Claude Code settings', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to save settings: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save MCP servers to .claude.json
+     */
+    public function saveMcpServers(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'mcp_content' => 'required|json',
+            ]);
+
+            $claudeJsonPath = '/home/appuser/.claude.json';
+
+            // Validate it's valid JSON (object)
+            $mcpServers = json_decode($validated['mcp_content'], true);
+            if (!is_array($mcpServers)) {
+                throw new \InvalidArgumentException('MCP servers must be valid JSON object');
+            }
+
+            // Read existing .claude.json or create new
+            $claudeJson = [];
+            if (file_exists($claudeJsonPath)) {
+                $claudeJson = json_decode(file_get_contents($claudeJsonPath), true) ?? [];
+            }
+
+            // Update mcpServers section
+            $claudeJson['mcpServers'] = $mcpServers;
+
+            // Write back with pretty formatting
+            $result = file_put_contents(
+                $claudeJsonPath,
+                json_encode($claudeJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+            );
+            if ($result === false) {
+                throw new \RuntimeException('Failed to write .claude.json file');
+            }
+
+            return redirect()->back()->with('success', 'MCP servers saved successfully');
+        } catch (\Exception $e) {
+            Log::error('Failed to save MCP servers', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to save MCP servers: ' . $e->getMessage());
         }
     }
 
@@ -755,14 +932,65 @@ class ConfigController extends Controller
 
             try {
                 $archivePath = $tempDir . '/archive.tar.gz';
+
+                // Debug: Log uploaded file info BEFORE move
+                Log::info('Config import: File upload received', [
+                    'original_name' => $file->getClientOriginalName(),
+                    'mime_type' => $file->getMimeType(),
+                    'size' => $file->getSize(),
+                    'temp_path' => $file->getRealPath(),
+                    'temp_exists' => file_exists($file->getRealPath()),
+                ]);
+
                 $file->move($tempDir, 'archive.tar.gz');
+
+                // Debug: Log file info AFTER move
+                Log::info('Config import: File moved', [
+                    'archive_path' => $archivePath,
+                    'exists' => file_exists($archivePath),
+                    'size' => file_exists($archivePath) ? filesize($archivePath) : 'N/A',
+                    'mime' => file_exists($archivePath) ? mime_content_type($archivePath) : 'N/A',
+                    'extract_dir' => $extractDir,
+                    'extract_dir_exists' => is_dir($extractDir),
+                    'extract_dir_writable' => is_writable($extractDir),
+                ]);
+
+                // Validate archive entries to prevent path traversal attacks
+                $listing = [];
+                $listCode = 0;
+                $listCommand = "tar -tzf " . escapeshellarg($archivePath) . " 2>&1";
+                exec($listCommand, $listing, $listCode);
+
+                if ($listCode !== 0) {
+                    throw new \RuntimeException('Failed to list archive contents: ' . implode("\n", $listing));
+                }
+
+                foreach ($listing as $entry) {
+                    // Reject absolute paths, path traversal, and Windows paths
+                    if (
+                        str_contains($entry, '..') ||
+                        str_starts_with($entry, '/') ||
+                        str_starts_with($entry, '\\') ||
+                        preg_match('/^[A-Za-z]:[\\\\\\/]/', $entry)
+                    ) {
+                        throw new \RuntimeException("Unsafe archive entry detected: {$entry}");
+                    }
+                }
 
                 $output = [];
                 $returnCode = 0;
-                exec("tar --no-absolute-names --no-same-owner -xzf " . escapeshellarg($archivePath) . " -C " . escapeshellarg($extractDir) . " 2>&1", $output, $returnCode);
+                $tarCommand = "tar --no-same-owner -xzf " . escapeshellarg($archivePath) . " -C " . escapeshellarg($extractDir) . " 2>&1";
+                exec($tarCommand, $output, $returnCode);
+
+                // Debug: Log tar result
+                Log::info('Config import: Tar extraction result', [
+                    'command' => $tarCommand,
+                    'return_code' => $returnCode,
+                    'output' => $output,
+                ]);
 
                 if ($returnCode !== 0) {
-                    throw new \RuntimeException('Failed to extract archive');
+                    throw new \RuntimeException('Failed to extract archive: ' . implode("\n", $output));
                 }
 
                 $exportDirs = glob($extractDir . '/claude-config-export-*');
@@ -787,49 +1015,57 @@ class ConfigController extends Controller
 
                 // Check settings.json
                 if (file_exists($sourceDir . '/settings.json')) {
-                    $content = json_decode(file_get_contents($sourceDir . '/settings.json'), true);
+                    $newContent = file_get_contents($sourceDir . '/settings.json');
+                    $newJson = json_decode($newContent, true);
                     $currentPath = $this->getSettingsPath();
+                    $currentContent = file_exists($currentPath) ? file_get_contents($currentPath) : null;
                     $preview['sections']['settings'] = [
                         'exists' => true,
                         'current_exists' => file_exists($currentPath),
-                        'keys' => is_array($content) ? array_keys($content) : [],
+                        'keys' => is_array($newJson) ? array_keys($newJson) : [],
+                        'content' => $newContent,
+                        'current_content' => $currentContent,
                     ];
                 }
 
                 // Check CLAUDE.md
                 if (file_exists($sourceDir . '/CLAUDE.md')) {
                     $content = file_get_contents($sourceDir . '/CLAUDE.md');
-                    $currentPath = '/home/appuser/.claude/CLAUDE.md';
                     $preview['sections']['claude_md'] = [
                         'exists' => true,
-                        'current_exists' => file_exists($currentPath),
                         'lines' => substr_count($content, "\n") + 1,
                         'size' => strlen($content),
+                        'content' => $content,
                     ];
                 }
 
-                // Check directories (agents, commands, rules)
-                foreach (['agents', 'commands', 'rules'] as $dir) {
-                    if (is_dir($sourceDir . '/' . $dir)) {
-                        $files = $this->listFilesRecursive($sourceDir . '/' . $dir);
-                        $currentDir = '/home/appuser/.claude/' . $dir;
-                        $currentFiles = is_dir($currentDir) ? $this->listFilesRecursive($currentDir) : [];
-
-                        // Use relative paths for accurate conflict detection (not just basename)
-                        $sourceBase = $sourceDir . '/' . $dir . '/';
-                        $currentBase = $currentDir . '/';
-                        $relativeFiles = array_map(fn($f) => str_replace($sourceBase, '', $f), $files);
-                        $relativeCurrentFiles = array_map(fn($f) => str_replace($currentBase, '', $f), $currentFiles);
-
-                        $preview['sections'][$dir] = [
-                            'exists' => true,
-                            'current_exists' => is_dir($currentDir),
-                            'files' => $relativeFiles,
-                            'current_files' => $relativeCurrentFiles,
-                            'new_files' => array_values(array_diff($relativeFiles, $relativeCurrentFiles)),
-                            'conflict_files' => array_values(array_intersect($relativeFiles, $relativeCurrentFiles)),
-                        ];
+                // Parse skills from commands/ and skills/ directories for memory import
+                $parsedSkills = $this->parseSkillsFromArchive($sourceDir);
+                if (!empty($parsedSkills)) {
+                    // Get existing skills from all memory schemas for conflict detection
+                    $existingSkillsBySchema = [];
+                    try {
+                        $schemas = \App\Models\MemoryDatabase::all();
+                        foreach ($schemas as $schema) {
+                            try {
+                                $fullSchemaName = $schema->getFullSchemaName();
+                                $skills = DB::connection('pgsql')->select("SELECT name FROM {$fullSchemaName}.skills");
+                                $existingSkillsBySchema[$schema->schema_name] = array_map(fn($s) => $s->name, $skills);
+                            } catch (\Exception $e) {
+                                // Table doesn't exist or other error - just use empty array
+                                $existingSkillsBySchema[$schema->schema_name] = [];
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        // If we can't get schemas, just continue without existing skill info
                     }
+
+                    $preview['sections']['parsed_skills'] = [
+                        'exists' => true,
+                        'skills' => $parsedSkills,
+                        'count' => count($parsedSkills),
+                        'existing_by_schema' => $existingSkillsBySchema,
+                    ];
                 }
 
                 // Check MCP servers
@@ -889,11 +1125,11 @@ class ConfigController extends Controller
                 'session_key' => 'required|string',
                 'options' => 'required|array',
                 'options.settings' => 'nullable|in:skip,overwrite',
-                'options.claude_md' => 'nullable|in:skip,overwrite',
-                'options.agents' => 'nullable|in:skip,merge_skip,merge_overwrite',
-                'options.commands' => 'nullable|in:skip,merge_skip,merge_overwrite',
-                'options.rules' => 'nullable|in:skip,merge_skip,merge_overwrite',
+                'options.claude_md' => 'nullable|in:skip,overwrite,append',
+                'options.claude_md_workspace' => 'nullable|uuid|exists:workspaces,id',
                 'options.mcp_servers' => 'nullable|in:skip,merge_skip,merge_overwrite',
+                'options.skills_to_memory' => 'nullable|in:skip,merge_skip,merge_overwrite',
+                'options.skills_schema' => 'nullable|string',
             ]);
 
             $tempDir = session($validated['session_key']);
@@ -929,40 +1165,23 @@ class ConfigController extends Controller
                 $skipped[] = 'settings.json';
             }
 
-            // Import CLAUDE.md
-            if (($options['claude_md'] ?? 'skip') === 'overwrite' && file_exists($sourceDir . '/CLAUDE.md')) {
-                if (!copy($sourceDir . '/CLAUDE.md', $claudeDir . '/CLAUDE.md')) {
-                    throw new \RuntimeException('Failed to copy CLAUDE.md');
+            // Import CLAUDE.md to workspace
+            $claudeMdOption = $options['claude_md'] ?? 'skip';
+            $claudeMdWorkspaceId = $options['claude_md_workspace'] ?? null;
+            if ($claudeMdOption !== 'skip' && $claudeMdWorkspaceId && file_exists($sourceDir . '/CLAUDE.md')) {
+                $workspace = Workspace::find($claudeMdWorkspaceId);
+                if ($workspace) {
+                    $content = file_get_contents($sourceDir . '/CLAUDE.md');
+                    if ($claudeMdOption === 'append' && $workspace->claude_base_prompt) {
+                        $workspace->claude_base_prompt = $workspace->claude_base_prompt . "\n\n" . $content;
+                    } else {
+                        $workspace->claude_base_prompt = $content;
+                    }
+                    $workspace->save();
+                    $imported[] = 'CLAUDE.md (to workspace: ' . $workspace->name . ')';
                 }
-                $imported[] = 'CLAUDE.md';
             } elseif (file_exists($sourceDir . '/CLAUDE.md')) {
                 $skipped[] = 'CLAUDE.md';
-            }
-
-            // Import directories (agents, commands, rules)
-            foreach (['agents', 'commands', 'rules'] as $dir) {
-                $option = $options[$dir] ?? 'skip';
-                if ($option === 'skip') {
-                    if (is_dir($sourceDir . '/' . $dir)) {
-                        $skipped[] = $dir . '/';
-                    }
-                    continue;
-                }
-
-                if (is_dir($sourceDir . '/' . $dir)) {
-                    $targetDir = $claudeDir . '/' . $dir;
-                    if (!is_dir($targetDir)) {
-                        if (!mkdir($targetDir, 0755, true)) {
-                            throw new \RuntimeException("Failed to create directory: {$dir}");
-                        }
-                    }
-
-                    $overwriteExisting = ($option === 'merge_overwrite');
-                    $count = $this->mergeDirectory($sourceDir . '/' . $dir, $targetDir, $overwriteExisting);
-                    if ($count > 0) {
-                        $imported[] = "{$dir}/ ({$count} files)";
-                    }
-                }
             }
 
             // Import MCP servers
@@ -1002,8 +1221,18 @@ class ConfigController extends Controller
                 $skipped[] = 'mcp-servers';
             }
 
-            // Set ownership
-            $this->setClaudeOwnership($claudeDir);
+            // Import skills to memory schema
+            $skillsOption = $options['skills_to_memory'] ?? 'skip';
+            $skillsSchema = $options['skills_schema'] ?? null;
+            if ($skillsOption !== 'skip' && $skillsSchema) {
+                $parsedSkills = $this->parseSkillsFromArchive($sourceDir);
+                if (!empty($parsedSkills)) {
+                    $importedCount = $this->importSkillsToMemory($parsedSkills, $skillsSchema, $skillsOption === 'merge_overwrite');
+                    if ($importedCount > 0) {
+                        $imported[] = "skills ({$importedCount} to {$skillsSchema})";
+                    }
+                }
+            }
 
             // Cleanup
             session()->forget($validated['session_key']);
@@ -1079,33 +1308,6 @@ class ConfigController extends Controller
         }
 
         return $count;
-    }
-
-    /**
-     * Set ownership of Claude config files to www-data
-     */
-    protected function setClaudeOwnership(string $path): void
-    {
-        $wwwDataInfo = posix_getpwnam('www-data');
-        if (!$wwwDataInfo) {
-            return;
-        }
-
-        $uid = $wwwDataInfo['uid'];
-        $gid = $wwwDataInfo['gid'];
-
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($path, \RecursiveDirectoryIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::SELF_FIRST
-        );
-
-        @chown($path, $uid);
-        @chgrp($path, $gid);
-
-        foreach ($iterator as $item) {
-            @chown($item->getPathname(), $uid);
-            @chgrp($item->getPathname(), $gid);
-        }
     }
 
     /**
@@ -1320,6 +1522,242 @@ class ConfigController extends Controller
             Log::error("Failed to delete skill {$skillName}", ['error' => $e->getMessage()]);
             return redirect()->route('config.skills')
                 ->with('error', 'Failed to delete skill: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get available memory schemas for import dropdown
+     */
+    public function getMemorySchemas()
+    {
+        $schemas = \App\Models\MemoryDatabase::orderBy('name')->get()
+            ->map(fn($db) => [
+                'id' => $db->id,
+                'name' => $db->name,
+                'schema_name' => $db->schema_name,
+            ]);
+
+        return response()->json(['schemas' => $schemas]);
+    }
+
+    /**
+     * Import skills to a memory schema's skills table
+     *
+     * @param array $skills Array of skill data
+     * @param string $schemaName Short schema name (e.g., 'default')
+     * @param bool $overwriteExisting Whether to overwrite existing skills
+     * @return int Number of skills imported
+     */
+    protected function importSkillsToMemory(array $skills, string $schemaName, bool $overwriteExisting): int
+    {
+        $memoryDb = \App\Models\MemoryDatabase::where('schema_name', $schemaName)->first();
+        if (!$memoryDb) {
+            Log::warning("Skills import: Schema '{$schemaName}' not found");
+            return 0;
+        }
+
+        $fullSchemaName = $memoryDb->getFullSchemaName();
+        $importedCount = 0;
+        $importedSkills = [];
+
+        foreach ($skills as $skill) {
+            try {
+                // Check if skill already exists
+                $existing = DB::connection('pgsql')
+                    ->table("{$fullSchemaName}.skills")
+                    ->where('name', $skill['name'])
+                    ->first();
+
+                if ($existing) {
+                    if ($overwriteExisting) {
+                        DB::connection('pgsql')
+                            ->table("{$fullSchemaName}.skills")
+                            ->where('name', $skill['name'])
+                            ->update([
+                                'when_to_use' => $skill['when_to_use'],
+                                'instructions' => $skill['instructions'],
+                                'updated_at' => now(),
+                            ]);
+                        $importedCount++;
+                        $importedSkills[] = $skill;
+                    }
+                    // Skip if not overwriting
+                } else {
+                    DB::connection('pgsql')
+                        ->table("{$fullSchemaName}.skills")
+                        ->insert([
+                            'id' => \Illuminate\Support\Str::uuid(),
+                            'name' => $skill['name'],
+                            'when_to_use' => $skill['when_to_use'],
+                            'instructions' => $skill['instructions'],
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    $importedCount++;
+                    $importedSkills[] = $skill;
+                }
+            } catch (\Exception $e) {
+                Log::warning("Skills import: Failed to import skill '{$skill['name']}'", [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Regenerate embeddings only for skills that were actually imported
+        if ($importedCount > 0) {
+            try {
+                $this->regenerateSkillEmbeddings($memoryDb, $importedSkills);
+            } catch (\Exception $e) {
+                Log::warning("Skills import: Failed to regenerate embeddings", [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $importedCount;
+    }
+
+    /**
+     * Regenerate embeddings for imported skills
+     */
+    protected function regenerateSkillEmbeddings(\App\Models\MemoryDatabase $memoryDatabase, array $skills): void
+    {
+        $embeddingService = app(\App\Services\MemoryEmbeddingService::class);
+        $embeddingService->setMemoryDatabase($memoryDatabase);
+
+        $fullSchemaName = $memoryDatabase->getFullSchemaName();
+
+        foreach ($skills as $skill) {
+            $skillRow = DB::connection('pgsql')
+                ->table("{$fullSchemaName}.skills")
+                ->where('name', $skill['name'])
+                ->first();
+
+            if (!$skillRow) continue;
+
+            // Embed both when_to_use and instructions fields
+            $embeddingService->embedFields('skills', $skillRow->id, [
+                'when_to_use' => $skill['when_to_use'],
+                'instructions' => $skill['instructions'],
+            ]);
+        }
+    }
+
+    /**
+     * Parse skills from archive (commands/ and skills/ directories)
+     * Returns array of skill data ready for memory import
+     */
+    protected function parseSkillsFromArchive(string $sourceDir): array
+    {
+        $skills = [];
+
+        // Parse commands/ directory (*.md files with YAML frontmatter)
+        $commandsDir = $sourceDir . '/commands';
+        if (is_dir($commandsDir)) {
+            $files = glob($commandsDir . '/*.md');
+            foreach ($files as $file) {
+                $parsed = $this->parseCommandFile($file);
+                if ($parsed) {
+                    $skills[] = $parsed;
+                }
+            }
+        }
+
+        // Parse skills/ directory (subdirs with SKILL.md)
+        $skillsDir = $sourceDir . '/skills';
+        if (is_dir($skillsDir)) {
+            $dirs = scandir($skillsDir);
+            foreach ($dirs as $dir) {
+                if ($dir === '.' || $dir === '..') continue;
+                $skillMdPath = $skillsDir . '/' . $dir . '/SKILL.md';
+                if (file_exists($skillMdPath)) {
+                    $parsed = $this->parseSkillFileForImport($skillMdPath, $dir);
+                    if ($parsed) {
+                        $skills[] = $parsed;
+                    }
+                }
+            }
+        }
+
+        return $skills;
+    }
+
+    /**
+     * Parse a command file (*.md with YAML frontmatter)
+     */
+    protected function parseCommandFile(string $filePath): ?array
+    {
+        $content = file_get_contents($filePath);
+        $filename = pathinfo($filePath, PATHINFO_FILENAME);
+
+        // Check for frontmatter
+        if (preg_match('/^---\s*\n(.*?)\n---\s*\n(.*)$/s', $content, $matches)) {
+            $frontmatterYaml = $matches[1];
+            $commandContent = trim($matches[2]);
+
+            // Parse YAML frontmatter
+            $frontmatter = [];
+            $lines = explode("\n", $frontmatterYaml);
+            foreach ($lines as $line) {
+                if (strpos($line, ':') !== false) {
+                    [$key, $value] = explode(':', $line, 2);
+                    $frontmatter[trim($key)] = trim($value);
+                }
+            }
+
+            return [
+                'name' => $filename,
+                'when_to_use' => $frontmatter['description'] ?? "Command: {$filename}",
+                'instructions' => $commandContent,
+                'source' => 'command',
+            ];
+        } else {
+            // No frontmatter - use content as-is
+            return [
+                'name' => $filename,
+                'when_to_use' => "Command: {$filename}",
+                'instructions' => trim($content),
+                'source' => 'command',
+            ];
+        }
+    }
+
+    /**
+     * Parse a SKILL.md file for import
+     */
+    protected function parseSkillFileForImport(string $filePath, string $skillName): ?array
+    {
+        $content = file_get_contents($filePath);
+
+        // Check for frontmatter
+        if (preg_match('/^---\s*\n(.*?)\n---\s*\n(.*)$/s', $content, $matches)) {
+            $frontmatterYaml = $matches[1];
+            $skillContent = trim($matches[2]);
+
+            // Parse YAML frontmatter
+            $frontmatter = [];
+            $lines = explode("\n", $frontmatterYaml);
+            foreach ($lines as $line) {
+                if (strpos($line, ':') !== false) {
+                    [$key, $value] = explode(':', $line, 2);
+                    $frontmatter[trim($key)] = trim($value);
+                }
+            }
+
+            return [
+                'name' => $frontmatter['name'] ?? $skillName,
+                'when_to_use' => $frontmatter['description'] ?? "Skill: {$skillName}",
+                'instructions' => $skillContent,
+                'source' => 'skill',
+            ];
+        } else {
+            // No frontmatter - use content as-is
+            return [
+                'name' => $skillName,
+                'when_to_use' => "Skill: {$skillName}",
+                'instructions' => trim($content),
+                'source' => 'skill',
+            ];
         }
     }
 

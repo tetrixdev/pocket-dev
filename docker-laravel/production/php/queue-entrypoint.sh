@@ -53,7 +53,7 @@ if [ ! -f "$CLAUDE_SETTINGS" ]; then
     # Create minimal settings with default deny patterns
     echo '{"permissions":{"deny":["Read(**/.env)"]}}' > "$CLAUDE_SETTINGS"
     chown www-data:www-data "$CLAUDE_SETTINGS"
-    chmod 644 "$CLAUDE_SETTINGS"
+    chmod 664 "$CLAUDE_SETTINGS"
     echo "Created default Claude settings with .env protection"
 fi
 
