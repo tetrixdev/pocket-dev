@@ -181,8 +181,8 @@ CLI;
             $stripped = ltrim($line);
             $currentIndent = strlen($line) - strlen($stripped);
 
-            // Detect top-level sections
-            if ($currentIndent == 0 && preg_match("/^([a-z]+):\s*$/", $stripped, $sectionMatch)) {
+            // Detect top-level sections (including extension sections like x-templates:)
+            if ($currentIndent == 0 && preg_match("/^([a-z][a-z0-9-]*):\s*$/", $stripped, $sectionMatch)) {
                 // Save previous service's data before switching sections
                 if ($currentService && (!empty($currentVolumes) || !empty($currentFileMounts))) {
                     $serviceOverrides[$currentService] = [
@@ -356,7 +356,10 @@ CLI;
                 if (!empty($overrides['fileMounts'])) {
                     $copyCommands = [];
                     foreach ($overrides['fileMounts'] as $mount) {
-                        $copyCommands[] = "cp {$mount['staging']}/{$mount['filename']} {$mount['target']}";
+                        // Use escapeshellarg to handle filenames with spaces or special characters
+                        $source = escapeshellarg("{$mount['staging']}/{$mount['filename']}");
+                        $target = escapeshellarg($mount['target']);
+                        $copyCommands[] = "cp {$source} {$target}";
                     }
                     $serviceCommand = $this->getServiceCommand($serviceName);
                     $copyScript = implode(" && ", $copyCommands);
@@ -385,8 +388,10 @@ CLI;
             return 'php-fpm';
         } elseif (strpos($serviceName, 'nginx') !== false) {
             return "nginx -g 'daemon off;'";
-        } elseif (strpos($serviceName, 'mariadb') !== false || strpos($serviceName, 'mysql') !== false) {
+        } elseif (strpos($serviceName, 'mariadb') !== false) {
             return 'docker-entrypoint.sh mariadbd';
+        } elseif (strpos($serviceName, 'mysql') !== false) {
+            return 'docker-entrypoint.sh mysqld';
         } elseif (strpos($serviceName, 'redis') !== false) {
             return 'docker-entrypoint.sh redis-server';
         } elseif (strpos($serviceName, 'node') !== false) {
