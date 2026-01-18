@@ -3011,8 +3011,15 @@
 
                     this.isStreaming = true;
                     this.currentConversationStatus = 'processing'; // Update status badge
-                    // Refresh sidebar to show processing status and pick up any other updates
-                    this.fetchConversations();
+
+                    // Optimistic update: immediately show 'processing' in sidebar
+                    // We'll fetch the real status after receiving the first event (when backend has definitely updated)
+                    const convIndex = this.conversations.findIndex(c => c.uuid === this.currentConversationUuid);
+                    if (convIndex !== -1) {
+                        this.conversations[convIndex].status = 'processing';
+                    }
+                    this._sidebarRefreshedThisStream = false;
+
                     this.streamAbortController = new AbortController();
 
                     try {
@@ -3090,6 +3097,12 @@
 
                                     // Handle regular stream events
                                     this.handleStreamEvent(event);
+
+                                    // On first real event, refresh sidebar (backend has now set status to 'processing')
+                                    if (!this._sidebarRefreshedThisStream) {
+                                        this._sidebarRefreshedThisStream = true;
+                                        this.fetchConversations();
+                                    }
 
                                 } catch (parseErr) {
                                     console.error('Parse error:', parseErr, line);
