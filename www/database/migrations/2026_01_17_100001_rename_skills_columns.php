@@ -82,18 +82,23 @@ SELECT instructions FROM skills WHERE name = ''skill-name''',
                 WHERE table_name = 'skills'
             ");
 
-            // Update embeddings source_field references
-            DB::connection('pgsql')->statement("
-                UPDATE {$schemaName}.embeddings
-                SET source_field = 'when_to_use'
-                WHERE source_table = 'skills' AND source_field = 'description'
-            ");
+            // Update embeddings source_field references (if column exists)
+            try {
+                DB::connection('pgsql')->statement("
+                    UPDATE {$schemaName}.embeddings
+                    SET source_field = 'when_to_use'
+                    WHERE source_table = 'skills' AND source_field = 'description'
+                ");
 
-            DB::connection('pgsql')->statement("
-                UPDATE {$schemaName}.embeddings
-                SET source_field = 'instructions'
-                WHERE source_table = 'skills' AND source_field = 'content'
-            ");
+                DB::connection('pgsql')->statement("
+                    UPDATE {$schemaName}.embeddings
+                    SET source_field = 'instructions'
+                    WHERE source_table = 'skills' AND source_field = 'content'
+                ");
+            } catch (\Exception $e) {
+                // source_field column may not exist in older schemas - skip
+                Log::info("Skipping embeddings update in {$schemaName}: " . $e->getMessage());
+            }
 
             Log::info("Skills columns renamed in {$schemaName}");
         }
@@ -149,18 +154,23 @@ SELECT instructions FROM skills WHERE name = ''skill-name''',
                 WHERE table_name = 'skills'
             ");
 
-            // Revert embeddings source_field references
-            DB::connection('pgsql')->statement("
-                UPDATE {$schemaName}.embeddings
-                SET source_field = 'description'
-                WHERE source_table = 'skills' AND source_field = 'when_to_use'
-            ");
+            // Revert embeddings source_field references (if column exists)
+            try {
+                DB::connection('pgsql')->statement("
+                    UPDATE {$schemaName}.embeddings
+                    SET source_field = 'description'
+                    WHERE source_table = 'skills' AND source_field = 'when_to_use'
+                ");
 
-            DB::connection('pgsql')->statement("
-                UPDATE {$schemaName}.embeddings
-                SET source_field = 'content'
-                WHERE source_table = 'skills' AND source_field = 'instructions'
-            ");
+                DB::connection('pgsql')->statement("
+                    UPDATE {$schemaName}.embeddings
+                    SET source_field = 'content'
+                    WHERE source_table = 'skills' AND source_field = 'instructions'
+                ");
+            } catch (\Exception $e) {
+                // source_field column may not exist in older schemas - skip
+                Log::info("Skipping embeddings revert in {$schemaName}: " . $e->getMessage());
+            }
 
             Log::info("Skills columns reverted in {$schemaName}");
         }
