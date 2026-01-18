@@ -55,6 +55,42 @@ class TranscriptionController extends Controller
     }
 
     /**
+     * Transcribe an uploaded audio file.
+     * Alternative to real-time streaming - records full audio then transcribes.
+     */
+    public function transcribe(Request $request): JsonResponse
+    {
+        $request->validate([
+            'audio' => 'required|file|mimes:webm,wav,mp3,m4a,ogg,mp4,mpeg,mpga,flac|max:25600', // 25MB
+        ]);
+
+        if (!$this->appSettings->hasOpenAiApiKey()) {
+            return response()->json([
+                'error' => 'OpenAI API key not configured',
+                'requires_setup' => true
+            ], 428);
+        }
+
+        try {
+            $transcription = $this->transcriptionService->transcribeAudio($request->file('audio'));
+
+            return response()->json([
+                'success' => true,
+                'transcription' => trim($transcription),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Transcription failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Transcription failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Check if OpenAI API key is configured.
      */
     public function checkOpenAiKey(): JsonResponse
