@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Rename skills table columns for clarity and add proper documentation:
@@ -49,11 +48,8 @@ return new class extends Migration
             ", [$schemaName]);
 
             if (!$hasOldColumns->exists) {
-                Log::info("Skills table in {$schemaName} already has new column names, skipping");
                 continue;
             }
-
-            Log::info("Renaming skills columns in {$schemaName}");
 
             // Rename columns
             DB::connection('pgsql')->statement("
@@ -106,11 +102,8 @@ return new class extends Migration
                     WHERE source_table = 'skills' AND field_name = 'content'
                 ");
             } catch (\Exception $e) {
-                // field_name column may not exist in older schemas - skip
-                Log::info("Skipping embeddings update in {$schemaName}: " . $e->getMessage());
+                // field_name column may not exist in older schemas - skip silently
             }
-
-            Log::info("Skills columns renamed in {$schemaName}");
         }
     }
 
@@ -140,8 +133,6 @@ return new class extends Migration
             if (!$hasNewColumns->exists) {
                 continue;
             }
-
-            Log::info("Reverting skills columns in {$schemaName}");
 
             // Rename columns back
             DB::connection('pgsql')->statement("
@@ -191,11 +182,8 @@ return new class extends Migration
                     WHERE source_table = 'skills' AND field_name = 'instructions'
                 ");
             } catch (\Exception $e) {
-                // field_name column may not exist in older schemas - skip
-                Log::info("Skipping embeddings revert in {$schemaName}: " . $e->getMessage());
+                // field_name column may not exist in older schemas - skip silently
             }
-
-            Log::info("Skills columns reverted in {$schemaName}");
         }
     }
 };

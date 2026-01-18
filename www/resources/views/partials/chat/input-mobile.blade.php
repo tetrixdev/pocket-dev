@@ -57,6 +57,10 @@
                         <span class="text-xs text-gray-400 line-clamp-1" x-text="skill.when_to_use"></span>
                     </button>
                 </template>
+                <div x-show="skillSuggestions.length === 0 && prompt.startsWith('/')"
+                     class="px-3 py-2 text-xs text-gray-500">
+                    No matching skills
+                </div>
             </div>
         </div>
 

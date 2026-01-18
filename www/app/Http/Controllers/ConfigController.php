@@ -794,18 +794,21 @@ class ConfigController extends Controller
 
             $fullSchemaName = $memoryDb->getFullSchemaName();
 
-            // Delete associated embeddings first
-            DB::connection('pgsql')
-                ->table("{$fullSchemaName}.embeddings")
-                ->where('source_table', 'skills')
-                ->where('source_id', $skillId)
-                ->delete();
+            // Delete embeddings and skill in a transaction for atomicity
+            $deleted = DB::connection('pgsql')->transaction(function () use ($fullSchemaName, $skillId) {
+                // Delete associated embeddings first
+                DB::connection('pgsql')
+                    ->table("{$fullSchemaName}.embeddings")
+                    ->where('source_table', 'skills')
+                    ->where('source_id', $skillId)
+                    ->delete();
 
-            // Delete the skill
-            $deleted = DB::connection('pgsql')
-                ->table("{$fullSchemaName}.skills")
-                ->where('id', $skillId)
-                ->delete();
+                // Delete the skill
+                return DB::connection('pgsql')
+                    ->table("{$fullSchemaName}.skills")
+                    ->where('id', $skillId)
+                    ->delete();
+            });
 
             if ($deleted) {
                 return response()->json(['success' => true]);
@@ -1679,16 +1682,16 @@ class ConfigController extends Controller
 
             return [
                 'name' => $filename,
-                'description' => $frontmatter['description'] ?? "Command: {$filename}",
-                'content' => $commandContent,
+                'when_to_use' => $frontmatter['description'] ?? "Command: {$filename}",
+                'instructions' => $commandContent,
                 'source' => 'command',
             ];
         } else {
             // No frontmatter - use content as-is
             return [
                 'name' => $filename,
-                'description' => "Command: {$filename}",
-                'content' => trim($content),
+                'when_to_use' => "Command: {$filename}",
+                'instructions' => trim($content),
                 'source' => 'command',
             ];
         }

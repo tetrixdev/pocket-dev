@@ -1269,11 +1269,12 @@
 
                     const query = this.prompt.slice(1).toLowerCase();
 
-                    // Filter skills matching the query
-                    this.skillSuggestions = this.skills.filter(skill =>
-                        skill.name.toLowerCase().includes(query) ||
-                        skill.when_to_use.toLowerCase().includes(query)
-                    ).slice(0, 8);
+                    // Filter skills matching the query (guard against null when_to_use)
+                    this.skillSuggestions = this.skills.filter(skill => {
+                        const name = (skill.name || '').toLowerCase();
+                        const whenToUse = (skill.when_to_use || '').toLowerCase();
+                        return name.includes(query) || whenToUse.includes(query);
+                    }).slice(0, 8);
 
                     this.showSkillSuggestions = this.skillSuggestions.length > 0;
                     this.selectedSkillIndex = 0;
@@ -2312,6 +2313,9 @@
                                 // would try to PATCH the backend (designed for user-initiated switches)
                                 this.currentAgentId = agent.id;
                                 this.claudeCodeAllowedTools = agent.allowed_tools || [];
+                                // Clear any stale skill state and refresh for this agent
+                                this.clearActiveSkill();
+                                this.fetchSkills();
                             } else {
                                 console.warn(`Agent ${data.conversation.agent_id} not found in available agents`);
                                 this.currentAgentId = null;

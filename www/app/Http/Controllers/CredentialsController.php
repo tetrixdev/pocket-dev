@@ -154,8 +154,15 @@ class CredentialsController extends Controller
 
                 // Fix permissions on Claude config files so PHP-FPM can read/write them
                 // Claude CLI creates these with 600, we need 660 for group write access
-                exec('docker exec pocket-dev-queue chmod 660 /home/appuser/.claude.json /home/appuser/.claude.json.backup 2>/dev/null');
-                exec('docker exec pocket-dev-queue chmod 664 /home/appuser/.claude/settings.json 2>/dev/null');
+                $exitCode = 0;
+                exec('docker exec pocket-dev-queue chmod 660 /home/appuser/.claude.json /home/appuser/.claude.json.backup 2>/dev/null', $output, $exitCode);
+                if ($exitCode !== 0) {
+                    Log::warning('Claude config chmod failed', ['files' => '.claude.json', 'exit_code' => $exitCode]);
+                }
+                exec('docker exec pocket-dev-queue chmod 664 /home/appuser/.claude/settings.json 2>/dev/null', $output, $exitCode);
+                if ($exitCode !== 0) {
+                    Log::warning('Claude config chmod failed', ['file' => 'settings.json', 'exit_code' => $exitCode]);
+                }
             } elseif ($validated['provider'] === 'codex') {
                 // Verify Codex authentication
                 if (!$this->settings->isCodexAuthenticated()) {

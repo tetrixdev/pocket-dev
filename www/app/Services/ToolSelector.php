@@ -771,8 +771,17 @@ GUIDE;
                         'schema' => $schema->schema_name,
                     ];
                 }
-            } catch (\Exception $e) {
-                // Skills table might not exist in older schemas - skip silently
+            } catch (\Illuminate\Database\QueryException $e) {
+                $msg = $e->getMessage();
+                // Missing skills table in older schemas - skip silently
+                if (str_contains($msg, 'relation') && str_contains($msg, 'skills')) {
+                    continue;
+                }
+                // Log unexpected DB errors
+                \Illuminate\Support\Facades\Log::warning('Failed to load skills for prompt', [
+                    'schema' => $schema->schema_name,
+                    'error' => $msg,
+                ]);
                 continue;
             }
         }
@@ -847,8 +856,18 @@ GUIDE;
                         'schema' => $schema->schema_name,
                     ];
                 }
-            } catch (\Exception $e) {
-                // Skills table might not exist - continue to next schema
+            } catch (\Illuminate\Database\QueryException $e) {
+                $msg = $e->getMessage();
+                // Missing skills table in older schemas - skip silently
+                if (str_contains($msg, 'relation') && str_contains($msg, 'skills')) {
+                    continue;
+                }
+                // Log unexpected DB errors
+                \Illuminate\Support\Facades\Log::warning('Failed to get skill by name', [
+                    'schema' => $schema->schema_name,
+                    'skill' => $skillName,
+                    'error' => $msg,
+                ]);
                 continue;
             }
         }
@@ -885,8 +904,17 @@ GUIDE;
                         'schema' => $schema->schema_name,
                     ]);
                 }
-            } catch (\Exception $e) {
-                // Skills table might not exist - continue to next schema
+            } catch (\Illuminate\Database\QueryException $e) {
+                $msg = $e->getMessage();
+                // Missing skills table in older schemas - skip silently
+                if (str_contains($msg, 'relation') && str_contains($msg, 'skills')) {
+                    continue;
+                }
+                // Log unexpected DB errors
+                \Illuminate\Support\Facades\Log::warning('Failed to get all skills', [
+                    'schema' => $schema->schema_name,
+                    'error' => $msg,
+                ]);
                 continue;
             }
         }

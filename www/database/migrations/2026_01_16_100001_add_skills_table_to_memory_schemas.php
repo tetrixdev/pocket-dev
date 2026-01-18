@@ -2,7 +2,6 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Add skills table to all existing memory schemas.
@@ -34,11 +33,8 @@ return new class extends Migration
             ", [$schemaName]);
 
             if ($exists->exists) {
-                Log::info("Skills table already exists in {$schemaName}, skipping");
                 continue;
             }
-
-            Log::info("Creating skills table in {$schemaName}");
 
             // Create skills table
             DB::connection('pgsql')->statement("
@@ -79,8 +75,6 @@ return new class extends Migration
 
             // Grant SELECT to memory_readonly user
             DB::connection('pgsql')->statement("GRANT SELECT ON {$schemaName}.skills TO memory_readonly");
-
-            Log::info("Skills table created in {$schemaName}");
         }
     }
 
@@ -111,8 +105,6 @@ return new class extends Migration
                 continue;
             }
 
-            Log::info("Dropping skills table from {$schemaName}");
-
             // Delete embeddings for skills table
             DB::connection('pgsql')->statement("
                 DELETE FROM {$schemaName}.embeddings WHERE source_table = 'skills'
@@ -125,8 +117,6 @@ return new class extends Migration
 
             // Drop the table
             DB::connection('pgsql')->statement("DROP TABLE IF EXISTS {$schemaName}.skills");
-
-            Log::info("Skills table dropped from {$schemaName}");
         }
     }
 };
