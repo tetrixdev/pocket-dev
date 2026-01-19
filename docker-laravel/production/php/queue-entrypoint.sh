@@ -16,23 +16,24 @@ echo "Starting queue container initialization..."
 # =============================================================================
 
 # Set up Docker socket access for www-data
-if [ -n "$DOCKER_GID" ]; then
+# PD_DOCKER_GID is passed from compose.yml and matches the host's docker group
+if [ -n "$PD_DOCKER_GID" ]; then
     echo "🐳 Setting up Docker socket access for www-data..."
 
     # Create the docker group with the host's GID if it doesn't exist
-    if ! getent group "$DOCKER_GID" > /dev/null 2>&1; then
-        groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
+    if ! getent group "$PD_DOCKER_GID" > /dev/null 2>&1; then
+        groupadd -g "$PD_DOCKER_GID" hostdocker_runtime 2>/dev/null || true
     fi
 
     # Get the group name for this GID
-    DOCKER_GROUP_NAME=$(getent group "$DOCKER_GID" | cut -d: -f1)
+    DOCKER_GROUP_NAME=$(getent group "$PD_DOCKER_GID" | cut -d: -f1)
     if [ -z "$DOCKER_GROUP_NAME" ]; then
         DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
 
     # Add www-data to docker group
     usermod -aG "$DOCKER_GROUP_NAME" www-data 2>/dev/null || true
-    echo "  ✅ Added www-data to group $DOCKER_GROUP_NAME (GID $DOCKER_GID)"
+    echo "  ✅ Added www-data to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
 
     # Ensure docker socket has correct group ownership
     if [ -S /var/run/docker.sock ]; then

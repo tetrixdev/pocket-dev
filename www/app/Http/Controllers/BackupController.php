@@ -423,7 +423,7 @@ class BackupController extends Controller
         $groupId = config('backup.group_id');
 
         if ($userId === null || $groupId === null || $userId === '' || $groupId === '') {
-            throw new \RuntimeException('USER_ID and GROUP_ID must be set in .env for volume permission fixes');
+            throw new \RuntimeException('PD_USER_ID and PD_GROUP_ID must be set in .env for volume permission fixes');
         }
 
         // user-data: needs host user ownership for CLI tools (Claude, Codex, etc.)
