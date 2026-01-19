@@ -5,7 +5,7 @@
         <button type="button"
                 @click="toggleVoiceRecording()"
                 :class="voiceButtonClass"
-                :disabled="isProcessing || isStreaming || waitingForFinalTranscript"
+                :disabled="isProcessing || waitingForFinalTranscript"
                 class="px-4 py-[10px] min-w-[106px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:cursor-not-allowed"
                 title="Voice input (Ctrl+Space)"
                 @keydown.ctrl.space.window.prevent="toggleVoiceRecording()"
@@ -176,7 +176,6 @@
 
             <textarea x-model="prompt"
                       x-ref="promptInput"
-                      :disabled="isStreaming"
                       :placeholder="activeSkill ? 'Add additional context... (optional)' : 'Hey PocketDev, can you... (type / for skills)'"
                       rows="1"
                       class="block w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-white resize-none"
