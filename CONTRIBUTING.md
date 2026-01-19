@@ -9,7 +9,7 @@ This guide is for developers who want to contribute to PocketDev itself.
 git clone https://github.com/tetrixdev/pocket-dev.git
 cd pocket-dev
 
-# Run setup (auto-detects USER_ID, GROUP_ID, DOCKER_GID)
+# Run setup (auto-detects and sets PD_USER_ID, PD_GROUP_ID, PD_DOCKER_GID)
 ./setup.sh
 
 # Start development environment
@@ -129,4 +129,4 @@ docker compose down -v && docker compose up -d
 ```
 
 **Permission issues?**
-Check that USER_ID and GROUP_ID in `.env` match your host user (`id -u` and `id -g`).
+Check that `PD_USER_ID` and `PD_GROUP_ID` in `.env` match your host user (`id -u` and `id -g`).

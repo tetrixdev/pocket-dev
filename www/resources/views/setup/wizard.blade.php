@@ -141,7 +141,7 @@
                     </p>
                 @else
                     <div class="bg-red-900/50 border border-red-500/50 rounded p-3 text-red-300 text-sm mb-3">
-                        <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> in your .env file.
+                        <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">PD_USER_ID</code> in your .env file.
                         <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> on your host to get the value.</span>
                     </div>
                 @endif
@@ -182,7 +182,7 @@
                     </div>
                 @else
                     <div class="bg-red-900/50 border border-red-500/50 rounded p-3 text-red-300 text-sm mb-3">
-                        <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> and <code class="bg-red-900 px-1 rounded">GROUP_ID</code> in your .env file.
+                        <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">PD_USER_ID</code> and <code class="bg-red-900 px-1 rounded">PD_GROUP_ID</code> in your .env file.
                         <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> and <code>id -g</code> on your host to get the values.</span>
                     </div>
                 @endif
