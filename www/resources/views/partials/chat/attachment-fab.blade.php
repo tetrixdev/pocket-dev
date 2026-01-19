@@ -85,7 +85,7 @@
                     Attachments
                     <span x-show="attachments.count > 0" class="text-gray-400 font-normal">(<span x-text="attachments.count"></span>)</span>
                 </h3>
-                <button @click="showModal = false" class="text-gray-400 hover:text-white p-1">
+                <button type="button" @click="showModal = false" class="text-gray-400 hover:text-white p-1">
                     <i class="fa-solid fa-times text-xl"></i>
                 </button>
             </div>
@@ -109,7 +109,7 @@
                             <template x-if="file.error">
                                 <i class="fa-solid fa-exclamation-triangle text-red-400"></i>
                             </template>
-                            <button @click="attachments.removeFile(file.id)"
+                            <button type="button" @click="attachments.removeFile(file.id)"
                                     :disabled="file.uploading"
                                     :class="file.uploading ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-red-400 cursor-pointer'"
                                     class="p-1 transition-colors">
@@ -132,11 +132,11 @@
             {{-- Actions --}}
             <div class="p-4 border-t border-gray-700">
                 <div class="flex gap-2">
-                    <button @click="openFilePicker()"
+                    <button type="button" @click="openFilePicker()"
                             class="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors">
                         <i class="fa-solid fa-plus mr-2"></i>Add Files
                     </button>
-                    <button @click="confirmClearAll()"
+                    <button type="button" @click="confirmClearAll()"
                             x-show="attachments.files.length > 0"
                             :disabled="isUploading"
                             :class="isUploading ? 'bg-gray-600 cursor-not-allowed' : 'bg-red-600/80 hover:bg-red-500 cursor-pointer'"
