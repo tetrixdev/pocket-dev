@@ -77,6 +77,27 @@ chmod 775 /workspace 2>/dev/null || true
 find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp appgroup {} \; 2>/dev/null || true
 find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
 
+# =============================================================================
+# STORAGE AND CACHE PERMISSIONS
+# =============================================================================
+# Fix permissions on Laravel storage and cache directories.
+# This ensures both PHP-FPM (www-data) and queue workers (appuser) can write.
+
+echo "Setting storage permissions..."
+chgrp -R "$TARGET_GID" /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
+find /var/www/storage -type d -exec chmod 2775 {} \; 2>/dev/null || true
+find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
+find /var/www/bootstrap/cache -type d -exec chmod 2775 {} \; 2>/dev/null || true
+find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
+
+# Fix permissions for mounted config volumes (for config editor)
+if [ -d "/etc/nginx-proxy-config" ]; then
+    echo "Setting permissions on /etc/nginx-proxy-config..."
+    chgrp -R "$TARGET_GID" /etc/nginx-proxy-config 2>/dev/null || true
+    find /etc/nginx-proxy-config -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
+fi
+
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."
 max_attempts=60
@@ -207,6 +228,31 @@ echo "Starting supervisord as appuser..."
 # Ensure stdout/stderr are writable by the target user
 # This is needed because supervisor logs to /dev/stdout and /dev/stderr
 chmod 666 /dev/stdout /dev/stderr 2>/dev/null || true
+
+# Ensure supervisord log/pid files are writable by TARGET_USER
+# /tmp is a shared volume - files may exist from previous runs with different ownership
+# Guard against symlink traversal (same pattern as /tmp/pocketdev*)
+for f in /tmp/supervisord.log /tmp/supervisord.pid; do
+    if [ -L "$f" ]; then
+        echo "WARN: $f is a symlink; removing before recreation" >&2
+        rm -f "$f" 2>/dev/null || true
+    fi
+    touch "$f" 2>/dev/null || true
+    chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+done
+
+# Ensure queue worker log files are writable by TARGET_USER
+# Supervisor creates 10 workers (00-09) with stdout and stderr logs each
+for i in $(seq -f '%02g' 0 9); do
+    for f in "/tmp/queue-worker-${i}.log" "/tmp/queue-worker-${i}-error.log"; do
+        if [ -L "$f" ]; then
+            echo "WARN: $f is a symlink; removing before recreation" >&2
+            rm -f "$f" 2>/dev/null || true
+        fi
+        touch "$f" 2>/dev/null || true
+        chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+    done
+done
 
 # Use exec to replace this shell with supervisord (proper signal handling)
 # gosu with username (not UID:GID) properly initializes supplementary groups

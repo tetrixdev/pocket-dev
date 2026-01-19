@@ -70,18 +70,19 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Main PHP container: run full setup
 
     # Fix storage and cache permissions (as root)
+    # Use 2775 (setgid) so new files inherit the group
     echo "Setting storage permissions..."
     chgrp -R "$TARGET_GID" /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
-    find /var/www/storage -type d -exec chmod 775 {} \; 2>/dev/null || true
+    find /var/www/storage -type d -exec chmod 2775 {} \; 2>/dev/null || true
     find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
-    find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
+    find /var/www/bootstrap/cache -type d -exec chmod 2775 {} \; 2>/dev/null || true
     find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
     # Fix permissions for mounted config volumes (for config editor)
     if [ -d "/etc/nginx-proxy-config" ]; then
         echo "Setting permissions on /etc/nginx-proxy-config..."
         chgrp -R "$TARGET_GID" /etc/nginx-proxy-config 2>/dev/null || true
-        find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
+        find /etc/nginx-proxy-config -type d -exec chmod 2775 {} \; 2>/dev/null || true
         find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
     fi
 
