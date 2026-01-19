@@ -111,11 +111,9 @@ fi
 # When restoring from backup or changing PD_TARGET_UID/GID, volume data may have
 # wrong ownership. Fix permissions on all volumes that should be owned by TARGET_UID.
 
-# workspace volume
-chown "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
+# workspace volume - safe to chown -R (dedicated PocketDev volume)
+chown -R "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
 chmod 775 /workspace 2>/dev/null || true
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp "$TARGET_GROUP" {} \; 2>/dev/null || true
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
 
 # pocketdev-storage volume (/var/www/storage/pocketdev)
 # Use 2775 for directories (setgid) and 664 for files (no execute on data files)

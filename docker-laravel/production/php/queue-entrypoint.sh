@@ -106,15 +106,10 @@ if [ ! -f "$CLAUDE_SETTINGS" ]; then
     echo "Created default Claude settings with .env protection"
 fi
 
-# Ensure workspace directory is writable by TARGET_UID
-chown "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
+# Ensure workspace volume is owned by TARGET_UID (for backup/restore and UID/GID changes)
+# Safe to chown -R: dedicated PocketDev volume, all files should be owned by target user
+chown -R "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
 chmod 775 /workspace 2>/dev/null || true
-
-# Safety net: Ensure all workspace subdirectories have correct permissions
-# Normally, Workspace model sets group=appgroup and mode=0775 on creation/restore.
-# This catches edge cases like silent mkdir failures or race conditions.
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp "$TARGET_GROUP" {} \; 2>/dev/null || true
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
 
 # =============================================================================
 # VOLUME PERMISSIONS (for backup/restore and UID/GID changes)
@@ -285,6 +280,19 @@ for f in /tmp/supervisord.log /tmp/supervisord.pid; do
     fi
     touch "$f" 2>/dev/null || true
     chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+done
+
+# Ensure queue worker log files are writable by TARGET_USER
+# Supervisor creates 10 workers (00-09) with stdout and stderr logs each
+for i in $(seq -f '%02g' 0 9); do
+    for f in "/tmp/queue-worker-${i}.log" "/tmp/queue-worker-${i}-error.log"; do
+        if [ -L "$f" ]; then
+            echo "WARN: $f is a symlink; removing before recreation" >&2
+            rm -f "$f" 2>/dev/null || true
+        fi
+        touch "$f" 2>/dev/null || true
+        chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+    done
 done
 
 # Use exec to replace this shell with supervisord (proper signal handling)
