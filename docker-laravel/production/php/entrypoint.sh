@@ -105,6 +105,30 @@ if [ -n "$PD_DOCKER_GID" ]; then
     fi
 fi
 
+# =============================================================================
+# VOLUME PERMISSIONS (for backup/restore and UID/GID changes)
+# =============================================================================
+# When restoring from backup or changing PD_TARGET_UID/GID, volume data may have
+# wrong ownership. Fix permissions on all volumes that should be owned by TARGET_UID.
+
+# workspace volume
+chown "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
+chmod 775 /workspace 2>/dev/null || true
+find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp "$TARGET_GROUP" {} \; 2>/dev/null || true
+find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
+
+# pocketdev-storage volume (/var/www/storage/pocketdev)
+if [ -d /var/www/storage/pocketdev ]; then
+    chown -R "${TARGET_UID}:${TARGET_GID}" /var/www/storage/pocketdev 2>/dev/null || true
+    chmod -R 775 /var/www/storage/pocketdev 2>/dev/null || true
+fi
+
+# shared-tmp volume (/tmp) - fix PocketDev-specific directories
+# Don't chown all of /tmp as other processes may use it
+mkdir -p /tmp/pocketdev /tmp/pocketdev-uploads 2>/dev/null || true
+chown -R "${TARGET_UID}:${TARGET_GID}" /tmp/pocketdev /tmp/pocketdev-uploads 2>/dev/null || true
+chmod -R 775 /tmp/pocketdev /tmp/pocketdev-uploads 2>/dev/null || true
+
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
