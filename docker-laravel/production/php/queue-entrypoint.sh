@@ -32,10 +32,11 @@ if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
     fi
 fi
 
-# Get the actual group name for TARGET_GID
+# Get the actual group name for TARGET_GID (fail if creation failed)
 TARGET_GROUP=$(getent group "$TARGET_GID" | cut -d: -f1)
 if [ -z "$TARGET_GROUP" ]; then
-    TARGET_GROUP="appgroup"
+    echo "FATAL: Failed to create or find group for GID $TARGET_GID" >&2
+    exit 1
 fi
 
 # Create a user for TARGET_UID if it doesn't exist
@@ -49,10 +50,11 @@ if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
     fi
 fi
 
-# Get the actual username for TARGET_UID
+# Get the actual username for TARGET_UID (fail if creation failed)
 TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
 if [ -z "$TARGET_USER" ]; then
-    TARGET_USER="appuser"
+    echo "FATAL: Failed to create or find user for UID $TARGET_UID" >&2
+    exit 1
 fi
 
 # =============================================================================
