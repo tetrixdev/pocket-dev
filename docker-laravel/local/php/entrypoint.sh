@@ -11,8 +11,8 @@ set -e
 echo "🚀 Configuring PHP development environment..."
 
 # Runtime configurable UID/GID (from compose.yml environment)
-TARGET_UID="${TARGET_UID:-1000}"
-TARGET_GID="${TARGET_GID:-1000}"
+TARGET_UID="${PD_TARGET_UID:-1000}"
+TARGET_GID="${PD_TARGET_GID:-1000}"
 
 # =============================================================================
 # PHASE 1: ROOT OPERATIONS (permissions, groups)
@@ -20,17 +20,17 @@ TARGET_GID="${TARGET_GID:-1000}"
 # =============================================================================
 
 # Set up Docker socket access for TARGET_UID
-# DOCKER_GID is passed from compose.yml and matches the host's docker group
-if [ -n "$DOCKER_GID" ]; then
+# PD_DOCKER_GID is passed from compose.yml and matches the host's docker group
+if [ -n "$PD_DOCKER_GID" ]; then
     echo "🐳 Setting up Docker socket access for UID $TARGET_UID..."
 
     # Create the docker group with the host's GID if it doesn't exist
-    if ! getent group "$DOCKER_GID" > /dev/null 2>&1; then
-        groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
+    if ! getent group "$PD_DOCKER_GID" > /dev/null 2>&1; then
+        groupadd -g "$PD_DOCKER_GID" hostdocker_runtime 2>/dev/null || true
     fi
 
     # Get the group name for this GID
-    DOCKER_GROUP_NAME=$(getent group "$DOCKER_GID" | cut -d: -f1)
+    DOCKER_GROUP_NAME=$(getent group "$PD_DOCKER_GID" | cut -d: -f1)
     if [ -z "$DOCKER_GROUP_NAME" ]; then
         DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
@@ -44,12 +44,12 @@ if [ -n "$DOCKER_GID" ]; then
     TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
     if [ -n "$TARGET_USER" ]; then
         usermod -aG "$DOCKER_GROUP_NAME" "$TARGET_USER" 2>/dev/null || true
-        echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $DOCKER_GID)"
+        echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
     fi
 
     # Also add www-data for PHP-FPM workers (web app needs Docker access)
     usermod -aG "$DOCKER_GROUP_NAME" www-data 2>/dev/null || true
-    echo "  ✅ Added www-data to group $DOCKER_GROUP_NAME (GID $DOCKER_GID)"
+    echo "  ✅ Added www-data to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
 
     # Verify docker socket is accessible
     if [ -S /var/run/docker.sock ]; then
@@ -106,7 +106,7 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     "
 
     # Generate Laravel application key if not set
-    if [ -f "/var/www/.env" ] && ! grep -q "^APP_KEY=.\+" /var/www/.env; then
+    if [ -f "/var/www/.env" ] && ! grep -q "^PD_APP_KEY=.\+" /var/www/.env; then
         echo "Generating Laravel application key..."
         gosu appuser php /var/www/artisan key:generate --no-interaction
     fi

@@ -1,15 +1,15 @@
 services:
   # Nginx reverse proxy
   pocket-dev-proxy:
-    image: ghcr.io/tetrixdev/pocket-dev-proxy:${IMAGE_TAG:-latest}
+    image: ghcr.io/tetrixdev/pocket-dev-proxy:${PD_IMAGE_TAG:-latest}
     pull_policy: always
     container_name: pocket-dev-proxy
     restart: unless-stopped
     ports:
-      - "${NGINX_PORT:-80}:80"
+      - "${PD_NGINX_PORT:-80}:80"
     environment:
-      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
-      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+      - DEPLOYMENT_MODE=${PD_DEPLOYMENT_MODE:-local}
+      - DOMAIN_NAME=${PD_DOMAIN_NAME:-localhost}
     volumes:
       - proxy-config-data:/etc/nginx-proxy-config
     depends_on:
@@ -24,7 +24,7 @@ services:
       start_period: 15s
 
   pocket-dev-php:
-    image: ghcr.io/tetrixdev/pocket-dev-php:${IMAGE_TAG:-latest}
+    image: ghcr.io/tetrixdev/pocket-dev-php:${PD_IMAGE_TAG:-latest}
     pull_policy: always
     container_name: pocket-dev-php
     restart: unless-stopped
@@ -51,7 +51,7 @@ services:
       start_period: 30s
 
   pocket-dev-nginx:
-    image: ghcr.io/tetrixdev/pocket-dev-nginx:${IMAGE_TAG:-latest}
+    image: ghcr.io/tetrixdev/pocket-dev-nginx:${PD_IMAGE_TAG:-latest}
     pull_policy: always
     container_name: pocket-dev-nginx
     restart: unless-stopped
@@ -69,14 +69,14 @@ services:
 
   pocket-dev-postgres:
     # Custom postgres image with pgvector, PostGIS, and pg_trgm extensions
-    image: ghcr.io/tetrixdev/pocket-dev-postgres:${IMAGE_TAG:-latest}
+    image: ghcr.io/tetrixdev/pocket-dev-postgres:${PD_IMAGE_TAG:-latest}
     pull_policy: always
     container_name: pocket-dev-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: pocket-dev
       POSTGRES_USER: pocket-dev
-      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      POSTGRES_PASSWORD: "${PD_DB_PASSWORD}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
@@ -105,7 +105,7 @@ services:
       start_period: 5s
 
   pocket-dev-queue:
-    image: ghcr.io/tetrixdev/pocket-dev-php:${IMAGE_TAG:-latest}
+    image: ghcr.io/tetrixdev/pocket-dev-php:${PD_IMAGE_TAG:-latest}
     pull_policy: always
     container_name: pocket-dev-queue
     restart: unless-stopped
@@ -120,7 +120,7 @@ services:
       start_period: 30s
     environment:
       - HOME=/home/appuser
-      - DOCKER_GID=${DOCKER_GID:-}
+      - PD_DOCKER_GID=${PD_DOCKER_GID:-}
     volumes:
       - .env:/var/www/.env
       - user-data:/home/appuser

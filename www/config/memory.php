@@ -36,7 +36,7 @@ return [
     | Default is OpenAI's text-embedding-3-small.
     |
     */
-    'embedding_model' => env('MEMORY_EMBEDDING_MODEL', 'text-embedding-3-small'),
+    'embedding_model' => env('PD_MEMORY_EMBEDDING_MODEL', 'text-embedding-3-small'),
 
     /*
     |--------------------------------------------------------------------------
@@ -50,7 +50,7 @@ return [
     | - text-embedding-3-large: 3072
     |
     */
-    'embedding_dimensions' => env('MEMORY_EMBEDDING_DIMENSIONS', 1536),
+    'embedding_dimensions' => env('PD_MEMORY_EMBEDDING_DIMENSIONS', 1536),
 
     /*
     |--------------------------------------------------------------------------

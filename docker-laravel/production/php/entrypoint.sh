@@ -24,7 +24,7 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Main PHP container: run migrations, caching, and start PHP-FPM
 
     # Generate Laravel application key if not set (as www-data since it writes to .env)
-    if [ -f ".env" ] && ! grep -q "^APP_KEY=.\+" .env; then
+    if [ -f ".env" ] && ! grep -q "^PD_APP_KEY=.\+" .env; then
         echo "Generating Laravel application key..."
         gosu www-data php artisan key:generate --no-interaction --force
     fi

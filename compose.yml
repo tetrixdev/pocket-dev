@@ -7,10 +7,10 @@ services:
     container_name: pocket-dev-proxy
     restart: unless-stopped
     ports:
-      - "${NGINX_PORT:-80}:80"
+      - "${PD_NGINX_PORT:-80}:80"
     environment:
-      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
-      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+      - DEPLOYMENT_MODE=${PD_DEPLOYMENT_MODE:-local}
+      - DOMAIN_NAME=${PD_DOMAIN_NAME:-localhost}
     volumes:
       - proxy-config-data:/etc/nginx-proxy-config
     depends_on:
@@ -37,15 +37,15 @@ services:
       - HOME=/home/appuser
       - COMPOSER_HOME=/tmp/.composer
       - NPM_CONFIG_CACHE=/tmp/.npm
-      - TARGET_UID=${USER_ID:-1000}
-      - TARGET_GID=${GROUP_ID:-1000}
-      - HOST_PROJECT_PATH=${PWD}
-      # TODO: Remove ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
-      - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
-      - DOCKER_GID=${DOCKER_GID:-}
+      - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
+      - PD_HOST_PROJECT_PATH=${PWD}
+      # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
+      - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
+      - PD_DOCKER_GID=${PD_DOCKER_GID:-}
     entrypoint: ["/entrypoint.sh"]
     ports:
-      - "${VITE_PORT:-5173}:5173"
+      - "${PD_VITE_PORT:-5173}:5173"
     volumes:
       - ./www:/var/www
       - .env:/var/www/.env
@@ -101,11 +101,11 @@ services:
     environment:
       POSTGRES_DB: pocket-dev
       POSTGRES_USER: pocket-dev
-      POSTGRES_PASSWORD: "${DB_PASSWORD:-laravel}"
+      POSTGRES_PASSWORD: "${PD_DB_PASSWORD:-laravel}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${PD_DB_PORT:-5432}:5432"
     networks:
       - pocket-dev
     healthcheck:
@@ -143,12 +143,12 @@ services:
     # Command removed - supervisord in entrypoint manages multiple workers
     environment:
       - HOME=/home/appuser
-      - TARGET_UID=${USER_ID:-1000}
-      - TARGET_GID=${GROUP_ID:-1000}
-      - HOST_PROJECT_PATH=${PWD}
-      # TODO: Remove ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
-      - ADDITIONAL_SYSTEM_PROMPT_FILE=${ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
-      - DOCKER_GID=${DOCKER_GID:-}
+      - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
+      - PD_HOST_PROJECT_PATH=${PWD}
+      # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
+      - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
+      - PD_DOCKER_GID=${PD_DOCKER_GID:-}
     volumes:
       - ./www:/var/www
       - .env:/var/www/.env

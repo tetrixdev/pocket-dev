@@ -15,23 +15,23 @@ return [
     */
 
     'postmark' => [
-        'token' => env('POSTMARK_TOKEN'),
+        'token' => env('PD_POSTMARK_TOKEN'),
     ],
 
     'resend' => [
-        'key' => env('RESEND_KEY'),
+        'key' => env('PD_RESEND_KEY'),
     ],
 
     'ses' => [
-        'key' => env('AWS_ACCESS_KEY_ID'),
-        'secret' => env('AWS_SECRET_ACCESS_KEY'),
-        'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
+        'key' => env('PD_AWS_ACCESS_KEY_ID'),
+        'secret' => env('PD_AWS_SECRET_ACCESS_KEY'),
+        'region' => env('PD_AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
     'slack' => [
         'notifications' => [
-            'bot_user_oauth_token' => env('SLACK_BOT_USER_OAUTH_TOKEN'),
-            'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
+            'bot_user_oauth_token' => env('PD_SLACK_BOT_USER_OAUTH_TOKEN'),
+            'channel' => env('PD_SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
 
