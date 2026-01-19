@@ -62,7 +62,7 @@ if [ -S /var/run/docker.sock ]; then
     DOCKER_GID=$(get_gid /var/run/docker.sock)
     if [ -n "$DOCKER_GID" ]; then
         sedi "s|PD_DOCKER_GID=|PD_DOCKER_GID=$DOCKER_GID|" .env
-        echo "Detected DOCKER_GID=$DOCKER_GID"
+        echo "Detected PD_DOCKER_GID=$DOCKER_GID"
     fi
 else
     echo "Warning: Docker socket not found - PD_DOCKER_GID not set"

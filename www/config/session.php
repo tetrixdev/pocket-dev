@@ -128,7 +128,7 @@ return [
     */
 
     'cookie' => env(
-        'SESSION_COOKIE',
+        'PD_SESSION_COOKIE',
         Str::slug(env('PD_APP_NAME', 'laravel')).'-session'
     ),
 

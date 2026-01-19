@@ -108,7 +108,8 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Generate Laravel application key if not set
     if [ -f "/var/www/.env" ] && ! grep -q "^PD_APP_KEY=.\+" /var/www/.env; then
         echo "Generating Laravel application key..."
-        gosu appuser php /var/www/artisan key:generate --no-interaction
+        PD_APP_KEY="base64:$(gosu appuser php -r 'echo base64_encode(random_bytes(32));')"
+        sed -i "s|^PD_APP_KEY=.*|PD_APP_KEY=$PD_APP_KEY|" /var/www/.env
     fi
 
     # Create storage symlink if it doesn't exist
