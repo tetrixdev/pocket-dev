@@ -18,6 +18,36 @@ mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 chown -R www-data:www-data "$HOME" 2>/dev/null || true
 chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
+# =============================================================================
+# DOCKER SOCKET ACCESS
+# =============================================================================
+# Set up Docker socket access for www-data (needed for backup/restore operations)
+# PD_DOCKER_GID is passed from compose.yml and matches the host's docker group
+if [ -n "$PD_DOCKER_GID" ]; then
+    echo "🐳 Setting up Docker socket access for www-data..."
+
+    # Create the docker group with the host's GID if it doesn't exist
+    if ! getent group "$PD_DOCKER_GID" > /dev/null 2>&1; then
+        groupadd -g "$PD_DOCKER_GID" hostdocker_runtime 2>/dev/null || true
+    fi
+
+    # Get the group name for this GID
+    DOCKER_GROUP_NAME=$(getent group "$PD_DOCKER_GID" | cut -d: -f1)
+    if [ -z "$DOCKER_GROUP_NAME" ]; then
+        DOCKER_GROUP_NAME="hostdocker_runtime"
+    fi
+
+    # Add www-data to docker group
+    usermod -aG "$DOCKER_GROUP_NAME" www-data 2>/dev/null || true
+    echo "  ✅ Added www-data to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
+
+    # Ensure docker socket has correct group ownership
+    if [ -S /var/run/docker.sock ]; then
+        chgrp "$DOCKER_GROUP_NAME" /var/run/docker.sock 2>/dev/null || true
+        chmod 660 /var/run/docker.sock 2>/dev/null || true
+    fi
+fi
+
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
