@@ -41,7 +41,25 @@
                       style="height: 40px; min-height: 40px; max-height: 168px; overflow-y: hidden;"
                       x-effect="prompt; $nextTick(() => { $el.style.height = 'auto'; const sh = $el.scrollHeight; $el.style.height = Math.min(sh, 168) + 'px'; $el.style.overflowY = sh > 168 ? 'auto' : 'hidden'; if (prompt) $el.scrollTop = $el.scrollHeight; }); updateSkillSuggestions();"
                       @keydown="handleSkillKeydown($event)"
-                      @keydown.enter="if (!$event.shiftKey && !showSkillSuggestions) { $event.preventDefault(); sendMessage(); }"></textarea>
+                      @keydown.enter="if (!$event.shiftKey && !showSkillSuggestions) { $event.preventDefault(); sendMessage(); }"
+                      @paste="
+                          const items = $event.clipboardData?.items;
+                          if (items) {
+                              for (const item of items) {
+                                  if (item.type.startsWith('image/')) {
+                                      const blob = item.getAsFile();
+                                      if (blob) {
+                                          const now = new Date();
+                                          const timestamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14);
+                                          const ext = item.type.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+                                          const filename = `pasted-image-${timestamp}.${ext}`;
+                                          const file = new File([blob], filename, { type: item.type });
+                                          Alpine.store('attachments').addFile(file);
+                                      }
+                                  }
+                              }
+                          }
+                      "></textarea>
 
             {{-- Skill Suggestions Dropdown (Mobile) --}}
             <div x-show="showSkillSuggestions"
