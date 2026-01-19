@@ -4156,6 +4156,7 @@
 
                 stopFileUploadRecording() {
                     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                        this.mediaRecorder.requestData(); // Flush any pending audio before stopping
                         this.mediaRecorder.stop();
                         this.isRecording = false;
                         this.isProcessing = true; // Show processing state while uploading
@@ -4208,7 +4209,7 @@
                         if (data.success && data.transcription) {
                             // Append to existing prompt (preserve what user typed)
                             const existing = this.prompt.trim();
-                            this.prompt = existing ? existing + ' ' + data.transcription : data.transcription;
+                            this.prompt = existing ? existing + '\n\n' + data.transcription : data.transcription;
 
                             if (this.autoSendAfterTranscription) {
                                 this.autoSendAfterTranscription = false;
@@ -4233,8 +4234,8 @@
                 async startRealtimeRecording() {
                     try {
                         this.isProcessing = true;
-                        // Preserve existing prompt text, add space if needed
-                        this.realtimeTranscript = this.prompt.trim() ? this.prompt.trim() + ' ' : '';
+                        // Preserve existing prompt text, add newlines if needed
+                        this.realtimeTranscript = this.prompt.trim() ? this.prompt.trim() + '\n\n' : '';
                         this.currentTranscriptItemId = null;
 
                         // Get ephemeral token from backend
