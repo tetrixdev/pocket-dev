@@ -29,6 +29,12 @@ services:
     container_name: pocket-dev-php
     restart: unless-stopped
     working_dir: /var/www
+    environment:
+      - HOME=/home/appuser
+      - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
+      - PD_HOST_PROJECT_PATH=${PWD}
+      - PD_DOCKER_GID=${PD_DOCKER_GID:-}
     volumes:
       - .env:/var/www/.env
       - user-data:/home/appuser
@@ -36,6 +42,7 @@ services:
       - proxy-config-data:/etc/nginx-proxy-config
       - pocketdev-storage:/var/www/storage/pocketdev
       - shared-tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - pocket-dev
     depends_on:
