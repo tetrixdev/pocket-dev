@@ -277,8 +277,15 @@ chmod 666 /dev/stdout /dev/stderr 2>/dev/null || true
 
 # Ensure supervisord log/pid files are writable by TARGET_USER
 # /tmp is a shared volume - files may exist from previous runs with different ownership
-touch /tmp/supervisord.log /tmp/supervisord.pid 2>/dev/null || true
-chown "${TARGET_UID}:${TARGET_GID}" /tmp/supervisord.log /tmp/supervisord.pid 2>/dev/null || true
+# Guard against symlink traversal (same pattern as /tmp/pocketdev*)
+for f in /tmp/supervisord.log /tmp/supervisord.pid; do
+    if [ -L "$f" ]; then
+        echo "WARN: $f is a symlink; removing before recreation" >&2
+        rm -f "$f" 2>/dev/null || true
+    fi
+    touch "$f" 2>/dev/null || true
+    chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+done
 
 # Use exec to replace this shell with supervisord (proper signal handling)
 # gosu with username (not UID:GID) properly initializes supplementary groups
