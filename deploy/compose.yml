@@ -8,8 +8,8 @@ services:
     ports:
       - "${PD_NGINX_PORT:-80}:80"
     environment:
-      - DEPLOYMENT_MODE=${PD_DEPLOYMENT_MODE:-local}
-      - DOMAIN_NAME=${PD_DOMAIN_NAME:-localhost}
+      - PD_DEPLOYMENT_MODE=${PD_DEPLOYMENT_MODE:-local}
+      - PD_DOMAIN_NAME=${PD_DOMAIN_NAME:-localhost}
     volumes:
       - proxy-config-data:/etc/nginx-proxy-config
     depends_on:
