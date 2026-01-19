@@ -284,7 +284,7 @@ done
 
 # Ensure queue worker log files are writable by TARGET_USER
 # Supervisor creates 10 workers (00-09) with stdout and stderr logs each
-for i in $(seq -w 0 9); do
+for i in $(seq -f '%02g' 0 9); do
     for f in "/tmp/queue-worker-${i}.log" "/tmp/queue-worker-${i}-error.log"; do
         if [ -L "$f" ]; then
             echo "WARN: $f is a symlink; removing before recreation" >&2
