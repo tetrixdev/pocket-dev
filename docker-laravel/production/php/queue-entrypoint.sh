@@ -15,18 +15,41 @@ TARGET_GID="${PD_TARGET_GID:-1000}"
 echo "Starting queue container initialization..."
 
 # =============================================================================
-# USER SETUP
+# USER SETUP (collision-safe)
 # =============================================================================
-# Create a user for TARGET_UID if it doesn't exist
-if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
-    # First ensure the group exists
-    if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
+# Handle UID/GID that may differ from the Dockerfile defaults (1000/1000).
+# The Dockerfile pre-creates "appgroup" with GID 1000, so we need unique names
+# if TARGET_GID differs to avoid "name already in use" errors.
+
+# First ensure the group exists for TARGET_GID
+if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
+    # GID doesn't exist - create it with a collision-safe name
+    if getent group appgroup > /dev/null 2>&1; then
+        # "appgroup" name is taken (by GID 1000), use unique name
+        groupadd -g "$TARGET_GID" "appgroup_$TARGET_GID" 2>/dev/null || true
+    else
         groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
     fi
-    useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
 fi
 
-# Get the username for TARGET_UID
+# Get the actual group name for TARGET_GID
+TARGET_GROUP=$(getent group "$TARGET_GID" | cut -d: -f1)
+if [ -z "$TARGET_GROUP" ]; then
+    TARGET_GROUP="appgroup"
+fi
+
+# Create a user for TARGET_UID if it doesn't exist
+if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
+    # UID doesn't exist - create it with a collision-safe name
+    if getent passwd appuser > /dev/null 2>&1; then
+        # "appuser" name is taken (by UID 1000), use unique name
+        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash "appuser_$TARGET_UID" 2>/dev/null || true
+    else
+        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+    fi
+fi
+
+# Get the actual username for TARGET_UID
 TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
 if [ -z "$TARGET_USER" ]; then
     TARGET_USER="appuser"
