@@ -5,26 +5,57 @@ set -e
 # PocketDev PHP-FPM Production Entrypoint
 # Uses gosu privilege drop pattern (same as official Docker images)
 # - Runs as root initially for privileged operations
-# - Drops to www-data before starting PHP-FPM
+# - PHP-FPM workers run as www-data (standard PHP-FPM architecture)
+# - Files owned by TARGET_UID, accessible to www-data via appgroup membership
 # =============================================================================
 
 echo "Starting Laravel production container..."
 
+# Runtime configurable UID/GID (from compose.yml environment)
+TARGET_UID="${PD_TARGET_UID:-1000}"
+TARGET_GID="${PD_TARGET_GID:-1000}"
+
 # Set HOME for tools that expect a writable home directory
 export HOME=/home/appuser
 
-# Ensure CLI config directories exist and are owned by www-data
+# =============================================================================
+# USER SETUP
+# =============================================================================
+# Create a user for TARGET_UID if it doesn't exist
+if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
+    # First ensure the group exists
+    if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
+        groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
+    fi
+    useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+fi
+
+# Get the username for TARGET_UID
+TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
+if [ -z "$TARGET_USER" ]; then
+    TARGET_USER="appuser"
+fi
+
+# Ensure TARGET_GID group exists and www-data is a member
+# This allows PHP-FPM (www-data) to read/write files owned by TARGET_UID
+TARGET_GROUP=$(getent group "$TARGET_GID" | cut -d: -f1)
+if [ -z "$TARGET_GROUP" ]; then
+    TARGET_GROUP="appgroup"
+fi
+usermod -aG "$TARGET_GROUP" www-data 2>/dev/null || true
+
+# Ensure CLI config directories exist and are owned by TARGET_UID
 mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
-chown -R www-data:www-data "$HOME" 2>/dev/null || true
+chown -R "${TARGET_UID}:${TARGET_GID}" "$HOME" 2>/dev/null || true
 chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
 # =============================================================================
 # DOCKER SOCKET ACCESS
 # =============================================================================
-# Set up Docker socket access for www-data (needed for backup/restore operations)
+# Set up Docker socket access (needed for backup/restore operations)
 # PD_DOCKER_GID is passed from compose.yml and matches the host's docker group
 if [ -n "$PD_DOCKER_GID" ]; then
-    echo "🐳 Setting up Docker socket access for www-data..."
+    echo "🐳 Setting up Docker socket access..."
 
     # Create the docker group with the host's GID if it doesn't exist
     if ! getent group "$PD_DOCKER_GID" > /dev/null 2>&1; then
@@ -37,9 +68,15 @@ if [ -n "$PD_DOCKER_GID" ]; then
         DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
 
-    # Add www-data to docker group
+    # Add www-data to docker group (for PHP-FPM workers)
     usermod -aG "$DOCKER_GROUP_NAME" www-data 2>/dev/null || true
     echo "  ✅ Added www-data to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
+
+    # Also add TARGET_USER for CLI operations
+    if [ -n "$TARGET_USER" ]; then
+        usermod -aG "$DOCKER_GROUP_NAME" "$TARGET_USER" 2>/dev/null || true
+        echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
+    fi
 
     # Ensure docker socket has correct group ownership
     if [ -S /var/run/docker.sock ]; then
@@ -60,7 +97,7 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
         sed -i "s|^PD_APP_KEY=.*|PD_APP_KEY=$PD_APP_KEY|" .env
     fi
 
-    # Run Laravel production optimizations (as www-data)
+    # Run Laravel production optimizations (as www-data, which is in TARGET_GID group)
     echo "Running Laravel optimizations..."
     gosu www-data php artisan migrate --force --no-interaction
     gosu www-data php artisan config:cache --no-interaction

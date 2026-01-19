@@ -5,20 +5,41 @@ set -e
 # PocketDev Queue Worker Entrypoint (Production)
 # Uses gosu privilege drop pattern (same as official Docker images)
 # - Runs as root initially for privileged operations (apt-get, group setup)
-# - Drops to www-data before starting supervisord
+# - Drops to TARGET_UID before starting supervisord
 # =============================================================================
 
-# Production uses www-data consistently (not TARGET_UID)
+# Runtime configurable UID/GID (from compose.yml environment)
+TARGET_UID="${PD_TARGET_UID:-1000}"
+TARGET_GID="${PD_TARGET_GID:-1000}"
+
 echo "Starting queue container initialization..."
+
+# =============================================================================
+# USER SETUP
+# =============================================================================
+# Create a user for TARGET_UID if it doesn't exist
+if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
+    # First ensure the group exists
+    if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
+        groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
+    fi
+    useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+fi
+
+# Get the username for TARGET_UID
+TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
+if [ -z "$TARGET_USER" ]; then
+    TARGET_USER="appuser"
+fi
 
 # =============================================================================
 # PRIVILEGED SECTION - Runs as root
 # =============================================================================
 
-# Set up Docker socket access for www-data
+# Set up Docker socket access for TARGET_UID
 # PD_DOCKER_GID is passed from compose.yml and matches the host's docker group
 if [ -n "$PD_DOCKER_GID" ]; then
-    echo "🐳 Setting up Docker socket access for www-data..."
+    echo "🐳 Setting up Docker socket access for $TARGET_USER..."
 
     # Create the docker group with the host's GID if it doesn't exist
     if ! getent group "$PD_DOCKER_GID" > /dev/null 2>&1; then
@@ -31,9 +52,11 @@ if [ -n "$PD_DOCKER_GID" ]; then
         DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
 
-    # Add www-data to docker group
-    usermod -aG "$DOCKER_GROUP_NAME" www-data 2>/dev/null || true
-    echo "  ✅ Added www-data to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
+    # Add TARGET_USER to docker group
+    if [ -n "$TARGET_USER" ]; then
+        usermod -aG "$DOCKER_GROUP_NAME" "$TARGET_USER" 2>/dev/null || true
+        echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
+    fi
 
     # Ensure docker socket has correct group ownership
     if [ -S /var/run/docker.sock ]; then
@@ -42,9 +65,9 @@ if [ -n "$PD_DOCKER_GID" ]; then
     fi
 fi
 
-# Ensure home directory exists and has correct permissions for www-data
+# Ensure home directory exists and has correct permissions for TARGET_UID
 mkdir -p /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
-chown -R www-data:www-data /home/appuser 2>/dev/null || true
+chown -R "${TARGET_UID}:${TARGET_GID}" /home/appuser 2>/dev/null || true
 chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 
 # Set up default Claude Code permissions.deny to protect .env files
@@ -53,13 +76,13 @@ CLAUDE_SETTINGS="/home/appuser/.claude/settings.json"
 if [ ! -f "$CLAUDE_SETTINGS" ]; then
     # Create minimal settings with default deny patterns
     echo '{"permissions":{"deny":["Read(**/.env)"]}}' > "$CLAUDE_SETTINGS"
-    chown www-data:www-data "$CLAUDE_SETTINGS"
+    chown "${TARGET_UID}:${TARGET_GID}" "$CLAUDE_SETTINGS"
     chmod 664 "$CLAUDE_SETTINGS"
     echo "Created default Claude settings with .env protection"
 fi
 
-# Ensure workspace directory is writable by www-data
-chown www-data:www-data /workspace 2>/dev/null || true
+# Ensure workspace directory is writable by TARGET_UID
+chown "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
 chmod 775 /workspace 2>/dev/null || true
 
 # Safety net: Ensure all workspace subdirectories have correct permissions
@@ -84,6 +107,11 @@ while [ $attempt -lt $max_attempts ]; do
     fi
     sleep 1
 done
+
+# Fix permissions on Claude config files so they're accessible
+# Claude CLI creates these with 600, we need 660 for group write access
+chmod 660 /home/appuser/.claude.json /home/appuser/.claude.json.backup 2>/dev/null || true
+chmod 664 /home/appuser/.claude/settings.json 2>/dev/null || true
 
 # =============================================================================
 # SYSTEM PACKAGE INSTALLATION
@@ -188,7 +216,7 @@ fi
 # DROP PRIVILEGES AND START WORKERS
 # =============================================================================
 
-echo "Starting supervisord as www-data..."
+echo "Starting supervisord as $TARGET_USER..."
 
 # Ensure stdout/stderr are writable by the target user
 # This is needed because supervisor logs to /dev/stdout and /dev/stderr
@@ -196,4 +224,5 @@ chmod 666 /dev/stdout /dev/stderr 2>/dev/null || true
 
 # Use exec to replace this shell with supervisord (proper signal handling)
 # gosu with username (not UID:GID) properly initializes supplementary groups
-exec gosu www-data /usr/bin/supervisord -c /etc/supervisor/conf.d/queue-workers.conf
+# This is critical for docker socket access via hostdocker_runtime group
+exec gosu "$TARGET_USER" /usr/bin/supervisord -c /etc/supervisor/conf.d/queue-workers.conf

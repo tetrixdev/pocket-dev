@@ -127,6 +127,9 @@ services:
       start_period: 30s
     environment:
       - HOME=/home/appuser
+      - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
+      - PD_HOST_PROJECT_PATH=${PD_HOST_PROJECT_PATH:-${PWD}}
       - PD_DOCKER_GID=${PD_DOCKER_GID:-}
     volumes:
       - .env:/var/www/.env
