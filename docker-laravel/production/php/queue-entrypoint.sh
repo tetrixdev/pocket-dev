@@ -139,6 +139,28 @@ for d in /tmp/pocketdev /tmp/pocketdev-uploads; do
     find "$d" -type f -exec chmod 664 {} \; 2>/dev/null || true
 done
 
+# =============================================================================
+# STORAGE AND CACHE PERMISSIONS
+# =============================================================================
+# Fix permissions on Laravel storage and cache directories.
+# Production images bake in files as www-data:www-data, but queue workers run as
+# TARGET_USER. This ensures both PHP-FPM (www-data) and queue workers can write.
+
+echo "Setting storage permissions..."
+chgrp -R "$TARGET_GID" /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
+find /var/www/storage -type d -exec chmod 2775 {} \; 2>/dev/null || true
+find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
+find /var/www/bootstrap/cache -type d -exec chmod 2775 {} \; 2>/dev/null || true
+find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
+
+# Fix permissions for mounted config volumes (for config editor)
+if [ -d "/etc/nginx-proxy-config" ]; then
+    echo "Setting permissions on /etc/nginx-proxy-config..."
+    chgrp -R "$TARGET_GID" /etc/nginx-proxy-config 2>/dev/null || true
+    find /etc/nginx-proxy-config -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
+fi
+
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."
 max_attempts=60
