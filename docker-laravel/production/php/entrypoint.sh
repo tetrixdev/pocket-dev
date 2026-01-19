@@ -105,6 +105,40 @@ if [ -n "$PD_DOCKER_GID" ]; then
     fi
 fi
 
+# =============================================================================
+# VOLUME PERMISSIONS (for backup/restore and UID/GID changes)
+# =============================================================================
+# When restoring from backup or changing PD_TARGET_UID/GID, volume data may have
+# wrong ownership. Fix permissions on all volumes that should be owned by TARGET_UID.
+
+# workspace volume
+chown "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
+chmod 775 /workspace 2>/dev/null || true
+find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp "$TARGET_GROUP" {} \; 2>/dev/null || true
+find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
+
+# pocketdev-storage volume (/var/www/storage/pocketdev)
+# Use 2775 for directories (setgid) and 664 for files (no execute on data files)
+if [ -d /var/www/storage/pocketdev ]; then
+    chown -R "${TARGET_UID}:${TARGET_GID}" /var/www/storage/pocketdev 2>/dev/null || true
+    find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
+fi
+
+# shared-tmp volume (/tmp) - fix PocketDev-specific directories
+# Don't chown all of /tmp as other processes may use it
+# Guard against symlink traversal (shared /tmp could have malicious symlinks)
+for d in /tmp/pocketdev /tmp/pocketdev-uploads; do
+    if [ -L "$d" ]; then
+        echo "WARN: $d is a symlink; skipping ownership fix" >&2
+        continue
+    fi
+    mkdir -p "$d" 2>/dev/null || true
+    chown -R "${TARGET_UID}:${TARGET_GID}" "$d" 2>/dev/null || true
+    find "$d" -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    find "$d" -type f -exec chmod 664 {} \; 2>/dev/null || true
+done
+
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then

@@ -116,6 +116,34 @@ chmod 775 /workspace 2>/dev/null || true
 find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp "$TARGET_GROUP" {} \; 2>/dev/null || true
 find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
 
+# =============================================================================
+# VOLUME PERMISSIONS (for backup/restore and UID/GID changes)
+# =============================================================================
+# When restoring from backup or changing PD_TARGET_UID/GID, volume data may have
+# wrong ownership. Fix permissions on all volumes that should be owned by TARGET_UID.
+
+# pocketdev-storage volume (/var/www/storage/pocketdev)
+# Use 2775 for directories (setgid) and 664 for files (no execute on data files)
+if [ -d /var/www/storage/pocketdev ]; then
+    chown -R "${TARGET_UID}:${TARGET_GID}" /var/www/storage/pocketdev 2>/dev/null || true
+    find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
+fi
+
+# shared-tmp volume (/tmp) - fix PocketDev-specific directories
+# Don't chown all of /tmp as other processes may use it
+# Guard against symlink traversal (shared /tmp could have malicious symlinks)
+for d in /tmp/pocketdev /tmp/pocketdev-uploads; do
+    if [ -L "$d" ]; then
+        echo "WARN: $d is a symlink; skipping ownership fix" >&2
+        continue
+    fi
+    mkdir -p "$d" 2>/dev/null || true
+    chown -R "${TARGET_UID}:${TARGET_GID}" "$d" 2>/dev/null || true
+    find "$d" -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    find "$d" -type f -exec chmod 664 {} \; 2>/dev/null || true
+done
+
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."
 max_attempts=60
@@ -246,6 +274,18 @@ echo "Starting supervisord as $TARGET_USER..."
 # Ensure stdout/stderr are writable by the target user
 # This is needed because supervisor logs to /dev/stdout and /dev/stderr
 chmod 666 /dev/stdout /dev/stderr 2>/dev/null || true
+
+# Ensure supervisord log/pid files are writable by TARGET_USER
+# /tmp is a shared volume - files may exist from previous runs with different ownership
+# Guard against symlink traversal (same pattern as /tmp/pocketdev*)
+for f in /tmp/supervisord.log /tmp/supervisord.pid; do
+    if [ -L "$f" ]; then
+        echo "WARN: $f is a symlink; removing before recreation" >&2
+        rm -f "$f" 2>/dev/null || true
+    fi
+    touch "$f" 2>/dev/null || true
+    chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+done
 
 # Use exec to replace this shell with supervisord (proper signal handling)
 # gosu with username (not UID:GID) properly initializes supplementary groups
