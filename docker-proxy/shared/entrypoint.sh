@@ -4,12 +4,12 @@ set -e
 # =============================================================================
 # DEPLOYMENT MODE CONFIGURATION
 # =============================================================================
-DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-local}
-DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+PD_DEPLOYMENT_MODE=${PD_DEPLOYMENT_MODE:-local}
+PD_DOMAIN_NAME=${PD_DOMAIN_NAME:-localhost}
 
 echo "Configuring pocket-dev proxy..."
-echo "   - Deployment mode: $DEPLOYMENT_MODE"
-echo "   - Domain name: $DOMAIN_NAME"
+echo "   - Deployment mode: $PD_DEPLOYMENT_MODE"
+echo "   - Domain name: $PD_DOMAIN_NAME"
 
 # =============================================================================
 # SECURITY CONFIGURATION
@@ -30,7 +30,7 @@ echo "Copying upstream settings..."
 cp /etc/nginx/includes/00-upstream-settings.conf.template /etc/nginx/conf.d/00-upstream-settings.conf
 
 # Configure deployment-specific settings
-if [ "$DEPLOYMENT_MODE" = "production" ]; then
+if [ "$PD_DEPLOYMENT_MODE" = "production" ]; then
     echo "Production mode: Enabling IP blocking for direct IP access"
     cp /etc/nginx/includes/01-default-server-production.conf /etc/nginx/conf.d/01-default-server.conf
     DEFAULT_SERVER=""  # Main server is NOT default_server (IP blocking server is)
@@ -50,7 +50,7 @@ fi
 # Process nginx configuration template from proxy config volume
 export AUTH_ENABLED
 export IP_ALLOWED
-export DOMAIN_NAME
+export DOMAIN_NAME=$PD_DOMAIN_NAME
 export DEFAULT_SERVER
 
 envsubst '${AUTH_ENABLED} ${IP_ALLOWED} ${DOMAIN_NAME} ${DEFAULT_SERVER}' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf

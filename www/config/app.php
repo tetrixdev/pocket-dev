@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'PocketDev'),
+    'name' => env('PD_APP_NAME', 'PocketDev'),
 
     /*
     |--------------------------------------------------------------------------
@@ -26,7 +26,7 @@ return [
     |
     */
 
-    'env' => env('APP_ENV', 'production'),
+    'env' => env('PD_APP_ENV', 'production'),
 
     /*
     |--------------------------------------------------------------------------
@@ -39,7 +39,7 @@ return [
     |
     */
 
-    'debug' => (bool) env('APP_DEBUG', false),
+    'debug' => (bool) env('PD_APP_DEBUG', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -52,7 +52,7 @@ return [
     |
     */
 
-    'url' => env('APP_URL', 'http://localhost'),
+    'url' => env('PD_APP_URL', 'http://localhost'),
 
     /*
     |--------------------------------------------------------------------------
@@ -66,7 +66,7 @@ return [
     |
     */
 
-    'force_https' => (bool) env('FORCE_HTTPS', false),
+    'force_https' => (bool) env('PD_FORCE_HTTPS', false),
 
     /*
     |--------------------------------------------------------------------------
@@ -92,11 +92,11 @@ return [
     |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    'locale' => env('PD_APP_LOCALE', 'en'),
 
-    'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
+    'fallback_locale' => env('PD_APP_FALLBACK_LOCALE', 'en'),
 
-    'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
+    'faker_locale' => env('PD_APP_FAKER_LOCALE', 'en_US'),
 
     /*
     |--------------------------------------------------------------------------
@@ -111,11 +111,11 @@ return [
 
     'cipher' => 'AES-256-CBC',
 
-    'key' => env('APP_KEY'),
+    'key' => env('PD_APP_KEY'),
 
     'previous_keys' => [
         ...array_filter(
-            explode(',', (string) env('APP_PREVIOUS_KEYS', ''))
+            explode(',', (string) env('PD_APP_PREVIOUS_KEYS', ''))
         ),
     ],
 
@@ -133,8 +133,8 @@ return [
     */
 
     'maintenance' => [
-        'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
-        'store' => env('APP_MAINTENANCE_STORE', 'database'),
+        'driver' => env('PD_APP_MAINTENANCE_DRIVER', 'file'),
+        'store' => env('PD_APP_MAINTENANCE_STORE', 'database'),
     ],
 
 ];

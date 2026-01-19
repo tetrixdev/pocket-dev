@@ -18,7 +18,7 @@ return [
     |
     */
 
-    'default' => env('LOG_CHANNEL', 'stack'),
+    'default' => env('PD_LOG_CHANNEL', 'stack'),
 
     /*
     |--------------------------------------------------------------------------
@@ -32,8 +32,8 @@ return [
     */
 
     'deprecations' => [
-        'channel' => env('LOG_DEPRECATIONS_CHANNEL', 'null'),
-        'trace' => env('LOG_DEPRECATIONS_TRACE', false),
+        'channel' => env('PD_LOG_DEPRECATIONS_CHANNEL', 'null'),
+        'trace' => env('PD_LOG_DEPRECATIONS_TRACE', false),
     ],
 
     /*
@@ -54,67 +54,67 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => explode(',', (string) env('PD_LOG_STACK', 'single')),
             'ignore_exceptions' => false,
         ],
 
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('PD_LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
         ],
 
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
-            'level' => env('LOG_LEVEL', 'debug'),
-            'days' => env('LOG_DAILY_DAYS', 14),
+            'level' => env('PD_LOG_LEVEL', 'debug'),
+            'days' => env('PD_LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
         ],
 
         'slack' => [
             'driver' => 'slack',
-            'url' => env('LOG_SLACK_WEBHOOK_URL'),
-            'username' => env('LOG_SLACK_USERNAME', 'Laravel Log'),
-            'emoji' => env('LOG_SLACK_EMOJI', ':boom:'),
-            'level' => env('LOG_LEVEL', 'critical'),
+            'url' => env('PD_LOG_SLACK_WEBHOOK_URL'),
+            'username' => env('PD_LOG_SLACK_USERNAME', 'Laravel Log'),
+            'emoji' => env('PD_LOG_SLACK_EMOJI', ':boom:'),
+            'level' => env('PD_LOG_LEVEL', 'critical'),
             'replace_placeholders' => true,
         ],
 
         'papertrail' => [
             'driver' => 'monolog',
-            'level' => env('LOG_LEVEL', 'debug'),
-            'handler' => env('LOG_PAPERTRAIL_HANDLER', SyslogUdpHandler::class),
+            'level' => env('PD_LOG_LEVEL', 'debug'),
+            'handler' => env('PD_LOG_PAPERTRAIL_HANDLER', SyslogUdpHandler::class),
             'handler_with' => [
-                'host' => env('PAPERTRAIL_URL'),
-                'port' => env('PAPERTRAIL_PORT'),
-                'connectionString' => 'tls://'.env('PAPERTRAIL_URL').':'.env('PAPERTRAIL_PORT'),
+                'host' => env('PD_PAPERTRAIL_URL'),
+                'port' => env('PD_PAPERTRAIL_PORT'),
+                'connectionString' => 'tls://'.env('PD_PAPERTRAIL_URL').':'.env('PD_PAPERTRAIL_PORT'),
             ],
             'processors' => [PsrLogMessageProcessor::class],
         ],
 
         'stderr' => [
             'driver' => 'monolog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('PD_LOG_LEVEL', 'debug'),
             'handler' => StreamHandler::class,
             'handler_with' => [
                 'stream' => 'php://stderr',
             ],
-            'formatter' => env('LOG_STDERR_FORMATTER'),
+            'formatter' => env('PD_LOG_STDERR_FORMATTER'),
             'processors' => [PsrLogMessageProcessor::class],
         ],
 
         'syslog' => [
             'driver' => 'syslog',
-            'level' => env('LOG_LEVEL', 'debug'),
-            'facility' => env('LOG_SYSLOG_FACILITY', LOG_USER),
+            'level' => env('PD_LOG_LEVEL', 'debug'),
+            'facility' => env('PD_LOG_SYSLOG_FACILITY', LOG_USER),
             'replace_placeholders' => true,
         ],
 
         'errorlog' => [
             'driver' => 'errorlog',
-            'level' => env('LOG_LEVEL', 'debug'),
+            'level' => env('PD_LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
         ],
 
@@ -141,7 +141,7 @@ return [
             'driver' => 'daily',
             'path' => storage_path('logs/embeddings.log'),
             'level' => 'debug',
-            'days' => env('LOG_EMBEDDINGS_DAYS', 14),
+            'days' => env('PD_LOG_EMBEDDINGS_DAYS', 14),
             'replace_placeholders' => true,
         ],
 

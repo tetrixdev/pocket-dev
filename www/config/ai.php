@@ -11,7 +11,7 @@ return [
     |
     */
 
-    'default_provider' => env('AI_PROVIDER', 'anthropic'),
+    'default_provider' => env('PD_AI_PROVIDER', 'anthropic'),
 
     /*
     |--------------------------------------------------------------------------
@@ -25,7 +25,7 @@ return [
     'providers' => [
         'anthropic' => [
             // API key managed via UI (stored in database)
-            'base_url' => env('ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
+            'base_url' => env('PD_ANTHROPIC_BASE_URL', 'https://api.anthropic.com'),
             'default_model' => 'claude-sonnet-4-5-20250929',
             'max_tokens' => 8192,
             'api_version' => '2023-06-01',
@@ -33,7 +33,7 @@ return [
 
         'openai' => [
             // API key managed via UI (stored in database)
-            'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
+            'base_url' => env('PD_OPENAI_BASE_URL', 'https://api.openai.com'),
             'default_model' => 'gpt-5',
             'max_tokens' => 16384,
         ],
@@ -48,7 +48,7 @@ return [
                 'Bash', 'Task', 'WebFetch', 'WebSearch', 'NotebookRead', 'NotebookEdit',
             ],
             // Log all streaming deltas (very verbose, for debugging stream issues)
-            'verbose_logging' => env('CLAUDE_CODE_VERBOSE_LOGGING', false),
+            'verbose_logging' => env('PD_CLAUDE_CODE_VERBOSE_LOGGING', false),
         ],
 
         'codex' => [
@@ -178,8 +178,8 @@ return [
             'Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob',
             'MemoryQuery', 'MemoryCreate', 'MemoryUpdate', 'MemoryDelete', 'MemoryLink', 'MemoryUnlink',
         ],
-        'timeout' => (int) env('TOOL_TIMEOUT', 120),
-        'max_output_length' => (int) env('TOOL_MAX_OUTPUT', 30000),
+        'timeout' => (int) env('PD_TOOL_TIMEOUT', 120),
+        'max_output_length' => (int) env('PD_TOOL_MAX_OUTPUT', 30000),
     ],
 
     /*
@@ -194,7 +194,7 @@ return [
 
     'embeddings' => [
         // API key managed via UI (uses OpenAI key from database)
-        'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com'),
+        'base_url' => env('PD_OPENAI_BASE_URL', 'https://api.openai.com'),
         'model' => 'text-embedding-3-small',
         'dimensions' => 1536,
     ],
@@ -356,10 +356,10 @@ return [
 
     'streaming' => [
         // Temp file location for background streaming
-        'temp_path' => env('STREAM_TEMP_PATH', storage_path('app/streams')),
+        'temp_path' => env('PD_STREAM_TEMP_PATH', storage_path('app/streams')),
 
         // How long to keep completed stream files (seconds)
-        'cleanup_after' => (int) env('STREAM_CLEANUP_AFTER', 3600),
+        'cleanup_after' => (int) env('PD_STREAM_CLEANUP_AFTER', 3600),
     ],
 
     /*
@@ -372,7 +372,7 @@ return [
     |
     */
 
-    'additional_system_prompt_file' => env('ADDITIONAL_SYSTEM_PROMPT_FILE', ''),
+    'additional_system_prompt_file' => env('PD_ADDITIONAL_SYSTEM_PROMPT_FILE', ''),
 
     /*
     |--------------------------------------------------------------------------

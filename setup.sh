@@ -40,40 +40,40 @@ echo "Created .env from template"
 # Detect USER_ID and GROUP_ID
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
-sedi "s|USER_ID=1000|USER_ID=$USER_ID|" .env
-sedi "s|GROUP_ID=1000|GROUP_ID=$GROUP_ID|" .env
+sedi "s|PD_USER_ID=1000|PD_USER_ID=$USER_ID|" .env
+sedi "s|PD_GROUP_ID=1000|PD_GROUP_ID=$GROUP_ID|" .env
 echo "Detected USER_ID=$USER_ID, GROUP_ID=$GROUP_ID"
 
 # Detect DOCKER_GID
 if [ -S /var/run/docker.sock ]; then
     DOCKER_GID=$(get_gid /var/run/docker.sock)
     if [ -n "$DOCKER_GID" ]; then
-        sedi "s|DOCKER_GID=|DOCKER_GID=$DOCKER_GID|" .env
+        sedi "s|PD_DOCKER_GID=|PD_DOCKER_GID=$DOCKER_GID|" .env
         echo "Detected DOCKER_GID=$DOCKER_GID"
     fi
 else
-    echo "Warning: Docker socket not found - DOCKER_GID not set"
+    echo "Warning: Docker socket not found - PD_DOCKER_GID not set"
 fi
 
 # Generate APP_KEY (use | delimiter since base64 can contain /)
 APP_KEY="base64:$(openssl rand -base64 32)"
-sedi "s|APP_KEY=|APP_KEY=$APP_KEY|" .env
-echo "Generated APP_KEY"
+sedi "s|PD_APP_KEY=|PD_APP_KEY=$APP_KEY|" .env
+echo "Generated PD_APP_KEY"
 
 # Generate DB_PASSWORD
 DB_PASSWORD=$(openssl rand -hex 16)
-sedi "s|DB_PASSWORD=|DB_PASSWORD=$DB_PASSWORD|" .env
-echo "Generated DB_PASSWORD"
+sedi "s|PD_DB_PASSWORD=|PD_DB_PASSWORD=$DB_PASSWORD|" .env
+echo "Generated PD_DB_PASSWORD"
 
 # Generate DB_READONLY_PASSWORD (for read-only database user)
 DB_READONLY_PASSWORD=$(openssl rand -hex 16)
-sedi "s|DB_READONLY_PASSWORD=|DB_READONLY_PASSWORD=$DB_READONLY_PASSWORD|" .env
-echo "Generated DB_READONLY_PASSWORD"
+sedi "s|PD_DB_READONLY_PASSWORD=|PD_DB_READONLY_PASSWORD=$DB_READONLY_PASSWORD|" .env
+echo "Generated PD_DB_READONLY_PASSWORD"
 
 # Generate DB_MEMORY_AI_PASSWORD (for memory schema DDL/DML user)
 DB_MEMORY_AI_PASSWORD=$(openssl rand -hex 16)
-sedi "s|DB_MEMORY_AI_PASSWORD=|DB_MEMORY_AI_PASSWORD=$DB_MEMORY_AI_PASSWORD|" .env
-echo "Generated DB_MEMORY_AI_PASSWORD"
+sedi "s|PD_DB_MEMORY_AI_PASSWORD=|PD_DB_MEMORY_AI_PASSWORD=$DB_MEMORY_AI_PASSWORD|" .env
+echo "Generated PD_DB_MEMORY_AI_PASSWORD"
 
 # Ask for NGINX_PORT
 echo ""
@@ -86,8 +86,8 @@ if ! [[ "$NGINX_PORT" =~ ^[0-9]+$ ]] || [ "$NGINX_PORT" -lt 1 ] || [ "$NGINX_POR
     NGINX_PORT=80
 fi
 
-sedi "s|NGINX_PORT=80|NGINX_PORT=$NGINX_PORT|" .env
-echo "Set NGINX_PORT=$NGINX_PORT"
+sedi "s|PD_NGINX_PORT=80|PD_NGINX_PORT=$NGINX_PORT|" .env
+echo "Set PD_NGINX_PORT=$NGINX_PORT"
 
 echo ""
 echo "========================================"

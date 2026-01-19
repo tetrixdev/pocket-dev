@@ -2281,10 +2281,10 @@ class ConfigController extends Controller
     public function forceRecreate(Request $request)
     {
         try {
-            $hostProjectPath = env('HOST_PROJECT_PATH');
+            $hostProjectPath = config('backup.host_project_path');
 
             if (empty($hostProjectPath)) {
-                throw new \RuntimeException('HOST_PROJECT_PATH environment variable is not set');
+                throw new \RuntimeException('PD_HOST_PROJECT_PATH environment variable is not set');
             }
 
             // Spawn a helper container that survives container restarts
@@ -2320,10 +2320,10 @@ class ConfigController extends Controller
     public function rebuildContainers(Request $request)
     {
         try {
-            $hostProjectPath = env('HOST_PROJECT_PATH');
+            $hostProjectPath = config('backup.host_project_path');
 
             if (empty($hostProjectPath)) {
-                throw new \RuntimeException('HOST_PROJECT_PATH environment variable is not set');
+                throw new \RuntimeException('PD_HOST_PROJECT_PATH environment variable is not set');
             }
 
             // Spawn a helper container that survives container restarts

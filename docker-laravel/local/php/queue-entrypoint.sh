@@ -8,8 +8,8 @@ set -e
 # - Drops to TARGET_UID before starting supervisord
 # =============================================================================
 
-TARGET_UID="${TARGET_UID:-1000}"
-TARGET_GID="${TARGET_GID:-1000}"
+TARGET_UID="${PD_TARGET_UID:-1000}"
+TARGET_GID="${PD_TARGET_GID:-1000}"
 
 echo "Starting queue container initialization..."
 
@@ -18,16 +18,16 @@ echo "Starting queue container initialization..."
 # =============================================================================
 
 # Set up Docker socket access for TARGET_UID
-if [ -n "$DOCKER_GID" ]; then
+if [ -n "$PD_DOCKER_GID" ]; then
     echo "🐳 Setting up Docker socket access for UID $TARGET_UID..."
 
     # Create the docker group with the host's GID if it doesn't exist
-    if ! getent group "$DOCKER_GID" > /dev/null 2>&1; then
-        groupadd -g "$DOCKER_GID" hostdocker_runtime 2>/dev/null || true
+    if ! getent group "$PD_DOCKER_GID" > /dev/null 2>&1; then
+        groupadd -g "$PD_DOCKER_GID" hostdocker_runtime 2>/dev/null || true
     fi
 
     # Get the group name for this GID
-    DOCKER_GROUP_NAME=$(getent group "$DOCKER_GID" | cut -d: -f1)
+    DOCKER_GROUP_NAME=$(getent group "$PD_DOCKER_GID" | cut -d: -f1)
     if [ -z "$DOCKER_GROUP_NAME" ]; then
         DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
@@ -41,7 +41,7 @@ if [ -n "$DOCKER_GID" ]; then
     TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
     if [ -n "$TARGET_USER" ]; then
         usermod -aG "$DOCKER_GROUP_NAME" "$TARGET_USER" 2>/dev/null || true
-        echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $DOCKER_GID)"
+        echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
     fi
 
     # Ensure docker socket has correct group ownership

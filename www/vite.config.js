@@ -4,8 +4,8 @@ import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
-    const hmrHost = (env.APP_URL || 'http://localhost').replace(/^https?:\/\//, '').split(':')[0];
-    const vitePort = parseInt(env.VITE_PORT || '5173');
+    const hmrHost = (env.PD_APP_URL || 'http://localhost').replace(/^https?:\/\//, '').split(':')[0];
+    const vitePort = parseInt(env.PD_VITE_PORT || '5173');
 
     return {
         plugins: [
