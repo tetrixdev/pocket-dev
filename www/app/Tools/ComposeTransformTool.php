@@ -462,10 +462,13 @@ CLI;
                     $lines[] = "    user: root";
 
                     // Check if we need privilege dropping
-                    // Skip if: no user, user is root, or user is still a variable (substitution failed)
+                    // Skip if: no user, user is root (string or numeric 0), user is still a variable
+                    // (substitution failed), or user is a numeric UID (su requires passwd entry)
                     $needsPrivilegeDrop = $originalUser !== null
                         && $originalUser !== 'root'
-                        && !str_starts_with($originalUser, '$');
+                        && $originalUser !== '0'
+                        && !str_starts_with($originalUser, '$')
+                        && !ctype_digit($originalUser);
 
                     if ($needsPrivilegeDrop) {
                         // Drop privileges after copy using su
@@ -604,12 +607,13 @@ CLI;
     /**
      * Extract the USER instruction from a Dockerfile, substituting build args.
      *
-     * Handles USER username, USER $VAR, USER ${VAR}, USER uid:gid.
+     * Handles USER username, USER $VAR, USER ${VAR}. For USER user:group format,
+     * only extracts the user portion (group is not used for privilege dropping).
      * Returns the last USER found (Docker behavior).
      *
      * @param string $dockerfilePath Absolute path to Dockerfile
      * @param array $buildArgs Build arguments from compose.yml for variable substitution
-     * @return string|null The resolved username, or null if not found
+     * @return string|null The resolved username (without group), or null if not found
      */
     private function extractDockerfileUser(string $dockerfilePath, array $buildArgs = []): ?string
     {
@@ -629,7 +633,8 @@ CLI;
                 continue;
             }
 
-            // Match: USER username, USER $VAR, USER ${VAR}, USER uid:gid
+            // Match USER instruction, capturing only the user portion (before any colon)
+            // USER user:group → captures "user", USER 1000:1000 → captures "1000"
             if (preg_match('/^USER\s+([^\s:]+)/i', $trimmedLine, $matches)) {
                 $rawUser = trim($matches[1]);
 
