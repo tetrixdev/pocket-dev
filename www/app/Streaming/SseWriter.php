@@ -85,6 +85,20 @@ class SseWriter
     }
 
     /**
+     * Write a keepalive comment to maintain the connection.
+     *
+     * SSE comments (lines starting with :) are ignored by clients but
+     * keep the connection alive for proxies and prevent idle timeouts.
+     */
+    public function writeKeepalive(): void
+    {
+        $this->initialize();
+
+        echo ": keepalive " . time() . "\n\n";
+        flush();
+    }
+
+    /**
      * Get standard SSE headers for StreamedResponse.
      */
     public static function headers(): array

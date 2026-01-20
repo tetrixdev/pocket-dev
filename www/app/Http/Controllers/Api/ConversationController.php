@@ -455,11 +455,14 @@ class ConversationController extends Controller
                 // Subscribe to live updates
                 // Use polling instead of blocking pub/sub for better compatibility
                 $lastActivity = microtime(true);
-                $timeout = 60; // 60 second timeout for SSE connection
+                $lastKeepalive = microtime(true);
+                $timeout = 300; // 5 minute timeout for SSE connection (tool calls can be slow)
+                $keepaliveInterval = 30; // Send keepalive every 30 seconds to prevent proxy timeouts
                 $pollCount = 0;
 
                 RequestFlowLogger::log('controller.sse.entering_poll_loop', 'Entering live polling loop', [
                     'timeout_seconds' => $timeout,
+                    'keepalive_interval' => $keepaliveInterval,
                 ]);
 
                 while (true) {
@@ -514,6 +517,13 @@ class ConversationController extends Controller
                         break;
                     }
 
+                    // Send keepalive to prevent proxy/idle timeouts
+                    $timeSinceKeepalive = microtime(true) - $lastKeepalive;
+                    if ($timeSinceKeepalive > $keepaliveInterval) {
+                        $sse->writeKeepalive();
+                        $lastKeepalive = microtime(true);
+                    }
+
                     // Check timeout
                     $timeSinceActivity = microtime(true) - $lastActivity;
                     if ($timeSinceActivity > $timeout) {
@@ -534,7 +544,6 @@ class ConversationController extends Controller
 
                     // Small delay to prevent CPU spinning
                     usleep(100000); // 100ms
-                    flush();
                 }
             } catch (\Throwable $e) {
                 RequestFlowLogger::logError('controller.sse.exception', 'SSE stream exception', $e);
