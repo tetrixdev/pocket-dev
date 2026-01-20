@@ -106,6 +106,7 @@ copy_if_exists "$CLAUDE_DIR/CLAUDE.md" "$EXPORT_DIR/CLAUDE.md" "CLAUDE.md"
 # Export directories
 copy_dir_if_exists "$CLAUDE_DIR/agents" "$EXPORT_DIR/agents" "agents/"
 copy_dir_if_exists "$CLAUDE_DIR/commands" "$EXPORT_DIR/commands" "commands/"
+copy_dir_if_exists "$CLAUDE_DIR/skills" "$EXPORT_DIR/skills" "skills/"
 copy_dir_if_exists "$CLAUDE_DIR/rules" "$EXPORT_DIR/rules" "rules/"
 
 # Export MCP servers from claude.json (if jq available)
