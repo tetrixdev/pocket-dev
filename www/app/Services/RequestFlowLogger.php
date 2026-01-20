@@ -236,31 +236,58 @@ class RequestFlowLogger
 
     /**
      * Write a log entry to the log file.
+     *
+     * This method MUST NOT throw exceptions - logging failures should never
+     * cause conversations to get stuck. Falls back to Laravel's error log.
      */
     private static function writeEntry(array $entry): void
     {
-        $basePath = storage_path('logs/request-flow');
+        try {
+            $basePath = storage_path('logs/request-flow');
 
-        if (!File::isDirectory($basePath)) {
-            File::makeDirectory($basePath, 0755, true);
-        }
+            if (!File::isDirectory($basePath)) {
+                // Create directory (umask may override permissions)
+                File::makeDirectory($basePath, 0775, true);
 
-        $filename = gmdate('Y-m-d') . '.log';
-        $filepath = $basePath . '/' . $filename;
+                // Explicitly set permissions to override umask, and set group for cross-process access
+                @chmod($basePath, 0775);
+                @chgrp($basePath, 'appgroup');
+            }
 
-        // Remove null values for cleaner output
-        $entry = array_filter($entry, fn($v) => $v !== null);
+            $filename = gmdate('Y-m-d') . '.log';
+            $filepath = $basePath . '/' . $filename;
+            $isNewFile = !File::exists($filepath);
 
-        $json = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if ($json === false) {
-            // Invalid UTF-8 or other encoding error - log warning and skip this entry
-            \Log::warning('RequestFlowLogger: json_encode failed', [
-                'error' => json_last_error_msg(),
-                'event' => $entry['event'] ?? 'unknown',
+            // Remove null values for cleaner output
+            $entry = array_filter($entry, fn($v) => $v !== null);
+
+            $json = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($json === false) {
+                // Invalid UTF-8 or other encoding error - log warning and skip this entry
+                \Log::warning('RequestFlowLogger: json_encode failed', [
+                    'error' => json_last_error_msg(),
+                    'stage' => $entry['stage'] ?? 'unknown',
+                ]);
+                return;
+            }
+
+            File::append($filepath, $json . "\n");
+
+            // Set permissions on newly created files so both www-data and appuser can write
+            if ($isNewFile) {
+                @chmod($filepath, 0664);
+                @chgrp($filepath, 'appgroup');
+            }
+
+        } catch (\Throwable $e) {
+            // Logging failures must NEVER cause conversations to get stuck.
+            // Fall back to Laravel's error log so the issue is visible.
+            \Log::warning('RequestFlowLogger: Failed to write entry', [
+                'error' => $e->getMessage(),
+                'stage' => $entry['stage'] ?? 'unknown',
+                'conversation_uuid' => $entry['conversation_uuid'] ?? 'unknown',
             ]);
-            return;
         }
-        File::append($filepath, $json . "\n");
     }
 
     /**

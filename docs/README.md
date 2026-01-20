@@ -38,6 +38,7 @@ What are you looking for?
 | Job queue (Redis) | `architecture/system-overview.md` | Background processing |
 | Authentication (Basic Auth, IP whitelist) | `architecture/authentication.md` | Proxy layer |
 | API key storage | `architecture/authentication.md` | Encrypted in DB |
+| File permissions (PHP-FPM vs queue) | `architecture/file-permissions.md` | umask, group perms |
 | **Database** | | |
 | Full schema reference | `database/schema.md` | Tables, indexes, queries |
 | Model pricing/config | `database/schema.md` | ai_models table |
@@ -62,6 +63,7 @@ What are you looking for?
 - `system-overview.md` - Container architecture, networking, volumes, data flow
 - `authentication.md` - Basic Auth, IP whitelist, Claude credential management
 - `technology-stack.md` - Laravel, Alpine.js, Docker, key dependencies
+- `file-permissions.md` - Cross-process file permissions (PHP-FPM vs queue workers)
 
 ### 📦 Modules (`modules/`)
 
