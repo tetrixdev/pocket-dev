@@ -465,7 +465,7 @@ CLI;
                             ];
                         }
 
-                        $modifiedContent = $this->generateModifiedDockerfile($dockerfilePath, $copyMounts, $buildContext);
+                        $modifiedContent = $this->generateModifiedDockerfile($dockerfilePath, $copyMounts);
 
                         if ($modifiedContent !== null) {
                             // Resolve build context to absolute path
@@ -480,7 +480,11 @@ CLI;
 
                             // Write Dockerfile.pocketdev
                             $newDockerfilePath = $buildContextPath . '/Dockerfile.pocketdev';
-                            file_put_contents($newDockerfilePath, $modifiedContent);
+                            $written = file_put_contents($newDockerfilePath, $modifiedContent);
+                            if ($written === false) {
+                                // Fall back to runtime copy approach
+                                continue;
+                            }
                             $generatedDockerfiles[] = $newDockerfilePath;
 
                             // Add build section pointing to new Dockerfile
@@ -635,10 +639,9 @@ CLI;
      *
      * @param string $dockerfilePath Absolute path to original Dockerfile
      * @param array $fileMounts Array of file mount info with 'source' (relative to build context) and 'target' keys
-     * @param string $buildContext Build context path for resolving source files
      * @return string|null Modified Dockerfile content, or null if no USER directive found
      */
-    private function generateModifiedDockerfile(string $dockerfilePath, array $fileMounts, string $buildContext): ?string
+    private function generateModifiedDockerfile(string $dockerfilePath, array $fileMounts): ?string
     {
         $structure = $this->parseDockerfileStructure($dockerfilePath);
 
@@ -650,12 +653,12 @@ CLI;
         $lines = $structure['lines'];
         $userLineIndex = $structure['userLine'];
 
-        // Build COPY instructions
+        // Build COPY instructions (using JSON array syntax to handle paths with spaces)
         $copyInstructions = ["", "# === PocketDev file injection (generated) ==="];
         foreach ($fileMounts as $mount) {
             $source = $mount['source'];
             $target = $mount['target'];
-            $copyInstructions[] = "COPY {$source} {$target}";
+            $copyInstructions[] = "COPY " . json_encode([$source, $target], JSON_UNESCAPED_SLASHES);
         }
         $copyInstructions[] = "# === End PocketDev file injection ===";
 
