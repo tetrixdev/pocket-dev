@@ -91,9 +91,10 @@ if [ -n "$PD_DOCKER_GID" ]; then
 fi
 
 # Ensure home directory exists and has correct permissions for TARGET_UID
+# Use setgid (2775) so new files/directories inherit the group and are group-writable
 mkdir -p /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 chown -R "${TARGET_UID}:${TARGET_GID}" /home/appuser 2>/dev/null || true
-chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
+chmod 2775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 
 # Set up default Claude Code permissions.deny to protect .env files
 # This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
@@ -108,8 +109,10 @@ fi
 
 # Ensure workspace volume is owned by TARGET_UID (for backup/restore and UID/GID changes)
 # Safe to chown -R: dedicated PocketDev volume, all files should be owned by target user
+# Use setgid (2775) so new files/directories inherit the group and are group-writable
 chown -R "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
-chmod 775 /workspace 2>/dev/null || true
+chmod 2775 /workspace 2>/dev/null || true
+find /workspace -type d -exec chmod 2775 {} \; 2>/dev/null || true
 
 # =============================================================================
 # VOLUME PERMISSIONS (for backup/restore and UID/GID changes)
@@ -316,6 +319,10 @@ for i in $(seq -f '%02g' 0 9); do
         chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
     done
 done
+
+# Set group-writable umask so www-data (in appgroup) can edit files created by appuser
+# Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable)
+umask 002
 
 # Use exec to replace this shell with supervisord (proper signal handling)
 # gosu with username (not UID:GID) properly initializes supplementary groups
