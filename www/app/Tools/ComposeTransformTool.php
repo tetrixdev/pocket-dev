@@ -554,11 +554,19 @@ CLI;
     private function parseCmdValue(string $cmdValue): string
     {
         // Check for exec form: ["executable", "param1", "param2"]
-        if (preg_match('/^\[(.+)\]$/', $cmdValue, $matches)) {
+        if (str_starts_with($cmdValue, '[') && str_ends_with($cmdValue, ']')) {
             $jsonArray = json_decode($cmdValue, true);
             if (is_array($jsonArray)) {
-                // Join array elements into a command string
-                return implode(' ', $jsonArray);
+                // Quote each argument to preserve shell semantics and prevent injection
+                // This is necessary because the result is embedded in sh -c "... && {$cmd}"
+                $quotedArgs = array_map(function ($arg) {
+                    // Only quote if contains shell metacharacters or whitespace
+                    if (preg_match('/[\s;&|<>()$`"\'\\\*?#~=%]/', $arg)) {
+                        return escapeshellarg($arg);
+                    }
+                    return $arg;
+                }, $jsonArray);
+                return implode(' ', $quotedArgs);
             }
         }
 
