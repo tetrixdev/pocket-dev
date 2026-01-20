@@ -7,6 +7,10 @@ namespace App\Tools;
  *
  * Converts bind mounts (./path:/target) to volume mounts with subpath,
  * creating a compose.override.yaml that Docker Compose auto-merges.
+ *
+ * @todo Add build directive parsing to transform relative paths in build contexts.
+ *       Currently doesn't handle: `build: ./app`, `build: { context: ./, dockerfile: Dockerfile.dev }`,
+ *       or multi-line build blocks. These would need path transformation for PocketDev workspaces.
  */
 class ComposeTransformTool extends Tool
 {
@@ -365,7 +369,8 @@ CLI;
                     $copyScript = implode(" && ", $copyCommands);
 
                     $lines[] = "    user: root";
-                    $lines[] = "    entrypoint: [\"/bin/sh\", \"-c\", \"{$copyScript} && {$serviceCommand}\"]";
+                    $entrypoint = ["/bin/sh", "-c", "{$copyScript} && {$serviceCommand}"];
+                    $lines[] = "    entrypoint: " . json_encode($entrypoint, JSON_UNESCAPED_SLASHES);
                 }
             }
         }
