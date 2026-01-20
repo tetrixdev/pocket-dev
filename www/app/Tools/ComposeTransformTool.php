@@ -64,6 +64,8 @@ Transforms a Docker Compose file to use PocketDev workspace volume mounts instea
 **Known Limitations:**
 - File vs directory detection uses extension-based heuristics. Directories with extensions (e.g., `./configs.d`) may be misclassified as files, and files without extensions (e.g., `./Makefile`) may be misclassified as directories.
 - Dockerfile modification requires a USER directive in the Dockerfile. Falls back to runtime copy if not found.
+- Multi-stage Dockerfiles: Currently picks the last USER in the entire file. If USER is only in a builder stage (not the final stage), files may be injected incorrectly. Falls back to runtime copy for these cases.
+- Build context mismatch: File mount sources must be inside the Docker build context. If build context is a subdirectory and mount source is outside it, the COPY will fail. Use `build: ./` (same as compose dir) to avoid this.
 
 **After running this tool:** Read the generated files and inform the user that file mount changes require a rebuild (`docker compose build`).
 INSTRUCTIONS;
