@@ -52,9 +52,10 @@ if [ -n "$PD_DOCKER_GID" ]; then
 fi
 
 # Ensure home directory exists and has correct permissions for target user
+# Use setgid (2775) so new files/directories inherit the group and are group-writable
 mkdir -p /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 chown -R "${TARGET_UID}:${TARGET_GID}" /home/appuser 2>/dev/null || true
-chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
+chmod 2775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 
 # Set up default Claude Code permissions.deny to protect .env files
 # This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
@@ -67,15 +68,16 @@ if [ ! -f "$CLAUDE_SETTINGS" ]; then
     echo "Created default Claude settings with .env protection"
 fi
 
-# Ensure workspace directory is writable by target user
+# Ensure workspace directory is writable by target user with setgid for group inheritance
 chown "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
-chmod 775 /workspace 2>/dev/null || true
+chmod 2775 /workspace 2>/dev/null || true
 
 # Safety net: Ensure all workspace subdirectories have correct permissions
 # Normally, Workspace model sets group=appgroup and mode=0775 on creation/restore.
 # This catches edge cases like silent mkdir failures or race conditions.
+# Use setgid (2775) so new files/directories inherit the group and are group-writable
 find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp appgroup {} \; 2>/dev/null || true
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
+find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 2775 {} \; 2>/dev/null || true
 
 # =============================================================================
 # STORAGE AND CACHE PERMISSIONS
@@ -253,6 +255,10 @@ for i in $(seq -f '%02g' 0 9); do
         chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
     done
 done
+
+# Set group-writable umask so www-data (in appgroup) can edit files created by appuser
+# Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable)
+umask 002
 
 # Use exec to replace this shell with supervisord (proper signal handling)
 # gosu with username (not UID:GID) properly initializes supplementary groups

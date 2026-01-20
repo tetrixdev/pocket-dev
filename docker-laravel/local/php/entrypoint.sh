@@ -155,6 +155,10 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     echo "✅ Development environment ready"
     echo "🚀 Starting PHP-FPM (master as root, workers as www-data)..."
 
+    # Set group-writable umask so appuser (in appgroup) can edit files created by www-data
+    # Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable)
+    umask 002
+
     # Start PHP-FPM as root - pool workers will be www-data per www.conf
     exec php-fpm
 else

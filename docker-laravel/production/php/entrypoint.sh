@@ -184,6 +184,10 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # PHP-FPM master runs as root, pool workers run as www-data (via www.conf)
     # This is standard Docker practice - see https://github.com/docker-library/php/issues/70
     # Running master as non-root fails with "failed to open error_log (/proc/self/fd/2): Permission denied"
+    # Set group-writable umask so appuser (in appgroup) can edit files created by www-data
+    # Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable)
+    umask 002
+
     echo "Starting PHP-FPM (master as root, workers as www-data)..."
 
     # Start PHP-FPM as root - pool workers will be www-data per www.conf
