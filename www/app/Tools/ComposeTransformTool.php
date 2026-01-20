@@ -50,16 +50,24 @@ Transforms a Docker Compose file to use PocketDev workspace volume mounts instea
 **How it works:**
 1. Reads the compose file you specify
 2. Converts bind mounts (`./src:/app`) to volume mounts with subpath
-3. Handles file mounts via staging directory + entrypoint copy
+3. For file mounts: generates `Dockerfile.pocketdev` with COPY instructions before the USER directive
 4. Creates `compose.override.yaml` in the same directory (original unchanged)
+
+**File mount handling:**
+- Files are injected at BUILD time via Dockerfile modification (not runtime copy)
+- This preserves proper file descriptor permissions for `/dev/stdout` and `/dev/stderr`
+- The container starts directly as the correct user
+- Changes to mounted files require `docker compose build` to take effect
 
 **Important:** The input path must be within `/workspace/` so the tool can calculate the correct subpath for volume mounts.
 
 **Known Limitations:**
 - File vs directory detection uses extension-based heuristics. Directories with extensions (e.g., `./configs.d`) may be misclassified as files, and files without extensions (e.g., `./Makefile`) may be misclassified as directories.
-- Service command guessing assumes standard naming (php, nginx, mysql, redis, node). Services with custom names or entrypoints may need manual adjustment in the override file.
+- Dockerfile modification requires a USER directive in the Dockerfile. Falls back to runtime copy if not found.
+- Multi-stage Dockerfiles: Currently picks the last USER in the entire file. If USER is only in a builder stage (not the final stage), files may be injected incorrectly. Falls back to runtime copy for these cases.
+- Build context mismatch: File mount sources must be inside the Docker build context. If build context is a subdirectory and mount source is outside it, the COPY will fail. Use `build: ./` (same as compose dir) to avoid this.
 
-**After running this tool:** Read both the original compose file and the generated override file. Warn the user if any volume mounts might be affected by the limitations above (e.g., extensionless files, directories with extensions, or non-standard service names with file mounts). Suggest manual adjustments if needed.
+**After running this tool:** Read the generated files and inform the user that file mount changes require a rebuild (`docker compose build`).
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
@@ -140,6 +148,11 @@ CLI;
             'file_mounts' => $result['file_mounts'],
             'is_error' => false,
         ];
+
+        if (!empty($result['generated_dockerfiles'])) {
+            $summary['generated_dockerfiles'] = $result['generated_dockerfiles'];
+            $summary['note'] = 'File mounts are injected at build time. Run `docker compose build` after changing mounted files.';
+        }
 
         if (!empty($result['warnings'])) {
             $summary['warnings'] = $result['warnings'];
@@ -356,6 +369,7 @@ CLI;
                                 'staging' => $stagingTarget,
                                 'target' => $target,
                                 'filename' => $filename,
+                                'originalSource' => $source, // Keep original for Dockerfile COPY
                             ];
 
                             $mountsConverted++;
@@ -393,27 +407,37 @@ CLI;
         }
 
         // Build the override file (only contains overrides, not full content)
-        $output = $this->buildOverrideFile($serviceOverrides, $composeDir);
+        $result = $this->buildOverrideFile($serviceOverrides, $composeDir);
 
         return [
-            'output' => $output,
+            'output' => $result['yaml'],
             'error' => null,
             'services_transformed' => count($serviceOverrides),
             'mounts_converted' => $mountsConverted,
             'file_mounts' => $fileMountsCount,
             'warnings' => $warnings,
+            'generated_dockerfiles' => $result['generatedDockerfiles'],
         ];
     }
 
     /**
      * Build the override YAML file from collected service overrides.
      *
+     * For services with file mounts, this method attempts to use build-time file injection
+     * by generating a modified Dockerfile (Dockerfile.pocketdev) with COPY instructions
+     * before the USER directive. This allows the container to start directly as the
+     * correct user with properly initialized file descriptors.
+     *
+     * Falls back to runtime copy approach if no USER directive is found in the Dockerfile.
+     *
      * @param array $serviceOverrides Service override data including volumes, fileMounts, buildContext, dockerfile
      * @param string $composeDir Absolute path to directory containing compose file
+     * @return array{yaml: string, generatedDockerfiles: array<string>} The override YAML and list of generated Dockerfiles
      */
-    private function buildOverrideFile(array $serviceOverrides, string $composeDir): string
+    private function buildOverrideFile(array $serviceOverrides, string $composeDir): array
     {
         $lines = [];
+        $generatedDockerfiles = [];
 
         if (!empty($serviceOverrides)) {
             $lines[] = "services:";
@@ -421,10 +445,69 @@ CLI;
             foreach ($serviceOverrides as $serviceName => $overrides) {
                 $lines[] = "  {$serviceName}:";
 
-                // Add volumes override
-                if (!empty($overrides['volumes'])) {
+                $handledViaDockerfile = false;
+                $volumesToAdd = $overrides['volumes'] ?? [];
+
+                // Try to handle file mounts via Dockerfile modification
+                if (!empty($overrides['fileMounts']) && !empty($overrides['buildContext'])) {
+                    $buildContext = $overrides['buildContext'];
+                    $originalDockerfile = $overrides['dockerfile'] ?? 'Dockerfile';
+
+                    $dockerfilePath = $this->resolveDockerfilePath($composeDir, $buildContext, $originalDockerfile);
+
+                    if ($dockerfilePath && file_exists($dockerfilePath)) {
+                        // Convert file mounts to COPY-compatible format (source relative to build context)
+                        $copyMounts = [];
+                        foreach ($overrides['fileMounts'] as $mount) {
+                            // The 'source' in fileMounts is the original bind mount source (e.g., ./iac/containers/php/shared/conf.d/overwrite.ini)
+                            // We need to use this directly as the COPY source (relative to build context)
+                            $copyMounts[] = [
+                                'source' => $mount['originalSource'],
+                                'target' => $mount['target'],
+                            ];
+                        }
+
+                        $modifiedContent = $this->generateModifiedDockerfile($dockerfilePath, $copyMounts);
+
+                        if ($modifiedContent !== null) {
+                            // Resolve build context to absolute path
+                            if (str_starts_with($buildContext, './')) {
+                                $buildContextPath = $composeDir . '/' . substr($buildContext, 2);
+                            } elseif (str_starts_with($buildContext, '/')) {
+                                $buildContextPath = $buildContext;
+                            } else {
+                                $buildContextPath = $composeDir . '/' . $buildContext;
+                            }
+                            $buildContextPath = rtrim($buildContextPath, '/');
+
+                            // Write Dockerfile.pocketdev
+                            $newDockerfilePath = $buildContextPath . '/Dockerfile.pocketdev';
+                            $written = file_put_contents($newDockerfilePath, $modifiedContent);
+                            if ($written !== false) {
+                                $generatedDockerfiles[] = $newDockerfilePath;
+
+                                // Add build section pointing to new Dockerfile
+                                $lines[] = "    build:";
+                                $lines[] = "      context: {$buildContext}";
+                                $lines[] = "      dockerfile: Dockerfile.pocketdev";
+
+                                // Remove file mount staging volumes - files are now in the image
+                                $volumesToAdd = array_filter($volumesToAdd, function ($vol) {
+                                    // Keep only non-staging volumes (staging volumes have targets starting with /pocketdev-stage-)
+                                    return $vol['type'] === 'named' || !str_starts_with($vol['target'], '/pocketdev-stage-');
+                                });
+
+                                $handledViaDockerfile = true;
+                            }
+                            // On write failure, $handledViaDockerfile stays false → falls through to runtime copy
+                        }
+                    }
+                }
+
+                // Add volumes override (excluding staging volumes if handled via Dockerfile)
+                if (!empty($volumesToAdd)) {
                     $lines[] = "    volumes: !override";
-                    foreach ($overrides['volumes'] as $vol) {
+                    foreach ($volumesToAdd as $vol) {
                         if ($vol['type'] === 'named') {
                             $lines[] = "      - {$vol['raw']}";
                         } else {
@@ -437,17 +520,15 @@ CLI;
                     }
                 }
 
-                // Add entrypoint override for file mounts
-                if (!empty($overrides['fileMounts'])) {
+                // Fallback: runtime copy approach if Dockerfile modification failed
+                if (!$handledViaDockerfile && !empty($overrides['fileMounts'])) {
                     $copyCommands = [];
                     foreach ($overrides['fileMounts'] as $mount) {
-                        // Use escapeshellarg to handle filenames with spaces or special characters
                         $source = escapeshellarg("{$mount['staging']}/{$mount['filename']}");
                         $target = escapeshellarg($mount['target']);
                         $copyCommands[] = "cp {$source} {$target}";
                     }
 
-                    // Get Dockerfile metadata (CMD and USER) with build arg substitution
                     $metadata = $this->getDockerfileMetadata(
                         $composeDir,
                         $overrides['buildContext'] ?? null,
@@ -461,9 +542,6 @@ CLI;
                     $copyScript = implode(" && ", $copyCommands);
                     $lines[] = "    user: root";
 
-                    // Check if we need privilege dropping
-                    // Skip if: no user, user is root (string or numeric 0), user is still a variable
-                    // (substitution failed), or user is a numeric UID (su requires passwd entry)
                     $needsPrivilegeDrop = $originalUser !== null
                         && $originalUser !== 'root'
                         && $originalUser !== '0'
@@ -471,8 +549,6 @@ CLI;
                         && !ctype_digit($originalUser);
 
                     if ($needsPrivilegeDrop) {
-                        // Drop privileges after copy using su
-                        // -s /bin/sh handles users with /sbin/nologin as their shell
                         $escapedUser = escapeshellarg($originalUser);
                         $escapedCmd = escapeshellarg($serviceCommand);
                         $entrypoint = [
@@ -495,7 +571,10 @@ CLI;
         $lines[] = "  " . self::VOLUME_NAME . ":";
         $lines[] = "    external: true";
 
-        return implode("\n", $lines);
+        return [
+            'yaml' => implode("\n", $lines),
+            'generatedDockerfiles' => $generatedDockerfiles,
+        ];
     }
 
     /**
@@ -519,6 +598,80 @@ CLI;
         }
 
         return $this->extractDockerfileCmd($dockerfilePath);
+    }
+
+    /**
+     * Parse a Dockerfile and return its structure including the USER directive location.
+     *
+     * @param string $dockerfilePath Absolute path to Dockerfile
+     * @return array{content: string, userLine: ?int, lines: array<string>}
+     */
+    private function parseDockerfileStructure(string $dockerfilePath): array
+    {
+        $content = file_get_contents($dockerfilePath);
+        if ($content === false) {
+            return ['content' => '', 'userLine' => null, 'lines' => []];
+        }
+
+        $lines = explode("\n", $content);
+        $userLine = null;
+
+        foreach ($lines as $index => $line) {
+            $trimmed = trim($line);
+            // Match USER directive (case-insensitive)
+            // We want the LAST USER directive (don't break)
+            if (preg_match('/^USER\s+/i', $trimmed)) {
+                $userLine = $index; // 0-indexed
+            }
+        }
+
+        return [
+            'content' => $content,
+            'userLine' => $userLine,
+            'lines' => $lines,
+        ];
+    }
+
+    /**
+     * Generate a modified Dockerfile with COPY instructions inserted before the USER directive.
+     *
+     * This allows files to be copied at build time (as root) before switching to the
+     * non-root user, avoiding runtime privilege issues with file descriptors.
+     *
+     * @param string $dockerfilePath Absolute path to original Dockerfile
+     * @param array $fileMounts Array of file mount info with 'source' (relative to build context) and 'target' keys
+     * @return string|null Modified Dockerfile content, or null if no USER directive found
+     */
+    private function generateModifiedDockerfile(string $dockerfilePath, array $fileMounts): ?string
+    {
+        $structure = $this->parseDockerfileStructure($dockerfilePath);
+
+        if ($structure['userLine'] === null) {
+            // No USER directive - can't inject before it
+            return null;
+        }
+
+        $lines = $structure['lines'];
+        $userLineIndex = $structure['userLine'];
+
+        // Sanity check: USER at line 0 would mean no FROM before it, which is invalid
+        if ($userLineIndex === 0) {
+            return null;
+        }
+
+        // Build COPY instructions (using JSON array syntax to handle paths with spaces)
+        $copyInstructions = ["", "# === PocketDev file injection (generated) ==="];
+        foreach ($fileMounts as $mount) {
+            $source = $mount['source'];
+            $target = $mount['target'];
+            $copyInstructions[] = "COPY " . json_encode([$source, $target], JSON_UNESCAPED_SLASHES);
+        }
+        $copyInstructions[] = "# === End PocketDev file injection ===";
+
+        // Insert COPY instructions before USER line
+        array_splice($lines, $userLineIndex, 0, $copyInstructions);
+
+        return implode("\n", $lines);
     }
 
     /**
