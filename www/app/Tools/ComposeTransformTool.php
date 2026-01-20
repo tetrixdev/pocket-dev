@@ -481,24 +481,23 @@ CLI;
                             // Write Dockerfile.pocketdev
                             $newDockerfilePath = $buildContextPath . '/Dockerfile.pocketdev';
                             $written = file_put_contents($newDockerfilePath, $modifiedContent);
-                            if ($written === false) {
-                                // Fall back to runtime copy approach
-                                continue;
+                            if ($written !== false) {
+                                $generatedDockerfiles[] = $newDockerfilePath;
+
+                                // Add build section pointing to new Dockerfile
+                                $lines[] = "    build:";
+                                $lines[] = "      context: {$buildContext}";
+                                $lines[] = "      dockerfile: Dockerfile.pocketdev";
+
+                                // Remove file mount staging volumes - files are now in the image
+                                $volumesToAdd = array_filter($volumesToAdd, function ($vol) {
+                                    // Keep only non-staging volumes (staging volumes have targets starting with /pocketdev-stage-)
+                                    return $vol['type'] === 'named' || !str_starts_with($vol['target'], '/pocketdev-stage-');
+                                });
+
+                                $handledViaDockerfile = true;
                             }
-                            $generatedDockerfiles[] = $newDockerfilePath;
-
-                            // Add build section pointing to new Dockerfile
-                            $lines[] = "    build:";
-                            $lines[] = "      context: {$buildContext}";
-                            $lines[] = "      dockerfile: Dockerfile.pocketdev";
-
-                            // Remove file mount staging volumes - files are now in the image
-                            $volumesToAdd = array_filter($volumesToAdd, function ($vol) {
-                                // Keep only non-staging volumes (staging volumes have targets starting with /pocketdev-stage-)
-                                return $vol['type'] === 'named' || !str_starts_with($vol['target'], '/pocketdev-stage-');
-                            });
-
-                            $handledViaDockerfile = true;
+                            // On write failure, $handledViaDockerfile stays false → falls through to runtime copy
                         }
                     }
                 }
@@ -652,6 +651,11 @@ CLI;
 
         $lines = $structure['lines'];
         $userLineIndex = $structure['userLine'];
+
+        // Sanity check: USER at line 0 would mean no FROM before it, which is invalid
+        if ($userLineIndex === 0) {
+            return null;
+        }
 
         // Build COPY instructions (using JSON array syntax to handle paths with spaces)
         $copyInstructions = ["", "# === PocketDev file injection (generated) ==="];
