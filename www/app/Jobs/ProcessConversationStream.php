@@ -68,21 +68,20 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             'prompt_length' => strlen($this->prompt),
         ]);
 
-        $conversation = Conversation::where('uuid', $this->conversationUuid)->firstOrFail();
-        RequestFlowLogger::log('job.handle.conversation_loaded', 'Conversation loaded', [
-            'provider_type' => $conversation->provider_type,
-            'model' => $conversation->model,
-            'status' => $conversation->status,
-        ]);
-
-        // Note: Stream state is already initialized by the controller to prevent race conditions
-        // We don't call startStream() here to avoid overwriting the state
-
-        // Mark conversation as processing
-        $conversation->startProcessing();
-        RequestFlowLogger::log('job.handle.processing_started', 'Marked conversation as processing');
-
         try {
+            $conversation = Conversation::where('uuid', $this->conversationUuid)->firstOrFail();
+            RequestFlowLogger::log('job.handle.conversation_loaded', 'Conversation loaded', [
+                'provider_type' => $conversation->provider_type,
+                'model' => $conversation->model,
+                'status' => $conversation->status,
+            ]);
+
+            // Note: Stream state is already initialized by the controller to prevent race conditions
+            // We don't call startStream() here to avoid overwriting the state
+
+            // Mark conversation as processing
+            $conversation->startProcessing();
+            RequestFlowLogger::log('job.handle.processing_started', 'Marked conversation as processing');
             // Save user message and keep reference for abort sync
             RequestFlowLogger::log('job.handle.saving_user_message', 'Saving user message');
             $userMessage = $this->saveUserMessage($conversation, $this->prompt);
@@ -148,7 +147,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            $conversation->markFailed();
+            // $conversation may not be defined if firstOrFail() threw
+            if (isset($conversation)) {
+                $conversation->markFailed();
+            }
             $streamManager->failStream($this->conversationUuid, $e->getMessage());
             RequestFlowLogger::endRequest('failed');
         }

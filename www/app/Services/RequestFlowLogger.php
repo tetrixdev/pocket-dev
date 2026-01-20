@@ -252,6 +252,14 @@ class RequestFlowLogger
         $entry = array_filter($entry, fn($v) => $v !== null);
 
         $json = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            // Invalid UTF-8 or other encoding error - log warning and skip this entry
+            \Log::warning('RequestFlowLogger: json_encode failed', [
+                'error' => json_last_error_msg(),
+                'event' => $entry['event'] ?? 'unknown',
+            ]);
+            return;
+        }
         File::append($filepath, $json . "\n");
     }
 
