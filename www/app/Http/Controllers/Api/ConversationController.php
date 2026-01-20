@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Services\ConversationStreamLogger;
 use App\Services\NativeToolService;
 use App\Services\ProviderFactory;
+use App\Services\RequestFlowLogger;
 use App\Services\StreamManager;
 use App\Streaming\SseWriter;
 use Illuminate\Http\JsonResponse;
@@ -196,6 +197,13 @@ class ConversationController extends Controller
      */
     public function stream(Request $request, Conversation $conversation): JsonResponse
     {
+        RequestFlowLogger::startRequest($conversation->uuid, 'stream');
+        RequestFlowLogger::log('controller.stream.entry', 'Stream request received', [
+            'conversation_uuid' => $conversation->uuid,
+            'provider_type' => $conversation->provider_type,
+            'model' => $conversation->model,
+        ]);
+
         $validated = $request->validate([
             'prompt' => 'required|string',
             'model' => 'nullable|string|max:100',
@@ -207,6 +215,12 @@ class ConversationController extends Controller
             'response_level' => 'nullable|integer|min:0|max:5',
             // Legacy support - will be converted to provider-specific
             'thinking_level' => 'nullable|integer|min:0|max:4',
+        ]);
+
+        RequestFlowLogger::log('controller.stream.validated', 'Request validated', [
+            'prompt_length' => strlen($validated['prompt']),
+            'model' => $validated['model'] ?? null,
+            'response_level' => $validated['response_level'] ?? null,
         ]);
 
         // Build update array for conversation settings
@@ -261,6 +275,9 @@ class ConversationController extends Controller
 
         // Apply updates to conversation
         if (!empty($updates)) {
+            RequestFlowLogger::log('controller.stream.updates', 'Applying conversation updates', [
+                'updates' => $updates,
+            ]);
             $conversation->update($updates);
 
             // If model changed, update cached context window size
@@ -269,8 +286,13 @@ class ConversationController extends Controller
                 try {
                     $contextWindow = $provider->getContextWindow($updates['model']);
                     $conversation->updateContextWindowSize($contextWindow);
+                    RequestFlowLogger::log('controller.stream.context_window_updated', 'Context window updated for new model', [
+                        'model' => $updates['model'],
+                        'context_window' => $contextWindow,
+                    ]);
                 } catch (\Exception $e) {
                     // Model not found or config error - will be updated when we get actual token data
+                    RequestFlowLogger::logError('controller.stream.context_window_error', 'Failed to update context window', $e);
                     \Log::debug('ConversationController: Failed to update context window on model change', [
                         'conversation' => $conversation->uuid,
                         'model' => $updates['model'],
@@ -282,8 +304,14 @@ class ConversationController extends Controller
         }
 
         $provider = $this->providerFactory->make($conversation->provider_type);
+        $providerAvailable = $provider->isAvailable();
+        RequestFlowLogger::logDecision('controller.stream.provider_check', 'Provider available', $providerAvailable, [
+            'provider_type' => $conversation->provider_type,
+        ]);
 
-        if (!$provider->isAvailable()) {
+        if (!$providerAvailable) {
+            RequestFlowLogger::log('controller.stream.provider_unavailable', 'Provider not available - returning 400');
+            RequestFlowLogger::endRequest('error_provider_unavailable');
             return response()->json([
                 'success' => false,
                 'error' => "Provider '{$conversation->provider_type}' is not available. Check API key configuration.",
@@ -291,7 +319,12 @@ class ConversationController extends Controller
         }
 
         // Check if already streaming
-        if ($this->streamManager->isStreaming($conversation->uuid)) {
+        $isAlreadyStreaming = $this->streamManager->isStreaming($conversation->uuid);
+        RequestFlowLogger::logDecision('controller.stream.already_streaming_check', 'Already streaming', $isAlreadyStreaming);
+
+        if ($isAlreadyStreaming) {
+            RequestFlowLogger::log('controller.stream.already_streaming', 'Already streaming - returning 409');
+            RequestFlowLogger::endRequest('error_already_streaming');
             return response()->json([
                 'success' => false,
                 'error' => 'Conversation is already streaming',
@@ -300,6 +333,7 @@ class ConversationController extends Controller
 
         // Initialize stream state BEFORE cleanup to prevent race condition
         // This ensures clients won't see 'not_found' after cleanup and before job starts
+        RequestFlowLogger::log('controller.stream.initializing', 'Initializing stream state in Redis');
         $this->streamManager->startStream($conversation->uuid, [
             'model' => $conversation->model,
             'provider' => $conversation->provider_type,
@@ -308,14 +342,19 @@ class ConversationController extends Controller
         // Clear any old stream events (but keep the status we just set)
         $key = 'stream:' . $conversation->uuid;
         \Illuminate\Support\Facades\Redis::del("{$key}:events");
+        RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized, old events cleared');
 
         // Dispatch background job - reasoning settings are now stored on conversation
+        RequestFlowLogger::log('controller.stream.dispatching_job', 'Dispatching ProcessConversationStream job');
         ProcessConversationStream::dispatch(
             $conversation->uuid,
             $validated['prompt'],
             [] // Options no longer needed for reasoning - stored on conversation
         );
+        RequestFlowLogger::log('controller.stream.job_dispatched', 'Job dispatched to queue');
 
+        RequestFlowLogger::log('controller.stream.success', 'Returning success response');
+        RequestFlowLogger::endRequest('success');
         return response()->json([
             'success' => true,
             'conversation_uuid' => $conversation->uuid,
@@ -353,6 +392,10 @@ class ConversationController extends Controller
     public function streamEvents(Request $request, Conversation $conversation): StreamedResponse
     {
         $fromIndex = max(0, (int) $request->query('from_index', 0));
+        RequestFlowLogger::startRequest($conversation->uuid, 'sse');
+        RequestFlowLogger::log('controller.sse.entry', 'SSE connection started', [
+            'from_index' => $fromIndex,
+        ]);
 
         return response()->stream(function () use ($conversation, $fromIndex) {
             $sse = new SseWriter();
@@ -360,6 +403,12 @@ class ConversationController extends Controller
             // Send all buffered events first
             $events = $this->streamManager->getEvents($conversation->uuid, $fromIndex);
             $currentIndex = $fromIndex;
+            $bufferedCount = count($events);
+
+            RequestFlowLogger::log('controller.sse.buffered_events', 'Retrieved buffered events', [
+                'count' => $bufferedCount,
+                'from_index' => $fromIndex,
+            ]);
 
             foreach ($events as $event) {
                 $sse->writeRaw(json_encode(array_merge($event, [
@@ -371,15 +420,22 @@ class ConversationController extends Controller
 
             // Check if stream is still active
             $status = $this->streamManager->getStatus($conversation->uuid);
+            RequestFlowLogger::logDecision('controller.sse.initial_status_check', 'Stream still active', $status === 'streaming', [
+                'status' => $status,
+            ]);
 
             if ($status !== 'streaming') {
                 // Stream is done, send final status
+                RequestFlowLogger::log('controller.sse.stream_already_done', 'Stream already completed, sending final status', [
+                    'status' => $status,
+                ]);
                 $sse->writeRaw(json_encode([
                     'type' => 'stream_status',
                     'status' => $status ?? 'not_found',
                     'final_index' => $currentIndex - 1,
                     'conversation_uuid' => $conversation->uuid,
                 ]));
+                RequestFlowLogger::endRequest('stream_already_done');
                 return;
             }
 
@@ -387,15 +443,36 @@ class ConversationController extends Controller
             // Use polling instead of blocking pub/sub for better compatibility
             $lastActivity = microtime(true);
             $timeout = 60; // 60 second timeout for SSE connection
+            $pollCount = 0;
+
+            RequestFlowLogger::log('controller.sse.entering_poll_loop', 'Entering live polling loop', [
+                'timeout_seconds' => $timeout,
+            ]);
 
             while (true) {
+                $pollCount++;
+
                 // Exit if client disconnected
                 if (connection_aborted()) {
+                    RequestFlowLogger::log('controller.sse.client_disconnected', 'Client disconnected', [
+                        'poll_count' => $pollCount,
+                        'current_index' => $currentIndex,
+                    ]);
+                    RequestFlowLogger::endRequest('client_disconnected');
                     break;
                 }
 
                 // Check for new events
                 $newEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
+                $newEventCount = count($newEvents);
+
+                // Only log when there are new events (to avoid log spam)
+                if ($newEventCount > 0) {
+                    RequestFlowLogger::log('controller.sse.new_events', 'New events received', [
+                        'count' => $newEventCount,
+                        'current_index' => $currentIndex,
+                    ]);
+                }
 
                 foreach ($newEvents as $event) {
                     $sse->writeRaw(json_encode(array_merge($event, [
@@ -409,23 +486,36 @@ class ConversationController extends Controller
                 // Check stream status
                 $status = $this->streamManager->getStatus($conversation->uuid);
                 if ($status !== 'streaming') {
+                    RequestFlowLogger::log('controller.sse.stream_completed', 'Stream completed, sending final status', [
+                        'status' => $status,
+                        'final_index' => $currentIndex - 1,
+                        'poll_count' => $pollCount,
+                    ]);
                     $sse->writeRaw(json_encode([
                         'type' => 'stream_status',
                         'status' => $status,
                         'final_index' => $currentIndex - 1,
                         'conversation_uuid' => $conversation->uuid,
                     ]));
+                    RequestFlowLogger::endRequest('stream_completed');
                     break;
                 }
 
                 // Check timeout
-                if ((microtime(true) - $lastActivity) > $timeout) {
+                $timeSinceActivity = microtime(true) - $lastActivity;
+                if ($timeSinceActivity > $timeout) {
+                    RequestFlowLogger::log('controller.sse.timeout', 'SSE connection timeout', [
+                        'timeout_seconds' => $timeout,
+                        'time_since_activity' => round($timeSinceActivity, 2),
+                        'poll_count' => $pollCount,
+                    ]);
                     $sse->writeRaw(json_encode([
                         'type' => 'timeout',
                         'message' => 'Connection timeout, please reconnect',
                         'last_index' => $currentIndex - 1,
                         'conversation_uuid' => $conversation->uuid,
                     ]));
+                    RequestFlowLogger::endRequest('timeout');
                     break;
                 }
 
@@ -524,8 +614,16 @@ class ConversationController extends Controller
      */
     public function abort(Request $request, Conversation $conversation): JsonResponse
     {
+        RequestFlowLogger::startRequest($conversation->uuid, 'abort');
+        RequestFlowLogger::log('controller.abort.entry', 'Abort request received');
+
         // Only allow aborting if actually streaming
-        if (!$this->streamManager->isStreaming($conversation->uuid)) {
+        $isStreaming = $this->streamManager->isStreaming($conversation->uuid);
+        RequestFlowLogger::logDecision('controller.abort.streaming_check', 'Is streaming', $isStreaming);
+
+        if (!$isStreaming) {
+            RequestFlowLogger::log('controller.abort.not_streaming', 'Not streaming - returning 400');
+            RequestFlowLogger::endRequest('error_not_streaming');
             return response()->json([
                 'success' => false,
                 'message' => 'Conversation is not currently streaming',
@@ -538,8 +636,13 @@ class ConversationController extends Controller
         $skipSync = (bool) $request->input('skipSync', false);
 
         // Set abort flag - the job will pick this up
+        RequestFlowLogger::log('controller.abort.setting_flag', 'Setting abort flag', [
+            'skip_sync' => $skipSync,
+        ]);
         $this->streamManager->setAbortFlag($conversation->uuid, $skipSync);
 
+        RequestFlowLogger::log('controller.abort.success', 'Abort flag set successfully');
+        RequestFlowLogger::endRequest('success');
         return response()->json([
             'success' => true,
             'message' => 'Abort signal sent',

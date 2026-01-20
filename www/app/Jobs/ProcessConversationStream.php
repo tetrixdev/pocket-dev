@@ -8,6 +8,7 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ModelRepository;
 use App\Services\ProviderFactory;
+use App\Services\RequestFlowLogger;
 use App\Services\StreamManager;
 use App\Services\SystemPromptBuilder;
 use App\Services\ToolRegistry;
@@ -62,26 +63,46 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         SystemPromptBuilder $systemPromptBuilder,
         ModelRepository $modelRepository,
     ): void {
+        RequestFlowLogger::startJob($this->conversationUuid, 'ProcessConversationStream');
+        RequestFlowLogger::log('job.handle.start', 'Job handler started', [
+            'prompt_length' => strlen($this->prompt),
+        ]);
+
         $conversation = Conversation::where('uuid', $this->conversationUuid)->firstOrFail();
+        RequestFlowLogger::log('job.handle.conversation_loaded', 'Conversation loaded', [
+            'provider_type' => $conversation->provider_type,
+            'model' => $conversation->model,
+            'status' => $conversation->status,
+        ]);
 
         // Note: Stream state is already initialized by the controller to prevent race conditions
         // We don't call startStream() here to avoid overwriting the state
 
         // Mark conversation as processing
         $conversation->startProcessing();
+        RequestFlowLogger::log('job.handle.processing_started', 'Marked conversation as processing');
 
         try {
             // Save user message and keep reference for abort sync
+            RequestFlowLogger::log('job.handle.saving_user_message', 'Saving user message');
             $userMessage = $this->saveUserMessage($conversation, $this->prompt);
+            RequestFlowLogger::log('job.handle.user_message_saved', 'User message saved', [
+                'message_id' => $userMessage->id,
+            ]);
 
             // Get provider
             $provider = $providerFactory->make($conversation->provider_type);
+            $providerAvailable = $provider->isAvailable();
+            RequestFlowLogger::logDecision('job.handle.provider_available', 'Provider available', $providerAvailable, [
+                'provider_type' => $conversation->provider_type,
+            ]);
 
-            if (!$provider->isAvailable()) {
+            if (!$providerAvailable) {
                 throw new \RuntimeException("Provider '{$conversation->provider_type}' is not available");
             }
 
             // Stream with tool execution loop
+            RequestFlowLogger::log('job.handle.starting_stream_loop', 'Starting stream with tool loop');
             $this->streamWithToolLoop(
                 $conversation,
                 $provider,
@@ -92,21 +113,35 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $this->options,
                 userMessage: $userMessage
             );
+            RequestFlowLogger::log('job.handle.stream_loop_completed', 'Stream loop completed');
 
             // Only finalize if not already completed/aborted inside streamWithToolLoop
-            if ($conversation->fresh()->status === Conversation::STATUS_PROCESSING) {
+            $currentStatus = $conversation->fresh()->status;
+            $shouldFinalize = $currentStatus === Conversation::STATUS_PROCESSING;
+            RequestFlowLogger::logDecision('job.handle.finalize_check', 'Should finalize', $shouldFinalize, [
+                'current_status' => $currentStatus,
+            ]);
+
+            if ($shouldFinalize) {
                 // Calculate and store turns while still locked
+                RequestFlowLogger::log('job.handle.calculating_turns', 'Calculating and storing turns');
                 $this->calculateAndStoreTurns($conversation);
 
                 // Mark conversation as completed (releases lock)
+                RequestFlowLogger::log('job.handle.completing', 'Completing processing');
                 $conversation->completeProcessing();
                 $streamManager->completeStream($this->conversationUuid);
+                RequestFlowLogger::log('job.handle.completed', 'Processing completed, stream marked complete');
 
                 // Dispatch async embedding job (runs after lock released)
+                RequestFlowLogger::log('job.handle.dispatching_embeddings', 'Dispatching embeddings job');
                 GenerateConversationEmbeddings::dispatch($conversation);
             }
 
+            RequestFlowLogger::endRequest('success');
+
         } catch (\Throwable $e) {
+            RequestFlowLogger::logError('job.handle.exception', 'Job failed with exception', $e);
             Log::error('ProcessConversationStream failed', [
                 'conversation' => $this->conversationUuid,
                 'error' => $e->getMessage(),
@@ -115,6 +150,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
             $conversation->markFailed();
             $streamManager->failStream($this->conversationUuid, $e->getMessage());
+            RequestFlowLogger::endRequest('failed');
         }
     }
 
@@ -126,6 +162,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
      */
     public function failed(\Throwable $exception): void
     {
+        RequestFlowLogger::setConversationUuid($this->conversationUuid);
+        RequestFlowLogger::logError('job.failed.entry', 'Job failed handler called', $exception);
+
         Log::error('ProcessConversationStream: Job failed', [
             'conversation' => $this->conversationUuid,
             'error' => $exception->getMessage(),
@@ -135,9 +174,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $streamManager = app(StreamManager::class);
 
         $conversation = Conversation::where('uuid', $this->conversationUuid)->first();
+        $conversationFound = $conversation !== null;
+        RequestFlowLogger::logDecision('job.failed.conversation_found', 'Conversation found', $conversationFound);
+
         if ($conversation) {
             // Create error message so user sees what happened
             // Use ROLE_ERROR so it renders as expandable error block in UI
+            RequestFlowLogger::log('job.failed.creating_error_message', 'Creating error message for user');
             Message::create([
                 'conversation_id' => $conversation->id,
                 'role' => Message::ROLE_ERROR,
@@ -149,11 +192,14 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             ]);
 
             $conversation->markFailed();
+            RequestFlowLogger::log('job.failed.marked_failed', 'Conversation marked as failed');
         }
 
         // Send error event (shows popup if SSE connected) and cleanup
+        RequestFlowLogger::log('job.failed.failing_stream', 'Failing stream and clearing abort flag');
         $streamManager->failStream($this->conversationUuid, $exception->getMessage());
         $streamManager->clearAbortFlag($this->conversationUuid);
+        RequestFlowLogger::log('job.failed.cleanup_complete', 'Failed handler cleanup complete');
     }
 
     private const MAX_TOOL_ITERATIONS = 25;
@@ -172,8 +218,16 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         int $iteration = 0,
         ?Message $userMessage = null,
     ): void {
+        RequestFlowLogger::log('job.loop.start', 'Stream loop iteration started', [
+            'iteration' => $iteration,
+            'max_iterations' => self::MAX_TOOL_ITERATIONS,
+        ]);
+
         // Safety guard against infinite tool loops
         if ($iteration >= self::MAX_TOOL_ITERATIONS) {
+            RequestFlowLogger::log('job.loop.max_iterations', 'Max iterations reached - aborting', [
+                'iteration' => $iteration,
+            ]);
             Log::warning('ProcessConversationStream: Max tool iterations reached', [
                 'conversation' => $this->conversationUuid,
                 'iterations' => $iteration,
@@ -240,14 +294,23 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         }
 
         // Stream from provider
+        RequestFlowLogger::log('job.loop.streaming_start', 'Starting provider stream');
+        $eventCount = 0;
         foreach ($provider->streamMessage($conversation, $providerOptions) as $event) {
+            $eventCount++;
+
             // Check abort flag BEFORE processing each event
-            if ($streamManager->checkAbortFlag($this->conversationUuid)) {
+            $isAborted = $streamManager->checkAbortFlag($this->conversationUuid);
+            if ($isAborted) {
+                RequestFlowLogger::log('job.loop.abort_detected', 'Abort flag detected', [
+                    'event_count' => $eventCount,
+                ]);
                 Log::info('ProcessConversationStream: Abort requested', [
                     'conversation' => $this->conversationUuid,
                 ]);
 
                 // Terminate the provider's stream
+                RequestFlowLogger::log('job.loop.abort_provider', 'Aborting provider stream');
                 $provider->abort();
 
                 try {
@@ -282,7 +345,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     ];
 
                     $assistantMessage = null;
-                    if (!empty($contentBlocks)) {
+                    $hasContentBlocks = !empty($contentBlocks);
+                    RequestFlowLogger::logDecision('job.loop.abort_has_content', 'Has content blocks to save', $hasContentBlocks, [
+                        'block_count' => count($contentBlocks),
+                    ]);
+
+                    if ($hasContentBlocks) {
+                        RequestFlowLogger::log('job.loop.abort_saving_message', 'Saving partial assistant message');
                         $assistantMessage = $this->saveAssistantMessage(
                             $conversation,
                             $contentBlocks,
@@ -299,25 +368,30 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                         // BUT skip if the abort happened after tool execution completed
                         // (in that case, CLI already has complete data)
                         $shouldSkipSync = $streamManager->shouldSkipSyncOnAbort($this->conversationUuid);
+                        RequestFlowLogger::logDecision('job.loop.abort_skip_sync', 'Should skip sync', $shouldSkipSync);
 
                         if (!$shouldSkipSync) {
                             // Use the user message passed from handle() - no query needed
                             // This avoids ordering issues with the messages() relationship
                             if ($userMessage && $assistantMessage) {
+                                RequestFlowLogger::log('job.loop.abort_syncing', 'Syncing aborted message to provider');
                                 $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
                             }
                         } else {
+                            RequestFlowLogger::log('job.loop.abort_sync_skipped', 'Skipping sync (abort after tool completion)');
                             Log::info('ProcessConversationStream: Skipping sync (abort after tool completion)', [
                                 'conversation' => $this->conversationUuid,
                             ]);
                         }
                     }
                 } catch (\Throwable $e) {
+                    RequestFlowLogger::logError('job.loop.abort_save_error', 'Error during abort save', $e);
                     Log::error('ProcessConversationStream: Error during abort save', [
                         'conversation' => $this->conversationUuid,
                         'error' => $e->getMessage(),
                     ]);
                 } finally {
+                    RequestFlowLogger::log('job.loop.abort_finalizing', 'Finalizing abort');
                     // Calculate turns while still locked (even for aborted streams)
                     $this->calculateAndStoreTurns($conversation);
 
@@ -329,6 +403,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
                     // Dispatch async embedding job
                     GenerateConversationEmbeddings::dispatch($conversation);
+                    RequestFlowLogger::log('job.loop.abort_complete', 'Abort handling complete');
                 }
 
                 return; // Exit the method entirely
@@ -474,6 +549,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
                 case StreamEvent::DONE:
                     $stopReason = $event->metadata['stop_reason'] ?? 'end_turn';
+                    RequestFlowLogger::log('job.loop.done_event', 'Received DONE event', [
+                        'stop_reason' => $stopReason,
+                        'pending_tool_uses' => count($pendingToolUses),
+                        'streamed_tool_results' => count($streamedToolResults),
+                        'event_count' => $eventCount,
+                    ]);
                     Log::channel('api')->info('ProcessConversationStream: Received DONE event', [
                         'stop_reason' => $stopReason,
                         'pending_tool_uses_count' => count($pendingToolUses),
@@ -483,14 +564,28 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     break;
 
                 case StreamEvent::ERROR:
+                    RequestFlowLogger::logError('job.loop.error_event', 'Received ERROR event', null, [
+                        'error_content' => $event->content,
+                    ]);
                     throw new \RuntimeException($event->content ?? 'Unknown streaming error');
             }
         }
+
+        RequestFlowLogger::log('job.loop.streaming_complete', 'Provider streaming complete', [
+            'event_count' => $eventCount,
+            'content_blocks' => count($contentBlocks),
+        ]);
 
         // Reindex content blocks
         $contentBlocks = array_values($contentBlocks);
 
         // Save assistant message
+        RequestFlowLogger::log('job.loop.saving_assistant_message', 'Saving assistant message', [
+            'block_count' => count($contentBlocks),
+            'input_tokens' => $inputTokens,
+            'output_tokens' => $outputTokens,
+            'stop_reason' => $stopReason,
+        ]);
         $this->saveAssistantMessage(
             $conversation,
             $contentBlocks,
@@ -503,13 +598,28 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         );
 
         // Handle tool execution
+        $shouldExecuteTools = $stopReason === 'tool_use' && !empty($pendingToolUses);
+        $hasStreamedToolResults = !empty($streamedToolResults);
+        RequestFlowLogger::logDecision('job.loop.tool_execution_check', 'Should execute tools', $shouldExecuteTools, [
+            'stop_reason' => $stopReason,
+            'pending_tool_uses' => count($pendingToolUses),
+            'streamed_tool_results' => count($streamedToolResults),
+        ]);
+
         Log::channel('api')->info('ProcessConversationStream: Checking tool execution', [
             'stop_reason' => $stopReason,
             'pending_tool_uses_count' => count($pendingToolUses),
-            'will_execute' => ($stopReason === 'tool_use' && !empty($pendingToolUses)),
+            'will_execute' => $shouldExecuteTools,
         ]);
-        if ($stopReason === 'tool_use' && !empty($pendingToolUses)) {
+        if ($shouldExecuteTools) {
+            RequestFlowLogger::log('job.loop.executing_tools', 'Executing tools', [
+                'tool_count' => count($pendingToolUses),
+                'tool_names' => array_map(fn($t) => $t['name'], $pendingToolUses),
+            ]);
             $toolResults = $this->executeTools($pendingToolUses, $conversation, $toolRegistry);
+            RequestFlowLogger::log('job.loop.tools_executed', 'Tools executed', [
+                'result_count' => count($toolResults),
+            ]);
 
             // Publish tool results to Redis
             foreach ($toolResults as $result) {
@@ -524,10 +634,14 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             }
 
             // Save tool results as user message
+            RequestFlowLogger::log('job.loop.saving_tool_results', 'Saving tool results message');
             $this->saveToolResultMessage($conversation, $toolResults);
 
             // Continue with tool results (recursive)
             // Pass the original user message for abort sync consistency
+            RequestFlowLogger::log('job.loop.recursive_call', 'Making recursive call for tool results', [
+                'next_iteration' => $iteration + 1,
+            ]);
             $this->streamWithToolLoop(
                 $conversation,
                 $provider,
@@ -539,15 +653,20 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $iteration + 1,
                 $userMessage
             );
-        } elseif (!empty($streamedToolResults)) {
+        } elseif ($hasStreamedToolResults) {
             // Save tool results from providers that execute tools internally (Claude Code, Codex)
             // These providers stream TOOL_RESULT events but use stopReason='end_turn',
             // so the executeTools path above doesn't run
+            RequestFlowLogger::log('job.loop.saving_streamed_tool_results', 'Saving streamed tool results', [
+                'count' => count($streamedToolResults),
+            ]);
             Log::channel('api')->info('ProcessConversationStream: Saving streamed tool results', [
                 'count' => count($streamedToolResults),
                 'conversation' => $this->conversationUuid,
             ]);
             $this->saveToolResultMessage($conversation, $streamedToolResults);
+        } else {
+            RequestFlowLogger::log('job.loop.no_tools', 'No tool execution needed - loop complete');
         }
     }
 

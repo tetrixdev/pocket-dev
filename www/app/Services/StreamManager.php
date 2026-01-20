@@ -25,6 +25,11 @@ class StreamManager
      */
     public function startStream(string $conversationUuid, array $metadata = []): void
     {
+        RequestFlowLogger::log('stream.start', 'Starting stream in Redis', [
+            'conversation_uuid' => $conversationUuid,
+            'metadata' => $metadata,
+        ]);
+
         $key = $this->key($conversationUuid);
 
         Redis::multi();
@@ -36,6 +41,8 @@ class StreamManager
         Redis::expire("{$key}:status", self::TTL_STREAMING);
         Redis::expire("{$key}:metadata", self::TTL_STREAMING);
         Redis::exec();
+
+        RequestFlowLogger::log('stream.started', 'Stream started in Redis');
     }
 
     /**
@@ -59,6 +66,11 @@ class StreamManager
      */
     public function completeStream(string $conversationUuid, string $status = 'completed'): void
     {
+        RequestFlowLogger::log('stream.complete', 'Completing stream', [
+            'conversation_uuid' => $conversationUuid,
+            'status' => $status,
+        ]);
+
         $key = $this->key($conversationUuid);
 
         Redis::multi();
@@ -74,6 +86,8 @@ class StreamManager
             'type' => 'stream_completed',
             'status' => $status,
         ]));
+
+        RequestFlowLogger::log('stream.completed', 'Stream marked as completed in Redis');
     }
 
     /**
@@ -81,6 +95,11 @@ class StreamManager
      */
     public function failStream(string $conversationUuid, string $error): void
     {
+        RequestFlowLogger::log('stream.fail', 'Failing stream', [
+            'conversation_uuid' => $conversationUuid,
+            'error' => $error,
+        ]);
+
         $key = $this->key($conversationUuid);
 
         // Append error event
@@ -98,6 +117,8 @@ class StreamManager
             'type' => 'stream_failed',
             'error' => $error,
         ]));
+
+        RequestFlowLogger::log('stream.failed', 'Stream marked as failed in Redis');
     }
 
     /**
@@ -206,6 +227,11 @@ class StreamManager
      */
     public function setAbortFlag(string $conversationUuid, bool $skipSync = false): void
     {
+        RequestFlowLogger::log('stream.abort_flag_set', 'Setting abort flag', [
+            'conversation_uuid' => $conversationUuid,
+            'skip_sync' => $skipSync,
+        ]);
+
         $key = $this->key($conversationUuid);
         Redis::set("{$key}:abort", 'true', 'EX', self::TTL_STREAMING);
         if ($skipSync) {
@@ -235,6 +261,10 @@ class StreamManager
      */
     public function clearAbortFlag(string $conversationUuid): void
     {
+        RequestFlowLogger::log('stream.abort_flag_clear', 'Clearing abort flag', [
+            'conversation_uuid' => $conversationUuid,
+        ]);
+
         $key = $this->key($conversationUuid);
         Redis::del("{$key}:abort", "{$key}:abort_skip_sync");
     }
