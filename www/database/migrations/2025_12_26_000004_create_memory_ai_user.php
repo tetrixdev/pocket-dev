@@ -10,7 +10,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        $password = env('DB_MEMORY_AI_PASSWORD');
+        $password = config('database.connections.pgsql_memory_ai.password');
 
         // Check if user already exists
         $userExists = DB::selectOne(
@@ -19,7 +19,7 @@ return new class extends Migration
 
         if (!$userExists) {
             if (empty($password)) {
-                throw new \RuntimeException('DB_MEMORY_AI_PASSWORD must be set in .env file for memory_ai user');
+                throw new \RuntimeException('PD_DB_MEMORY_AI_PASSWORD must be set in .env file for memory_ai user');
             }
 
             // Create the user
