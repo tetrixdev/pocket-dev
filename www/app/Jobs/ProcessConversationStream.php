@@ -162,7 +162,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
      */
     public function failed(\Throwable $exception): void
     {
-        RequestFlowLogger::setConversationUuid($this->conversationUuid);
+        RequestFlowLogger::startJob($this->conversationUuid, 'ProcessConversationStream::failed');
         RequestFlowLogger::logError('job.failed.entry', 'Job failed handler called', $exception);
 
         Log::error('ProcessConversationStream: Job failed', [
@@ -200,6 +200,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $streamManager->failStream($this->conversationUuid, $exception->getMessage());
         $streamManager->clearAbortFlag($this->conversationUuid);
         RequestFlowLogger::log('job.failed.cleanup_complete', 'Failed handler cleanup complete');
+        RequestFlowLogger::endRequest('failed');
     }
 
     private const MAX_TOOL_ITERATIONS = 25;

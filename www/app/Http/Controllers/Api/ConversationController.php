@@ -398,130 +398,136 @@ class ConversationController extends Controller
         ]);
 
         return response()->stream(function () use ($conversation, $fromIndex) {
-            $sse = new SseWriter();
+            try {
+                $sse = new SseWriter();
 
-            // Send all buffered events first
-            $events = $this->streamManager->getEvents($conversation->uuid, $fromIndex);
-            $currentIndex = $fromIndex;
-            $bufferedCount = count($events);
+                // Send all buffered events first
+                $events = $this->streamManager->getEvents($conversation->uuid, $fromIndex);
+                $currentIndex = $fromIndex;
+                $bufferedCount = count($events);
 
-            RequestFlowLogger::log('controller.sse.buffered_events', 'Retrieved buffered events', [
-                'count' => $bufferedCount,
-                'from_index' => $fromIndex,
-            ]);
-
-            foreach ($events as $event) {
-                $sse->writeRaw(json_encode(array_merge($event, [
-                    'index' => $currentIndex,
-                    'conversation_uuid' => $conversation->uuid,
-                ])));
-                $currentIndex++;
-            }
-
-            // Check if stream is still active
-            $status = $this->streamManager->getStatus($conversation->uuid);
-            RequestFlowLogger::logDecision('controller.sse.initial_status_check', 'Stream still active', $status === 'streaming', [
-                'status' => $status,
-            ]);
-
-            if ($status !== 'streaming') {
-                // Stream is done, send final status
-                RequestFlowLogger::log('controller.sse.stream_already_done', 'Stream already completed, sending final status', [
-                    'status' => $status,
+                RequestFlowLogger::log('controller.sse.buffered_events', 'Retrieved buffered events', [
+                    'count' => $bufferedCount,
+                    'from_index' => $fromIndex,
                 ]);
-                $sse->writeRaw(json_encode([
-                    'type' => 'stream_status',
-                    'status' => $status ?? 'not_found',
-                    'final_index' => $currentIndex - 1,
-                    'conversation_uuid' => $conversation->uuid,
-                ]));
-                RequestFlowLogger::endRequest('stream_already_done');
-                return;
-            }
 
-            // Subscribe to live updates
-            // Use polling instead of blocking pub/sub for better compatibility
-            $lastActivity = microtime(true);
-            $timeout = 60; // 60 second timeout for SSE connection
-            $pollCount = 0;
-
-            RequestFlowLogger::log('controller.sse.entering_poll_loop', 'Entering live polling loop', [
-                'timeout_seconds' => $timeout,
-            ]);
-
-            while (true) {
-                $pollCount++;
-
-                // Exit if client disconnected
-                if (connection_aborted()) {
-                    RequestFlowLogger::log('controller.sse.client_disconnected', 'Client disconnected', [
-                        'poll_count' => $pollCount,
-                        'current_index' => $currentIndex,
-                    ]);
-                    RequestFlowLogger::endRequest('client_disconnected');
-                    break;
-                }
-
-                // Check for new events
-                $newEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
-                $newEventCount = count($newEvents);
-
-                // Only log when there are new events (to avoid log spam)
-                if ($newEventCount > 0) {
-                    RequestFlowLogger::log('controller.sse.new_events', 'New events received', [
-                        'count' => $newEventCount,
-                        'current_index' => $currentIndex,
-                    ]);
-                }
-
-                foreach ($newEvents as $event) {
+                foreach ($events as $event) {
                     $sse->writeRaw(json_encode(array_merge($event, [
                         'index' => $currentIndex,
                         'conversation_uuid' => $conversation->uuid,
                     ])));
                     $currentIndex++;
-                    $lastActivity = microtime(true); // Update activity time when data is sent
                 }
 
-                // Check stream status
+                // Check if stream is still active
                 $status = $this->streamManager->getStatus($conversation->uuid);
+                RequestFlowLogger::logDecision('controller.sse.initial_status_check', 'Stream still active', $status === 'streaming', [
+                    'status' => $status,
+                ]);
+
                 if ($status !== 'streaming') {
-                    RequestFlowLogger::log('controller.sse.stream_completed', 'Stream completed, sending final status', [
+                    // Stream is done, send final status
+                    RequestFlowLogger::log('controller.sse.stream_already_done', 'Stream already completed, sending final status', [
                         'status' => $status,
-                        'final_index' => $currentIndex - 1,
-                        'poll_count' => $pollCount,
                     ]);
                     $sse->writeRaw(json_encode([
                         'type' => 'stream_status',
-                        'status' => $status,
+                        'status' => $status ?? 'not_found',
                         'final_index' => $currentIndex - 1,
                         'conversation_uuid' => $conversation->uuid,
                     ]));
-                    RequestFlowLogger::endRequest('stream_completed');
-                    break;
+                    RequestFlowLogger::endRequest('stream_already_done');
+                    return;
                 }
 
-                // Check timeout
-                $timeSinceActivity = microtime(true) - $lastActivity;
-                if ($timeSinceActivity > $timeout) {
-                    RequestFlowLogger::log('controller.sse.timeout', 'SSE connection timeout', [
-                        'timeout_seconds' => $timeout,
-                        'time_since_activity' => round($timeSinceActivity, 2),
-                        'poll_count' => $pollCount,
-                    ]);
-                    $sse->writeRaw(json_encode([
-                        'type' => 'timeout',
-                        'message' => 'Connection timeout, please reconnect',
-                        'last_index' => $currentIndex - 1,
-                        'conversation_uuid' => $conversation->uuid,
-                    ]));
-                    RequestFlowLogger::endRequest('timeout');
-                    break;
-                }
+                // Subscribe to live updates
+                // Use polling instead of blocking pub/sub for better compatibility
+                $lastActivity = microtime(true);
+                $timeout = 60; // 60 second timeout for SSE connection
+                $pollCount = 0;
 
-                // Small delay to prevent CPU spinning
-                usleep(100000); // 100ms
-                flush();
+                RequestFlowLogger::log('controller.sse.entering_poll_loop', 'Entering live polling loop', [
+                    'timeout_seconds' => $timeout,
+                ]);
+
+                while (true) {
+                    $pollCount++;
+
+                    // Exit if client disconnected
+                    if (connection_aborted()) {
+                        RequestFlowLogger::log('controller.sse.client_disconnected', 'Client disconnected', [
+                            'poll_count' => $pollCount,
+                            'current_index' => $currentIndex,
+                        ]);
+                        RequestFlowLogger::endRequest('client_disconnected');
+                        break;
+                    }
+
+                    // Check for new events
+                    $newEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
+                    $newEventCount = count($newEvents);
+
+                    // Only log when there are new events (to avoid log spam)
+                    if ($newEventCount > 0) {
+                        RequestFlowLogger::log('controller.sse.new_events', 'New events received', [
+                            'count' => $newEventCount,
+                            'current_index' => $currentIndex,
+                        ]);
+                    }
+
+                    foreach ($newEvents as $event) {
+                        $sse->writeRaw(json_encode(array_merge($event, [
+                            'index' => $currentIndex,
+                            'conversation_uuid' => $conversation->uuid,
+                        ])));
+                        $currentIndex++;
+                        $lastActivity = microtime(true); // Update activity time when data is sent
+                    }
+
+                    // Check stream status
+                    $status = $this->streamManager->getStatus($conversation->uuid);
+                    if ($status !== 'streaming') {
+                        RequestFlowLogger::log('controller.sse.stream_completed', 'Stream completed, sending final status', [
+                            'status' => $status,
+                            'final_index' => $currentIndex - 1,
+                            'poll_count' => $pollCount,
+                        ]);
+                        $sse->writeRaw(json_encode([
+                            'type' => 'stream_status',
+                            'status' => $status,
+                            'final_index' => $currentIndex - 1,
+                            'conversation_uuid' => $conversation->uuid,
+                        ]));
+                        RequestFlowLogger::endRequest('stream_completed');
+                        break;
+                    }
+
+                    // Check timeout
+                    $timeSinceActivity = microtime(true) - $lastActivity;
+                    if ($timeSinceActivity > $timeout) {
+                        RequestFlowLogger::log('controller.sse.timeout', 'SSE connection timeout', [
+                            'timeout_seconds' => $timeout,
+                            'time_since_activity' => round($timeSinceActivity, 2),
+                            'poll_count' => $pollCount,
+                        ]);
+                        $sse->writeRaw(json_encode([
+                            'type' => 'timeout',
+                            'message' => 'Connection timeout, please reconnect',
+                            'last_index' => $currentIndex - 1,
+                            'conversation_uuid' => $conversation->uuid,
+                        ]));
+                        RequestFlowLogger::endRequest('timeout');
+                        break;
+                    }
+
+                    // Small delay to prevent CPU spinning
+                    usleep(100000); // 100ms
+                    flush();
+                }
+            } catch (\Throwable $e) {
+                RequestFlowLogger::logError('controller.sse.exception', 'SSE stream exception', $e);
+                RequestFlowLogger::endRequest('error');
+                throw $e;
             }
         }, 200, SseWriter::headers());
     }

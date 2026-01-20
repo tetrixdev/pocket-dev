@@ -222,7 +222,7 @@ class RequestFlowLogger
         $elapsedMs = self::$requestStartTime ? ($now - self::$requestStartTime) * 1000 : null;
 
         return [
-            'ts' => date('Y-m-d\TH:i:s', (int) $now) . '.' . sprintf('%06d', ($now - floor($now)) * 1000000) . 'Z',
+            'ts' => gmdate('Y-m-d\TH:i:s', (int) $now) . '.' . sprintf('%06d', ($now - floor($now)) * 1000000) . 'Z',
             'correlation_id' => self::$correlationId,
             'conversation_uuid' => self::$conversationUuid,
             'pid' => getmypid(),
@@ -245,7 +245,7 @@ class RequestFlowLogger
             File::makeDirectory($basePath, 0755, true);
         }
 
-        $filename = date('Y-m-d') . '.log';
+        $filename = gmdate('Y-m-d') . '.log';
         $filepath = $basePath . '/' . $filename;
 
         // Remove null values for cleaner output
@@ -261,6 +261,9 @@ class RequestFlowLogger
     public static function getReadableMemory(): string
     {
         $bytes = memory_get_usage();
+        if ($bytes <= 0) {
+            return '0 B';
+        }
         $units = ['B', 'KB', 'MB', 'GB'];
         $i = floor(log($bytes, 1024));
 
