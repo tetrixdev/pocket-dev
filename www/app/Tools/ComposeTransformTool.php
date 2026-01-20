@@ -173,12 +173,15 @@ CLI;
         $volumesIndent = 0;
         $buildIndent = 0;
 
-        // Collect service overrides: service => [volumes => [...], fileMounts => [...], buildContext => ..., dockerfile => ...]
+        // Collect service overrides: service => [volumes => [...], fileMounts => [...], buildContext => ..., dockerfile => ..., buildArgs => [...]]
         $serviceOverrides = [];
         $currentVolumes = [];
         $currentFileMounts = [];
         $currentBuildContext = null;
         $currentDockerfile = null;
+        $currentBuildArgs = [];
+        $inBuildArgs = false;
+        $buildArgsIndent = 0;
 
         // Stats
         $mountsConverted = 0;
@@ -199,6 +202,7 @@ CLI;
                         'fileMounts' => $currentFileMounts,
                         'buildContext' => $currentBuildContext,
                         'dockerfile' => $currentDockerfile,
+                        'buildArgs' => $currentBuildArgs,
                     ];
                 }
 
@@ -206,11 +210,13 @@ CLI;
                 $inServicesSection = ($sectionName === 'services');
                 $inServiceVolumes = false;
                 $inServiceBuild = false;
+                $inBuildArgs = false;
                 $currentService = null;
                 $currentVolumes = [];
                 $currentFileMounts = [];
                 $currentBuildContext = null;
                 $currentDockerfile = null;
+                $currentBuildArgs = [];
                 continue;
             }
 
@@ -223,16 +229,19 @@ CLI;
                         'fileMounts' => $currentFileMounts,
                         'buildContext' => $currentBuildContext,
                         'dockerfile' => $currentDockerfile,
+                        'buildArgs' => $currentBuildArgs,
                     ];
                 }
 
                 $currentService = $serviceMatch[1];
                 $inServiceVolumes = false;
                 $inServiceBuild = false;
+                $inBuildArgs = false;
                 $currentVolumes = [];
                 $currentFileMounts = [];
                 $currentBuildContext = null;
                 $currentDockerfile = null;
+                $currentBuildArgs = [];
                 continue;
             }
 
@@ -251,12 +260,33 @@ CLI;
                 continue;
             }
 
-            // Parse build object properties (context, dockerfile)
+            // Parse build object properties (context, dockerfile, args)
             if ($inServiceBuild && $currentIndent > $buildIndent) {
+                // Check if we exited the args section
+                if ($inBuildArgs && $currentIndent <= $buildArgsIndent && !preg_match("/^#/", $stripped)) {
+                    $inBuildArgs = false;
+                }
+
                 if (preg_match("/^context:\s*(.+)$/", $stripped, $contextMatch)) {
                     $currentBuildContext = trim($contextMatch[1], "\"'");
                 } elseif (preg_match("/^dockerfile:\s*(.+)$/", $stripped, $dockerfileMatch)) {
                     $currentDockerfile = trim($dockerfileMatch[1], "\"'");
+                } elseif (preg_match("/^args:\s*$/", $stripped)) {
+                    $inBuildArgs = true;
+                    $buildArgsIndent = $currentIndent;
+                } elseif ($inBuildArgs && $currentIndent > $buildArgsIndent) {
+                    // Parse build arg: ARG_NAME: value or ARG_NAME: ${ENV_VAR:-default}
+                    if (preg_match("/^([A-Za-z_][A-Za-z0-9_]*):\s*(.+)$/", $stripped, $argMatch)) {
+                        $argName = $argMatch[1];
+                        $argValue = trim($argMatch[2], "\"'");
+
+                        // Extract default from ${VAR:-default} pattern
+                        if (preg_match('/^\$\{[^:}]+(:-([^}]+))?\}$/', $argValue, $defaultMatch)) {
+                            $currentBuildArgs[$argName] = $defaultMatch[2] ?? null;
+                        } else {
+                            $currentBuildArgs[$argName] = $argValue;
+                        }
+                    }
                 }
                 continue;
             }
@@ -358,6 +388,7 @@ CLI;
                 'fileMounts' => $currentFileMounts,
                 'buildContext' => $currentBuildContext,
                 'dockerfile' => $currentDockerfile,
+                'buildArgs' => $currentBuildArgs,
             ];
         }
 
@@ -416,20 +447,40 @@ CLI;
                         $copyCommands[] = "cp {$source} {$target}";
                     }
 
-                    // Try to get command from Dockerfile first, fall back to name-based guessing
-                    $serviceCommand = $this->getServiceCommandFromDockerfile(
+                    // Get Dockerfile metadata (CMD and USER) with build arg substitution
+                    $metadata = $this->getDockerfileMetadata(
                         $composeDir,
                         $overrides['buildContext'] ?? null,
-                        $overrides['dockerfile'] ?? null
+                        $overrides['dockerfile'] ?? null,
+                        $overrides['buildArgs'] ?? []
                     );
-                    if ($serviceCommand === null) {
-                        $serviceCommand = $this->getServiceCommand($serviceName);
-                    }
+
+                    $serviceCommand = $metadata['cmd'] ?? $this->getServiceCommand($serviceName);
+                    $originalUser = $metadata['user'];
 
                     $copyScript = implode(" && ", $copyCommands);
-
                     $lines[] = "    user: root";
-                    $entrypoint = ["/bin/sh", "-c", "{$copyScript} && {$serviceCommand}"];
+
+                    // Check if we need privilege dropping
+                    // Skip if: no user, user is root, or user is still a variable (substitution failed)
+                    $needsPrivilegeDrop = $originalUser !== null
+                        && $originalUser !== 'root'
+                        && !str_starts_with($originalUser, '$');
+
+                    if ($needsPrivilegeDrop) {
+                        // Drop privileges after copy using su
+                        // -s /bin/sh handles users with /sbin/nologin as their shell
+                        $escapedUser = escapeshellarg($originalUser);
+                        $escapedCmd = escapeshellarg($serviceCommand);
+                        $entrypoint = [
+                            "/bin/sh",
+                            "-c",
+                            "{$copyScript} && exec su -s /bin/sh {$escapedUser} -c {$escapedCmd}"
+                        ];
+                    } else {
+                        $entrypoint = ["/bin/sh", "-c", "{$copyScript} && exec {$serviceCommand}"];
+                    }
+
                     $lines[] = "    entrypoint: " . json_encode($entrypoint, JSON_UNESCAPED_SLASHES);
                 }
             }
@@ -548,6 +599,84 @@ CLI;
         }
 
         return $cmd;
+    }
+
+    /**
+     * Extract the USER instruction from a Dockerfile, substituting build args.
+     *
+     * Handles USER username, USER $VAR, USER ${VAR}, USER uid:gid.
+     * Returns the last USER found (Docker behavior).
+     *
+     * @param string $dockerfilePath Absolute path to Dockerfile
+     * @param array $buildArgs Build arguments from compose.yml for variable substitution
+     * @return string|null The resolved username, or null if not found
+     */
+    private function extractDockerfileUser(string $dockerfilePath, array $buildArgs = []): ?string
+    {
+        $content = file_get_contents($dockerfilePath);
+        if ($content === false) {
+            return null;
+        }
+
+        $lines = explode("\n", $content);
+        $user = null;
+
+        foreach ($lines as $line) {
+            $trimmedLine = trim($line);
+
+            // Skip comments and empty lines
+            if (empty($trimmedLine) || str_starts_with($trimmedLine, '#')) {
+                continue;
+            }
+
+            // Match: USER username, USER $VAR, USER ${VAR}, USER uid:gid
+            if (preg_match('/^USER\s+([^\s:]+)/i', $trimmedLine, $matches)) {
+                $rawUser = trim($matches[1]);
+
+                // Substitute build args: $USER or ${USER}
+                if (preg_match('/^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/', $rawUser, $varMatch)) {
+                    $varName = $varMatch[1];
+                    if (isset($buildArgs[$varName])) {
+                        $user = $buildArgs[$varName];
+                    } else {
+                        // Variable not found in build args - keep raw (will be skipped later)
+                        $user = $rawUser;
+                    }
+                } else {
+                    $user = $rawUser;
+                }
+            }
+        }
+
+        return $user;
+    }
+
+    /**
+     * Get metadata from the Dockerfile (CMD and USER).
+     *
+     * @param string $composeDir Absolute path to directory containing compose file
+     * @param string|null $buildContext Build context path (relative to compose dir)
+     * @param string|null $dockerfile Dockerfile path (relative to build context)
+     * @param array $buildArgs Build arguments for variable substitution
+     * @return array{cmd: ?string, user: ?string}
+     */
+    private function getDockerfileMetadata(string $composeDir, ?string $buildContext, ?string $dockerfile, array $buildArgs = []): array
+    {
+        $result = ['cmd' => null, 'user' => null];
+
+        if ($buildContext === null) {
+            return $result;
+        }
+
+        $dockerfilePath = $this->resolveDockerfilePath($composeDir, $buildContext, $dockerfile ?? 'Dockerfile');
+        if ($dockerfilePath === null || !file_exists($dockerfilePath)) {
+            return $result;
+        }
+
+        $result['cmd'] = $this->extractDockerfileCmd($dockerfilePath);
+        $result['user'] = $this->extractDockerfileUser($dockerfilePath, $buildArgs);
+
+        return $result;
     }
 
     /**
