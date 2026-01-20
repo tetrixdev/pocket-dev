@@ -113,7 +113,7 @@ CLI;
 
         // Read and transform
         $content = file_get_contents($inputPath);
-        $result = $this->transform($content, $relativeDirFromWorkspace);
+        $result = $this->transform($content, $relativeDirFromWorkspace, $composeDir);
 
         if ($result['error']) {
             return ToolResult::error($result['error']);
@@ -154,22 +154,27 @@ CLI;
      *
      * @param string $content The compose file content
      * @param string $relativeDirFromWorkspace Directory containing compose file, relative to /workspace/
+     * @param string $composeDir Absolute path to directory containing compose file
      * @return array{output: string, error: ?string, services_transformed: int, mounts_converted: int, file_mounts: int, warnings: array}
      */
-    private function transform(string $content, string $relativeDirFromWorkspace): array
+    private function transform(string $content, string $relativeDirFromWorkspace, string $composeDir): array
     {
         $lines = explode("\n", $content);
 
         // Track sections and state
         $inServicesSection = false;
         $inServiceVolumes = false;
+        $inServiceBuild = false;
         $currentService = null;
         $volumesIndent = 0;
+        $buildIndent = 0;
 
-        // Collect service overrides: service => [volumes => [...], fileMounts => [...]]
+        // Collect service overrides: service => [volumes => [...], fileMounts => [...], buildContext => ..., dockerfile => ...]
         $serviceOverrides = [];
         $currentVolumes = [];
         $currentFileMounts = [];
+        $currentBuildContext = null;
+        $currentDockerfile = null;
 
         // Stats
         $mountsConverted = 0;
@@ -188,15 +193,20 @@ CLI;
                     $serviceOverrides[$currentService] = [
                         'volumes' => $currentVolumes,
                         'fileMounts' => $currentFileMounts,
+                        'buildContext' => $currentBuildContext,
+                        'dockerfile' => $currentDockerfile,
                     ];
                 }
 
                 $sectionName = $sectionMatch[1];
                 $inServicesSection = ($sectionName === 'services');
                 $inServiceVolumes = false;
+                $inServiceBuild = false;
                 $currentService = null;
                 $currentVolumes = [];
                 $currentFileMounts = [];
+                $currentBuildContext = null;
+                $currentDockerfile = null;
                 continue;
             }
 
@@ -207,14 +217,49 @@ CLI;
                     $serviceOverrides[$currentService] = [
                         'volumes' => $currentVolumes,
                         'fileMounts' => $currentFileMounts,
+                        'buildContext' => $currentBuildContext,
+                        'dockerfile' => $currentDockerfile,
                     ];
                 }
 
                 $currentService = $serviceMatch[1];
                 $inServiceVolumes = false;
+                $inServiceBuild = false;
                 $currentVolumes = [];
                 $currentFileMounts = [];
+                $currentBuildContext = null;
+                $currentDockerfile = null;
                 continue;
+            }
+
+            // Detect service build section (can be string or object)
+            if ($inServicesSection && $currentService && preg_match("/^build:\s*(.*)$/", $stripped, $buildMatch) && $currentIndent >= 2 && $currentIndent <= 6) {
+                $buildValue = trim($buildMatch[1]);
+                if (!empty($buildValue)) {
+                    // String form: build: ./path
+                    $currentBuildContext = trim($buildValue, "\"'");
+                    $inServiceBuild = false;
+                } else {
+                    // Object form: build:\n  context: ...
+                    $inServiceBuild = true;
+                    $buildIndent = $currentIndent;
+                }
+                continue;
+            }
+
+            // Parse build object properties (context, dockerfile)
+            if ($inServiceBuild && $currentIndent > $buildIndent) {
+                if (preg_match("/^context:\s*(.+)$/", $stripped, $contextMatch)) {
+                    $currentBuildContext = trim($contextMatch[1], "\"'");
+                } elseif (preg_match("/^dockerfile:\s*(.+)$/", $stripped, $dockerfileMatch)) {
+                    $currentDockerfile = trim($dockerfileMatch[1], "\"'");
+                }
+                continue;
+            }
+
+            // Check if we exited the build section
+            if ($inServiceBuild && $stripped && $currentIndent <= $buildIndent && !preg_match("/^#/", $stripped)) {
+                $inServiceBuild = false;
             }
 
             // Detect service volumes section
@@ -307,11 +352,13 @@ CLI;
             $serviceOverrides[$currentService] = [
                 'volumes' => $currentVolumes,
                 'fileMounts' => $currentFileMounts,
+                'buildContext' => $currentBuildContext,
+                'dockerfile' => $currentDockerfile,
             ];
         }
 
         // Build the override file (only contains overrides, not full content)
-        $output = $this->buildOverrideFile($serviceOverrides);
+        $output = $this->buildOverrideFile($serviceOverrides, $composeDir);
 
         return [
             'output' => $output,
@@ -325,8 +372,11 @@ CLI;
 
     /**
      * Build the override YAML file from collected service overrides.
+     *
+     * @param array $serviceOverrides Service override data including volumes, fileMounts, buildContext, dockerfile
+     * @param string $composeDir Absolute path to directory containing compose file
      */
-    private function buildOverrideFile(array $serviceOverrides): string
+    private function buildOverrideFile(array $serviceOverrides, string $composeDir): string
     {
         $lines = [];
 
@@ -361,7 +411,17 @@ CLI;
                         $target = escapeshellarg($mount['target']);
                         $copyCommands[] = "cp {$source} {$target}";
                     }
-                    $serviceCommand = $this->getServiceCommand($serviceName);
+
+                    // Try to get command from Dockerfile first, fall back to name-based guessing
+                    $serviceCommand = $this->getServiceCommandFromDockerfile(
+                        $composeDir,
+                        $overrides['buildContext'] ?? null,
+                        $overrides['dockerfile'] ?? null
+                    );
+                    if ($serviceCommand === null) {
+                        $serviceCommand = $this->getServiceCommand($serviceName);
+                    }
+
                     $copyScript = implode(" && ", $copyCommands);
 
                     $lines[] = "    user: root";
@@ -380,7 +440,135 @@ CLI;
     }
 
     /**
+     * Get the service command from the Dockerfile CMD instruction.
+     *
+     * @param string $composeDir Absolute path to directory containing compose file
+     * @param string|null $buildContext Build context path (relative to compose dir)
+     * @param string|null $dockerfile Dockerfile path (relative to build context)
+     * @return string|null The CMD as a shell command string, or null if not found
+     */
+    private function getServiceCommandFromDockerfile(string $composeDir, ?string $buildContext, ?string $dockerfile): ?string
+    {
+        if ($buildContext === null) {
+            return null;
+        }
+
+        // Resolve the Dockerfile path
+        $dockerfilePath = $this->resolveDockerfilePath($composeDir, $buildContext, $dockerfile ?? 'Dockerfile');
+        if ($dockerfilePath === null || !file_exists($dockerfilePath)) {
+            return null;
+        }
+
+        return $this->extractDockerfileCmd($dockerfilePath);
+    }
+
+    /**
+     * Resolve the absolute path to a Dockerfile.
+     *
+     * @param string $composeDir Absolute path to directory containing compose file
+     * @param string $buildContext Build context path (relative to compose dir, e.g., "./" or "./docker")
+     * @param string $dockerfile Dockerfile path (relative to build context)
+     * @return string|null Absolute path to Dockerfile, or null if cannot resolve
+     */
+    private function resolveDockerfilePath(string $composeDir, string $buildContext, string $dockerfile): ?string
+    {
+        // Resolve build context relative to compose directory
+        if (str_starts_with($buildContext, './')) {
+            $contextPath = $composeDir . '/' . substr($buildContext, 2);
+        } elseif (str_starts_with($buildContext, '/')) {
+            $contextPath = $buildContext;
+        } else {
+            $contextPath = $composeDir . '/' . $buildContext;
+        }
+
+        // Normalize path
+        $contextPath = rtrim($contextPath, '/');
+
+        // Resolve dockerfile relative to build context
+        if (str_starts_with($dockerfile, '/')) {
+            $dockerfilePath = $dockerfile;
+        } else {
+            $dockerfilePath = $contextPath . '/' . $dockerfile;
+        }
+
+        // Normalize and check if path exists
+        $realPath = realpath($dockerfilePath);
+        return $realPath ?: null;
+    }
+
+    /**
+     * Extract the CMD instruction from a Dockerfile.
+     *
+     * Handles both exec form (CMD ["executable", "param1"]) and shell form (CMD command param1).
+     * Returns the last CMD found (Docker behavior).
+     *
+     * @param string $dockerfilePath Absolute path to Dockerfile
+     * @return string|null The CMD as a shell command string, or null if not found
+     */
+    private function extractDockerfileCmd(string $dockerfilePath): ?string
+    {
+        $content = file_get_contents($dockerfilePath);
+        if ($content === false) {
+            return null;
+        }
+
+        $lines = explode("\n", $content);
+        $cmd = null;
+        $continuationBuffer = '';
+
+        foreach ($lines as $line) {
+            // Handle line continuations
+            $trimmedLine = trim($line);
+
+            // Skip comments and empty lines
+            if (empty($trimmedLine) || str_starts_with($trimmedLine, '#')) {
+                continue;
+            }
+
+            // Check for line continuation
+            if (str_ends_with($trimmedLine, '\\')) {
+                $continuationBuffer .= rtrim($trimmedLine, '\\') . ' ';
+                continue;
+            }
+
+            // Complete the line
+            $fullLine = $continuationBuffer . $trimmedLine;
+            $continuationBuffer = '';
+
+            // Check for CMD instruction (case insensitive)
+            if (preg_match('/^CMD\s+(.+)$/i', $fullLine, $matches)) {
+                $cmdValue = trim($matches[1]);
+                $cmd = $this->parseCmdValue($cmdValue);
+            }
+        }
+
+        return $cmd;
+    }
+
+    /**
+     * Parse a CMD value from a Dockerfile into a shell command string.
+     *
+     * @param string $cmdValue The CMD value (either exec form or shell form)
+     * @return string The command as a shell string
+     */
+    private function parseCmdValue(string $cmdValue): string
+    {
+        // Check for exec form: ["executable", "param1", "param2"]
+        if (preg_match('/^\[(.+)\]$/', $cmdValue, $matches)) {
+            $jsonArray = json_decode($cmdValue, true);
+            if (is_array($jsonArray)) {
+                // Join array elements into a command string
+                return implode(' ', $jsonArray);
+            }
+        }
+
+        // Shell form: just return as-is
+        return $cmdValue;
+    }
+
+    /**
      * Get the appropriate default command for a service based on its name.
+     * This is a fallback when no Dockerfile CMD is available.
      */
     private function getServiceCommand(string $serviceName): string
     {
