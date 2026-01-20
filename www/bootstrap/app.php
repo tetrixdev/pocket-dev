@@ -1,5 +1,10 @@
 <?php
 
+// Set group-writable umask so both www-data (PHP-FPM) and appuser (queue workers)
+// can read/write each other's files. Both users are in appgroup.
+// Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable).
+umask(0002);
+
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;

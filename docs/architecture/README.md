@@ -7,6 +7,7 @@ PocketDev is a multi-container Docker application that wraps Claude Code CLI wit
 - `system-overview.md` - Container architecture, networking, volumes, data flow diagrams
 - `authentication.md` - Basic Auth, IP whitelist, Claude credential management
 - `technology-stack.md` - Laravel, Alpine.js, Docker, and key dependencies
+- `file-permissions.md` - Cross-process file permissions (PHP-FPM vs queue workers)
 
 ## Quick Summary
 
