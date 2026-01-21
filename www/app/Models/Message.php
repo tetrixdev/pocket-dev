@@ -13,6 +13,7 @@ class Message extends Model
     public const ROLE_SYSTEM = 'system';
     public const ROLE_TOOL = 'tool'; // OpenAI uses this for tool results
     public const ROLE_ERROR = 'error'; // For error blocks that display expandable error UI
+    public const ROLE_COMPACTION = 'compaction'; // For context compaction summaries
 
     public $timestamps = false;
 

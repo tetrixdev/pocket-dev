@@ -279,6 +279,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $contentBlocks = [];
         $pendingToolUses = [];
         $streamedToolResults = []; // Tool results from providers that execute tools internally (Claude Code, Codex)
+        $pendingCompaction = null; // Compaction event to save after assistant message
         $inputTokens = 0;
         $outputTokens = 0;
         $cacheCreationTokens = null;
@@ -566,6 +567,21 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     ]);
                     break;
 
+                case StreamEvent::COMPACTION_SUMMARY:
+                    // Context compaction happened - store data to save as a message after this turn
+                    $pendingCompaction = [
+                        'summary' => $event->content,
+                        'pre_tokens' => $event->metadata['pre_tokens'] ?? null,
+                        'trigger' => $event->metadata['trigger'] ?? 'auto',
+                    ];
+                    Log::channel('api')->info('ProcessConversationStream: Context compaction captured', [
+                        'summary_length' => strlen($event->content ?? ''),
+                        'pre_tokens' => $pendingCompaction['pre_tokens'],
+                        'trigger' => $pendingCompaction['trigger'],
+                        'conversation' => $this->conversationUuid,
+                    ]);
+                    break;
+
                 case StreamEvent::ERROR:
                     RequestFlowLogger::logError('job.loop.error_event', 'Received ERROR event', null, [
                         'error_content' => $event->content,
@@ -599,6 +615,27 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $stopReason,
             $turnCost > 0 ? $turnCost : null
         );
+
+        // Save compaction message if one occurred during this turn
+        if ($pendingCompaction !== null) {
+            RequestFlowLogger::log('job.loop.saving_compaction', 'Saving compaction message', [
+                'summary_length' => strlen($pendingCompaction['summary'] ?? ''),
+                'pre_tokens' => $pendingCompaction['pre_tokens'],
+            ]);
+            Message::create([
+                'conversation_id' => $conversation->id,
+                'role' => Message::ROLE_COMPACTION,
+                'content' => [
+                    'summary' => $pendingCompaction['summary'],
+                    'pre_tokens' => $pendingCompaction['pre_tokens'],
+                    'trigger' => $pendingCompaction['trigger'],
+                ],
+            ]);
+            Log::channel('api')->info('ProcessConversationStream: Compaction message saved', [
+                'conversation' => $this->conversationUuid,
+                'pre_tokens' => $pendingCompaction['pre_tokens'],
+            ]);
+        }
 
         // Handle tool execution
         $shouldExecuteTools = $stopReason === 'tool_use' && !empty($pendingToolUses);
