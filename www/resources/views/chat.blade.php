@@ -48,6 +48,42 @@
                     saving: false,
                     saveError: null,
 
+                    // Track if already initialized (prevents duplicate listeners)
+                    _initialized: false,
+                    _popstateHandler: null,
+
+                    // Initialize history handling for back button support
+                    init() {
+                        // Prevent double initialization (would add duplicate listeners)
+                        if (this._initialized) {
+                            if (window.debugLog) debugLog('filePreview.init() skipped - already initialized');
+                            return;
+                        }
+                        this._initialized = true;
+                        if (window.debugLog) debugLog('filePreview.init() - setting up popstate listener');
+
+                        // Clean up orphaned history state (user navigated away and came back)
+                        if (history.state?.filePreview) {
+                            history.replaceState(null, '', location.href);
+                        }
+
+                        // Listen for browser back button
+                        const store = this;
+                        this._popstateHandler = (event) => {
+                            if (window.debugLog) debugLog('popstate event', {
+                                state: event.state,
+                                isOpen: store.isOpen,
+                                stackDepth: store.stack.length
+                            });
+                            // Close preview if open (any back navigation while modal is open should close it)
+                            if (store.isOpen) {
+                                if (window.debugLog) debugLog('popstate: closing preview via back button');
+                                store._closeStack();
+                            }
+                        };
+                        window.addEventListener('popstate', this._popstateHandler);
+                    },
+
                     // Computed-like getters for current file
                     get isOpen() { return this.stack.length > 0; },
                     get current() { return this.stack[this.stack.length - 1] || {}; },
@@ -56,9 +92,11 @@
                     get content() { return this.current.content || ''; },
                     get error() { return this.current.error || null; },
                     get isMarkdown() { return this.current.isMarkdown || false; },
+                    get isHtml() { return this.current.isHtml || false; },
                     get sizeFormatted() { return this.current.sizeFormatted || ''; },
                     get renderedContent() { return this.current.renderedContent || ''; },
                     get highlightedContent() { return this.current.highlightedContent || ''; },
+                    get sanitizedHtml() { return this.current.sanitizedHtml || ''; },
                     get stackDepth() { return this.stack.length; },
 
                     async open(filePath) {
@@ -82,11 +120,16 @@
                             content: '',
                             error: null,
                             isMarkdown: false,
+                            isHtml: false,
                             sizeFormatted: '',
                             renderedContent: '',
                             highlightedContent: '',
+                            sanitizedHtml: '',
                         };
                         this.stack.push(entry);
+
+                        // Push history state for back button support
+                        history.pushState({ filePreview: true, depth: this.stack.length }, '');
 
                         try {
                             if (window.debugLog) debugLog('filePreview: fetching file content');
@@ -127,9 +170,26 @@
                                 updatedEntry.filename = data.filename;
                                 updatedEntry.sizeFormatted = data.size_formatted;
                                 updatedEntry.isMarkdown = data.is_markdown;
+                                updatedEntry.isHtml = data.is_html || false;
 
-                                // Render content with linkified file paths
-                                if (updatedEntry.isMarkdown) {
+                                // Render content based on type
+                                if (updatedEntry.isHtml) {
+                                    // Sanitize HTML for safe rendering in iframe
+                                    let sanitized = DOMPurify.sanitize(updatedEntry.content, {
+                                        WHOLE_DOCUMENT: true,
+                                        ADD_TAGS: ['style', 'link', 'base'],
+                                        ADD_ATTR: ['target'],
+                                    });
+                                    // Inject <base target="_blank"> so all links open in new tabs
+                                    if (sanitized.includes('<head>')) {
+                                        sanitized = sanitized.replace('<head>', '<head><base target="_blank">');
+                                    } else if (sanitized.includes('<head ')) {
+                                        sanitized = sanitized.replace(/<head([^>]*)>/, '<head$1><base target="_blank">');
+                                    } else {
+                                        sanitized = '<base target="_blank">' + sanitized;
+                                    }
+                                    updatedEntry.sanitizedHtml = sanitized;
+                                } else if (updatedEntry.isMarkdown) {
                                     let html = marked.parse(updatedEntry.content);
                                     html = window.linkifyFilePaths(html);
                                     updatedEntry.renderedContent = DOMPurify.sanitize(html);
@@ -161,23 +221,31 @@
                         }
                     },
 
-                    close() {
-                        // Cancel editing if active
+                    // Internal: pop one item from the stack
+                    _closeStack() {
                         if (this.editing) {
                             this.cancelEditing();
                         }
-                        // Pop the stack - if more items remain, show the previous file
                         this.stack.pop();
                         this.copied = false;
-                        if (window.debugLog) debugLog('filePreview.close()', { remainingStack: this.stack.length });
+                        if (window.debugLog) debugLog('filePreview._closeStack()', { remainingStack: this.stack.length });
                     },
 
+                    // Close one preview (X button, Escape key, or back button via popstate)
+                    close() {
+                        if (this.stack.length === 0) return;
+                        this._closeStack();
+                    },
+
+                    // Close all previews (backdrop click)
                     closeAll() {
+                        if (this.stack.length === 0) return;
                         if (this.editing) {
                             this.cancelEditing();
                         }
                         this.stack = [];
                         this.copied = false;
+                        if (window.debugLog) debugLog('filePreview.closeAll()');
                     },
 
                     async copyContent() {
@@ -280,6 +348,8 @@
 
             // Global helper for opening file preview
             window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
+
+            // Note: filePreview.init() is auto-called by Alpine when the store is registered
 
             // File attachments store for managing uploaded files in chat
             Alpine.store('attachments', {
@@ -1061,6 +1131,11 @@
 
                     // Handle browser back/forward navigation
                     window.addEventListener('popstate', (event) => {
+                        // Ignore filePreview history states (handled by filePreview store)
+                        if (event.state?.filePreview) {
+                            return;
+                        }
+
                         // Check for turn parameter in URL
                         const urlParams = new URLSearchParams(window.location.search);
                         const turnParam = urlParams.get('turn');
