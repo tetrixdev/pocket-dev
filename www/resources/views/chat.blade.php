@@ -2522,6 +2522,24 @@
                     const msgModel = dbMsg.model || this.model;
                     const msgCost = dbMsg.cost || null;
 
+                    // Handle compaction messages specially
+                    if (dbMsg.role === 'compaction') {
+                        const preTokens = content?.pre_tokens;
+                        const preTokensDisplay = preTokens != null ? preTokens.toLocaleString() : 'unknown';
+                        result.push({
+                            id: 'msg-' + Date.now() + '-' + Math.random(),
+                            role: 'compaction',
+                            content: content?.summary || '',
+                            preTokens: preTokens,
+                            preTokensDisplay: preTokensDisplay,
+                            trigger: content?.trigger ?? 'auto',
+                            timestamp: dbMsg.created_at,
+                            collapsed: true,
+                            turn_number: dbMsg.turn_number
+                        });
+                        return result;
+                    }
+
                     if (typeof content === 'string') {
                         result.push({
                             id: 'msg-' + Date.now() + '-' + Math.random(),
@@ -2686,6 +2704,24 @@
 
                     // Use stored cost from server (no client-side calculation)
                     const msgCost = dbMsg.cost || null;
+
+                    // Handle compaction messages specially
+                    if (dbMsg.role === 'compaction') {
+                        const preTokens = content?.pre_tokens;
+                        const preTokensDisplay = preTokens != null ? preTokens.toLocaleString() : 'unknown';
+                        this.messages.push({
+                            id: 'msg-' + Date.now() + '-' + Math.random(),
+                            role: 'compaction',
+                            content: content?.summary || '',
+                            preTokens: preTokens,
+                            preTokensDisplay: preTokensDisplay,
+                            trigger: content?.trigger ?? 'auto',
+                            timestamp: dbMsg.created_at,
+                            collapsed: true,
+                            turn_number: dbMsg.turn_number
+                        });
+                        return;
+                    }
 
                     if (typeof content === 'string') {
                         this.messages.push({
