@@ -164,7 +164,10 @@
                         <div x-data="{
                                 containerWidth: 0,
                                 iframeWidth: 700,
-                                get scale() { return Math.min(1, this.containerWidth / this.iframeWidth); }
+                                get scale() {
+                                    if (this.containerWidth <= 0) return 1;
+                                    return Math.min(1, this.containerWidth / this.iframeWidth);
+                                }
                              }"
                              x-init="containerWidth = $el.offsetWidth; new ResizeObserver(entries => containerWidth = entries[0].contentRect.width).observe($el)"
                              class="w-full h-full overflow-hidden">

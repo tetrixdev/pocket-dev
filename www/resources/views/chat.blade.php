@@ -180,8 +180,11 @@
                                         ADD_TAGS: ['style', 'link', 'base'],
                                         ADD_ATTR: ['target'],
                                     });
-                                    // Inject <base target="_blank"> so all links open in new tabs
-                                    if (sanitized.includes('<head>')) {
+                                    // Inject target="_blank" for links - preserve existing <base href> if present
+                                    if (/<base\s[^>]*href=/i.test(sanitized)) {
+                                        // Existing base tag with href - add target attribute to it
+                                        sanitized = sanitized.replace(/<base(\s[^>]*)(href="[^"]*")([^>]*)>/i, '<base$1$2$3 target="_blank">');
+                                    } else if (sanitized.includes('<head>')) {
                                         sanitized = sanitized.replace('<head>', '<head><base target="_blank">');
                                     } else if (sanitized.includes('<head ')) {
                                         sanitized = sanitized.replace(/<head([^>]*)>/, '<head$1><base target="_blank">');
@@ -231,21 +234,39 @@
                         if (window.debugLog) debugLog('filePreview._closeStack()', { remainingStack: this.stack.length });
                     },
 
-                    // Close one preview (X button, Escape key, or back button via popstate)
+                    // Close one preview (X button, Escape key)
+                    // Uses history.back() to keep browser history in sync
                     close() {
+                        if (this.stack.length === 0) return;
+                        if (history.state?.filePreview) {
+                            // Let popstate handler do the actual close
+                            history.back();
+                            return;
+                        }
+                        this._closeStack();
+                    },
+
+                    // Close triggered by popstate (back button) - don't manipulate history
+                    closeFromHistory() {
                         if (this.stack.length === 0) return;
                         this._closeStack();
                     },
 
                     // Close all previews (backdrop click)
+                    // Uses history.go() to clear all preview history entries
                     closeAll() {
                         if (this.stack.length === 0) return;
+                        const depth = this.stack.length;
                         if (this.editing) {
                             this.cancelEditing();
                         }
                         this.stack = [];
                         this.copied = false;
                         if (window.debugLog) debugLog('filePreview.closeAll()');
+                        if (history.state?.filePreview) {
+                            // Go back through all preview history entries
+                            history.go(-depth);
+                        }
                     },
 
                     async copyContent() {
