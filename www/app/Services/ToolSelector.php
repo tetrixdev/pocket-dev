@@ -751,9 +751,9 @@ GUIDE;
             return null;
         }
 
-        $allSkills = [];
+        // Gather skills grouped by schema
+        $skillsBySchema = [];
 
-        // Gather skills from all available schemas
         foreach ($schemas as $schema) {
             $fullSchemaName = $schema->getFullSchemaName();
 
@@ -764,11 +764,10 @@ GUIDE;
                     ->orderBy('name')
                     ->get();
 
-                foreach ($skills as $skill) {
-                    $allSkills[] = [
-                        'name' => $skill->name,
-                        'when_to_use' => $skill->when_to_use,
-                        'schema' => $schema->schema_name,
+                if ($skills->isNotEmpty()) {
+                    $skillsBySchema[$schema->schema_name] = [
+                        'schema' => $schema,
+                        'skills' => $skills,
                     ];
                 }
             } catch (\Illuminate\Database\QueryException $e) {
@@ -786,45 +785,70 @@ GUIDE;
             }
         }
 
-        if (empty($allSkills)) {
+        if (empty($skillsBySchema)) {
             return null;
         }
 
-        // Build skill children
-        $skillChildren = [];
-        foreach ($allSkills as $skill) {
-            $whenToUse = $skill['when_to_use'] ?? '(not specified)';
-            $skillContent = "- name: {$skill['name']}, when_to_use: {$whenToUse}";
+        // Build schema children, each containing skill children
+        $schemaChildren = [];
+        foreach ($skillsBySchema as $schemaName => $data) {
+            $schema = $data['schema'];
+            $skills = $data['skills'];
+            $fullSchemaName = $schema->getFullSchemaName();
 
-            $skillChildren[] = [
-                'title' => $skill['name'],
-                'content' => $skillContent,
-                'source' => "{$skill['schema']}.skills",
+            // Build skill children for this schema
+            $skillChildren = [];
+            foreach ($skills as $skill) {
+                $whenToUse = $skill->when_to_use ?? '(not specified)';
+                $skillContent = "- name: {$skill->name}, when_to_use: {$whenToUse}";
+
+                $skillChildren[] = [
+                    'title' => $skill->name,
+                    'content' => $skillContent,
+                    'source' => "{$schemaName}.skills",
+                    'collapsed' => true,
+                    'chars' => strlen($skillContent),
+                    'estimated_tokens' => (int) ceil(strlen($skillContent) / 4),
+                    'children' => [],
+                ];
+            }
+
+            // Build schema group with example command
+            $schemaContent = "**Schema `{$schemaName}`** (query with `--schema={$schemaName}`):";
+
+            $childChars = array_sum(array_column($skillChildren, 'chars'));
+            $childTokens = array_sum(array_column($skillChildren, 'estimated_tokens'));
+
+            $schemaChildren[] = [
+                'title' => "Schema: {$schemaName}",
+                'content' => $schemaContent,
+                'source' => $fullSchemaName,
                 'collapsed' => true,
-                'chars' => strlen($skillContent),
-                'estimated_tokens' => (int) ceil(strlen($skillContent) / 4),
-                'children' => [],
+                'chars' => strlen($schemaContent) + $childChars,
+                'estimated_tokens' => (int) ceil(strlen($schemaContent) / 4) + $childTokens,
+                'children' => $skillChildren,
             ];
         }
 
-        // Build intro content (skill list comes from children, not duplicated here)
+        // Build intro content
         $introContent = "# Skills\n\n";
         $introContent .= "PocketDev Skills should **always** be retrieved by querying the `skills` table in memory, matching by exact `name`.\n";
-        $introContent .= "Example: `SELECT instructions FROM {schema}.skills WHERE name = 'skill-name'`\n\n";
+        $introContent .= "Use the Bash tool to run the artisan command:\n";
+        $introContent .= "```bash\nphp artisan memory:query --schema=<schema> --sql=\"SELECT instructions FROM memory_<schema>.skills WHERE name = 'skill-name'\"\n```\n\n";
+        $introContent .= "Replace `<schema>` with the schema name indicated for each skill below.\n\n";
         $introContent .= "Available skills:";
 
-        $childChars = array_sum(array_column($skillChildren, 'chars'));
-        $childTokens = array_sum(array_column($skillChildren, 'estimated_tokens'));
-        $totalTokens = (int) ceil(strlen($introContent) / 4) + $childTokens;
+        $totalChars = strlen($introContent) + array_sum(array_column($schemaChildren, 'chars'));
+        $totalTokens = (int) ceil(strlen($introContent) / 4) + array_sum(array_column($schemaChildren, 'estimated_tokens'));
 
         return [
             'title' => 'Skills',
             'content' => $introContent,
             'source' => 'Dynamic (from memory schemas)',
             'collapsed' => true,
-            'chars' => strlen($introContent) + $childChars,
+            'chars' => $totalChars,
             'estimated_tokens' => $totalTokens,
-            'children' => $skillChildren,
+            'children' => $schemaChildren,
         ];
     }
 
