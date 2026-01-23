@@ -2483,6 +2483,9 @@
                             const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
                             const fromIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
 
+                            // Seed in-memory tracker so timeout retries use the correct index
+                            this.lastEventIndex = fromIndex;
+
                             console.log('[Stream] Reconnecting after refresh:', { uuid, fromIndex, eventCount: data.event_count });
 
                             // Connect to stream events from last known position
@@ -2513,6 +2516,12 @@
                             textMsgIndex: this._streamState.textMsgIndex,
                             toolMsgIndex: this._streamState.toolMsgIndex,
                             textContent: this._streamState.textContent,
+                            // Tool state for mid-tool refresh recovery
+                            toolInput: this._streamState.toolInput,
+                            toolInProgress: this._streamState.toolInProgress,
+                            waitingForToolResults: Array.from(this._streamState.waitingForToolResults || []), // Set → Array for JSON
+                            abortPending: this._streamState.abortPending,
+                            abortSkipSync: this._streamState.abortSkipSync,
                             startedAt: this._streamState.startedAt,
                         };
                         sessionStorage.setItem(`stream_state_${uuid}`, JSON.stringify(state));
@@ -2543,6 +2552,22 @@
                             }
                             if (state.textContent !== undefined) {
                                 this._streamState.textContent = state.textContent;
+                            }
+                            // Restore tool state for mid-tool refresh recovery
+                            if (state.toolInput !== undefined) {
+                                this._streamState.toolInput = state.toolInput;
+                            }
+                            if (state.toolInProgress !== undefined) {
+                                this._streamState.toolInProgress = state.toolInProgress;
+                            }
+                            if (Array.isArray(state.waitingForToolResults)) {
+                                this._streamState.waitingForToolResults = new Set(state.waitingForToolResults);
+                            }
+                            if (state.abortPending !== undefined) {
+                                this._streamState.abortPending = state.abortPending;
+                            }
+                            if (state.abortSkipSync !== undefined) {
+                                this._streamState.abortSkipSync = state.abortSkipSync;
                             }
                             if (state.startedAt) {
                                 this._streamState.startedAt = state.startedAt;
