@@ -3548,6 +3548,8 @@
                                         content: block.content
                                     };
                                     this.scrollToBottom();
+                                    // Persist accumulated content for reconnection
+                                    this._saveStreamState(this.currentConversationUuid);
                                 }
                             }
                             break;
@@ -3613,6 +3615,8 @@
                                     content: state.textContent
                                 };
                                 this.scrollToBottom();
+                                // Persist accumulated content for reconnection
+                                this._saveStreamState(this.currentConversationUuid);
                             }
                             break;
 
@@ -3666,6 +3670,8 @@
                                     content: state.toolInput
                                 };
                                 this.scrollToBottom();
+                                // Persist accumulated content for reconnection
+                                this._saveStreamState(this.currentConversationUuid);
                             }
                             break;
 
@@ -3701,6 +3707,8 @@
                             } else {
                                 console.warn('tool_result event missing tool_id in metadata');
                             }
+                            // Persist state after tool result (captures waitingForToolResults change)
+                            this._saveStreamState(this.currentConversationUuid);
                             // If abort was deferred and all tools have results, trigger it now
                             // Use skipSync=true since CLI already has the complete tool_use + tool_result
                             if (state.abortPending && state.waitingForToolResults.size === 0 && !state.toolInProgress) {
