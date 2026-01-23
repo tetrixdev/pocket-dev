@@ -1037,6 +1037,7 @@
 
                 // Stream reconnection state
                 lastEventIndex: 0,
+                lastEventId: null,  // Unique event ID for verification
                 streamAbortController: null,
                 _streamConnectNonce: 0,
                 _streamRetryTimeoutId: null,
@@ -2475,11 +2476,92 @@
                         const data = await response.json();
 
                         if (data.is_streaming) {
-                            // Connect to stream events from the beginning to get buffered events
-                            await this.connectToStreamEvents(0);
+                            // Restore stream state from sessionStorage for proper event rendering
+                            this._restoreStreamState(uuid);
+
+                            // Get last known event index from sessionStorage (survives page refresh)
+                            const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
+                            const fromIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
+
+                            console.log('[Stream] Reconnecting after refresh:', { uuid, fromIndex, eventCount: data.event_count });
+
+                            // Connect to stream events from last known position
+                            await this.connectToStreamEvents(fromIndex);
+                        } else {
+                            // Stream is not active, clear any stale sessionStorage
+                            this._clearStreamStorage(uuid);
                         }
                     } catch (err) {
                         // No active stream, that's fine
+                        console.debug('[Stream] No active stream for reconnection:', err.message);
+                    }
+                },
+
+                // Save stream state to sessionStorage for persistence across refresh
+                _saveStreamState(uuid) {
+                    if (!uuid) return;
+                    try {
+                        const state = {
+                            thinkingBlocks: Object.fromEntries(
+                                Object.entries(this._streamState.thinkingBlocks).map(([k, v]) => [k, {
+                                    msgIndex: v.msgIndex,
+                                    content: v.content,
+                                    complete: v.complete
+                                }])
+                            ),
+                            currentThinkingBlock: this._streamState.currentThinkingBlock,
+                            textMsgIndex: this._streamState.textMsgIndex,
+                            toolMsgIndex: this._streamState.toolMsgIndex,
+                            textContent: this._streamState.textContent,
+                            startedAt: this._streamState.startedAt,
+                        };
+                        sessionStorage.setItem(`stream_state_${uuid}`, JSON.stringify(state));
+                    } catch (e) {
+                        console.warn('[Stream] Failed to save stream state:', e);
+                    }
+                },
+
+                // Restore stream state from sessionStorage
+                _restoreStreamState(uuid) {
+                    if (!uuid) return;
+                    try {
+                        const saved = sessionStorage.getItem(`stream_state_${uuid}`);
+                        if (saved) {
+                            const state = JSON.parse(saved);
+                            // Restore relevant state properties
+                            if (state.thinkingBlocks) {
+                                this._streamState.thinkingBlocks = state.thinkingBlocks;
+                            }
+                            if (state.currentThinkingBlock !== undefined) {
+                                this._streamState.currentThinkingBlock = state.currentThinkingBlock;
+                            }
+                            if (state.textMsgIndex !== undefined) {
+                                this._streamState.textMsgIndex = state.textMsgIndex;
+                            }
+                            if (state.toolMsgIndex !== undefined) {
+                                this._streamState.toolMsgIndex = state.toolMsgIndex;
+                            }
+                            if (state.textContent !== undefined) {
+                                this._streamState.textContent = state.textContent;
+                            }
+                            if (state.startedAt) {
+                                this._streamState.startedAt = state.startedAt;
+                            }
+                            console.log('[Stream] Restored stream state from sessionStorage:', state);
+                        }
+                    } catch (e) {
+                        console.warn('[Stream] Failed to restore stream state:', e);
+                    }
+                },
+
+                // Clear stream-related sessionStorage for a conversation
+                _clearStreamStorage(uuid) {
+                    if (!uuid) return;
+                    try {
+                        sessionStorage.removeItem(`stream_index_${uuid}`);
+                        sessionStorage.removeItem(`stream_state_${uuid}`);
+                    } catch (e) {
+                        // sessionStorage might not be available
                     }
                 },
 
@@ -3145,6 +3227,17 @@
                     // Increment nonce to invalidate any pending reconnection attempts
                     const myNonce = ++this._streamConnectNonce;
 
+                    // Debug logging for connection state tracking
+                    console.log('[Stream] connectToStreamEvents:', {
+                        uuid: this.currentConversationUuid,
+                        fromIndex,
+                        retryCount,
+                        nonce: myNonce,
+                        previousNonce: myNonce - 1,
+                        lastEventIndex: this.lastEventIndex,
+                        lastEventId: this.lastEventId,
+                    });
+
                     this.isStreaming = true;
                     this.currentConversationStatus = 'processing'; // Update status badge
 
@@ -3164,6 +3257,10 @@
 
                         // Check if we've been superseded by a newer connection attempt
                         if (myNonce !== this._streamConnectNonce) {
+                            console.log('[Stream] Connection superseded by newer attempt:', {
+                                myNonce,
+                                currentNonce: this._streamConnectNonce,
+                            });
                             return;
                         }
 
@@ -3185,9 +3282,18 @@
                                 try {
                                     const event = JSON.parse(line.substring(6));
 
-                                    // Track event index for reconnection
+                                    // Track event index and ID for reconnection (persist to sessionStorage for refresh survival)
                                     if (event.index !== undefined) {
                                         this.lastEventIndex = event.index + 1;
+                                        try {
+                                            sessionStorage.setItem(`stream_index_${this.currentConversationUuid}`, this.lastEventIndex);
+                                        } catch (e) {
+                                            // sessionStorage might not be available
+                                        }
+                                    }
+                                    // Track unique event ID for verification
+                                    if (event.event_id) {
+                                        this.lastEventId = event.event_id;
                                     }
 
                                     // Handle stream status events
@@ -3215,9 +3321,11 @@
                                             this.currentConversationStatus = event.status === 'failed' ? 'failed' : 'idle';
                                             // Prevent reconnection for a short period
                                             this._justCompletedStream = true;
+                                            // Clear sessionStorage - stream is done, no longer need reconnection state
+                                            this._clearStreamStorage(this.currentConversationUuid);
                                             await this.fetchConversations();
-                                            // Clear flag after a delay
-                                            setTimeout(() => { this._justCompletedStream = false; }, 1000);
+                                            // Clear flag after a delay (increased from 1s to 3s for safety)
+                                            setTimeout(() => { this._justCompletedStream = false; }, 3000);
                                         }
                                         continue;
                                     }
@@ -3400,6 +3508,8 @@
                                 collapsed: false
                             });
                             this.scrollToBottom();
+                            // Persist stream state for reconnection
+                            this._saveStreamState(this.currentConversationUuid);
                             break;
 
                         case 'thinking_delta':
@@ -3466,6 +3576,8 @@
                                 collapsed: false
                             });
                             this.scrollToBottom();
+                            // Persist stream state for reconnection
+                            this._saveStreamState(this.currentConversationUuid);
                             break;
 
                         case 'text_delta':
@@ -3516,6 +3628,8 @@
                                 collapsed: false
                             });
                             this.scrollToBottom();
+                            // Persist stream state for reconnection
+                            this._saveStreamState(this.currentConversationUuid);
                             break;
 
                         case 'tool_use_delta':

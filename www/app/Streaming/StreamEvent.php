@@ -28,12 +28,26 @@ class StreamEvent
     public const CONTEXT_COMPACTED = 'context_compacted';
     public const COMPACTION_SUMMARY = 'compaction_summary';
 
+    /**
+     * Unique event ID for reliable event tracking.
+     * Auto-generated if not provided.
+     */
+    public readonly string $eventId;
+
     public function __construct(
         public string $type,
         public ?int $blockIndex = null,
         public ?string $content = null,
         public ?array $metadata = null,
-    ) {}
+        ?string $eventId = null,
+    ) {
+        // Generate unique event ID if not provided
+        // Format: evt_{timestamp_microseconds}_{random_hex}
+        $this->eventId = $eventId ?? sprintf('evt_%s_%s',
+            str_replace('.', '', (string) microtime(true)),
+            bin2hex(random_bytes(4))
+        );
+    }
 
     public static function thinkingStart(int $blockIndex): self
     {
@@ -184,6 +198,7 @@ class StreamEvent
             'block_index' => $this->blockIndex,
             'content' => $this->content,
             'metadata' => $this->metadata,
+            'event_id' => $this->eventId,
         ], fn($v) => $v !== null);
     }
 
