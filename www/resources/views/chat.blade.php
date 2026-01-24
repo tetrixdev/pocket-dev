@@ -2641,7 +2641,16 @@
                 // Used when replaying all events from index 0 after a page refresh
                 _resetStreamStateForReplay() {
                     // Preserve startedAt for accurate elapsed time display
-                    const savedStartedAt = this._streamState.startedAt;
+                    // On page refresh, memory is fresh (no startedAt), so read from sessionStorage
+                    const savedStartedAt = this._streamState.startedAt ?? (() => {
+                        if (!this.currentConversationUuid) return null;
+                        try {
+                            const saved = sessionStorage.getItem(`stream_state_${this.currentConversationUuid}`);
+                            return saved ? JSON.parse(saved).startedAt : null;
+                        } catch (_) {
+                            return null;
+                        }
+                    })();
 
                     this._streamState = {
                         thinkingBlocks: {},
