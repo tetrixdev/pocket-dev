@@ -2522,6 +2522,12 @@
                             waitingForToolResults: Array.from(this._streamState.waitingForToolResults || []), // Set → Array for JSON
                             abortPending: this._streamState.abortPending,
                             abortSkipSync: this._streamState.abortSkipSync,
+                            // Per-turn cost/token counters for usage display
+                            turnCost: this._streamState.turnCost,
+                            turnInputTokens: this._streamState.turnInputTokens,
+                            turnOutputTokens: this._streamState.turnOutputTokens,
+                            turnCacheCreationTokens: this._streamState.turnCacheCreationTokens,
+                            turnCacheReadTokens: this._streamState.turnCacheReadTokens,
                             startedAt: this._streamState.startedAt,
                         };
                         sessionStorage.setItem(`stream_state_${uuid}`, JSON.stringify(state));
@@ -2568,6 +2574,22 @@
                             }
                             if (state.abortSkipSync !== undefined) {
                                 this._streamState.abortSkipSync = state.abortSkipSync;
+                            }
+                            // Restore per-turn cost/token counters
+                            if (state.turnCost !== undefined) {
+                                this._streamState.turnCost = state.turnCost;
+                            }
+                            if (state.turnInputTokens !== undefined) {
+                                this._streamState.turnInputTokens = state.turnInputTokens;
+                            }
+                            if (state.turnOutputTokens !== undefined) {
+                                this._streamState.turnOutputTokens = state.turnOutputTokens;
+                            }
+                            if (state.turnCacheCreationTokens !== undefined) {
+                                this._streamState.turnCacheCreationTokens = state.turnCacheCreationTokens;
+                            }
+                            if (state.turnCacheReadTokens !== undefined) {
+                                this._streamState.turnCacheReadTokens = state.turnCacheReadTokens;
                             }
                             if (state.startedAt) {
                                 this._streamState.startedAt = state.startedAt;
