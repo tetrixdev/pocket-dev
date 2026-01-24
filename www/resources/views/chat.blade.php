@@ -1037,6 +1037,7 @@
 
                 // Stream reconnection state
                 lastEventIndex: 0,
+                lastEventId: null,  // Unique event ID for verification
                 streamAbortController: null,
                 _streamConnectNonce: 0,
                 _streamRetryTimeoutId: null,
@@ -2475,12 +2476,204 @@
                         const data = await response.json();
 
                         if (data.is_streaming) {
-                            // Connect to stream events from the beginning to get buffered events
-                            await this.connectToStreamEvents(0);
+                            // Detect: page refresh vs timeout reconnect
+                            // Page refresh: messages array has no streaming content (only DB messages)
+                            // Timeout reconnect: messages array still has streaming content in memory
+                            const isPageRefresh = !this._hasActiveStreamingContent();
+
+                            let fromIndex;
+                            if (isPageRefresh) {
+                                // PAGE REFRESH: Fresh page load during active stream
+                                // Reset state and replay ALL events from 0 to rebuild UI
+                                this._resetStreamStateForReplay();
+                                fromIndex = 0;
+                                console.log('[Stream] Page refresh reconnect - replaying all events from 0');
+                            } else {
+                                // TIMEOUT RECONNECT: Same session, connection dropped
+                                // Restore state and continue from last index
+                                this._restoreStreamState(uuid);
+                                const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
+                                fromIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
+                                console.log('[Stream] Timeout reconnect:', { uuid, fromIndex, eventCount: data.event_count });
+                            }
+
+                            // Seed in-memory tracker so timeout retries use the correct index
+                            this.lastEventIndex = fromIndex;
+
+                            // Connect to stream events
+                            await this.connectToStreamEvents(fromIndex);
+                        } else {
+                            // Stream is not active, clear any stale sessionStorage
+                            this._clearStreamStorage(uuid);
                         }
                     } catch (err) {
                         // No active stream, that's fine
+                        console.debug('[Stream] No active stream for reconnection:', err.message);
                     }
+                },
+
+                // Save stream state to sessionStorage for persistence across refresh
+                _saveStreamState(uuid) {
+                    if (!uuid) return;
+                    try {
+                        const state = {
+                            thinkingBlocks: Object.fromEntries(
+                                Object.entries(this._streamState.thinkingBlocks).map(([k, v]) => [k, {
+                                    msgIndex: v.msgIndex,
+                                    content: v.content,
+                                    complete: v.complete
+                                }])
+                            ),
+                            currentThinkingBlock: this._streamState.currentThinkingBlock,
+                            textMsgIndex: this._streamState.textMsgIndex,
+                            toolMsgIndex: this._streamState.toolMsgIndex,
+                            textContent: this._streamState.textContent,
+                            // Tool state for mid-tool refresh recovery
+                            toolInput: this._streamState.toolInput,
+                            toolInProgress: this._streamState.toolInProgress,
+                            waitingForToolResults: Array.from(this._streamState.waitingForToolResults || []), // Set → Array for JSON
+                            abortPending: this._streamState.abortPending,
+                            abortSkipSync: this._streamState.abortSkipSync,
+                            // Per-turn cost/token counters for usage display
+                            turnCost: this._streamState.turnCost,
+                            turnInputTokens: this._streamState.turnInputTokens,
+                            turnOutputTokens: this._streamState.turnOutputTokens,
+                            turnCacheCreationTokens: this._streamState.turnCacheCreationTokens,
+                            turnCacheReadTokens: this._streamState.turnCacheReadTokens,
+                            startedAt: this._streamState.startedAt,
+                        };
+                        sessionStorage.setItem(`stream_state_${uuid}`, JSON.stringify(state));
+                    } catch (e) {
+                        console.warn('[Stream] Failed to save stream state:', e);
+                    }
+                },
+
+                // Restore stream state from sessionStorage
+                _restoreStreamState(uuid) {
+                    if (!uuid) return;
+                    try {
+                        const saved = sessionStorage.getItem(`stream_state_${uuid}`);
+                        if (saved) {
+                            const state = JSON.parse(saved);
+                            // Restore relevant state properties
+                            if (state.thinkingBlocks) {
+                                this._streamState.thinkingBlocks = state.thinkingBlocks;
+                            }
+                            if (state.currentThinkingBlock !== undefined) {
+                                this._streamState.currentThinkingBlock = state.currentThinkingBlock;
+                            }
+                            if (state.textMsgIndex !== undefined) {
+                                this._streamState.textMsgIndex = state.textMsgIndex;
+                            }
+                            if (state.toolMsgIndex !== undefined) {
+                                this._streamState.toolMsgIndex = state.toolMsgIndex;
+                            }
+                            if (state.textContent !== undefined) {
+                                this._streamState.textContent = state.textContent;
+                            }
+                            // Restore tool state for mid-tool refresh recovery
+                            if (state.toolInput !== undefined) {
+                                this._streamState.toolInput = state.toolInput;
+                            }
+                            if (state.toolInProgress !== undefined) {
+                                this._streamState.toolInProgress = state.toolInProgress;
+                            }
+                            if (Array.isArray(state.waitingForToolResults)) {
+                                this._streamState.waitingForToolResults = new Set(state.waitingForToolResults);
+                            }
+                            if (state.abortPending !== undefined) {
+                                this._streamState.abortPending = state.abortPending;
+                            }
+                            if (state.abortSkipSync !== undefined) {
+                                this._streamState.abortSkipSync = state.abortSkipSync;
+                            }
+                            // Restore per-turn cost/token counters
+                            if (state.turnCost !== undefined) {
+                                this._streamState.turnCost = state.turnCost;
+                            }
+                            if (state.turnInputTokens !== undefined) {
+                                this._streamState.turnInputTokens = state.turnInputTokens;
+                            }
+                            if (state.turnOutputTokens !== undefined) {
+                                this._streamState.turnOutputTokens = state.turnOutputTokens;
+                            }
+                            if (state.turnCacheCreationTokens !== undefined) {
+                                this._streamState.turnCacheCreationTokens = state.turnCacheCreationTokens;
+                            }
+                            if (state.turnCacheReadTokens !== undefined) {
+                                this._streamState.turnCacheReadTokens = state.turnCacheReadTokens;
+                            }
+                            if (state.startedAt) {
+                                this._streamState.startedAt = state.startedAt;
+                            }
+                            console.log('[Stream] Restored stream state from sessionStorage:', state);
+                        }
+                    } catch (e) {
+                        console.warn('[Stream] Failed to restore stream state:', e);
+                    }
+                },
+
+                // Clear stream-related sessionStorage for a conversation
+                _clearStreamStorage(uuid) {
+                    if (!uuid) return;
+                    try {
+                        sessionStorage.removeItem(`stream_index_${uuid}`);
+                        sessionStorage.removeItem(`stream_state_${uuid}`);
+                    } catch (e) {
+                        // sessionStorage might not be available
+                    }
+                },
+
+                // Check if messages array has content from active streaming
+                // Used to distinguish page refresh (no streaming content) from timeout reconnect (has streaming content)
+                _hasActiveStreamingContent() {
+                    // Streaming messages have client-generated IDs: msg-{timestamp}-thinking, msg-{timestamp}-text, msg-{timestamp}-tool
+                    // DB-loaded messages have different ID patterns (numeric or UUID from database)
+                    return this.messages.some(msg => {
+                        if (msg.id && typeof msg.id === 'string') {
+                            return /^msg-\d+-(thinking|text|tool)/.test(msg.id);
+                        }
+                        return false;
+                    });
+                },
+
+                // Reset stream state for clean replay on page refresh
+                // Used when replaying all events from index 0 after a page refresh
+                _resetStreamStateForReplay() {
+                    // Preserve startedAt for accurate elapsed time display
+                    // On page refresh, memory is fresh (no startedAt), so read from sessionStorage
+                    const savedStartedAt = this._streamState.startedAt ?? (() => {
+                        if (!this.currentConversationUuid) return null;
+                        try {
+                            const saved = sessionStorage.getItem(`stream_state_${this.currentConversationUuid}`);
+                            return saved ? JSON.parse(saved).startedAt : null;
+                        } catch (_) {
+                            return null;
+                        }
+                    })();
+
+                    this._streamState = {
+                        thinkingBlocks: {},
+                        currentThinkingBlock: -1,
+                        textMsgIndex: -1,
+                        toolMsgIndex: -1,
+                        textContent: '',
+                        toolInput: '',
+                        turnCost: 0,
+                        turnInputTokens: 0,
+                        turnOutputTokens: 0,
+                        turnCacheCreationTokens: 0,
+                        turnCacheReadTokens: 0,
+                        toolInProgress: false,
+                        waitingForToolResults: new Set(),
+                        abortPending: false,
+                        abortSkipSync: false,
+                        startedAt: savedStartedAt,
+                    };
+
+                    // Reset event tracking for fresh replay
+                    this.lastEventIndex = 0;
+                    this.lastEventId = null;
                 },
 
                 /**
@@ -3145,6 +3338,17 @@
                     // Increment nonce to invalidate any pending reconnection attempts
                     const myNonce = ++this._streamConnectNonce;
 
+                    // Debug logging for connection state tracking
+                    console.log('[Stream] connectToStreamEvents:', {
+                        uuid: this.currentConversationUuid,
+                        fromIndex,
+                        retryCount,
+                        nonce: myNonce,
+                        previousNonce: myNonce - 1,
+                        lastEventIndex: this.lastEventIndex,
+                        lastEventId: this.lastEventId,
+                    });
+
                     this.isStreaming = true;
                     this.currentConversationStatus = 'processing'; // Update status badge
 
@@ -3164,6 +3368,10 @@
 
                         // Check if we've been superseded by a newer connection attempt
                         if (myNonce !== this._streamConnectNonce) {
+                            console.log('[Stream] Connection superseded by newer attempt:', {
+                                myNonce,
+                                currentNonce: this._streamConnectNonce,
+                            });
                             return;
                         }
 
@@ -3185,9 +3393,18 @@
                                 try {
                                     const event = JSON.parse(line.substring(6));
 
-                                    // Track event index for reconnection
+                                    // Track event index and ID for reconnection (persist to sessionStorage for refresh survival)
                                     if (event.index !== undefined) {
                                         this.lastEventIndex = event.index + 1;
+                                        try {
+                                            sessionStorage.setItem(`stream_index_${this.currentConversationUuid}`, this.lastEventIndex);
+                                        } catch (e) {
+                                            // sessionStorage might not be available
+                                        }
+                                    }
+                                    // Track unique event ID for verification
+                                    if (event.event_id) {
+                                        this.lastEventId = event.event_id;
                                     }
 
                                     // Handle stream status events
@@ -3215,9 +3432,11 @@
                                             this.currentConversationStatus = event.status === 'failed' ? 'failed' : 'idle';
                                             // Prevent reconnection for a short period
                                             this._justCompletedStream = true;
+                                            // Clear sessionStorage - stream is done, no longer need reconnection state
+                                            this._clearStreamStorage(this.currentConversationUuid);
                                             await this.fetchConversations();
-                                            // Clear flag after a delay
-                                            setTimeout(() => { this._justCompletedStream = false; }, 1000);
+                                            // Clear flag after a delay (increased from 1s to 3s for safety)
+                                            setTimeout(() => { this._justCompletedStream = false; }, 3000);
                                         }
                                         continue;
                                     }
@@ -3400,6 +3619,8 @@
                                 collapsed: false
                             });
                             this.scrollToBottom();
+                            // Persist stream state for reconnection
+                            this._saveStreamState(this.currentConversationUuid);
                             break;
 
                         case 'thinking_delta':
@@ -3413,6 +3634,8 @@
                                         content: block.content
                                     };
                                     this.scrollToBottom();
+                                    // Persist accumulated content for reconnection
+                                    this._saveStreamState(this.currentConversationUuid);
                                 }
                             }
                             break;
@@ -3466,6 +3689,8 @@
                                 collapsed: false
                             });
                             this.scrollToBottom();
+                            // Persist stream state for reconnection
+                            this._saveStreamState(this.currentConversationUuid);
                             break;
 
                         case 'text_delta':
@@ -3476,6 +3701,8 @@
                                     content: state.textContent
                                 };
                                 this.scrollToBottom();
+                                // Persist accumulated content for reconnection
+                                this._saveStreamState(this.currentConversationUuid);
                             }
                             break;
 
@@ -3516,6 +3743,8 @@
                                 collapsed: false
                             });
                             this.scrollToBottom();
+                            // Persist stream state for reconnection
+                            this._saveStreamState(this.currentConversationUuid);
                             break;
 
                         case 'tool_use_delta':
@@ -3527,6 +3756,8 @@
                                     content: state.toolInput
                                 };
                                 this.scrollToBottom();
+                                // Persist accumulated content for reconnection
+                                this._saveStreamState(this.currentConversationUuid);
                             }
                             break;
 
@@ -3562,6 +3793,8 @@
                             } else {
                                 console.warn('tool_result event missing tool_id in metadata');
                             }
+                            // Persist state after tool result (captures waitingForToolResults change)
+                            this._saveStreamState(this.currentConversationUuid);
                             // If abort was deferred and all tools have results, trigger it now
                             // Use skipSync=true since CLI already has the complete tool_use + tool_result
                             if (state.abortPending && state.waitingForToolResults.size === 0 && !state.toolInProgress) {
