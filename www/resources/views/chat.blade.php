@@ -2476,19 +2476,31 @@
                         const data = await response.json();
 
                         if (data.is_streaming) {
-                            // Restore stream state from sessionStorage for proper event rendering
-                            this._restoreStreamState(uuid);
+                            // Detect: page refresh vs timeout reconnect
+                            // Page refresh: messages array has no streaming content (only DB messages)
+                            // Timeout reconnect: messages array still has streaming content in memory
+                            const isPageRefresh = !this._hasActiveStreamingContent();
 
-                            // Get last known event index from sessionStorage (survives page refresh)
-                            const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
-                            const fromIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
+                            let fromIndex;
+                            if (isPageRefresh) {
+                                // PAGE REFRESH: Fresh page load during active stream
+                                // Reset state and replay ALL events from 0 to rebuild UI
+                                this._resetStreamStateForReplay();
+                                fromIndex = 0;
+                                console.log('[Stream] Page refresh reconnect - replaying all events from 0');
+                            } else {
+                                // TIMEOUT RECONNECT: Same session, connection dropped
+                                // Restore state and continue from last index
+                                this._restoreStreamState(uuid);
+                                const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
+                                fromIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
+                                console.log('[Stream] Timeout reconnect:', { uuid, fromIndex, eventCount: data.event_count });
+                            }
 
                             // Seed in-memory tracker so timeout retries use the correct index
                             this.lastEventIndex = fromIndex;
 
-                            console.log('[Stream] Reconnecting after refresh:', { uuid, fromIndex, eventCount: data.event_count });
-
-                            // Connect to stream events from last known position
+                            // Connect to stream events
                             await this.connectToStreamEvents(fromIndex);
                         } else {
                             // Stream is not active, clear any stale sessionStorage
@@ -2610,6 +2622,49 @@
                     } catch (e) {
                         // sessionStorage might not be available
                     }
+                },
+
+                // Check if messages array has content from active streaming
+                // Used to distinguish page refresh (no streaming content) from timeout reconnect (has streaming content)
+                _hasActiveStreamingContent() {
+                    // Streaming messages have client-generated IDs: msg-{timestamp}-thinking, msg-{timestamp}-text, msg-{timestamp}-tool
+                    // DB-loaded messages have different ID patterns (numeric or UUID from database)
+                    return this.messages.some(msg => {
+                        if (msg.id && typeof msg.id === 'string') {
+                            return /^msg-\d+-(thinking|text|tool)/.test(msg.id);
+                        }
+                        return false;
+                    });
+                },
+
+                // Reset stream state for clean replay on page refresh
+                // Used when replaying all events from index 0 after a page refresh
+                _resetStreamStateForReplay() {
+                    // Preserve startedAt for accurate elapsed time display
+                    const savedStartedAt = this._streamState.startedAt;
+
+                    this._streamState = {
+                        thinkingBlocks: {},
+                        currentThinkingBlock: -1,
+                        textMsgIndex: -1,
+                        toolMsgIndex: -1,
+                        textContent: '',
+                        toolInput: '',
+                        turnCost: 0,
+                        turnInputTokens: 0,
+                        turnOutputTokens: 0,
+                        turnCacheCreationTokens: 0,
+                        turnCacheReadTokens: 0,
+                        toolInProgress: false,
+                        waitingForToolResults: new Set(),
+                        abortPending: false,
+                        abortSkipSync: false,
+                        startedAt: savedStartedAt,
+                    };
+
+                    // Reset event tracking for fresh replay
+                    this.lastEventIndex = 0;
+                    this.lastEventId = null;
                 },
 
                 /**
