@@ -604,59 +604,82 @@ CLI;
      * Parse a Dockerfile and return its structure including the USER directive location.
      *
      * @param string $dockerfilePath Absolute path to Dockerfile
-     * @return array{content: string, userLine: ?int, lines: array<string>}
+     * @return array{content: string, userLine: ?int, cmdLine: ?int, entrypointLine: ?int, lines: array<string>}
      */
     private function parseDockerfileStructure(string $dockerfilePath): array
     {
         $content = file_get_contents($dockerfilePath);
         if ($content === false) {
-            return ['content' => '', 'userLine' => null, 'lines' => []];
+            return ['content' => '', 'userLine' => null, 'cmdLine' => null, 'entrypointLine' => null, 'lines' => []];
         }
 
         $lines = explode("\n", $content);
         $userLine = null;
+        $cmdLine = null;
+        $entrypointLine = null;
 
         foreach ($lines as $index => $line) {
             $trimmed = trim($line);
             // Match USER directive (case-insensitive)
-            // We want the LAST USER directive (don't break)
+            // We want the LAST of each directive (don't break)
             if (preg_match('/^USER\s+/i', $trimmed)) {
                 $userLine = $index; // 0-indexed
+            }
+            if (preg_match('/^CMD\s+/i', $trimmed)) {
+                $cmdLine = $index;
+            }
+            if (preg_match('/^ENTRYPOINT\s+/i', $trimmed)) {
+                $entrypointLine = $index;
             }
         }
 
         return [
             'content' => $content,
             'userLine' => $userLine,
+            'cmdLine' => $cmdLine,
+            'entrypointLine' => $entrypointLine,
             'lines' => $lines,
         ];
     }
 
     /**
-     * Generate a modified Dockerfile with COPY instructions inserted before the USER directive.
+     * Generate a modified Dockerfile with COPY instructions inserted at an appropriate location.
      *
-     * This allows files to be copied at build time (as root) before switching to the
-     * non-root user, avoiding runtime privilege issues with file descriptors.
+     * Insertion point priority:
+     * 1. Before USER directive (preferred - files copied as root before privilege drop)
+     * 2. Before CMD directive
+     * 3. Before ENTRYPOINT directive
+     * 4. At end of file (last resort)
+     *
+     * This allows files to be copied at build time, avoiding runtime privilege issues.
      *
      * @param string $dockerfilePath Absolute path to original Dockerfile
      * @param array $fileMounts Array of file mount info with 'source' (relative to build context) and 'target' keys
-     * @return string|null Modified Dockerfile content, or null if no USER directive found
+     * @return string|null Modified Dockerfile content, or null on read failure
      */
     private function generateModifiedDockerfile(string $dockerfilePath, array $fileMounts): ?string
     {
         $structure = $this->parseDockerfileStructure($dockerfilePath);
 
-        if ($structure['userLine'] === null) {
-            // No USER directive - can't inject before it
+        if (empty($structure['lines'])) {
             return null;
         }
 
         $lines = $structure['lines'];
-        $userLineIndex = $structure['userLine'];
 
-        // Sanity check: USER at line 0 would mean no FROM before it, which is invalid
-        if ($userLineIndex === 0) {
-            return null;
+        // Find insertion point in order of preference:
+        // 1. Before USER (preferred - copy as root before dropping privileges)
+        // 2. Before CMD
+        // 3. Before ENTRYPOINT
+        // 4. End of file
+        $insertionLine = $structure['userLine']
+            ?? $structure['cmdLine']
+            ?? $structure['entrypointLine']
+            ?? count($lines);
+
+        // Sanity check: insertion at line 0 would mean no FROM before it
+        if ($insertionLine === 0) {
+            $insertionLine = count($lines);
         }
 
         // Build COPY instructions (using JSON array syntax to handle paths with spaces)
@@ -668,8 +691,8 @@ CLI;
         }
         $copyInstructions[] = "# === End PocketDev file injection ===";
 
-        // Insert COPY instructions before USER line
-        array_splice($lines, $userLineIndex, 0, $copyInstructions);
+        // Insert COPY instructions at the chosen location
+        array_splice($lines, $insertionLine, 0, $copyInstructions);
 
         return implode("\n", $lines);
     }
