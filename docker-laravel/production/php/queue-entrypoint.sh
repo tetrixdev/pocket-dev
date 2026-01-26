@@ -15,38 +15,25 @@ TARGET_GID="${PD_TARGET_GID:-1000}"
 echo "Starting queue container initialization..."
 
 # =============================================================================
-# USER SETUP (collision-safe)
+# USER SETUP (cross-group ownership model)
 # =============================================================================
-# Handle UID/GID that may differ from the Dockerfile defaults (1000/1000).
-# The Dockerfile pre-creates "appgroup" with GID 1000, so we need unique names
-# if TARGET_GID differs to avoid "name already in use" errors.
+# appuser: primary group www-data (33), secondary group TARGET_GID (for host)
+# This enables file access between appuser and www-data processes.
 
-# First ensure the group exists for TARGET_GID
+# Ensure appgroup exists with TARGET_GID (for host file access)
 if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
-    # GID doesn't exist - create it with a collision-safe name
-    if getent group appgroup > /dev/null 2>&1; then
-        # "appgroup" name is taken (by GID 1000), use unique name
-        groupadd -g "$TARGET_GID" "appgroup_$TARGET_GID" 2>/dev/null || true
-    else
-        groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
-    fi
-fi
-
-# Get the actual group name for TARGET_GID (fail if creation failed)
-TARGET_GROUP=$(getent group "$TARGET_GID" | cut -d: -f1)
-if [ -z "$TARGET_GROUP" ]; then
-    echo "FATAL: Failed to create or find group for GID $TARGET_GID" >&2
-    exit 1
+    groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
 fi
 
 # Create a user for TARGET_UID if it doesn't exist
+# Cross-group ownership: primary group www-data (33), secondary group TARGET_GID (for host)
 if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
     # UID doesn't exist - create it with a collision-safe name
     if getent passwd appuser > /dev/null 2>&1; then
         # "appuser" name is taken (by UID 1000), use unique name
-        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash "appuser_$TARGET_UID" 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash "appuser_$TARGET_UID" 2>/dev/null || true
     else
-        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
     fi
 fi
 
@@ -91,10 +78,10 @@ if [ -n "$PD_DOCKER_GID" ]; then
 fi
 
 # Ensure home directory exists and has correct permissions for TARGET_UID
-# Use setgid (2775) so new files/directories inherit the group and are group-writable
+# Cross-group ownership: appuser:www-data (TARGET_UID:33) with group-writable permissions
 mkdir -p /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
-chown -R "${TARGET_UID}:${TARGET_GID}" /home/appuser 2>/dev/null || true
-chmod 2775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
+chown -R "${TARGET_UID}:33" /home/appuser 2>/dev/null || true
+chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 
 # Set up default Claude Code permissions.deny to protect .env files
 # This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
@@ -102,29 +89,29 @@ CLAUDE_SETTINGS="/home/appuser/.claude/settings.json"
 if [ ! -f "$CLAUDE_SETTINGS" ]; then
     # Create minimal settings with default deny patterns
     echo '{"permissions":{"deny":["Read(**/.env)"]}}' > "$CLAUDE_SETTINGS"
-    chown "${TARGET_UID}:${TARGET_GID}" "$CLAUDE_SETTINGS"
+    chown "${TARGET_UID}:33" "$CLAUDE_SETTINGS"
     chmod 664 "$CLAUDE_SETTINGS"
     echo "Created default Claude settings with .env protection"
 fi
 
-# Ensure workspace volume is owned by TARGET_UID (for backup/restore and UID/GID changes)
+# Ensure workspace volume is owned by TARGET_UID (for backup/restore and UID changes)
 # Safe to chown -R: dedicated PocketDev volume, all files should be owned by target user
-# Use setgid (2775) so new files/directories inherit the group and are group-writable
-chown -R "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
-chmod 2775 /workspace 2>/dev/null || true
-find /workspace -type d -exec chmod 2775 {} \; 2>/dev/null || true
+# Cross-group ownership: group www-data (33) for user container compatibility
+chown -R "${TARGET_UID}:33" /workspace 2>/dev/null || true
+chmod 775 /workspace 2>/dev/null || true
+find /workspace -type d -exec chmod 775 {} \; 2>/dev/null || true
 
 # =============================================================================
-# VOLUME PERMISSIONS (for backup/restore and UID/GID changes)
+# VOLUME PERMISSIONS (for backup/restore and UID changes)
 # =============================================================================
-# When restoring from backup or changing PD_TARGET_UID/GID, volume data may have
+# When restoring from backup or changing PD_TARGET_UID, volume data may have
 # wrong ownership. Fix permissions on all volumes that should be owned by TARGET_UID.
+# Cross-group ownership: group www-data (33) for user container compatibility
 
 # pocketdev-storage volume (/var/www/storage/pocketdev)
-# Use 2775 for directories (setgid) and 664 for files (no execute on data files)
 if [ -d /var/www/storage/pocketdev ]; then
-    chown -R "${TARGET_UID}:${TARGET_GID}" /var/www/storage/pocketdev 2>/dev/null || true
-    find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    chown -R "${TARGET_UID}:33" /var/www/storage/pocketdev 2>/dev/null || true
+    find /var/www/storage/pocketdev -type d -exec chmod 775 {} \; 2>/dev/null || true
     find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
 fi
 
@@ -137,8 +124,8 @@ for d in /tmp/pocketdev /tmp/pocketdev-uploads; do
         continue
     fi
     mkdir -p "$d" 2>/dev/null || true
-    chown -R "${TARGET_UID}:${TARGET_GID}" "$d" 2>/dev/null || true
-    find "$d" -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    chown -R "${TARGET_UID}:33" "$d" 2>/dev/null || true
+    find "$d" -type d -exec chmod 775 {} \; 2>/dev/null || true
     find "$d" -type f -exec chmod 664 {} \; 2>/dev/null || true
 done
 
@@ -146,23 +133,27 @@ done
 # STORAGE AND CACHE PERMISSIONS
 # =============================================================================
 # Fix permissions on Laravel storage and cache directories.
-# Production images bake in files as www-data:www-data, but queue workers run as
-# TARGET_USER. This ensures both PHP-FPM (www-data) and queue workers can write.
+# Cross-group ownership: group www-data (33) for user container compatibility
 
 echo "Setting storage permissions..."
-chgrp -R "$TARGET_GID" /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
-find /var/www/storage -type d -exec chmod 2775 {} \; 2>/dev/null || true
+chgrp -R 33 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
+find /var/www/storage -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
-find /var/www/bootstrap/cache -type d -exec chmod 2775 {} \; 2>/dev/null || true
+find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
 # Fix permissions for mounted config volumes (for config editor)
 if [ -d "/etc/nginx-proxy-config" ]; then
     echo "Setting permissions on /etc/nginx-proxy-config..."
-    chgrp -R "$TARGET_GID" /etc/nginx-proxy-config 2>/dev/null || true
-    find /etc/nginx-proxy-config -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
+    find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
     find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
 fi
+
+# Fix /tmp permissions for cross-group access (shared volume between containers)
+# Ensures files created by any user are accessible by www-data group
+chgrp -R 33 /tmp 2>/dev/null || true
+chmod -R g+rwX /tmp 2>/dev/null || true
 
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."
@@ -304,7 +295,7 @@ for f in /tmp/supervisord.log /tmp/supervisord.pid; do
         rm -f "$f" 2>/dev/null || true
     fi
     touch "$f" 2>/dev/null || true
-    chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+    chown "${TARGET_UID}:33" "$f" 2>/dev/null || true
 done
 
 # Ensure queue worker log files are writable by TARGET_USER
@@ -316,7 +307,7 @@ for i in $(seq -f '%02g' 0 9); do
             rm -f "$f" 2>/dev/null || true
         fi
         touch "$f" 2>/dev/null || true
-        chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+        chown "${TARGET_UID}:33" "$f" 2>/dev/null || true
     done
 done
 

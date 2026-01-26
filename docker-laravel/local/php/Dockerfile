@@ -56,12 +56,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 # Create groups for various access needs:
 # - docker (999): Docker socket access
 # - hostdocker (1001): Host Docker group compatibility
-# - appgroup (1000): Shared group for home directory access (Claude CLI, git, etc.)
-# Add www-data to all groups so it can access docker socket and write to /home/appuser
+# - appgroup (1000): Default group for host file access (may be overridden at runtime)
+# Note: www-data's primary group stays 33 - PHP-FPM uses group from www.conf, not primary group
+# Runtime entrypoint handles cross-group setup based on PD_TARGET_GID
 RUN groupadd -g 999 docker || true \
     && groupadd -g 1001 hostdocker || true \
     && groupadd -g 1000 appgroup || true \
-    && usermod -aG docker,hostdocker,appgroup www-data
+    && usermod -aG docker,hostdocker www-data
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo pdo_pgsql zip
@@ -85,12 +86,12 @@ RUN mkdir -p /var/www/storage/framework/{sessions,views,cache} \
     && mkdir -p /var/www/bootstrap/cache
 
 # Create home directory for Claude Code CLI, Codex CLI, and other tools that need $HOME
-# - Owned by UID 1000, GID 1000 (appgroup) with group-writable permissions (775)
-# - www-data is in group 1000 (appgroup), so it can write here
-# - In local dev: volume mount may override this, group_add handles permissions
+# - Owned by UID 1000, GID 33 (www-data) with group-writable permissions (775)
+# - Cross-group ownership: appuser (1000:33) owns, www-data can write via group
+# - In local dev: volume mount may override this, entrypoint fixes permissions
 # - In production: www-data writes directly via group membership
 RUN mkdir -p /home/appuser/.claude /home/appuser/.codex \
-    && chown -R 1000:1000 /home/appuser \
+    && chown -R 1000:33 /home/appuser \
     && chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex
 
 # Change www-data's home directory to /home/appuser

@@ -6,7 +6,7 @@ set -e
 # Uses gosu privilege drop pattern (same as official Docker images)
 # - Runs as root initially for privileged operations
 # - PHP-FPM workers run as www-data (standard PHP-FPM architecture)
-# - Files owned by TARGET_UID, accessible to www-data via appgroup membership
+# - Cross-group ownership: files owned by TARGET_UID:www-data (33)
 # =============================================================================
 
 echo "Starting Laravel production container..."
@@ -19,38 +19,25 @@ TARGET_GID="${PD_TARGET_GID:-1000}"
 export HOME=/home/appuser
 
 # =============================================================================
-# USER SETUP (collision-safe)
+# USER SETUP (cross-group ownership model)
 # =============================================================================
-# Handle UID/GID that may differ from the Dockerfile defaults (1000/1000).
-# The Dockerfile pre-creates "appgroup" with GID 1000, so we need unique names
-# if TARGET_GID differs to avoid "name already in use" errors.
+# appuser: primary group www-data (33), secondary group TARGET_GID (for host)
+# This enables file access between appuser and www-data processes.
 
-# First ensure the group exists for TARGET_GID
+# Ensure appgroup exists with TARGET_GID (for host file access)
 if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
-    # GID doesn't exist - create it with a collision-safe name
-    if getent group appgroup > /dev/null 2>&1; then
-        # "appgroup" name is taken (by GID 1000), use unique name
-        groupadd -g "$TARGET_GID" "appgroup_$TARGET_GID" 2>/dev/null || true
-    else
-        groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
-    fi
-fi
-
-# Get the actual group name for TARGET_GID (fail if creation failed)
-TARGET_GROUP=$(getent group "$TARGET_GID" | cut -d: -f1)
-if [ -z "$TARGET_GROUP" ]; then
-    echo "FATAL: Failed to create or find group for GID $TARGET_GID" >&2
-    exit 1
+    groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
 fi
 
 # Create a user for TARGET_UID if it doesn't exist
+# Cross-group ownership: primary group www-data (33), secondary group TARGET_GID (for host)
 if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
     # UID doesn't exist - create it with a collision-safe name
     if getent passwd appuser > /dev/null 2>&1; then
         # "appuser" name is taken (by UID 1000), use unique name
-        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash "appuser_$TARGET_UID" 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash "appuser_$TARGET_UID" 2>/dev/null || true
     else
-        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
     fi
 fi
 
@@ -61,12 +48,9 @@ if [ -z "$TARGET_USER" ]; then
     exit 1
 fi
 
-# Add www-data to TARGET_GROUP so PHP-FPM can read/write files owned by TARGET_UID
-usermod -aG "$TARGET_GROUP" www-data 2>/dev/null || true
-
-# Ensure CLI config directories exist and are owned by TARGET_UID
+# Ensure CLI config directories exist and are owned by TARGET_UID:www-data
 mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
-chown -R "${TARGET_UID}:${TARGET_GID}" "$HOME" 2>/dev/null || true
+chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
 chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
 # =============================================================================
@@ -106,20 +90,20 @@ if [ -n "$PD_DOCKER_GID" ]; then
 fi
 
 # =============================================================================
-# VOLUME PERMISSIONS (for backup/restore and UID/GID changes)
+# VOLUME PERMISSIONS (for backup/restore and UID changes)
 # =============================================================================
-# When restoring from backup or changing PD_TARGET_UID/GID, volume data may have
+# When restoring from backup or changing PD_TARGET_UID, volume data may have
 # wrong ownership. Fix permissions on all volumes that should be owned by TARGET_UID.
+# Cross-group ownership: group www-data (33) for user container compatibility
 
 # workspace volume - safe to chown -R (dedicated PocketDev volume)
-chown -R "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
+chown -R "${TARGET_UID}:33" /workspace 2>/dev/null || true
 chmod 775 /workspace 2>/dev/null || true
 
 # pocketdev-storage volume (/var/www/storage/pocketdev)
-# Use 2775 for directories (setgid) and 664 for files (no execute on data files)
 if [ -d /var/www/storage/pocketdev ]; then
-    chown -R "${TARGET_UID}:${TARGET_GID}" /var/www/storage/pocketdev 2>/dev/null || true
-    find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    chown -R "${TARGET_UID}:33" /var/www/storage/pocketdev 2>/dev/null || true
+    find /var/www/storage/pocketdev -type d -exec chmod 775 {} \; 2>/dev/null || true
     find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
 fi
 
@@ -132,8 +116,8 @@ for d in /tmp/pocketdev /tmp/pocketdev-uploads; do
         continue
     fi
     mkdir -p "$d" 2>/dev/null || true
-    chown -R "${TARGET_UID}:${TARGET_GID}" "$d" 2>/dev/null || true
-    find "$d" -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    chown -R "${TARGET_UID}:33" "$d" 2>/dev/null || true
+    find "$d" -type d -exec chmod 775 {} \; 2>/dev/null || true
     find "$d" -type f -exec chmod 664 {} \; 2>/dev/null || true
 done
 
@@ -141,21 +125,20 @@ done
 # STORAGE AND CACHE PERMISSIONS
 # =============================================================================
 # Fix permissions on Laravel storage and cache directories.
-# Production images bake in files as www-data:www-data, but queue workers run as
-# TARGET_USER. This ensures both PHP-FPM (www-data) and queue workers can write.
+# Cross-group ownership: group www-data (33) for user container compatibility
 
 echo "Setting storage permissions..."
-chgrp -R "$TARGET_GID" /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
-find /var/www/storage -type d -exec chmod 2775 {} \; 2>/dev/null || true
+chgrp -R 33 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
+find /var/www/storage -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
-find /var/www/bootstrap/cache -type d -exec chmod 2775 {} \; 2>/dev/null || true
+find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
 # Fix permissions for mounted config volumes (for config editor)
 if [ -d "/etc/nginx-proxy-config" ]; then
     echo "Setting permissions on /etc/nginx-proxy-config..."
-    chgrp -R "$TARGET_GID" /etc/nginx-proxy-config 2>/dev/null || true
-    find /etc/nginx-proxy-config -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
+    find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
     find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
 fi
 

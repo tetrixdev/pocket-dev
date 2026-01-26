@@ -32,9 +32,15 @@ if [ -n "$PD_DOCKER_GID" ]; then
         DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
 
+    # Ensure appgroup exists with TARGET_GID (for host file access)
+    if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
+        groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
+    fi
+
     # Create a user for TARGET_UID if it doesn't exist (needed for group membership)
+    # Cross-group ownership: primary group www-data (33), secondary group TARGET_GID (for host)
     if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
-        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
     fi
 
     # Get the username for TARGET_UID and add to docker group
@@ -52,10 +58,10 @@ if [ -n "$PD_DOCKER_GID" ]; then
 fi
 
 # Ensure home directory exists and has correct permissions for target user
-# Use setgid (2775) so new files/directories inherit the group and are group-writable
+# Cross-group ownership: appuser:www-data (1000:33) with group-writable permissions
 mkdir -p /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
-chown -R "${TARGET_UID}:${TARGET_GID}" /home/appuser 2>/dev/null || true
-chmod 2775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
+chown -R "${TARGET_UID}:33" /home/appuser 2>/dev/null || true
+chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
 
 # Set up default Claude Code permissions.deny to protect .env files
 # This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
@@ -63,42 +69,43 @@ CLAUDE_SETTINGS="/home/appuser/.claude/settings.json"
 if [ ! -f "$CLAUDE_SETTINGS" ]; then
     # Create minimal settings with default deny patterns
     echo '{"permissions":{"deny":["Read(**/.env)"]}}' > "$CLAUDE_SETTINGS"
-    chown "${TARGET_UID}:${TARGET_GID}" "$CLAUDE_SETTINGS"
+    chown "${TARGET_UID}:33" "$CLAUDE_SETTINGS"
     chmod 664 "$CLAUDE_SETTINGS"
     echo "Created default Claude settings with .env protection"
 fi
 
-# Ensure workspace directory is writable by target user with setgid for group inheritance
-chown "${TARGET_UID}:${TARGET_GID}" /workspace 2>/dev/null || true
-chmod 2775 /workspace 2>/dev/null || true
-
-# Safety net: Ensure all workspace subdirectories have correct permissions
-# Normally, Workspace model sets group=appgroup and mode=0775 on creation/restore.
-# This catches edge cases like silent mkdir failures or race conditions.
-# Use setgid (2775) so new files/directories inherit the group and are group-writable
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp appgroup {} \; 2>/dev/null || true
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 2775 {} \; 2>/dev/null || true
+# Ensure workspace directory is writable by target user
+# Cross-group ownership: group www-data (33) for user container compatibility
+# Safe to chown -R: dedicated PocketDev volume, all files should be owned by target user
+chown -R "${TARGET_UID}:33" /workspace 2>/dev/null || true
+chmod 775 /workspace 2>/dev/null || true
+find /workspace -type d -exec chmod 775 {} \; 2>/dev/null || true
 
 # =============================================================================
 # STORAGE AND CACHE PERMISSIONS
 # =============================================================================
 # Fix permissions on Laravel storage and cache directories.
-# This ensures both PHP-FPM (www-data) and queue workers (appuser) can write.
+# Cross-group ownership: group www-data (33) for user container compatibility
 
 echo "Setting storage permissions..."
-chgrp -R "$TARGET_GID" /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
-find /var/www/storage -type d -exec chmod 2775 {} \; 2>/dev/null || true
+chgrp -R 33 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
+find /var/www/storage -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
-find /var/www/bootstrap/cache -type d -exec chmod 2775 {} \; 2>/dev/null || true
+find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
 # Fix permissions for mounted config volumes (for config editor)
 if [ -d "/etc/nginx-proxy-config" ]; then
     echo "Setting permissions on /etc/nginx-proxy-config..."
-    chgrp -R "$TARGET_GID" /etc/nginx-proxy-config 2>/dev/null || true
-    find /etc/nginx-proxy-config -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
+    find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
     find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
 fi
+
+# Fix /tmp permissions for cross-group access (shared volume between containers)
+# Ensures files created by any user are accessible by www-data group
+chgrp -R 33 /tmp 2>/dev/null || true
+chmod -R g+rwX /tmp 2>/dev/null || true
 
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."
@@ -240,7 +247,7 @@ for f in /tmp/supervisord.log /tmp/supervisord.pid; do
         rm -f "$f" 2>/dev/null || true
     fi
     touch "$f" 2>/dev/null || true
-    chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+    chown "${TARGET_UID}:33" "$f" 2>/dev/null || true
 done
 
 # Ensure queue worker log files are writable by TARGET_USER
@@ -252,7 +259,7 @@ for i in $(seq -f '%02g' 0 9); do
             rm -f "$f" 2>/dev/null || true
         fi
         touch "$f" 2>/dev/null || true
-        chown "${TARGET_UID}:${TARGET_GID}" "$f" 2>/dev/null || true
+        chown "${TARGET_UID}:33" "$f" 2>/dev/null || true
     done
 done
 
