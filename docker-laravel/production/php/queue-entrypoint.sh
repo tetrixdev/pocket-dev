@@ -153,7 +153,7 @@ fi
 # Fix /tmp permissions for cross-group access (shared volume between containers)
 # Ensures files created by any user are accessible by www-data group
 chgrp -R 33 /tmp 2>/dev/null || true
-chmod -R g+w /tmp 2>/dev/null || true
+chmod -R g+rwX /tmp 2>/dev/null || true
 
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."

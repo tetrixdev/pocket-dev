@@ -76,14 +76,10 @@ fi
 
 # Ensure workspace directory is writable by target user
 # Cross-group ownership: group www-data (33) for user container compatibility
-chown "${TARGET_UID}:33" /workspace 2>/dev/null || true
+# Safe to chown -R: dedicated PocketDev volume, all files should be owned by target user
+chown -R "${TARGET_UID}:33" /workspace 2>/dev/null || true
 chmod 775 /workspace 2>/dev/null || true
-
-# Safety net: Ensure all workspace subdirectories have correct permissions
-# Normally, Workspace model sets group=www-data and mode=0775 on creation/restore.
-# This catches edge cases like silent mkdir failures or race conditions.
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chgrp 33 {} \; 2>/dev/null || true
-find /workspace -mindepth 1 -maxdepth 1 -type d -exec chmod 775 {} \; 2>/dev/null || true
+find /workspace -type d -exec chmod 775 {} \; 2>/dev/null || true
 
 # =============================================================================
 # STORAGE AND CACHE PERMISSIONS
@@ -109,7 +105,7 @@ fi
 # Fix /tmp permissions for cross-group access (shared volume between containers)
 # Ensures files created by any user are accessible by www-data group
 chgrp -R 33 /tmp 2>/dev/null || true
-chmod -R g+w /tmp 2>/dev/null || true
+chmod -R g+rwX /tmp 2>/dev/null || true
 
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."
