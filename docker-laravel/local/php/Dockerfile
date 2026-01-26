@@ -56,16 +56,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 # Create groups for various access needs:
 # - docker (999): Docker socket access
 # - hostdocker (1001): Host Docker group compatibility
-# - appgroup (1000): Cross-group ownership - www-data's primary group for file creation
-# Cross-group ownership model:
-# - www-data: primary group 1000 (appgroup), secondary group 33 (www-data)
-# - appuser: primary group 33 (www-data), secondary group 1000 (appgroup)
-# This allows bidirectional file access between www-data and appuser processes
+# - appgroup (1000): Default group for host file access (may be overridden at runtime)
+# Note: www-data's primary group stays 33 - PHP-FPM uses group from www.conf, not primary group
+# Runtime entrypoint handles cross-group setup based on PD_TARGET_GID
 RUN groupadd -g 999 docker || true \
     && groupadd -g 1001 hostdocker || true \
     && groupadd -g 1000 appgroup || true \
-    && usermod -g 1000 www-data \
-    && usermod -aG 33,docker,hostdocker www-data
+    && usermod -aG docker,hostdocker www-data
 
 # Install PHP extensions
 RUN docker-php-ext-install pdo pdo_pgsql zip

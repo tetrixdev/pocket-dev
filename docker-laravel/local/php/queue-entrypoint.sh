@@ -9,7 +9,7 @@ set -e
 # =============================================================================
 
 TARGET_UID="${PD_TARGET_UID:-1000}"
-TARGET_GID=33  # www-data group - enables user containers to access files
+TARGET_GID="${PD_TARGET_GID:-1000}"
 
 echo "Starting queue container initialization..."
 
@@ -32,10 +32,15 @@ if [ -n "$PD_DOCKER_GID" ]; then
         DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
 
+    # Ensure appgroup exists with TARGET_GID (for host file access)
+    if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
+        groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
+    fi
+
     # Create a user for TARGET_UID if it doesn't exist (needed for group membership)
-    # Cross-group ownership: primary group www-data (33), secondary group appgroup (1000)
+    # Cross-group ownership: primary group www-data (33), secondary group TARGET_GID (for host)
     if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
-        useradd -u "$TARGET_UID" -g 33 -G 1000 -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
     fi
 
     # Get the username for TARGET_UID and add to docker group

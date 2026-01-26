@@ -11,10 +11,9 @@ set -e
 
 echo "Starting Laravel production container..."
 
-# Runtime configurable UID (from compose.yml environment)
-# GID is always 33 (www-data) for cross-group ownership model
+# Runtime configurable UID/GID (from compose.yml environment)
 TARGET_UID="${PD_TARGET_UID:-1000}"
-TARGET_GID=33  # www-data group - enables user containers to access files
+TARGET_GID="${PD_TARGET_GID:-1000}"
 
 # Set HOME for tools that expect a writable home directory
 export HOME=/home/appuser
@@ -22,24 +21,23 @@ export HOME=/home/appuser
 # =============================================================================
 # USER SETUP (cross-group ownership model)
 # =============================================================================
-# appuser: primary group www-data (33), secondary group appgroup (1000)
-# www-data: primary group appgroup (1000), secondary group www-data (33)
-# This enables bidirectional file access between appuser and www-data processes.
+# appuser: primary group www-data (33), secondary group TARGET_GID (for host)
+# This enables file access between appuser and www-data processes.
 
-# Ensure appgroup (1000) exists for cross-group ownership
-if ! getent group 1000 > /dev/null 2>&1; then
-    groupadd -g 1000 appgroup 2>/dev/null || true
+# Ensure appgroup exists with TARGET_GID (for host file access)
+if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
+    groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
 fi
 
 # Create a user for TARGET_UID if it doesn't exist
-# Cross-group ownership: primary group www-data (33), secondary group appgroup (1000)
+# Cross-group ownership: primary group www-data (33), secondary group TARGET_GID (for host)
 if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
     # UID doesn't exist - create it with a collision-safe name
     if getent passwd appuser > /dev/null 2>&1; then
         # "appuser" name is taken (by UID 1000), use unique name
-        useradd -u "$TARGET_UID" -g 33 -G 1000 -d /home/appuser -s /bin/bash "appuser_$TARGET_UID" 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash "appuser_$TARGET_UID" 2>/dev/null || true
     else
-        useradd -u "$TARGET_UID" -g 33 -G 1000 -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
     fi
 fi
 

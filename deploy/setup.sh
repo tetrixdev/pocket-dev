@@ -68,10 +68,12 @@ else
     echo "Warning: Docker socket not found - PD_DOCKER_GID not set"
 fi
 
-# Detect current user's UID for file ownership
+# Detect current user's UID/GID for file ownership
 USER_ID=$(id -u)
+GROUP_ID=$(id -g)
 sedi "s|PD_USER_ID=|PD_USER_ID=$USER_ID|" .env
-echo "Detected PD_USER_ID=$USER_ID"
+sedi "s|PD_GROUP_ID=|PD_GROUP_ID=$GROUP_ID|" .env
+echo "Detected PD_USER_ID=$USER_ID, PD_GROUP_ID=$GROUP_ID"
 
 # Ask for NGINX_PORT
 echo ""

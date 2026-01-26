@@ -38,6 +38,7 @@ services:
       - COMPOSER_HOME=/tmp/.composer
       - NPM_CONFIG_CACHE=/tmp/.npm
       - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
       - PD_HOST_PROJECT_PATH=${PWD}
       # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
@@ -143,6 +144,7 @@ services:
     environment:
       - HOME=/home/appuser
       - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
       - PD_HOST_PROJECT_PATH=${PWD}
       # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
