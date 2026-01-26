@@ -40,12 +40,19 @@ class ComposeTransformTool extends Tool
     }
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-Transforms a Docker Compose file to use PocketDev workspace volume mounts instead of bind mounts.
+**CRITICAL: Always use this tool before running a user's Docker Compose project for the first time.**
+
+Docker Compose bind mounts (e.g., `./src:/app`) reference paths on the HOST filesystem. Inside PocketDev, the workspace lives in a Docker volume—host paths don't exist. Without transformation, bind mounts will fail or mount empty directories.
 
 **When to use:**
-- User wants to run their Docker project inside PocketDev
-- User has a compose file with bind mounts (`./path:/target`)
-- Setting up a new project's Docker environment
+- User clones/creates a Docker Compose project in /workspace/
+- User wants to run `docker compose up` on an untransformed project
+- User's containers can't see their code (empty mounts, "path not found" errors)
+- BEFORE the first `docker compose up` on any external project
+
+**When NOT needed:**
+- Project already has `compose.override.yaml` from previous transformation
+- Project uses only named volumes (no `./path:/target` mounts)
 
 **How it works:**
 1. Reads the compose file you specify
