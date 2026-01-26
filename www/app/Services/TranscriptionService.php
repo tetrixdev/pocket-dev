@@ -65,11 +65,13 @@ class TranscriptionService
                                 'type' => 'near_field',
                             ],
                             // Server-side VAD: detects speech pauses to segment transcription
+                            // Note: silence_duration_ms increased from default 500 to 800 to reduce
+                            // premature cutoff of final words (per OpenAI Cookbook recommendations)
                             'turn_detection' => [
                                 'type' => 'server_vad',
                                 'threshold' => 0.5,           // Speech detection sensitivity (0-1)
                                 'prefix_padding_ms' => 300,   // Audio to include before speech
-                                'silence_duration_ms' => 500, // Silence before ending turn
+                                'silence_duration_ms' => 800, // Silence before ending turn (increased from 500)
                             ],
                         ],
                     ],
@@ -132,6 +134,11 @@ class TranscriptionService
                 'model' => 'gpt-4o-transcribe',
                 'response_format' => 'text',
                 'language' => 'en', // Force English to avoid detection issues on short segments
+                'temperature' => 0.2, // Lower temperature for more consistent transcription
+                // Anti-truncation prompt: gpt-4o-transcribe has a known tendency to truncate
+                // the final sentence. This prompt significantly reduces that behavior.
+                // See: https://community.openai.com/t/persistent-truncation-issues-with-gpt-4o-transcribe
+                'prompt' => 'Transcribe completely. Do NOT omit, summarize, or truncate any speech. Output every word as spoken, including the final sentence.',
             ]);
 
             if (!$response->successful()) {
