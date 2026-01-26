@@ -10,9 +10,10 @@ set -e
 
 echo "🚀 Configuring PHP development environment..."
 
-# Runtime configurable UID/GID (from compose.yml environment)
+# Runtime configurable UID (from compose.yml environment)
+# GID is always 33 (www-data) for cross-group ownership model
 TARGET_UID="${PD_TARGET_UID:-1000}"
-TARGET_GID="${PD_TARGET_GID:-1000}"
+TARGET_GID=33  # www-data group - enables user containers to access files
 
 # =============================================================================
 # PHASE 1: ROOT OPERATIONS (permissions, groups)
@@ -36,8 +37,9 @@ if [ -n "$PD_DOCKER_GID" ]; then
     fi
 
     # Create a user for TARGET_UID if it doesn't exist (needed for group membership)
+    # Cross-group ownership: primary group www-data (33), secondary group appgroup (1000)
     if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
-        useradd -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+        useradd -u "$TARGET_UID" -g 33 -G 1000 -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
     fi
 
     # Get the username for TARGET_UID
@@ -58,10 +60,10 @@ if [ -n "$PD_DOCKER_GID" ]; then
     fi
 fi
 
-# Set up home directory with correct ownership
+# Set up home directory with correct ownership (cross-group: appuser:www-data)
 export HOME=/home/appuser
 mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.npm" "$HOME/.composer" 2>/dev/null || true
-chown -R "${TARGET_UID}:${TARGET_GID}" "$HOME" 2>/dev/null || true
+chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
 chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
 # Check if running as main PHP container (no args or php-fpm)
@@ -70,27 +72,27 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Main PHP container: run full setup
 
     # Fix storage and cache permissions (as root)
-    # Use 2775 (setgid) so new files inherit the group
+    # Cross-group ownership: group www-data (33) for user container compatibility
     echo "Setting storage permissions..."
-    chgrp -R "$TARGET_GID" /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
-    find /var/www/storage -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    chgrp -R 33 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true
+    find /var/www/storage -type d -exec chmod 775 {} \; 2>/dev/null || true
     find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
-    find /var/www/bootstrap/cache -type d -exec chmod 2775 {} \; 2>/dev/null || true
+    find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
     find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
     # Fix permissions for mounted config volumes (for config editor)
     if [ -d "/etc/nginx-proxy-config" ]; then
         echo "Setting permissions on /etc/nginx-proxy-config..."
-        chgrp -R "$TARGET_GID" /etc/nginx-proxy-config 2>/dev/null || true
-        find /etc/nginx-proxy-config -type d -exec chmod 2775 {} \; 2>/dev/null || true
+        chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
+        find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
         find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
     fi
 
-    # Fix permissions for pocketdev storage volume (with setgid for group inheritance)
+    # Fix permissions for pocketdev storage volume
     if [ -d "/var/www/storage/pocketdev" ]; then
         echo "Setting permissions on /var/www/storage/pocketdev..."
-        chgrp -R "$TARGET_GID" /var/www/storage/pocketdev 2>/dev/null || true
-        find /var/www/storage/pocketdev -type d -exec chmod 2775 {} \; 2>/dev/null || true
+        chgrp -R 33 /var/www/storage/pocketdev 2>/dev/null || true
+        find /var/www/storage/pocketdev -type d -exec chmod 775 {} \; 2>/dev/null || true
         find /var/www/storage/pocketdev -type f -exec chmod 664 {} \; 2>/dev/null || true
     fi
 
@@ -155,7 +157,7 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     echo "✅ Development environment ready"
     echo "🚀 Starting PHP-FPM (master as root, workers as www-data)..."
 
-    # Set group-writable umask so appuser (in appgroup) can edit files created by www-data
+    # Set group-writable umask for cross-group ownership model
     # Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable)
     umask 002
 
