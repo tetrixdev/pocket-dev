@@ -458,7 +458,13 @@ CLI;
                 // Collect directory mount targets to detect conflicts with file mounts
                 $directoryMountTargets = [];
                 foreach ($volumesToAdd as $vol) {
-                    if ($vol['type'] !== 'named' && !str_starts_with($vol['target'], '/pocketdev-stage-')) {
+                    if ($vol['type'] === 'named') {
+                        // Extract target from named volume's raw format (e.g., "data:/var/www" → "/var/www")
+                        $parts = explode(':', $vol['raw']);
+                        if (isset($parts[1])) {
+                            $directoryMountTargets[] = rtrim($parts[1], '/');
+                        }
+                    } elseif (!str_starts_with($vol['target'], '/pocketdev-stage-')) {
                         $directoryMountTargets[] = rtrim($vol['target'], '/');
                     }
                 }
