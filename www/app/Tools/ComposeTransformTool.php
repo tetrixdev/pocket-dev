@@ -328,17 +328,24 @@ CLI;
                 $mount = trim($matches[1], "\"'");
 
                 if (strpos($mount, ":") !== false) {
-                    $parts = explode(":", $mount, 2);
+                    $parts = explode(":", $mount);
                     $source = $parts[0];
                     $target = $parts[1];
+                    // Strip mount options (:ro, :rw, :z, :Z, :cached, :delegated, :consistent)
+                    // These are in $parts[2] if present, but we just ignore them
 
-                    // Check if bind mount (starts with .)
+                    // Check if bind mount (starts with . or ./)
                     if (substr($source, 0, 1) === ".") {
-                        // Convert ./path to subpath
+                        // Convert relative path to subpath
                         if ($source === ".") {
+                            // Current directory
                             $subpath = $relativeDirFromWorkspace;
-                        } else {
+                        } elseif (substr($source, 0, 2) === "./") {
+                            // Explicit relative path: ./path/to/file
                             $subpath = $relativeDirFromWorkspace . "/" . substr($source, 2);
+                        } else {
+                            // Dotfile in current directory: .env, .gitignore, etc.
+                            $subpath = $relativeDirFromWorkspace . "/" . $source;
                         }
 
                         // Normalize path
@@ -448,8 +455,42 @@ CLI;
                 $handledViaDockerfile = false;
                 $volumesToAdd = $overrides['volumes'] ?? [];
 
-                // Try to handle file mounts via Dockerfile modification
-                if (!empty($overrides['fileMounts']) && !empty($overrides['buildContext'])) {
+                // Collect directory mount targets to detect conflicts with file mounts
+                $directoryMountTargets = [];
+                foreach ($volumesToAdd as $vol) {
+                    if ($vol['type'] === 'named') {
+                        // Extract target from named volume's raw format (e.g., "data:/var/www" → "/var/www")
+                        $parts = explode(':', $vol['raw']);
+                        if (isset($parts[1])) {
+                            $directoryMountTargets[] = rtrim($parts[1], '/');
+                        }
+                    } elseif (!str_starts_with($vol['target'], '/pocketdev-stage-')) {
+                        $directoryMountTargets[] = rtrim($vol['target'], '/');
+                    }
+                }
+
+                // Split file mounts into safe (can use Dockerfile COPY) and conflicting (must use runtime copy)
+                // A file mount conflicts if its target is inside a directory that's also being volume-mounted,
+                // because the volume mount at runtime would overwrite the file we COPY at build time
+                $safeFileMounts = [];
+                $conflictingFileMounts = [];
+                foreach ($overrides['fileMounts'] ?? [] as $mount) {
+                    $isConflicting = false;
+                    foreach ($directoryMountTargets as $dirTarget) {
+                        if (str_starts_with($mount['target'], $dirTarget . '/')) {
+                            $isConflicting = true;
+                            break;
+                        }
+                    }
+                    if ($isConflicting) {
+                        $conflictingFileMounts[] = $mount;
+                    } else {
+                        $safeFileMounts[] = $mount;
+                    }
+                }
+
+                // Try to handle SAFE file mounts via Dockerfile modification
+                if (!empty($safeFileMounts) && !empty($overrides['buildContext'])) {
                     $buildContext = $overrides['buildContext'];
                     $originalDockerfile = $overrides['dockerfile'] ?? 'Dockerfile';
 
@@ -458,7 +499,7 @@ CLI;
                     if ($dockerfilePath && file_exists($dockerfilePath)) {
                         // Convert file mounts to COPY-compatible format (source relative to build context)
                         $copyMounts = [];
-                        foreach ($overrides['fileMounts'] as $mount) {
+                        foreach ($safeFileMounts as $mount) {
                             // The 'source' in fileMounts is the original bind mount source (e.g., ./iac/containers/php/shared/conf.d/overwrite.ini)
                             // We need to use this directly as the COPY source (relative to build context)
                             $copyMounts[] = [
@@ -491,10 +532,18 @@ CLI;
                                 $lines[] = "      context: {$buildContext}";
                                 $lines[] = "      dockerfile: Dockerfile.pocketdev";
 
-                                // Remove file mount staging volumes - files are now in the image
-                                $volumesToAdd = array_filter($volumesToAdd, function ($vol) {
-                                    // Keep only non-staging volumes (staging volumes have targets starting with /pocketdev-stage-)
-                                    return $vol['type'] === 'named' || !str_starts_with($vol['target'], '/pocketdev-stage-');
+                                // Remove staging volumes for SAFE file mounts only - those files are now in the image
+                                // Keep staging volumes for conflicting file mounts (they need runtime copy)
+                                $conflictingStagingTargets = array_map(fn($m) => $m['staging'], $conflictingFileMounts);
+                                $volumesToAdd = array_filter($volumesToAdd, function ($vol) use ($conflictingStagingTargets) {
+                                    if ($vol['type'] === 'named') {
+                                        return true;
+                                    }
+                                    if (!str_starts_with($vol['target'], '/pocketdev-stage-')) {
+                                        return true;
+                                    }
+                                    // This is a staging volume - keep it only if it's for a conflicting file mount
+                                    return in_array($vol['target'], $conflictingStagingTargets);
                                 });
 
                                 $handledViaDockerfile = true;
@@ -520,10 +569,17 @@ CLI;
                     }
                 }
 
-                // Fallback: runtime copy approach if Dockerfile modification failed
-                if (!$handledViaDockerfile && !empty($overrides['fileMounts'])) {
+                // Runtime copy for:
+                // 1. Conflicting file mounts (target inside a directory mount) - ALWAYS need runtime copy
+                // 2. Safe file mounts if Dockerfile modification failed - fallback to runtime copy
+                $fileMountsForRuntimeCopy = $conflictingFileMounts;
+                if (!$handledViaDockerfile) {
+                    $fileMountsForRuntimeCopy = array_merge($fileMountsForRuntimeCopy, $safeFileMounts);
+                }
+
+                if (!empty($fileMountsForRuntimeCopy)) {
                     $copyCommands = [];
-                    foreach ($overrides['fileMounts'] as $mount) {
+                    foreach ($fileMountsForRuntimeCopy as $mount) {
                         $source = escapeshellarg("{$mount['staging']}/{$mount['filename']}");
                         $target = escapeshellarg($mount['target']);
                         $copyCommands[] = "cp {$source} {$target}";
