@@ -150,6 +150,11 @@ if [ -d "/etc/nginx-proxy-config" ]; then
     find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
 fi
 
+# Fix /tmp permissions for cross-group access (shared volume between containers)
+# Ensures files created by any user are accessible by www-data group
+chgrp -R 33 /tmp 2>/dev/null || true
+chmod -R g+w /tmp 2>/dev/null || true
+
 # Wait for database migrations to complete (php container runs them)
 echo "Waiting for database migrations..."
 max_attempts=60
