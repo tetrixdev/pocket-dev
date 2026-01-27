@@ -149,6 +149,8 @@ services:
       # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
       - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
+      - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
     volumes:
       - ./www:/var/www
       - .env:/var/www/.env
