@@ -1,73 +1,37 @@
 # Panels & Screens System - Planning Document
 
-> **Status**: Brainstorming
+> **Status**: In Progress
 > **Last Updated**: 2025-01-27
 
 ## Overview
 
-PocketDev needs a generic extensibility system allowing users to create custom interactive views beyond the chat interface. This document explores the architecture for "Panels" (custom views) and how they integrate with the UI.
+PocketDev needs a generic extensibility system allowing users to create custom interactive views beyond the chat interface. This document defines the architecture for "Panels" (custom views) and how they integrate with the UI.
 
 ---
 
-## Part 1: Panel Implementation Options
+## Part 1: Panel Architecture
 
-The core question: **How do panels get their data and render their UI?**
+Panels are **Pure Blade templates** stored in the database, giving full Laravel power for data access and rendering.
 
-### Option A: Alpine.js + HTML Template + Bash API Script
+### Why Blade?
 
-**Architecture:**
+1. **Single file** - one thing to write and maintain
+2. **Full Laravel power** - Eloquent, File facade, DB queries, helpers, Carbon, etc.
+3. **Security is moot** - user hosts their own instance, controls what panels exist
+4. **AI-friendly** - Claude knows Blade/Laravel extremely well
+5. **Still interactive** - Alpine.js can be added for client-side state when needed
+6. **Existing patterns** - current file preview modal already uses Blade
+
+### Architecture
+
 ```
 ┌─────────────────────────────────────────┐
-│ Panel Definition                        │
+│ Panel Definition (in database)          │
 ├─────────────────────────────────────────┤
-│ template: (Alpine.js + HTML)            │
-│ api_script: (Bash script returning JSON)│
-└─────────────────────────────────────────┘
-
-┌──────────────┐      ┌──────────────┐      ┌──────────────┐
-│   Browser    │ ──── │  API Route   │ ──── │ Bash Script  │
-│  Alpine.js   │ fetch│  /panel/X    │ exec │ returns JSON │
-└──────────────┘      └──────────────┘      └──────────────┘
-```
-
-**Example panel definition:**
-```json
-{
-  "slug": "file-explorer",
-  "name": "File Explorer",
-  "template": "<div x-data=\"fileExplorer()\" x-init=\"loadFiles()\">...</div>",
-  "api_script": "#!/bin/bash\nfind \"$TOOL_PATH\" -maxdepth 2 -type f -o -type d | jq -R -s 'split(\"\\n\")'",
-  "parameters": {
-    "path": { "type": "string", "default": "/workspace/default" }
-  }
-}
-```
-
-**Pros:**
-- Separation of concerns (view logic vs data fetching)
-- API script is reusable (could be called from chat too)
-- Familiar pattern (mirrors existing tools architecture)
-- Template runs in browser - no PHP security concerns
-- Hot reload friendly (template changes don't need PHP restart)
-
-**Cons:**
-- Two things to write and keep in sync (template + script)
-- Need to define/wire up API endpoints
-- More complex for simple cases ("just show me X")
-- Can't use Blade directives or Laravel helpers
-- AI needs to understand both Alpine AND bash scripting
-- Async data loading adds complexity (loading states, error handling)
-
----
-
-### Option B: Pure Blade File
-
-**Architecture:**
-```
-┌─────────────────────────────────────────┐
-│ Panel Definition                        │
-├─────────────────────────────────────────┤
+│ slug: "file-explorer"                   │
+│ name: "File Explorer"                   │
 │ blade_template: (Full Blade + PHP)      │
+│ parameters: { path: { default: "..." }} │
 └─────────────────────────────────────────┘
 
 ┌──────────────┐      ┌──────────────┐
@@ -76,9 +40,16 @@ The core question: **How do panels get their data and render their UI?**
 └──────────────┘      └──────────────┘
 ```
 
-**Example panel definition:**
+### Implementation Approach
+
+- Store panel Blade content in database (like tool scripts)
+- Render via `Blade::render($template, $parameters)`
+- Auto-clear compiled view on panel update
+- Provide helpful injected variables: `$parameters`, `$user`, `$workspace`
+
+### Example Panel Definition
+
 ```php
-// Stored in database or as file
 @php
     $path = $parameters['path'] ?? '/workspace/default';
     $files = collect(File::files($path))->map(fn($f) => [
@@ -98,140 +69,8 @@ The core question: **How do panels get their data and render their UI?**
 </div>
 ```
 
-**Pros:**
-- Single file, simpler mental model
-- Full power of Laravel (Eloquent, File facade, helpers, Carbon, etc.)
-- Can query memory tables directly via DB facade
-- All logic in one place - easier to reason about
-- Familiar to anyone who knows Laravel
-- Server-side rendering (faster initial paint, SEO if ever needed)
-- Can still add Alpine.js for interactivity
+### Example Workflow
 
-**Cons:**
-- PHP execution = theoretical security risk
-  - Mitigated: User hosts their own instance, manages their own panels
-  - Mitigated: Could sandbox with allowed function list if paranoid
-- Blade compilation needs write access to storage/views
-- Changes require clearing view cache (or auto-clear on panel update)
-- Mixing data fetching and presentation (but Laravel devs do this all the time)
-- AI needs Laravel/Blade knowledge (but it's very common)
-
----
-
-### Option C: Blade File + Service Injection
-
-**Architecture:**
-```
-┌─────────────────────────────────────────┐
-│ Panel Definition                        │
-├─────────────────────────────────────────┤
-│ blade_template: (Blade, limited PHP)    │
-│ data_provider: (PHP class or closure)   │
-└─────────────────────────────────────────┘
-
-Data provider runs first, passes $data to template.
-Template has access to $data but limited @php usage.
-```
-
-**Example:**
-```php
-// Data provider (stored separately)
-return function($parameters) {
-    $path = $parameters['path'] ?? '/workspace/default';
-    return [
-        'files' => File::files($path),
-        'path' => $path,
-    ];
-};
-
-// Template (cleaner, mostly HTML)
-<div class="p-4">
-    <h2>Files in {{ $path }}</h2>
-    @foreach($files as $file)
-        <x-file-item :file="$file" />
-    @endforeach
-</div>
-```
-
-**Pros:**
-- Cleaner separation than pure Blade
-- Template stays mostly presentational
-- Data provider is testable
-- Could restrict template to "safe" Blade subset
-
-**Cons:**
-- Still two things to manage
-- More complex than pure Blade
-- The "safety" is mostly theater - user controls both parts anyway
-- Adds abstraction without clear benefit for this use case
-
----
-
-### Option D: Blade + Existing Artisan Commands
-
-**Architecture:**
-```
-┌─────────────────────────────────────────┐
-│ Panel Definition                        │
-├─────────────────────────────────────────┤
-│ blade_template: (Blade that calls       │
-│                  existing artisan cmds) │
-└─────────────────────────────────────────┘
-```
-
-**Example:**
-```php
-@php
-    // Use existing memory system
-    $entities = json_decode(Artisan::output(
-        Artisan::call('memory:query', [
-            '--schema' => 'default',
-            '--sql' => 'SELECT name, importance FROM memory_default.entities WHERE is_alive = true'
-        ])
-    ));
-
-    // Or existing tool
-    $files = json_decode(shell_exec('php artisan tool:run file-list -- --path=' . escapeshellarg($path)));
-@endphp
-
-<div x-data="{ selected: null }">
-    @foreach($entities as $entity)
-        <div @click="selected = '{{ $entity->id }}'">{{ $entity->name }}</div>
-    @endforeach
-</div>
-```
-
-**Pros:**
-- Leverages existing infrastructure (memory tools, custom tools)
-- No new API layer needed
-- Single file
-- Consistent with how AI already interacts with the system
-
-**Cons:**
-- Artisan calls have overhead (process spawning)
-- Awkward syntax for complex queries
-- Still full PHP access (same "security" as Option B)
-- Output parsing can be fragile
-
----
-
-## Recommendation
-
-**Option B (Pure Blade)** with these considerations:
-
-1. **Simplicity wins**: One file, full Laravel power, familiar patterns
-2. **Security is moot**: User controls their instance and their panels
-3. **AI capability**: Claude knows Blade/Laravel very well
-4. **Interactivity**: Alpine.js can be added in the Blade file as needed
-5. **Existing patterns**: Current file preview modal already uses Blade
-
-**Implementation approach:**
-- Store panel Blade content in database (like tool scripts)
-- Render via `Blade::render($template, $parameters)`
-- Auto-clear compiled view on panel update
-- Provide helpful injected variables: `$parameters`, `$user`, `$workspace`
-
-**Example panel workflow:**
 ```
 User: "Create a panel that shows all my D&D entities with their locations"
 
