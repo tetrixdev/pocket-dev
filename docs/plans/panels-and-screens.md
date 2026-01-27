@@ -86,6 +86,418 @@ User: /entity-map --importance=major
 
 ---
 
+## Part 1b: Deep Dive - Unified Tools/Panels & State Management
+
+### Decision: Unify Tools and Panels
+
+Rather than creating a separate system, panels will be an extension of the existing tools system.
+
+**Unified `tools` table:**
+
+```
+tools table (extended)
+├── slug: string (unique identifier)
+├── name: string (display name)
+├── description: string (for AI context)
+├── parameters: json (input schema)
+├── type: enum('script', 'panel')      ← NEW
+├── script: text (for type=script)
+├── blade_template: text (for type=panel)  ← NEW
+├── system_prompt: text (AI instructions)
+└── ... existing fields
+```
+
+**Why unify?**
+- One concept for users to learn
+- Same invocation pattern (slash commands, AI tool calls)
+- Same parameter handling
+- Less code to maintain
+- Clear mental model: "tools do things, some return text, some open panels"
+
+**Frontend differentiation:**
+- Script tools: current color (blue?)
+- Panel tools: different color (purple?) to indicate visual output
+- Both invoked the same way: `/tool-name --param=value`
+
+---
+
+### The Peek Concept: AI Awareness of Panel State
+
+**Core idea:** When AI opens a panel, it immediately receives a "peek" - a text representation of what the user sees. User can also ask AI to peek at current state anytime.
+
+#### How Peek Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ AI invokes: /file-explorer --path=/workspace                    │
+├─────────────────────────────────────────────────────────────────┤
+│ 1. Panel opens visually for user                                │
+│ 2. AI receives peek response:                                   │
+│                                                                 │
+│    Panel "File Explorer" opened at /workspace                   │
+│    ──────────────────────────────────────────                   │
+│    📁 src/ (collapsed)                                          │
+│    📁 tests/ (collapsed)                                        │
+│    📄 README.md (2.3 KB)                                        │
+│    📄 composer.json (1.1 KB)                                    │
+│    ──────────────────────────────────────────                   │
+│    4 items visible (2 directories, 2 files)                     │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Later: User Asks AI to Look Again
+
+```
+User: "What do you see in the file explorer now?"
+
+AI invokes: /peek file-explorer
+   OR: internal peek mechanism
+
+AI receives:
+    Panel "File Explorer" current state:
+    ──────────────────────────────────────────
+    📁 src/ (expanded)
+    │  📁 Controllers/ (collapsed)
+    │  📁 Models/ (expanded)
+    │  │  📄 User.php (4.2 KB)
+    │  │  📄 Post.php (2.1 KB)
+    │  📄 helpers.php (0.5 KB)
+    📁 tests/ (collapsed)
+    📄 README.md (2.3 KB)
+    📄 composer.json (1.1 KB)
+    ──────────────────────────────────────────
+    7 items visible (4 directories, 3 files)
+```
+
+**Key insight:** Peek shows only what's VISIBLE. Collapsed folders don't show contents. This matches what the user actually sees.
+
+---
+
+### State Management Deep Dive
+
+Panels are interactive - users click, expand, navigate. This creates state that must be:
+1. Persisted (survives page refresh)
+2. Peekable (AI can read current state)
+3. Fresh (reflects actual data, not stale cache)
+
+#### What IS State?
+
+| Panel Type | State Includes |
+|------------|----------------|
+| File Explorer | Expanded folders, scroll position, selected file |
+| Git Diff | Which files expanded, view mode (unified/split) |
+| Memory Table | Sort column, sort direction, filters, page number |
+| Entity Map | Selected entity, zoom level, pan position |
+
+#### Where Does State Live?
+
+**Option A: Client-side only (Alpine.js / localStorage)**
+```
+Pros: Simple, no server round-trips
+Cons: AI can't peek without asking browser, lost on different device
+```
+
+**Option B: Server-side (database)**
+```
+Pros: AI can peek anytime, survives device switches
+Cons: Every interaction needs server round-trip, more complex
+```
+
+**Option C: Hybrid (client-side with sync)**
+```
+Pros: Fast interactions, AI can peek, survives refresh
+Cons: More complex, potential sync conflicts
+```
+
+**Recommendation: Hybrid approach**
+
+```
+┌─────────────┐     user clicks     ┌─────────────┐
+│   Browser   │ ──────────────────► │ Alpine.js   │ (instant visual update)
+│             │                     │   State     │
+└─────────────┘                     └──────┬──────┘
+                                           │ debounced sync (500ms)
+                                           ▼
+                                    ┌─────────────┐
+                                    │   Server    │
+                                    │ panel_state │ (persisted, peekable)
+                                    └─────────────┘
+```
+
+- User interactions update Alpine state immediately (fast)
+- State syncs to server after 500ms debounce (reduces traffic)
+- AI peeks read from server state (may be slightly behind)
+- Page refresh restores from server state
+
+#### State Schema
+
+```sql
+panel_states table:
+├── id: uuid
+├── user_id: foreign key
+├── panel_slug: string
+├── instance_id: string (for multiple instances of same panel)
+├── parameters: json (the params used to open this instance)
+├── state: json (current interaction state)
+├── visible_summary: text (pre-computed peek text)
+├── updated_at: timestamp
+└── created_at: timestamp
+```
+
+**Example state for File Explorer:**
+```json
+{
+  "expanded": ["/workspace/src", "/workspace/src/Models"],
+  "selected": "/workspace/src/Models/User.php",
+  "scroll_position": 120
+}
+```
+
+---
+
+### State Freshness: When Does Data Refresh?
+
+**The Problem:**
+Panel shows file tree at time T. At time T+5, AI creates new file. Panel still shows old tree.
+
+**Scenarios:**
+
+| Scenario | What Happens | User Experience |
+|----------|--------------|-----------------|
+| User opens panel | Fresh render | ✅ Sees current data |
+| User expands folder | Fresh fetch for that folder | ✅ Sees current contents |
+| User switches to panel | ??? | Could be stale |
+| AI creates file | Panel doesn't know | ❌ Stale until refresh |
+| User asks AI "what's in panel?" | AI peeks stale state | ❌ AI sees old data |
+
+**Proposed Solution: Smart Refresh Triggers**
+
+1. **On panel focus** (user switches to it): Check data age, refresh if > N seconds
+2. **After AI tool calls**: If tool modified relevant data, trigger panel refresh
+3. **Manual refresh button**: User can force refresh
+4. **Periodic refresh**: Optional, for dashboards (every 30s?)
+
+**Implementation idea - Tool hooks:**
+
+```php
+// When AI runs a tool that might affect panel data
+class CreateFileToolHandler {
+    public function handle($params) {
+        // ... create file ...
+
+        // Notify relevant panels to refresh
+        PanelRefreshEvent::dispatch([
+            'type' => 'file-explorer',
+            'affected_paths' => [$params['path']],
+        ]);
+    }
+}
+```
+
+Panel receives event via websocket/SSE, refreshes affected sections.
+
+---
+
+### Rendering Approaches for Interactive Panels
+
+**Challenge:** Blade renders server-side, but interactivity needs client-side logic.
+
+#### Approach 1: Full Pre-render + Alpine State
+
+```php
+@php
+    // Server fetches ALL data
+    $tree = buildFullFileTree($path, maxDepth: 5);
+@endphp
+
+<div x-data="{
+    tree: {{ Js::from($tree) }},
+    expanded: @json($state['expanded'] ?? [])
+}">
+    {{-- Alpine handles expand/collapse from pre-loaded data --}}
+</div>
+```
+
+**Pros:** Fast interactions (no server calls for expand)
+**Cons:** Large initial payload, data can go stale, deep trees are expensive
+
+#### Approach 2: Lazy Loading via AJAX
+
+```php
+<div x-data="fileExplorer('{{ $path }}')" x-init="loadRoot()">
+    {{-- Alpine fetches data on demand --}}
+</div>
+
+<script>
+function fileExplorer(rootPath) {
+    return {
+        items: [],
+        async loadRoot() {
+            this.items = await fetch(`/api/panel/file-explorer/list?path=${rootPath}`).then(r => r.json());
+        },
+        async expand(path) {
+            const children = await fetch(`/api/panel/file-explorer/list?path=${path}`).then(r => r.json());
+            // merge into tree...
+        }
+    }
+}
+</script>
+```
+
+**Pros:** Fresh data on each expand, smaller initial load
+**Cons:** Slower interactions (network latency), needs API endpoints
+
+#### Approach 3: Hybrid with Intelligent Prefetch
+
+```php
+@php
+    // Server renders first 2 levels
+    $tree = buildFileTree($path, depth: 2);
+@endphp
+
+<div x-data="fileExplorer({{ Js::from($tree) }}, '{{ $path }}')">
+    {{-- First 2 levels instant, deeper levels lazy-load --}}
+</div>
+```
+
+**Pros:** Fast initial render, fresh data for deep navigation
+**Cons:** More complex logic
+
+**Recommendation:** Start with Approach 1 for simplicity, move to Approach 3 if performance issues arise.
+
+---
+
+### Peek Implementation Details
+
+**How does AI actually "peek" at a panel?**
+
+#### Option A: Panel defines `getPeekText()` method
+
+Each panel includes a PHP function that generates text summary:
+
+```php
+// In panel blade template or separate file
+@php
+function getPeekText($state, $data) {
+    $lines = ["📁 File Explorer at {$data['path']}"];
+    foreach ($data['items'] as $item) {
+        $prefix = in_array($item['path'], $state['expanded']) ? '▼' : '▶';
+        $icon = $item['type'] === 'dir' ? '📁' : '📄';
+        $lines[] = "{$prefix} {$icon} {$item['name']}";
+
+        // If expanded, show children
+        if (in_array($item['path'], $state['expanded'])) {
+            foreach ($item['children'] ?? [] as $child) {
+                $lines[] = "   {$icon} {$child['name']}";
+            }
+        }
+    }
+    return implode("\n", $lines);
+}
+@endphp
+```
+
+**Pros:** Full control over peek format
+**Cons:** Panel author must implement, could be inconsistent
+
+#### Option B: Generic state-to-text converter
+
+System automatically converts panel state to text based on data type:
+
+```php
+class PanelPeeker {
+    public function peek(Panel $panel, array $state): string {
+        $data = $panel->getCurrentData($state);
+        return $this->formatForAI($panel->type, $data, $state);
+    }
+
+    private function formatForAI($type, $data, $state): string {
+        return match($type) {
+            'file-tree' => $this->formatFileTree($data, $state),
+            'table' => $this->formatTable($data, $state),
+            'git-diff' => $this->formatDiff($data, $state),
+            default => json_encode($data, JSON_PRETTY_PRINT),
+        };
+    }
+}
+```
+
+**Pros:** Consistent formatting, panel author doesn't need to implement
+**Cons:** Less flexible, might not capture all nuances
+
+#### Option C: Hybrid - Generic with override
+
+Default generic formatter, but panel can override with custom `getPeekText()`.
+
+**Recommendation:** Option C - best of both worlds.
+
+---
+
+### Edge Cases & Considerations
+
+#### 1. Multiple Instances of Same Panel
+
+User opens two file explorers at different paths.
+
+```
+file-explorer @ /workspace/project-a
+file-explorer @ /workspace/project-b
+```
+
+**Solution:** Each instance gets unique `instance_id`, state stored separately.
+
+#### 2. Panel Opens, AI Disconnects
+
+AI opened panel, then conversation ends. Panel still open but no AI to peek.
+
+**Solution:** Panel is tied to user session, not conversation. Persists until user closes.
+
+#### 3. Very Large State
+
+File explorer with 10,000 expanded folders. State object becomes huge.
+
+**Solution:**
+- Limit state size (e.g., max 100 expanded items)
+- Prune old state (collapse folders not interacted with recently)
+- Warn user if state is getting large
+
+#### 4. Concurrent Edits
+
+User has panel open on two devices. Both modify state.
+
+**Solution:** Last-write-wins with timestamp. Or: per-device state.
+
+#### 5. Panel Errors
+
+Panel blade template throws exception. What does AI see?
+
+**Solution:**
+- Peek returns error message: "Panel error: [exception message]"
+- User sees friendly error in panel UI
+- Log for debugging
+
+#### 6. Sensitive Data in Peek
+
+Panel shows secrets, API keys. AI peeks and now it's in conversation history.
+
+**Solution:**
+- Panel can mark fields as `sensitive: true`
+- Peek redacts sensitive fields: `API_KEY: [redacted]`
+- Or: panel author handles in `getPeekText()`
+
+---
+
+### Open Questions
+
+- [ ] Should peek be automatic on panel open, or require explicit AI action?
+- [ ] How detailed should peek text be? (full tree vs summary)
+- [ ] Should panels be able to "push" updates to AI? (e.g., "user just clicked X")
+- [ ] Rate limiting on peek? (prevent AI from peeking every second)
+- [ ] Peek cost? (counts toward context window, could be expensive)
+
+---
+
 ## Part 2: Screen Architecture (Swipeable Multi-Screen)
 
 ### Concept
