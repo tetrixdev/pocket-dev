@@ -43,6 +43,24 @@ docker compose pull && docker compose up -d
 
 Want to run PocketDev on a VPS instead of locally? See the [Secure Server Setup Guide](docs/deployment/secure-server-setup.md) for a Tailscale-based deployment that keeps your instance private and invisible to the public internet.
 
+## Troubleshooting
+
+### Claude Code Version Issues
+
+If you encounter API errors like "tool use concurrency issues" or other Claude Code bugs, you can pin to a specific version by adding this to your `.env` file:
+
+```bash
+CLAUDE_CODE_VERSION=2.1.17
+```
+
+Then restart the containers:
+
+```bash
+docker compose down && docker compose up -d
+```
+
+The queue container will automatically install the specified version on startup. Remove the variable or set it empty to use the default (latest) version.
+
 ## Contributing
 
 Want to contribute to PocketDev? See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
