@@ -32,6 +32,15 @@ Configuration files and environment variables for PocketDev.
 | `CLAUDE_MODEL` | `claude-sonnet-4-5-20250929` | Default model |
 | `CLAUDE_MAX_TURNS` | `100` | Max conversation turns |
 
+### File Upload Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PD_MAX_UPLOAD_SIZE_MB` | `250` | Max file upload size for chat attachments (MB). Hard limit: 2048 MB (2GB). |
+| `PD_MAX_PREVIEW_SIZE_MB` | `25` | Max file size for browser preview modal (MB). |
+
+**Note:** The infrastructure (Nginx/PHP) supports up to 2GB uploads. The application defaults are more conservative but can be increased via these environment variables.
+
 ## Configuration Files
 
 ### Laravel (`config/claude.php`)
