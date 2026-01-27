@@ -254,6 +254,27 @@ else
     echo "WARNING: jq not available - skipping package installation"
 fi
 
+# CLAUDE CODE VERSION OVERRIDE
+# =============================================================================
+# If CLAUDE_CODE_VERSION is set, reinstall Claude Code at that specific version.
+# This is a fallback mechanism for pinning to a known-working version.
+# Example: CLAUDE_CODE_VERSION=2.1.17
+
+if [ -n "$CLAUDE_CODE_VERSION" ]; then
+    current_version=$(claude --version 2>/dev/null | head -1 | awk '{print $1}' || echo "unknown")
+    if [ "$current_version" != "$CLAUDE_CODE_VERSION" ]; then
+        echo "📦 Installing Claude Code version $CLAUDE_CODE_VERSION (current: $current_version)..."
+        if npm install -g "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION" --force 2>&1; then
+            new_version=$(claude --version 2>/dev/null | head -1 | awk '{print $1}' || echo "unknown")
+            echo "  ✓ Claude Code $new_version installed"
+        else
+            echo "  ✗ Failed to install Claude Code $CLAUDE_CODE_VERSION"
+        fi
+    else
+        echo "Claude Code already at requested version $CLAUDE_CODE_VERSION"
+    fi
+fi
+
 # Export user-configured credentials as environment variables
 # These will be inherited by supervisord and all queue workers
 echo "Loading credentials into environment..."
