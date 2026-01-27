@@ -375,6 +375,7 @@
             // File attachments store for managing uploaded files in chat
             Alpine.store('attachments', {
                 files: [],           // Array of { id, path, filename, size, sizeFormatted, uploading, error }
+                maxFileSizeMb: {{ config('uploads.max_size_mb', 250) }},  // From server config
 
                 get count() {
                     return this.files.filter(f => !f.error && !f.uploading).length;
@@ -396,6 +397,23 @@
 
                 async addFile(file) {
                     const id = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+
+                    // Client-side file size validation
+                    const maxSizeBytes = this.maxFileSizeMb * 1024 * 1024;
+                    if (file.size > maxSizeBytes) {
+                        const entry = {
+                            id,
+                            filename: file.name,
+                            size: file.size,
+                            sizeFormatted: this.formatSize(file.size),
+                            path: null,
+                            uploading: false,
+                            error: `File too large. Maximum size is ${this.maxFileSizeMb}MB.`,
+                        };
+                        this.files.push(entry);
+                        return;
+                    }
+
                     const entry = {
                         id,
                         filename: file.name,
@@ -416,9 +434,36 @@
                             body: formData,
                         });
 
+                        // Check response.ok BEFORE parsing JSON to handle HTML error pages
+                        if (!response.ok) {
+                            // Try to extract error message from response
+                            const contentType = response.headers.get('content-type') || '';
+                            let errorMessage = 'Upload failed';
+
+                            if (contentType.includes('application/json')) {
+                                try {
+                                    const errorData = await response.json();
+                                    errorMessage = errorData.message || errorData.error || errorMessage;
+                                } catch (e) {
+                                    // JSON parsing failed, use status text
+                                    errorMessage = response.statusText || errorMessage;
+                                }
+                            } else if (response.status === 422) {
+                                // Laravel validation error - file too large
+                                errorMessage = 'File too large. Maximum size is {{ config("uploads.max_size_mb", 250) }}MB.';
+                            } else if (response.status === 413) {
+                                // Nginx/PHP body too large
+                                errorMessage = 'File too large for server to process.';
+                            } else {
+                                errorMessage = `Upload failed (${response.status})`;
+                            }
+
+                            throw new Error(errorMessage);
+                        }
+
                         const data = await response.json();
 
-                        if (!response.ok || !data.success) {
+                        if (!data.success) {
                             throw new Error(data.message || data.error || 'Upload failed');
                         }
 
