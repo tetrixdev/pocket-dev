@@ -599,7 +599,7 @@ CLI;
                         $overrides['buildArgs'] ?? []
                     );
 
-                    $serviceCommand = $metadata['cmd'] ?? $this->getServiceCommand($serviceName);
+                    $serviceCommand = $metadata['cmd'] ?? $metadata['entrypoint'] ?? $this->getServiceCommand($serviceName);
                     $originalUser = $metadata['user'];
 
                     $copyScript = implode(" && ", $copyCommands);
@@ -844,6 +844,55 @@ CLI;
     }
 
     /**
+     * Extract the ENTRYPOINT instruction from a Dockerfile.
+     *
+     * Handles both exec form (ENTRYPOINT ["executable", "param1"]) and shell form (ENTRYPOINT command param1).
+     * Returns the last ENTRYPOINT found (Docker behavior).
+     *
+     * @param string $dockerfilePath Absolute path to Dockerfile
+     * @return string|null The ENTRYPOINT as a shell command string, or null if not found
+     */
+    private function extractDockerfileEntrypoint(string $dockerfilePath): ?string
+    {
+        $content = file_get_contents($dockerfilePath);
+        if ($content === false) {
+            return null;
+        }
+
+        $lines = explode("\n", $content);
+        $entrypoint = null;
+        $continuationBuffer = '';
+
+        foreach ($lines as $line) {
+            // Handle line continuations
+            $trimmedLine = trim($line);
+
+            // Skip comments and empty lines
+            if (empty($trimmedLine) || str_starts_with($trimmedLine, '#')) {
+                continue;
+            }
+
+            // Check for line continuation
+            if (str_ends_with($trimmedLine, '\\')) {
+                $continuationBuffer .= rtrim($trimmedLine, '\\') . ' ';
+                continue;
+            }
+
+            // Complete the line
+            $fullLine = $continuationBuffer . $trimmedLine;
+            $continuationBuffer = '';
+
+            // Check for ENTRYPOINT instruction (case insensitive)
+            if (preg_match('/^ENTRYPOINT\s+(.+)$/i', $fullLine, $matches)) {
+                $entrypointValue = trim($matches[1]);
+                $entrypoint = $this->parseCmdValue($entrypointValue);
+            }
+        }
+
+        return $entrypoint;
+    }
+
+    /**
      * Extract the USER instruction from a Dockerfile, substituting build args.
      *
      * Handles USER username, USER $VAR, USER ${VAR}. For USER user:group format,
@@ -896,17 +945,17 @@ CLI;
     }
 
     /**
-     * Get metadata from the Dockerfile (CMD and USER).
+     * Get metadata from the Dockerfile (CMD, ENTRYPOINT, and USER).
      *
      * @param string $composeDir Absolute path to directory containing compose file
      * @param string|null $buildContext Build context path (relative to compose dir)
      * @param string|null $dockerfile Dockerfile path (relative to build context)
      * @param array $buildArgs Build arguments for variable substitution
-     * @return array{cmd: ?string, user: ?string}
+     * @return array{cmd: ?string, entrypoint: ?string, user: ?string}
      */
     private function getDockerfileMetadata(string $composeDir, ?string $buildContext, ?string $dockerfile, array $buildArgs = []): array
     {
-        $result = ['cmd' => null, 'user' => null];
+        $result = ['cmd' => null, 'entrypoint' => null, 'user' => null];
 
         if ($buildContext === null) {
             return $result;
@@ -918,6 +967,7 @@ CLI;
         }
 
         $result['cmd'] = $this->extractDockerfileCmd($dockerfilePath);
+        $result['entrypoint'] = $this->extractDockerfileEntrypoint($dockerfilePath);
         $result['user'] = $this->extractDockerfileUser($dockerfilePath, $buildArgs);
 
         return $result;
