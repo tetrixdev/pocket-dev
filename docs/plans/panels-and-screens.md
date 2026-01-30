@@ -600,51 +600,173 @@ Panel shows secrets, API keys. AI peeks and now it's in conversation history.
 
 ---
 
-## Part 2: Screen Architecture (Swipeable Multi-Screen)
+## Part 2: Sessions & Screen Architecture
 
-### Concept
+### New Entity: Session
 
-Instead of tabs or modals, screens are a **carousel of contexts**:
+**Session** is a new entity between Workspace and Conversations.
 
 ```
-Mobile (swipe gesture):
-┌─────────────────────────────────────────┐
-│             ● ○ ○ ○                     │ ← dot indicators
-├─────────────────────────────────────────┤
-│                                         │
-│            [Active Screen]              │
-│                                         │
-│         ← swipe left/right →            │
-│                                         │
-└─────────────────────────────────────────┘
-
-Desktop (sidebar or tabs):
-┌─────────┬───────────────────────────────┐
-│ Screens │                               │
-│ ─────── │                               │
-│ ● Chat  │       [Active Screen]         │
-│ ○ Files │                               │
-│ ○ Git   │                               │
-│ + Add   │                               │
-└─────────┴───────────────────────────────┘
+Workspace
+└── Session (NEW - groups related work)
+    └── Screens (tabs within the session)
+        ├── Chat 1 (conversation)
+        ├── Chat 2 (another conversation)
+        ├── File Explorer (panel)
+        └── Git Diff (panel)
 ```
+
+**Key concept:** A session can have multiple chat screens (conversations) AND multiple panel screens. Screens belong to the session, not to a conversation.
+
+---
+
+### UI Layout
+
+```
+┌─────────────┬─────────────────────────────────────────────────┐
+│ Sessions    │ [Chat] [Files] [Git] [Chat 2] [+]    ← tabs     │
+│ ─────────── ├─────────────────────────────────────────────────┤
+│ > Auth Bug  │                                                 │
+│   API Work  │            [Active Screen Content]              │
+│   General   │                                                 │
+│             │              (full viewport)                    │
+│ [+ New]     │                                                 │
+└─────────────┴─────────────────────────────────────────────────┘
+     ↑                              ↑
+  Sessions list              Tabs for screens
+  (replaces old               within session
+   conversations list)
+```
+
+**Mobile:**
+- Same tabs at top (icons or abbreviated names)
+- Swipe left/right as additional navigation method
+- Sessions accessible via menu/drawer
+
+**Desktop:**
+- Sessions list in left sidebar
+- Tabs at top of main area
+- Click tabs to switch screens
+
+---
 
 ### Screen Behaviors
 
 | Behavior | Description |
 |----------|-------------|
-| Chat is always first | Home screen, can't be closed |
-| Add via slash command | `/file-explorer` opens as new screen |
-| Close with X or command | `/close file-explorer` |
-| Reorder via drag | User can arrange screen order |
-| State persists | Screen state survives conversation switches |
-| Parameters in URL | `?screen=file-explorer&path=/tmp` |
+| Screen order | User can reorder via drag |
+| Chat position | Can be anywhere (starts first, but movable) |
+| Close panel | UI button (X on tab) |
+| Close chat | Archives the conversation, tab disappears |
+| Max screens | Unlimited |
+| Screen size | Full viewport (like current chat) |
+| State persists | Screens survive page refresh |
 
-### Open Questions
+---
 
-- [ ] Maximum number of screens? (Probably 5-6 for sanity)
-- [ ] How to handle screen that needs full viewport vs. one that's compact?
-- [ ] Screen-to-screen communication? (e.g., click file in explorer → opens in editor screen)
+### Session Behaviors
+
+| Behavior | Description |
+|----------|-------------|
+| Contains screens | Chats + panels grouped together |
+| Multiple chats | A session can have multiple conversations |
+| Persistence | Screens belong to session, persist until closed |
+| Last active | Track which screen was last active per session |
+| Archiving | Sessions can be archived (soft delete), still viewable |
+
+---
+
+### URL & Navigation
+
+**URL stays at session level:**
+```
+/workspace/default/session/abc123
+```
+
+**Browser back/forward navigates between sessions, not screens:**
+```
+1. User in Session A, switches tabs (Chat → Files → Git)
+2. User goes to Session B, switches tabs
+3. User goes to external site
+4. Press back → Session B (opens last active screen)
+5. Press back → Session A (opens last active screen)
+```
+
+**No deep linking to specific screens** - each session opens to its last active screen.
+
+---
+
+### Adding New Screens
+
+**[+] button in tabs area** shows options:
+- "New Chat" → Creates new conversation, adds chat tab
+- "Add Panel" → Shows available panels to open
+
+**AI can also open panels:**
+```
+AI: /file-explorer --path=/workspace
+→ New tab appears in current session
+```
+
+---
+
+### Archiving
+
+| Entity | Can Archive? | What Happens |
+|--------|--------------|--------------|
+| Session | Yes (soft delete) | Hidden from default list, can filter to see. All screens preserved. |
+| Conversation | Yes | Chat tab closes, conversation data persists in archive. Can restore. |
+| Panel | No | Just close it (X button), state is gone |
+
+**Archived conversation in active session:**
+- Tab disappears from session
+- Conversation still exists in archived state
+- Could add "Restore archived chats" option later
+
+---
+
+### Session State Schema
+
+```sql
+sessions table:
+├── id: uuid
+├── workspace_id: foreign key
+├── name: string (user-editable, or auto-generated)
+├── is_archived: boolean (default false)
+├── last_active_screen_id: foreign key (nullable)
+├── screen_order: json (array of screen IDs in display order)
+├── created_at: timestamp
+└── updated_at: timestamp
+
+screens table:
+├── id: uuid
+├── session_id: foreign key
+├── type: enum('chat', 'panel')
+├── conversation_id: foreign key (for type='chat')
+├── panel_slug: string (for type='panel')
+├── panel_instance_id: string (for type='panel', links to panel_states)
+├── parameters: json (for panels)
+├── is_active: boolean
+├── created_at: timestamp
+└── updated_at: timestamp
+```
+
+---
+
+### Decisions Made
+
+- [x] **Session entity** - New object between workspace and conversations
+- [x] **Multiple chats per session** - Yes, each chat is a screen tab
+- [x] **Screen order** - User can reorder via drag
+- [x] **Chat position** - Not fixed, can be anywhere
+- [x] **Close panel** - UI button (X on tab)
+- [x] **Max screens** - Unlimited
+- [x] **Desktop nav** - Tabs at top
+- [x] **Mobile nav** - Tabs/icons + swipe as bonus
+- [x] **URL** - Session level only, back/forward between sessions
+- [x] **Last active tracking** - Per session
+- [x] **Archiving** - Sessions and conversations can archive, panels just close
+- [x] **Adding screens** - [+] button with "New Chat" / "Add Panel"
 
 ---
 
