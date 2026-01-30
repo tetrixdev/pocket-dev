@@ -368,69 +368,166 @@ function fileExplorer(rootPath) {
 
 ---
 
-### Peek Implementation Details
+### State vs Peek: Critical Distinction
 
-**How does AI actually "peek" at a panel?**
+**State and Peek serve different purposes and have different formats.**
 
-#### Option A: Panel defines `getPeekText()` method
+| Concept | Format | Contains | Purpose |
+|---------|--------|----------|---------|
+| **State** | JSON | Interaction inputs | Persistence, restoring UI |
+| **Peek** | Markdown | Computed visible output | AI awareness |
 
-Each panel includes a PHP function that generates text summary:
-
-```php
-// In panel blade template or separate file
-@php
-function getPeekText($state, $data) {
-    $lines = ["📁 File Explorer at {$data['path']}"];
-    foreach ($data['items'] as $item) {
-        $prefix = in_array($item['path'], $state['expanded']) ? '▼' : '▶';
-        $icon = $item['type'] === 'dir' ? '📁' : '📄';
-        $lines[] = "{$prefix} {$icon} {$item['name']}";
-
-        // If expanded, show children
-        if (in_array($item['path'], $state['expanded'])) {
-            foreach ($item['children'] ?? [] as $child) {
-                $lines[] = "   {$icon} {$child['name']}";
-            }
-        }
-    }
-    return implode("\n", $lines);
-}
-@endphp
-```
-
-**Pros:** Full control over peek format
-**Cons:** Panel author must implement, could be inconsistent
-
-#### Option B: Generic state-to-text converter
-
-System automatically converts panel state to text based on data type:
-
-```php
-class PanelPeeker {
-    public function peek(Panel $panel, array $state): string {
-        $data = $panel->getCurrentData($state);
-        return $this->formatForAI($panel->type, $data, $state);
-    }
-
-    private function formatForAI($type, $data, $state): string {
-        return match($type) {
-            'file-tree' => $this->formatFileTree($data, $state),
-            'table' => $this->formatTable($data, $state),
-            'git-diff' => $this->formatDiff($data, $state),
-            default => json_encode($data, JSON_PRETTY_PRINT),
-        };
-    }
+**State example (JSON):**
+```json
+{
+  "expanded": ["/workspace/src", "/workspace/src/Models"],
+  "selected": "/workspace/src/Models/User.php",
+  "scroll_position": 120
 }
 ```
 
-**Pros:** Consistent formatting, panel author doesn't need to implement
-**Cons:** Less flexible, might not capture all nuances
+**Peek example (Markdown):**
+```markdown
+## File Explorer: /workspace
 
-#### Option C: Hybrid - Generic with override
+📁 src/ (expanded)
+   📁 Models/ (expanded)
+      📄 User.php (4.2 KB)
+      📄 Post.php (2.1 KB)
+   📄 helpers.php (0.5 KB)
+📁 tests/ (collapsed)
 
-Default generic formatter, but panel can override with custom `getPeekText()`.
+*5 items visible, 1 collapsed*
+```
 
-**Recommendation:** Option C - best of both worlds.
+**Why they're different:**
+
+1. **State is inputs, peek is outputs** - State says "Models is expanded", peek shows what's IN Models
+2. **Peek requires fresh data** - Files may have changed since panel opened
+3. **Format for audience** - JSON for machines, markdown for AI context
+
+**Peek computation:**
+```
+Peek = fetch_fresh_data() + apply_state() + format_as_markdown()
+```
+
+---
+
+### Peek Implementation: Reuse Script Field
+
+**Decision:** For `type=panel`, the `script` field generates peek output.
+
+```
+tools table:
+├── type: 'script' → script runs as tool, returns output to AI
+├── type: 'panel'  → blade_template renders visual, script generates peek
+```
+
+**How it works:**
+
+1. System loads panel state from `panel_states` table
+2. Passes state + params to script via environment variables
+3. Script fetches fresh data, applies state, outputs markdown
+4. Markdown returned to AI
+
+**Environment variables available to peek script:**
+```bash
+PANEL_STATE='{"expanded":["/workspace/src"],"selected":null}'
+PANEL_PARAMS='{"path":"/workspace"}'
+PANEL_INSTANCE_ID='abc-123'
+```
+
+**Example peek script:**
+```bash
+#!/bin/bash
+# Peek script for file-explorer panel
+
+ROOT=$(echo "$PANEL_PARAMS" | jq -r '.path // "/workspace"')
+EXPANDED=$(echo "$PANEL_STATE" | jq -r '.expanded // []')
+
+echo "## File Explorer: $ROOT"
+echo ""
+
+# List directory contents
+for item in "$ROOT"/*; do
+    name=$(basename "$item")
+    if [ -d "$item" ]; then
+        # Check if this folder is expanded
+        is_expanded=$(echo "$EXPANDED" | jq -r --arg p "$item" 'index($p) != null')
+        if [ "$is_expanded" = "true" ]; then
+            echo "📁 $name/ (expanded)"
+            # Show children
+            for child in "$item"/*; do
+                child_name=$(basename "$child")
+                [ -d "$child" ] && echo "   📁 $child_name/" || echo "   📄 $child_name"
+            done
+        else
+            echo "📁 $name/ (collapsed)"
+        fi
+    else
+        size=$(du -h "$item" 2>/dev/null | cut -f1)
+        echo "📄 $name ($size)"
+    fi
+done
+```
+
+**Why bash script (not PHP)?**
+- Consistent with tool scripts (AI already knows the pattern)
+- Can call system commands directly (ls, git, etc.)
+- Separation: Blade for visual, bash for text
+- If complex logic needed, script can call `php artisan` commands
+
+---
+
+### Generic Infrastructure (No Per-Panel Backend Code)
+
+**All panels use the same endpoints:**
+
+```
+POST /api/panel/{instance}/state   → Store state (generic controller)
+GET  /api/panel/{instance}/peek    → Run peek script, return markdown
+GET  /api/panel/{instance}/render  → Run blade, return HTML
+DELETE /api/panel/{instance}       → Close panel, clean up state
+```
+
+**State update controller (generic for all panels):**
+```php
+class PanelStateController {
+    public function update(Request $request, string $instanceId) {
+        $state = PanelState::findOrFail($instanceId);
+        $state->state = $request->json('state');
+        $state->updated_at = now();
+        $state->save();
+
+        return response()->json(['ok' => true]);
+    }
+}
+```
+
+**Peek controller (runs the panel's script):**
+```php
+class PanelPeekController {
+    public function peek(string $instanceId) {
+        $panelState = PanelState::with('panel')->findOrFail($instanceId);
+        $panel = $panelState->panel;
+
+        // Set environment variables
+        $env = [
+            'PANEL_STATE' => json_encode($panelState->state),
+            'PANEL_PARAMS' => json_encode($panelState->parameters),
+            'PANEL_INSTANCE_ID' => $instanceId,
+        ];
+
+        // Run the peek script
+        $process = Process::env($env)->run($panel->script);
+
+        return response($process->output())
+            ->header('Content-Type', 'text/markdown');
+    }
+}
+```
+
+**Key benefit:** Panel authors write blade + script. Zero custom backend code per panel.
 
 ---
 
@@ -487,6 +584,14 @@ Panel shows secrets, API keys. AI peeks and now it's in conversation history.
 - Or: panel author handles in `getPeekText()`
 
 ---
+
+### Decisions Made
+
+- [x] **Unified tools + panels** - Same table, `type: 'script' | 'panel'`
+- [x] **Peek via script field** - For panels, `script` generates peek markdown
+- [x] **State stored server-side** - `panel_states` table with hybrid sync
+- [x] **Generic endpoints** - No per-panel backend code
+- [x] **State ≠ Peek** - State is JSON inputs, Peek is markdown output
 
 ### Open Questions
 
