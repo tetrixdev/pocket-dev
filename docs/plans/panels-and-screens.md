@@ -595,11 +595,130 @@ Panel shows secrets, API keys. AI peeks and now it's in conversation history.
 - [x] **Auto peek on open** - Default yes, with parameter to disable (`--no-peek`)
 - [x] **Peek detail level** - Should represent what user sees; panel author decides specifics
 
-### Open Questions
+### Open Questions (Expanded)
 
-- [ ] Should panels be able to "push" updates to AI? (e.g., "user just clicked X")
-- [ ] Rate limiting on peek? (prevent AI from peeking every second)
-- [ ] Peek cost? (counts toward context window, could be expensive)
+#### 1. Should panels push updates to AI?
+
+**Scenario:** User clicks around in file explorer while AI is mid-response. Should AI know?
+
+**Option A: No push (current assumption)**
+```
+AI opens panel → gets peek → continues conversation
+User clicks around → AI doesn't know
+User asks "what do you see?" → AI peeks again
+```
+
+**Pros:** Simple, AI controls when it looks
+**Cons:** AI might reference stale state in its response
+
+**Option B: Push on significant changes**
+```
+User expands folder → event pushed to AI context
+AI sees: "[Panel update: user expanded /workspace/src]"
+```
+
+**Pros:** AI stays aware, can react ("I see you opened the src folder...")
+**Cons:**
+- Complexity (websocket/SSE to AI?)
+- Noise (every click becomes context)
+- How does this even work mid-stream?
+
+**Option C: Push queue, AI checks on next turn**
+```
+User clicks around → changes queued
+AI's next turn → "Panel changes since last peek: [summary]"
+```
+
+**Pros:** Non-intrusive, batched updates
+**Cons:** Still adds context, might be stale by time AI sees it
+
+**Current lean:** Option A for v1. AI peeks when it needs to. Push is a v2 feature if users request it.
+
+---
+
+#### 2. Rate limiting on peek?
+
+**Scenario:** AI in a loop, peeking every tool call to "check if user did anything."
+
+```
+AI: *peeks* "I see the file explorer"
+AI: *creates file*
+AI: *peeks* "checking if you see it..."
+AI: *peeks* "still there?"
+AI: *peeks* ...
+```
+
+**Concerns:**
+- Wastes tokens (peek output counts toward context)
+- Slows down responses (peek script runs each time)
+- Annoying if AI narrates every peek
+
+**Possible limits:**
+| Limit Type | Example |
+|------------|---------|
+| Time-based | Max 1 peek per panel per 10 seconds |
+| Count-based | Max 3 peeks per panel per conversation turn |
+| Smart | Only peek if state changed since last peek |
+
+**Implementation idea - State hash:**
+```php
+// Store hash of last peek state
+$lastPeekHash = $panelState->last_peek_hash;
+$currentHash = md5(json_encode($panelState->state));
+
+if ($lastPeekHash === $currentHash) {
+    return "Panel unchanged since last peek.";
+}
+```
+
+**Current lean:** Soft limit via instructions ("don't peek repeatedly"), add hard limit if abuse seen.
+
+---
+
+#### 3. Peek cost (context window impact)?
+
+**The math:**
+
+| Panel Type | Typical Peek Size | Impact |
+|------------|------------------|--------|
+| File explorer (shallow) | ~500 tokens | Low |
+| File explorer (deep, many expanded) | ~2,000 tokens | Medium |
+| Data table (50 rows) | ~3,000 tokens | High |
+| Git diff (large changeset) | ~5,000+ tokens | Very high |
+
+**Context budget:** Claude has ~200k tokens, but:
+- System prompt takes ~10-20k
+- Conversation history accumulates
+- Each peek adds to history permanently
+
+**Concerns:**
+- Peek on open + peek later = 2x the tokens
+- Multiple panels = multiplied cost
+- Long conversations hit limits faster
+
+**Mitigation strategies:**
+
+| Strategy | Description |
+|----------|-------------|
+| Summarize old peeks | Replace full peek with "Panel showed 47 files" after N turns |
+| Truncate large peeks | Cap at 1000 tokens, add "[truncated]" |
+| Exclude from history | Peek only in current turn, not persisted? (breaks "what did you see earlier?") |
+| User control | `--peek=summary` vs `--peek=full` |
+
+**Current lean:**
+- Default to reasonable truncation (1000-2000 tokens max per peek)
+- Panel author can control verbosity in peek script
+- Monitor in practice, add summarization if needed
+
+---
+
+#### Summary of Leans
+
+| Question | v1 Approach | Revisit When |
+|----------|-------------|--------------|
+| Push updates to AI | No, AI peeks on demand | Users request real-time awareness |
+| Rate limiting | Soft (instructions), add hard if needed | AI loops on peek |
+| Peek cost | Truncation + author control | Context limits become problem |
 
 ---
 
