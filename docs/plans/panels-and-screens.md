@@ -770,156 +770,51 @@ screens table:
 
 ---
 
-## Part 3: Rich Blocks (Inline in Chat)
+## ~~Part 3: Rich Blocks~~ (Removed from Scope)
 
-### Concept
+**Decision:** Rich Blocks removed from v1 scope.
 
-Lightweight interactive elements embedded directly in chat responses. Not full panels, but richer than plain text.
-
-```
-Assistant: Here's the current status:
-
-╭─ entity-table ──────────────────────────╮
-│ Name          │ Class   │ HP           │
-│───────────────│─────────│──────────────│
-│ Kael          │ Fighter │ 44/44        │
-│ Mara          │ —       │ 9/9          │
-│ [+] Show 45 more...                    │
-╰─────────────────────────────────────────╯
-
-The party is currently...
-```
-
-### Block Types (Built-in)
-
-| Type | Use Case |
-|------|----------|
-| `table` | Data tables with sorting/filtering |
-| `file-tree` | Collapsible directory listing |
-| `code` | Syntax highlighted, copy button (already exists?) |
-| `diff` | Side-by-side or unified diff view |
-| `mermaid` | Diagrams rendered from mermaid syntax |
-| `image` | Image with lightbox on click |
-| `json` | Collapsible JSON tree |
-
-### Syntax Options
-
-**Option 1: Fenced blocks with metadata**
-````markdown
-```block:table
-| Name | Value |
-|------|-------|
-| Foo  | 123   |
-```
-````
-
-**Option 2: HTML-like tags**
-```markdown
-<block type="file-tree" root="/workspace" depth="2" />
-```
-
-**Option 3: Directive syntax**
-```markdown
-:::table{sortable=true}
-| Name | Value |
-:::
-```
-
-### Difference from Panels
-
-| Aspect | Rich Block | Panel |
-|--------|-----------|-------|
-| Location | Inline in chat message | Separate screen |
-| Persistence | Scrolls away with chat | Stays until closed |
-| Interactivity | Limited (expand, sort) | Full (forms, navigation) |
-| Data | Static at render time | Can refresh/fetch |
-| Creation | AI includes in response | Defined, then invoked |
-
----
-
-## Part 4: Session/Focus Layer
-
-### The Problem
-
-Currently: `Workspace → Conversations`
-
-User works on "Auth Bug" over 3 days:
-- Day 1: Conversation exploring the issue
-- Day 2: Conversation trying a fix
-- Day 3: Follow-up conversation
-
-These are disconnected. Plus they had a file explorer and git diff panel open - those don't persist.
-
-### Proposed Hierarchy
-
-```
-Workspace ("default")
-└── Focus ("Auth Bug Investigation")
-    ├── Conversation: "Initial exploration" (Jan 25)
-    ├── Conversation: "Trying the fix" (Jan 26)
-    ├── Conversation: "Follow-up" (Jan 27) ← active
-    ├── Screen: File Explorer @ /src/auth
-    ├── Screen: Git Diff
-    └── Screen: Notes
-```
-
-### Focus Behaviors
-
-| Behavior | Description |
-|----------|-------------|
-| Groups conversations | Related chats stay together |
-| Persists screens | Panel layout survives across conversations |
-| Switchable | Dropdown or list to change focus |
-| Archivable | Done with a focus? Archive it |
-| Default focus | Quick chats go to "General" or auto-created |
-
-### Naming Alternatives
-
-| Name | Pros | Cons |
-|------|------|------|
-| Focus | Clear intent, "what are you focused on?" | Might imply singular attention |
-| Session | Familiar term | Conflicts with auth sessions |
-| Context | Accurate | Generic, overloaded term |
-| Topic | Simple | Feels too casual |
-| Project | Clear | Might conflict with workspace meaning |
-| Thread | Common in chat apps | Already have conversations |
-
-**Current preference**: "Focus" or "Context"
-
-### Open Questions
-
-- [ ] Should AI have context from ALL conversations in a focus, or just current?
-- [ ] Focus tied to one workspace or can span multiple?
-- [ ] Quick chat mode without explicit focus?
+**Reasoning:**
+- Panels already provide interactive visualizations
+- AI markdown (tables, code blocks) handles simple cases
+- Significant complexity for marginal benefit
+- Can revisit later if there's user demand
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Panel Foundation
-- [ ] Database schema for panels (slug, name, blade_template, parameters)
-- [ ] Panel CRUD via artisan commands (`panel:create`, `panel:list`, etc.)
+### Phase 1: Extend Tools Table for Panels
+- [ ] Add `type` enum ('script', 'panel') to tools table
+- [ ] Add `blade_template` field for panels
 - [ ] Panel rendering endpoint (`/panel/{slug}`)
-- [ ] Basic panel viewer (full-screen modal, like current file preview)
-- [ ] Slash command to open panels (`/panel-name`)
+- [ ] Peek endpoint (`/api/panel/{instance}/peek`)
+- [ ] State sync endpoint (`/api/panel/{instance}/state`)
 
-### Phase 2: Multi-Screen UI
-- [ ] Screen state management (which screens open, order)
-- [ ] Mobile: Swipe navigation between screens
-- [ ] Desktop: Sidebar or tab-based screen switching
-- [ ] Screen persistence (survives page refresh)
+### Phase 2: Sessions Entity
+- [ ] Create `sessions` table
+- [ ] Create `screens` table
+- [ ] Migrate existing conversations to default session
+- [ ] Session CRUD (create, archive, restore)
 
-### Phase 3: Rich Blocks
-- [ ] Block syntax parsing in chat renderer
-- [ ] Built-in block types (table, file-tree, code, diff)
-- [ ] Block interactivity (expand/collapse, sort)
+### Phase 3: Screen UI
+- [ ] Tabs at top for screens within session
+- [ ] [+] button for "New Chat" / "Add Panel"
+- [ ] Screen reordering (drag)
+- [ ] Close panel (X button)
+- [ ] Archive conversation (removes tab)
 
-### Phase 4: Focus/Session Layer
-- [ ] Database schema for focuses
-- [ ] Focus-conversation relationship
-- [ ] Focus-screen relationship
-- [ ] Focus switcher UI
-- [ ] (Optional) Cross-conversation context for AI
+### Phase 4: Session UI
+- [ ] Sessions list in sidebar (replaces conversations list)
+- [ ] Session switching
+- [ ] Last active screen tracking
+- [ ] URL routing at session level
+
+### Phase 5: Panel State & Peek
+- [ ] `panel_states` table
+- [ ] Hybrid state sync (Alpine → debounced server)
+- [ ] Peek script execution
+- [ ] Auto-peek on panel open
 
 ---
 
