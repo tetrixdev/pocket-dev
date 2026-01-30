@@ -592,11 +592,11 @@ Panel shows secrets, API keys. AI peeks and now it's in conversation history.
 - [x] **State stored server-side** - `panel_states` table with hybrid sync
 - [x] **Generic endpoints** - No per-panel backend code
 - [x] **State ≠ Peek** - State is JSON inputs, Peek is markdown output
+- [x] **Auto peek on open** - Default yes, with parameter to disable (`--no-peek`)
+- [x] **Peek detail level** - Should represent what user sees; panel author decides specifics
 
 ### Open Questions
 
-- [ ] Should peek be automatic on panel open, or require explicit AI action?
-- [ ] How detailed should peek text be? (full tree vs summary)
 - [ ] Should panels be able to "push" updates to AI? (e.g., "user just clicked X")
 - [ ] Rate limiting on peek? (prevent AI from peeking every second)
 - [ ] Peek cost? (counts toward context window, could be expensive)
