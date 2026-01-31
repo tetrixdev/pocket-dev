@@ -234,13 +234,11 @@ Cons: More complex, potential sync conflicts
 
 ```sql
 panel_states table:
-├── id: uuid
+├── id: uuid (primary key, used to link from screens.panel_id)
 ├── user_id: foreign key
 ├── panel_slug: string
-├── instance_id: string (for multiple instances of same panel)
-├── parameters: json (the params used to open this instance)
+├── parameters: json (the params used to open this panel)
 ├── state: json (current interaction state)
-├── visible_summary: text (pre-computed peek text)
 ├── updated_at: timestamp
 └── created_at: timestamp
 ```
@@ -744,7 +742,7 @@ screens table:
 ├── type: enum('chat', 'panel')
 ├── conversation_id: foreign key (for type='chat')
 ├── panel_slug: string (for type='panel')
-├── panel_instance_id: string (for type='panel', links to panel_states)
+├── panel_id: uuid (for type='panel', links to panel_states.id)
 ├── parameters: json (for panels)
 ├── is_active: boolean
 ├── created_at: timestamp
@@ -779,6 +777,185 @@ screens table:
 - AI markdown (tables, code blocks) handles simple cases
 - Significant complexity for marginal benefit
 - Can revisit later if there's user demand
+
+---
+
+## Technical Implementation Details
+
+### Migration Strategy
+
+One session per existing conversation:
+
+```php
+// Migration: create_sessions_from_conversations
+foreach (Conversation::all() as $conversation) {
+    $session = Session::create([
+        'workspace_id' => $conversation->workspace_id,
+        'name' => $conversation->title,
+        'is_archived' => $conversation->is_archived,
+    ]);
+
+    $screen = Screen::create([
+        'session_id' => $session->id,
+        'type' => 'chat',
+        'conversation_id' => $conversation->id,
+    ]);
+
+    $session->update([
+        'last_active_screen_id' => $screen->id,
+        'screen_order' => [$screen->id],
+    ]);
+}
+```
+
+---
+
+### AI Invocation: Panel Opens via Tool Result
+
+**No new SSE events.** Panels return a structured result; frontend detects and acts.
+
+**Backend: Panel tool handler returns structured result**
+```php
+class PanelToolHandler {
+    public function handle($slug, $params, $sessionId) {
+        $panel = Tool::where('slug', $slug)->where('type', 'panel')->firstOrFail();
+
+        // 1. Create panel state
+        $panelState = PanelState::create([
+            'panel_slug' => $slug,
+            'parameters' => $params,
+            'state' => [],
+        ]);
+
+        // 2. Create screen in current session
+        $screen = Screen::create([
+            'session_id' => $sessionId,
+            'type' => 'panel',
+            'panel_slug' => $slug,
+            'panel_id' => $panelState->id,
+            'parameters' => $params,
+        ]);
+
+        // 3. Run peek script
+        $peek = $this->runPeekScript($panel, $panelState);
+
+        // 4. Return structured result (frontend will detect and open panel)
+        return [
+            'type' => 'panel',
+            'slug' => $slug,
+            'id' => $panelState->id,
+            'screen_id' => $screen->id,
+            'peek' => $peek,
+        ];
+    }
+}
+```
+
+**Frontend: Detect panel results and open tab**
+```javascript
+// When processing tool results in the stream
+function handleToolResult(result) {
+    if (result.type === 'panel') {
+        // Add tab to current session
+        addScreenTab({
+            type: 'panel',
+            slug: result.slug,
+            id: result.id,
+            screenId: result.screen_id
+        });
+        // Load panel content
+        loadPanelContent(result.id);
+    }
+    // AI sees the peek text as the tool output
+}
+```
+
+**AI receives peek as normal tool result:**
+```
+## File Explorer: /workspace
+
+📁 src/ (collapsed)
+📁 tests/ (collapsed)
+📄 README.md (2.3 KB)
+📄 composer.json (1.1 KB)
+
+4 items visible
+```
+
+---
+
+### Panel CRUD: Bundled with Tool Commands
+
+Panels are tools with `type=panel`. Use existing tool commands with type flag:
+
+```bash
+# Create panel
+php artisan tool:create \
+    --slug=file-explorer \
+    --name="File Explorer" \
+    --type=panel \
+    --blade-template="$(cat template.blade.php)" \
+    --script="$(cat peek.sh)" \
+    --system-prompt="Opens interactive file explorer..."
+
+# List all (shows type)
+php artisan tool:list
+
+# Filter by type
+php artisan tool:list --type=panel
+php artisan tool:list --type=script
+
+# Update panel template
+php artisan tool:update --slug=file-explorer --blade-template="..."
+
+# Show details
+php artisan tool:show --slug=file-explorer --include-script --include-template
+```
+
+**Changes to existing tool commands:**
+- Add `--type` parameter (default: 'script')
+- Add `--blade-template` parameter
+- For `type=panel`: both `--script` (peek) and `--blade-template` required
+- Display shows type in listings
+
+---
+
+### Panel Documentation for AI
+
+Same as tools - use `system_prompt` field:
+
+```
+Opens an interactive file explorer panel.
+When invoked, user sees a visual file tree they can navigate.
+You receive a peek showing currently visible files/folders.
+
+## CLI Example
+/file-explorer --path=/workspace
+
+## Parameters
+- path: Root directory to explore (default: /workspace)
+
+## Peek Output
+You'll receive markdown showing:
+- Directories marked (expanded) or (collapsed)
+- Files with sizes
+- Only visible items (collapsed folders hide contents)
+
+Use /peek file-explorer to see current state after user navigates.
+```
+
+---
+
+### Peek Command
+
+AI can peek at current panel state anytime:
+
+```bash
+/peek file-explorer              # Peek at first instance
+/peek file-explorer --id=abc123  # Peek at specific instance
+```
+
+Returns current visible state (re-runs peek script with latest state).
 
 ---
 
