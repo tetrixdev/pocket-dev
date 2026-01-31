@@ -1005,6 +1005,145 @@ if ($openPanels) {
 
 ---
 
+### Default Session Template
+
+Workspaces can have a default template for new sessions - predefined screens with layout preserved.
+
+**Use case:** "Every new session should have File Explorer on left, Chat in middle, Git Diff on right"
+
+**"Save as default" button on session:**
+1. User sets up session with desired layout (panels + chats in order)
+2. Clicks "Save as default" (in session menu)
+3. Current screen layout becomes workspace default
+4. New sessions start with that layout
+
+**What gets saved:**
+
+| Screen Type | What's Copied |
+|-------------|---------------|
+| Panel | slug, parameters (state starts fresh) |
+| Chat | title only (content is empty) |
+| Order | preserved exactly |
+
+**Schema:**
+```json
+// workspaces.default_session_template
+{
+  "screen_order": [
+    { "type": "panel", "slug": "file-explorer", "params": { "path": "/workspace" } },
+    { "type": "chat", "title": "Main" },
+    { "type": "panel", "slug": "git-diff", "params": {} },
+    { "type": "chat", "title": "Notes" }
+  ]
+}
+```
+
+**New session creation from template:**
+```php
+public function createSession($workspaceId) {
+    $workspace = Workspace::find($workspaceId);
+    $template = $workspace->default_session_template;
+
+    $session = Session::create([
+        'workspace_id' => $workspaceId,
+        'name' => 'New Session',
+    ]);
+
+    $screenOrder = [];
+
+    foreach ($template['screen_order'] ?? [] as $item) {
+        if ($item['type'] === 'chat') {
+            // Create empty conversation with template title
+            $conversation = Conversation::create([
+                'workspace_id' => $workspaceId,
+                'title' => $item['title'] ?? 'New Chat',
+            ]);
+            $screen = Screen::create([
+                'session_id' => $session->id,
+                'type' => 'chat',
+                'conversation_id' => $conversation->id,
+            ]);
+        } else {
+            // Create panel with fresh state
+            $panelState = PanelState::create([
+                'panel_slug' => $item['slug'],
+                'parameters' => $item['params'] ?? [],
+                'state' => [],
+            ]);
+            $screen = Screen::create([
+                'session_id' => $session->id,
+                'type' => 'panel',
+                'panel_slug' => $item['slug'],
+                'panel_id' => $panelState->id,
+                'parameters' => $item['params'] ?? [],
+            ]);
+        }
+        $screenOrder[] = $screen->id;
+    }
+
+    // Fallback: if no template, create single empty chat
+    if (empty($screenOrder)) {
+        $conversation = Conversation::create([
+            'workspace_id' => $workspaceId,
+            'title' => 'New Chat',
+        ]);
+        $screen = Screen::create([
+            'session_id' => $session->id,
+            'type' => 'chat',
+            'conversation_id' => $conversation->id,
+        ]);
+        $screenOrder[] = $screen->id;
+    }
+
+    $session->update([
+        'screen_order' => $screenOrder,
+        'last_active_screen_id' => $screenOrder[0],
+    ]);
+
+    return $session;
+}
+```
+
+**Save as default:**
+```php
+public function saveAsDefault(Session $session) {
+    $template = ['screen_order' => []];
+
+    foreach ($session->screens()->orderByRaw("FIELD(id, " . implode(',', $session->screen_order) . ")")->get() as $screen) {
+        if ($screen->type === 'chat') {
+            // Only include non-archived conversations
+            if (!$screen->conversation->is_archived) {
+                $template['screen_order'][] = [
+                    'type' => 'chat',
+                    'title' => $screen->conversation->title,
+                ];
+            }
+        } else {
+            $template['screen_order'][] = [
+                'type' => 'panel',
+                'slug' => $screen->panel_slug,
+                'params' => $screen->panelState->parameters ?? [],
+            ];
+        }
+    }
+
+    $session->workspace->update([
+        'default_session_template' => $template,
+    ]);
+}
+```
+
+**Clear default:**
+- Option to remove template, revert to single empty chat
+
+**Benefits:**
+- Preserves exact layout (chat can be in middle)
+- Multiple chats with meaningful names
+- Panels start fresh (no stale state)
+- Simple UX: just set up what you want, click save
+
+---
+
 ## Implementation Phases
 
 ### Phase 1: Extend Tools Table for Panels
@@ -1032,6 +1171,9 @@ if ($openPanels) {
 - [ ] Session switching
 - [ ] Last active screen tracking
 - [ ] URL routing at session level
+- [ ] "Save as default" button in session menu
+- [ ] Default session template on workspace
+- [ ] Clear default option
 
 ### Phase 5: Panel State & Peek
 - [ ] `panel_states` table
