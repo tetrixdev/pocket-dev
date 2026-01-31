@@ -959,6 +959,52 @@ Returns current visible state (re-runs peek script with latest state).
 
 ---
 
+### System Prompt: Open Panels
+
+Add open panels to the end of system prompt (similar to working directory):
+
+```
+# Working Directory
+
+Current project: /workspace/default
+
+# Open Panels
+
+- file-explorer (id: abc123) @ /workspace/default
+- git-diff (id: def456) @ /pocketdev-source
+
+Use /peek <panel-slug> to see current state.
+```
+
+**Implementation:**
+```php
+// In system prompt builder
+$openPanels = Screen::where('session_id', $currentSession->id)
+    ->where('type', 'panel')
+    ->with('panelState')
+    ->get()
+    ->map(fn($s) => sprintf(
+        '- %s (id: %s) @ %s',
+        $s->panel_slug,
+        $s->panel_id,
+        $s->panelState->parameters['path'] ?? 'N/A'
+    ))
+    ->join("\n");
+
+if ($openPanels) {
+    $systemPrompt .= "\n\n# Open Panels\n\n" . $openPanels;
+    $systemPrompt .= "\n\nUse /peek <panel-slug> to see current state.";
+}
+```
+
+**Benefits:**
+- AI knows what's already open (avoids duplicates)
+- AI can reference panels naturally
+- AI knows it can peek for current state
+- Consistent with existing working directory pattern
+
+---
+
 ## Implementation Phases
 
 ### Phase 1: Extend Tools Table for Panels
@@ -992,6 +1038,7 @@ Returns current visible state (re-runs peek script with latest state).
 - [ ] Hybrid state sync (Alpine → debounced server)
 - [ ] Peek script execution
 - [ ] Auto-peek on panel open
+- [ ] Add open panels to system prompt
 
 ---
 
