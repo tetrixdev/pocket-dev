@@ -1,7 +1,7 @@
 {{-- User message - responsive design using Tailwind breakpoints --}}
 <template x-if="msg.role === 'user'">
-    <div class="max-w-[calc(100%-1rem)] md:max-w-3xl">
-        <div class="px-4 py-3 rounded-lg bg-blue-600">
+    <div class="max-w-[calc(100%-1rem)] md:max-w-3xl overflow-hidden">
+        <div class="px-4 py-3 rounded-lg bg-blue-600 overflow-x-auto">
             <div class="text-sm markdown-content" x-html="renderMarkdown(msg.content)"></div>
             <div class="text-xs mt-2 text-gray-300 flex items-center justify-end gap-2">
                 <span x-text="formatTimestamp(msg.timestamp)"></span>

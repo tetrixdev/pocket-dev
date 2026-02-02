@@ -1,7 +1,7 @@
 {{-- Tool block - responsive design using Tailwind breakpoints --}}
 <template x-if="msg.role === 'tool'">
-    <div class="max-w-[calc(100%-1rem)] md:max-w-3xl w-full">
-        <div class="border border-blue-500/30 rounded-lg bg-blue-900/20 overflow-hidden">
+    <div class="max-w-[calc(100%-1rem)] md:max-w-3xl w-full overflow-hidden">
+        <div class="border border-blue-500/30 rounded-lg bg-blue-900/20 overflow-x-auto">
             {{-- Header --}}
             <div class="flex items-center flex-wrap md:flex-nowrap gap-2 px-3 md:px-4 py-2 bg-blue-900/30 md:border-b md:border-blue-500/20 cursor-pointer"
                  @click="msg.collapsed = !msg.collapsed">
