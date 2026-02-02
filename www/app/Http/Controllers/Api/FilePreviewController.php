@@ -40,7 +40,7 @@ class FilePreviewController extends Controller
             return response()->json([
                 'exists' => true,
                 'readable' => false,
-                'error' => 'File is not readable',
+                'error' => 'Permission denied: cannot read file',
             ], 403);
         }
 
@@ -93,6 +93,21 @@ class FilePreviewController extends Controller
             ], 200);
         }
 
+        // Validate UTF-8 encoding (required for JSON response)
+        if (!mb_check_encoding($content, 'UTF-8')) {
+            return response()->json([
+                'exists' => true,
+                'readable' => true,
+                'size' => $fileSize,
+                'size_formatted' => $this->formatBytes($fileSize),
+                'extension' => $extension,
+                'filename' => $filename,
+                'path' => $path,
+                'encoding_error' => true,
+                'error' => 'File contains invalid UTF-8 encoding',
+            ], 200);
+        }
+
         return response()->json([
             'exists' => true,
             'readable' => true,
@@ -103,6 +118,7 @@ class FilePreviewController extends Controller
             'path' => $path,
             'content' => $content,
             'is_markdown' => in_array($extension, ['md', 'markdown']),
+            'is_html' => in_array($extension, ['html', 'htm']),
         ]);
     }
 
@@ -240,7 +256,7 @@ class FilePreviewController extends Controller
         if (!$isAllowed) {
             return [
                 'error' => true,
-                'response' => ['exists' => false, 'error' => 'Access denied'],
+                'response' => ['exists' => false, 'error' => 'Access denied: path outside allowed directories'],
                 'status' => 403,
             ];
         }

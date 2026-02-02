@@ -159,14 +159,34 @@
             {{-- View mode - File content --}}
             <template x-if="!$store.filePreview.loading && !$store.filePreview.error && $store.filePreview.content && !$store.filePreview.editing">
                 <div class="h-full">
+                    {{-- HTML rendering (emails, web pages) - scaled to fit --}}
+                    <template x-if="$store.filePreview.isHtml">
+                        <div x-data="{
+                                containerWidth: 0,
+                                iframeWidth: 700,
+                                get scale() {
+                                    if (this.containerWidth <= 0) return 1;
+                                    return Math.min(1, this.containerWidth / this.iframeWidth);
+                                }
+                             }"
+                             x-init="containerWidth = $el.offsetWidth; new ResizeObserver(entries => containerWidth = entries[0].contentRect.width).observe($el)"
+                             class="w-full h-full overflow-hidden">
+                            <iframe class="bg-white origin-top-left"
+                                    :style="`width: ${iframeWidth}px; height: ${100 / scale}%; transform: scale(${scale});`"
+                                    :srcdoc="$store.filePreview.sanitizedHtml"
+                                    sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+                                    referrerpolicy="no-referrer"></iframe>
+                        </div>
+                    </template>
+
                     {{-- Markdown rendering --}}
-                    <template x-if="$store.filePreview.isMarkdown">
+                    <template x-if="$store.filePreview.isMarkdown && !$store.filePreview.isHtml">
                         <div class="p-4 md:p-6 markdown-content text-sm"
                              x-html="$store.filePreview.renderedContent"></div>
                     </template>
 
                     {{-- Plain text / code --}}
-                    <template x-if="!$store.filePreview.isMarkdown">
+                    <template x-if="!$store.filePreview.isMarkdown && !$store.filePreview.isHtml">
                         <pre class="p-4 text-sm text-gray-300 font-mono whitespace-pre-wrap break-words"><code x-html="$store.filePreview.highlightedContent"></code></pre>
                     </template>
                 </div>

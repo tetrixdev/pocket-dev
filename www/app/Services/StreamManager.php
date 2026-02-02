@@ -18,7 +18,7 @@ class StreamManager
 {
     private const PREFIX = 'stream:';
     private const TTL_STREAMING = 3600;      // 1 hour for active streams
-    private const TTL_COMPLETED = 300;       // 5 minutes for completed streams
+    private const TTL_COMPLETED = 1800;      // 30 minutes for completed streams (allows reconnection after slow refresh)
 
     /**
      * Start a new stream for a conversation.
@@ -47,15 +47,25 @@ class StreamManager
 
     /**
      * Append an event to the stream.
+     *
+     * Uses Redis transaction to ensure event is in the list before publishing.
+     * This prevents race conditions where subscribers receive events not yet in the list.
      */
     public function appendEvent(string $conversationUuid, StreamEvent $event): void
     {
         $key = $this->key($conversationUuid);
-        Redis::rpush("{$key}:events", $event->toJson());
-        Redis::expire("{$key}:events", self::TTL_STREAMING);
+        $json = $event->toJson();
 
-        // Publish to channel for real-time subscribers
-        Redis::publish("stream:{$conversationUuid}", $event->toJson());
+        // Use transaction for list operations to ensure atomicity
+        Redis::multi();
+        Redis::rpush("{$key}:events", $json);
+        Redis::expire("{$key}:events", self::TTL_STREAMING);
+        Redis::exec();
+
+        // Publish after transaction completes - ensures event is in list first
+        // This ordering prevents race conditions where subscribers try to read
+        // events that haven't been committed to the list yet
+        Redis::publish("stream:{$conversationUuid}", $json);
     }
 
     /**
@@ -159,6 +169,21 @@ class StreamManager
     public function getEventCount(string $conversationUuid): int
     {
         return (int) Redis::llen($this->key($conversationUuid) . ':events');
+    }
+
+    /**
+     * Get the last event from the stream.
+     *
+     * Useful for verifying event continuity on reconnection.
+     *
+     * @return array|null The last event as decoded array, or null if no events
+     */
+    public function getLastEvent(string $conversationUuid): ?array
+    {
+        $key = $this->key($conversationUuid);
+        $event = Redis::lindex("{$key}:events", -1);  // Get last element (index -1)
+
+        return $event ? json_decode($event, true) : null;
     }
 
     /**

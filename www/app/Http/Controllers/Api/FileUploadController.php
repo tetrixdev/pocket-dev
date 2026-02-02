@@ -9,16 +9,15 @@ use Illuminate\Support\Str;
 
 class FileUploadController extends Controller
 {
-    private const MAX_FILE_SIZE_KB = 10240; // 10MB
-    private const UPLOAD_DIR = '/tmp/pocketdev-uploads'; // Shared via pocket-dev-shared-tmp volume
-
     /**
      * Upload a file to shared /tmp and return the path.
      */
     public function upload(Request $request): JsonResponse
     {
+        $maxSizeKb = config('uploads.max_size_mb', 250) * 1024;
+
         $request->validate([
-            'file' => 'required|file|max:' . self::MAX_FILE_SIZE_KB,
+            'file' => 'required|file|max:' . $maxSizeKb,
         ]);
 
         $file = $request->file('file');
@@ -29,9 +28,12 @@ class FileUploadController extends Controller
         $safeName = Str::slug($originalName) ?: 'file';
         $uniqueName = $safeName . '-' . Str::random(8) . ($extension ? ('.' . $extension) : '');
 
+        // Get upload directory from config
+        $uploadDir = config('uploads.directory', '/tmp/pocketdev-uploads');
+
         // Ensure upload directory exists
-        if (!is_dir(self::UPLOAD_DIR)) {
-            if (!mkdir(self::UPLOAD_DIR, 0755, true) && !is_dir(self::UPLOAD_DIR)) {
+        if (!is_dir($uploadDir)) {
+            if (!mkdir($uploadDir, 0755, true) && !is_dir($uploadDir)) {
                 return response()->json([
                     'success' => false,
                     'error' => 'Failed to create upload directory',
@@ -39,10 +41,10 @@ class FileUploadController extends Controller
             }
         }
 
-        $path = self::UPLOAD_DIR . '/' . $uniqueName;
+        $path = $uploadDir . '/' . $uniqueName;
 
         try {
-            $file->move(self::UPLOAD_DIR, $uniqueName);
+            $file->move($uploadDir, $uniqueName);
         } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
@@ -71,7 +73,8 @@ class FileUploadController extends Controller
         $path = $request->input('path');
 
         // Security: Use realpath() for canonical path validation (protects against symlink attacks)
-        $uploadRoot = realpath(self::UPLOAD_DIR);
+        $uploadDir = config('uploads.directory', '/tmp/pocketdev-uploads');
+        $uploadRoot = realpath($uploadDir);
         $resolved = $path ? realpath($path) : false;
 
         if (!$uploadRoot || !$resolved || !str_starts_with($resolved, $uploadRoot . DIRECTORY_SEPARATOR)) {

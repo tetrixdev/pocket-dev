@@ -40,12 +40,19 @@ class ComposeTransformTool extends Tool
     }
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-Transforms a Docker Compose file to use PocketDev workspace volume mounts instead of bind mounts.
+**CRITICAL: Always use this tool before running a user's Docker Compose project for the first time.**
+
+Docker Compose bind mounts (e.g., `./src:/app`) reference paths on the HOST filesystem. Inside PocketDev, the workspace lives in a Docker volume—host paths don't exist. Without transformation, bind mounts will fail or mount empty directories.
 
 **When to use:**
-- User wants to run their Docker project inside PocketDev
-- User has a compose file with bind mounts (`./path:/target`)
-- Setting up a new project's Docker environment
+- User clones/creates a Docker Compose project in /workspace/
+- User wants to run `docker compose up` on an untransformed project
+- User's containers can't see their code (empty mounts, "path not found" errors)
+- BEFORE the first `docker compose up` on any external project
+
+**When NOT needed:**
+- Project already has `compose.override.yaml` from previous transformation
+- Project uses only named volumes (no `./path:/target` mounts)
 
 **How it works:**
 1. Reads the compose file you specify
@@ -328,17 +335,24 @@ CLI;
                 $mount = trim($matches[1], "\"'");
 
                 if (strpos($mount, ":") !== false) {
-                    $parts = explode(":", $mount, 2);
+                    $parts = explode(":", $mount);
                     $source = $parts[0];
                     $target = $parts[1];
+                    // Strip mount options (:ro, :rw, :z, :Z, :cached, :delegated, :consistent)
+                    // These are in $parts[2] if present, but we just ignore them
 
-                    // Check if bind mount (starts with .)
+                    // Check if bind mount (starts with . or ./)
                     if (substr($source, 0, 1) === ".") {
-                        // Convert ./path to subpath
+                        // Convert relative path to subpath
                         if ($source === ".") {
+                            // Current directory
                             $subpath = $relativeDirFromWorkspace;
-                        } else {
+                        } elseif (substr($source, 0, 2) === "./") {
+                            // Explicit relative path: ./path/to/file
                             $subpath = $relativeDirFromWorkspace . "/" . substr($source, 2);
+                        } else {
+                            // Dotfile in current directory: .env, .gitignore, etc.
+                            $subpath = $relativeDirFromWorkspace . "/" . $source;
                         }
 
                         // Normalize path
@@ -448,8 +462,42 @@ CLI;
                 $handledViaDockerfile = false;
                 $volumesToAdd = $overrides['volumes'] ?? [];
 
-                // Try to handle file mounts via Dockerfile modification
-                if (!empty($overrides['fileMounts']) && !empty($overrides['buildContext'])) {
+                // Collect directory mount targets to detect conflicts with file mounts
+                $directoryMountTargets = [];
+                foreach ($volumesToAdd as $vol) {
+                    if ($vol['type'] === 'named') {
+                        // Extract target from named volume's raw format (e.g., "data:/var/www" → "/var/www")
+                        $parts = explode(':', $vol['raw']);
+                        if (isset($parts[1])) {
+                            $directoryMountTargets[] = rtrim($parts[1], '/');
+                        }
+                    } elseif (!str_starts_with($vol['target'], '/pocketdev-stage-')) {
+                        $directoryMountTargets[] = rtrim($vol['target'], '/');
+                    }
+                }
+
+                // Split file mounts into safe (can use Dockerfile COPY) and conflicting (must use runtime copy)
+                // A file mount conflicts if its target is inside a directory that's also being volume-mounted,
+                // because the volume mount at runtime would overwrite the file we COPY at build time
+                $safeFileMounts = [];
+                $conflictingFileMounts = [];
+                foreach ($overrides['fileMounts'] ?? [] as $mount) {
+                    $isConflicting = false;
+                    foreach ($directoryMountTargets as $dirTarget) {
+                        if (str_starts_with($mount['target'], $dirTarget . '/')) {
+                            $isConflicting = true;
+                            break;
+                        }
+                    }
+                    if ($isConflicting) {
+                        $conflictingFileMounts[] = $mount;
+                    } else {
+                        $safeFileMounts[] = $mount;
+                    }
+                }
+
+                // Try to handle SAFE file mounts via Dockerfile modification
+                if (!empty($safeFileMounts) && !empty($overrides['buildContext'])) {
                     $buildContext = $overrides['buildContext'];
                     $originalDockerfile = $overrides['dockerfile'] ?? 'Dockerfile';
 
@@ -458,7 +506,7 @@ CLI;
                     if ($dockerfilePath && file_exists($dockerfilePath)) {
                         // Convert file mounts to COPY-compatible format (source relative to build context)
                         $copyMounts = [];
-                        foreach ($overrides['fileMounts'] as $mount) {
+                        foreach ($safeFileMounts as $mount) {
                             // The 'source' in fileMounts is the original bind mount source (e.g., ./iac/containers/php/shared/conf.d/overwrite.ini)
                             // We need to use this directly as the COPY source (relative to build context)
                             $copyMounts[] = [
@@ -491,10 +539,18 @@ CLI;
                                 $lines[] = "      context: {$buildContext}";
                                 $lines[] = "      dockerfile: Dockerfile.pocketdev";
 
-                                // Remove file mount staging volumes - files are now in the image
-                                $volumesToAdd = array_filter($volumesToAdd, function ($vol) {
-                                    // Keep only non-staging volumes (staging volumes have targets starting with /pocketdev-stage-)
-                                    return $vol['type'] === 'named' || !str_starts_with($vol['target'], '/pocketdev-stage-');
+                                // Remove staging volumes for SAFE file mounts only - those files are now in the image
+                                // Keep staging volumes for conflicting file mounts (they need runtime copy)
+                                $conflictingStagingTargets = array_map(fn($m) => $m['staging'], $conflictingFileMounts);
+                                $volumesToAdd = array_filter($volumesToAdd, function ($vol) use ($conflictingStagingTargets) {
+                                    if ($vol['type'] === 'named') {
+                                        return true;
+                                    }
+                                    if (!str_starts_with($vol['target'], '/pocketdev-stage-')) {
+                                        return true;
+                                    }
+                                    // This is a staging volume - keep it only if it's for a conflicting file mount
+                                    return in_array($vol['target'], $conflictingStagingTargets);
                                 });
 
                                 $handledViaDockerfile = true;
@@ -520,10 +576,17 @@ CLI;
                     }
                 }
 
-                // Fallback: runtime copy approach if Dockerfile modification failed
-                if (!$handledViaDockerfile && !empty($overrides['fileMounts'])) {
+                // Runtime copy for:
+                // 1. Conflicting file mounts (target inside a directory mount) - ALWAYS need runtime copy
+                // 2. Safe file mounts if Dockerfile modification failed - fallback to runtime copy
+                $fileMountsForRuntimeCopy = $conflictingFileMounts;
+                if (!$handledViaDockerfile) {
+                    $fileMountsForRuntimeCopy = array_merge($fileMountsForRuntimeCopy, $safeFileMounts);
+                }
+
+                if (!empty($fileMountsForRuntimeCopy)) {
                     $copyCommands = [];
-                    foreach ($overrides['fileMounts'] as $mount) {
+                    foreach ($fileMountsForRuntimeCopy as $mount) {
                         $source = escapeshellarg("{$mount['staging']}/{$mount['filename']}");
                         $target = escapeshellarg($mount['target']);
                         $copyCommands[] = "cp {$source} {$target}";
@@ -536,7 +599,7 @@ CLI;
                         $overrides['buildArgs'] ?? []
                     );
 
-                    $serviceCommand = $metadata['cmd'] ?? $this->getServiceCommand($serviceName);
+                    $serviceCommand = $metadata['cmd'] ?? $metadata['entrypoint'] ?? $this->getServiceCommand($serviceName);
                     $originalUser = $metadata['user'];
 
                     $copyScript = implode(" && ", $copyCommands);
@@ -604,59 +667,82 @@ CLI;
      * Parse a Dockerfile and return its structure including the USER directive location.
      *
      * @param string $dockerfilePath Absolute path to Dockerfile
-     * @return array{content: string, userLine: ?int, lines: array<string>}
+     * @return array{content: string, userLine: ?int, cmdLine: ?int, entrypointLine: ?int, lines: array<string>}
      */
     private function parseDockerfileStructure(string $dockerfilePath): array
     {
         $content = file_get_contents($dockerfilePath);
         if ($content === false) {
-            return ['content' => '', 'userLine' => null, 'lines' => []];
+            return ['content' => '', 'userLine' => null, 'cmdLine' => null, 'entrypointLine' => null, 'lines' => []];
         }
 
         $lines = explode("\n", $content);
         $userLine = null;
+        $cmdLine = null;
+        $entrypointLine = null;
 
         foreach ($lines as $index => $line) {
             $trimmed = trim($line);
             // Match USER directive (case-insensitive)
-            // We want the LAST USER directive (don't break)
+            // We want the LAST of each directive (don't break)
             if (preg_match('/^USER\s+/i', $trimmed)) {
                 $userLine = $index; // 0-indexed
+            }
+            if (preg_match('/^CMD\s+/i', $trimmed)) {
+                $cmdLine = $index;
+            }
+            if (preg_match('/^ENTRYPOINT\s+/i', $trimmed)) {
+                $entrypointLine = $index;
             }
         }
 
         return [
             'content' => $content,
             'userLine' => $userLine,
+            'cmdLine' => $cmdLine,
+            'entrypointLine' => $entrypointLine,
             'lines' => $lines,
         ];
     }
 
     /**
-     * Generate a modified Dockerfile with COPY instructions inserted before the USER directive.
+     * Generate a modified Dockerfile with COPY instructions inserted at an appropriate location.
      *
-     * This allows files to be copied at build time (as root) before switching to the
-     * non-root user, avoiding runtime privilege issues with file descriptors.
+     * Insertion point priority:
+     * 1. Before USER directive (preferred - files copied as root before privilege drop)
+     * 2. Before CMD directive
+     * 3. Before ENTRYPOINT directive
+     * 4. At end of file (last resort)
+     *
+     * This allows files to be copied at build time, avoiding runtime privilege issues.
      *
      * @param string $dockerfilePath Absolute path to original Dockerfile
      * @param array $fileMounts Array of file mount info with 'source' (relative to build context) and 'target' keys
-     * @return string|null Modified Dockerfile content, or null if no USER directive found
+     * @return string|null Modified Dockerfile content, or null on read failure
      */
     private function generateModifiedDockerfile(string $dockerfilePath, array $fileMounts): ?string
     {
         $structure = $this->parseDockerfileStructure($dockerfilePath);
 
-        if ($structure['userLine'] === null) {
-            // No USER directive - can't inject before it
+        if (empty($structure['lines'])) {
             return null;
         }
 
         $lines = $structure['lines'];
-        $userLineIndex = $structure['userLine'];
 
-        // Sanity check: USER at line 0 would mean no FROM before it, which is invalid
-        if ($userLineIndex === 0) {
-            return null;
+        // Find insertion point in order of preference:
+        // 1. Before USER (preferred - copy as root before dropping privileges)
+        // 2. Before CMD
+        // 3. Before ENTRYPOINT
+        // 4. End of file
+        $insertionLine = $structure['userLine']
+            ?? $structure['cmdLine']
+            ?? $structure['entrypointLine']
+            ?? count($lines);
+
+        // Sanity check: insertion at line 0 would mean no FROM before it
+        if ($insertionLine === 0) {
+            $insertionLine = count($lines);
         }
 
         // Build COPY instructions (using JSON array syntax to handle paths with spaces)
@@ -668,8 +754,8 @@ CLI;
         }
         $copyInstructions[] = "# === End PocketDev file injection ===";
 
-        // Insert COPY instructions before USER line
-        array_splice($lines, $userLineIndex, 0, $copyInstructions);
+        // Insert COPY instructions at the chosen location
+        array_splice($lines, $insertionLine, 0, $copyInstructions);
 
         return implode("\n", $lines);
     }
@@ -758,6 +844,55 @@ CLI;
     }
 
     /**
+     * Extract the ENTRYPOINT instruction from a Dockerfile.
+     *
+     * Handles both exec form (ENTRYPOINT ["executable", "param1"]) and shell form (ENTRYPOINT command param1).
+     * Returns the last ENTRYPOINT found (Docker behavior).
+     *
+     * @param string $dockerfilePath Absolute path to Dockerfile
+     * @return string|null The ENTRYPOINT as a shell command string, or null if not found
+     */
+    private function extractDockerfileEntrypoint(string $dockerfilePath): ?string
+    {
+        $content = file_get_contents($dockerfilePath);
+        if ($content === false) {
+            return null;
+        }
+
+        $lines = explode("\n", $content);
+        $entrypoint = null;
+        $continuationBuffer = '';
+
+        foreach ($lines as $line) {
+            // Handle line continuations
+            $trimmedLine = trim($line);
+
+            // Skip comments and empty lines
+            if (empty($trimmedLine) || str_starts_with($trimmedLine, '#')) {
+                continue;
+            }
+
+            // Check for line continuation
+            if (str_ends_with($trimmedLine, '\\')) {
+                $continuationBuffer .= rtrim($trimmedLine, '\\') . ' ';
+                continue;
+            }
+
+            // Complete the line
+            $fullLine = $continuationBuffer . $trimmedLine;
+            $continuationBuffer = '';
+
+            // Check for ENTRYPOINT instruction (case insensitive)
+            if (preg_match('/^ENTRYPOINT\s+(.+)$/i', $fullLine, $matches)) {
+                $entrypointValue = trim($matches[1]);
+                $entrypoint = $this->parseCmdValue($entrypointValue);
+            }
+        }
+
+        return $entrypoint;
+    }
+
+    /**
      * Extract the USER instruction from a Dockerfile, substituting build args.
      *
      * Handles USER username, USER $VAR, USER ${VAR}. For USER user:group format,
@@ -810,17 +945,17 @@ CLI;
     }
 
     /**
-     * Get metadata from the Dockerfile (CMD and USER).
+     * Get metadata from the Dockerfile (CMD, ENTRYPOINT, and USER).
      *
      * @param string $composeDir Absolute path to directory containing compose file
      * @param string|null $buildContext Build context path (relative to compose dir)
      * @param string|null $dockerfile Dockerfile path (relative to build context)
      * @param array $buildArgs Build arguments for variable substitution
-     * @return array{cmd: ?string, user: ?string}
+     * @return array{cmd: ?string, entrypoint: ?string, user: ?string}
      */
     private function getDockerfileMetadata(string $composeDir, ?string $buildContext, ?string $dockerfile, array $buildArgs = []): array
     {
-        $result = ['cmd' => null, 'user' => null];
+        $result = ['cmd' => null, 'entrypoint' => null, 'user' => null];
 
         if ($buildContext === null) {
             return $result;
@@ -832,6 +967,7 @@ CLI;
         }
 
         $result['cmd'] = $this->extractDockerfileCmd($dockerfilePath);
+        $result['entrypoint'] = $this->extractDockerfileEntrypoint($dockerfilePath);
         $result['user'] = $this->extractDockerfileUser($dockerfilePath, $buildArgs);
 
         return $result;

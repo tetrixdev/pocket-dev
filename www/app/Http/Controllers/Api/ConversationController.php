@@ -377,18 +377,23 @@ class ConversationController extends Controller
 
     /**
      * Get stream status for a conversation.
+     *
+     * Returns stream status along with event count and last event ID
+     * for verifying reconnection continuity.
      */
     public function streamStatus(Conversation $conversation): JsonResponse
     {
         $status = $this->streamManager->getStatus($conversation->uuid);
         $metadata = $this->streamManager->getMetadata($conversation->uuid);
         $eventCount = $this->streamManager->getEventCount($conversation->uuid);
+        $lastEvent = $this->streamManager->getLastEvent($conversation->uuid);
 
         return response()->json([
             'conversation_uuid' => $conversation->uuid,
             'stream_status' => $status,  // 'streaming', 'completed', 'failed', or null
             'is_streaming' => $status === 'streaming',
             'event_count' => $eventCount,
+            'last_event_id' => $lastEvent['event_id'] ?? null,  // For reconnection verification
             'metadata' => $metadata,
             'conversation_status' => $conversation->status,
         ]);

@@ -385,8 +385,9 @@ return [
     */
 
     'file_preview' => [
-        // Maximum file size for preview (bytes)
-        'max_file_size' => 2 * 1024 * 1024, // 2MB
+        // Maximum file size for preview (in MB, converted to bytes)
+        // Default: 25MB - generous for most text files, HTML reports, etc.
+        'max_file_size' => (int) env('PD_MAX_PREVIEW_SIZE_MB', 25) * 1024 * 1024,
 
         // Allowed base directories for file access
         // Paths outside these directories will be rejected

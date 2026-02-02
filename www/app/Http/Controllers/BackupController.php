@@ -418,12 +418,13 @@ class BackupController extends Controller
      */
     protected function fixVolumePermissions(): void
     {
-        // Get the host user/group IDs from config (containers run as this user, not www-data)
+        // Get the host user ID from config (containers run as this user)
+        // Group is always www-data (33) for cross-group ownership model
         $userId = config('backup.user_id');
-        $groupId = config('backup.group_id');
+        $groupId = 33; // www-data
 
-        if ($userId === null || $groupId === null || $userId === '' || $groupId === '') {
-            throw new \RuntimeException('PD_USER_ID and PD_GROUP_ID must be set in .env for volume permission fixes');
+        if ($userId === null || $userId === '') {
+            throw new \RuntimeException('PD_USER_ID must be set in .env for volume permission fixes');
         }
 
         // user-data: needs host user ownership for CLI tools (Claude, Codex, etc.)
