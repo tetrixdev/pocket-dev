@@ -4,7 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>@yield('title', 'Settings') - PocketDev</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    @php
+        $activeWorkspaceId = session('active_workspace_id');
+        $activeWorkspace = $activeWorkspaceId
+            ? \App\Models\Workspace::find($activeWorkspaceId)
+            : \App\Models\Workspace::first();
+        $workspacePrefix = $activeWorkspace ? $activeWorkspace->name . ' - ' : '';
+    @endphp
+    <title>{{ $workspacePrefix }}@yield('title', 'Settings') - PocketDev</title>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" integrity="sha512-Evv84Mr4kqVGRNSgIGL/F/aIDqQb7xQ2vcrdIwxfjThSH8CSR7PBEakCr51Ck+w+/U6swU2Im1vVX0SVk9ABhg==" crossorigin="anonymous" referrerpolicy="no-referrer" />

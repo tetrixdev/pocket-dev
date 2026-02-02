@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Transparent background -->
+  <rect width="512" height="512" fill="transparent"/>
+
+  <!-- Curly braces - more horizontal/compact -->
+  <g stroke="#60a5fa" stroke-width="36" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Left brace -->
+    <path d="M 100 140 Q 80 200 80 256 Q 80 312 100 372"/>
+    <!-- Right brace -->
+    <path d="M 412 140 Q 432 200 432 256 Q 432 312 412 372"/>
+  </g>
+
+  <!-- Green + circle (left side) -->
+  <circle cx="210" cy="220" r="50" fill="#10b981"/>
+  <!-- Plus sign using rectangles -->
+  <rect x="188" y="210" width="44" height="20" rx="6" fill="#ffffff"/>
+  <rect x="200" y="198" width="20" height="44" rx="6" fill="#ffffff"/>
+
+  <!-- Red − circle (right side) -->
+  <circle cx="302" cy="292" r="50" fill="#ef4444"/>
+  <!-- Minus sign using rectangle -->
+  <rect x="275" y="288" width="54" height="8" rx="2" fill="#ffffff"/>
+</svg>

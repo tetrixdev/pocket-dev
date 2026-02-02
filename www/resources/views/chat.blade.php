@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, maximum-scale=5.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>PocketDev Chat</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <title>{{ $workspace ? $workspace->name . ' - ' : '' }}PocketDev Chat</title>
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
@@ -1756,6 +1757,7 @@
                                 this.currentWorkspace = data.workspace;
                                 this.currentWorkspaceId = data.workspace.id;
                                 this.debugLog('Active workspace loaded', { workspace: data.workspace.name });
+                                this.updateBrowserTitle();
                             }
                         }
                     } catch (err) {
@@ -1792,6 +1794,7 @@
                             this.currentWorkspace = workspace;
                             this.currentWorkspaceId = workspace.id;
                             this.showWorkspaceSelector = false;
+                            this.updateBrowserTitle();
                             this.debugLog('Workspace switched', { workspace: workspace.name, lastConversation: data.last_conversation_uuid });
 
                             // Clear old workspace state before loading new data
@@ -1823,6 +1826,13 @@
                         console.error('Error switching workspace:', err);
                         this.errorMessage = 'Failed to switch workspace. Please try again.';
                     }
+                },
+
+                updateBrowserTitle() {
+                    const workspaceName = this.currentWorkspace?.name;
+                    document.title = workspaceName
+                        ? `${workspaceName} - PocketDev Chat`
+                        : 'PocketDev Chat';
                 },
 
                 // ==================== End Workspace Methods ====================
