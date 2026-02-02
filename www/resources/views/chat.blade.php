@@ -670,6 +670,21 @@
             scrollbar-width: thin;
             scrollbar-color: #4b5563 transparent;
         }
+
+        /* Mobile swipe navigation */
+        .swipe-active {
+            /* Prevent content selection during swipe */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Add subtle shadow during swipe to indicate depth */
+        @media (max-width: 767px) {
+            #messages,
+            [x-show="isActiveScreenPanel"] {
+                will-change: transform;
+            }
+        }
     </style>
 </head>
 <body class="antialiased bg-gray-900 text-gray-100 h-screen overflow-hidden" x-data="chatApp()">
@@ -868,9 +883,18 @@
                      id="messages"
                      class="p-4 space-y-4 overflow-y-auto bg-gray-900 fixed left-0 right-0 z-0
                             md:left-64 md:pt-4 md:pb-4"
-                     :class="isDragging ? 'ring-2 ring-blue-500 ring-inset' : ''"
-                     :style="{ top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'), bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px' }"
-                     @scroll="handleMessagesScroll($event)">
+                     :class="[isDragging ? 'ring-2 ring-blue-500 ring-inset' : '', isSwiping ? 'swipe-active' : '']"
+                     :style="{
+                         top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'),
+                         bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px',
+                         transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
+                         transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+                     }"
+                     @scroll="handleMessagesScroll($event)"
+                     @touchstart="handleSwipeStart($event)"
+                     @touchmove="handleSwipeMove($event)"
+                     @touchend="handleSwipeEnd($event)"
+                     @touchcancel="resetSwipeState()">
 
                 {{-- Empty State --}}
                 <template x-if="messages.length === 0">
@@ -905,7 +929,17 @@
                  x-cloak
                  class="fixed left-0 right-0 z-0 bg-gray-900 overflow-auto
                         md:left-64"
-                 :style="{ top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'), bottom: '0px' }">
+                 :class="isSwiping ? 'swipe-active' : ''"
+                 :style="{
+                     top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'),
+                     bottom: '0px',
+                     transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
+                     transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+                 }"
+                 @touchstart="handleSwipeStart($event)"
+                 @touchmove="handleSwipeMove($event)"
+                 @touchend="handleSwipeEnd($event)"
+                 @touchcancel="resetSwipeState()">
 
                 {{-- Loading State --}}
                 <template x-if="loadingPanel">
@@ -1037,6 +1071,15 @@
                 // Toast notification
                 toastMessage: '',
                 toastVisible: false,
+
+                // Mobile swipe navigation
+                swipeStartX: 0,
+                swipeStartY: 0,
+                swipeCurrentX: 0,
+                swipeDeltaX: 0,
+                isSwiping: false,
+                swipeThreshold: 80, // Minimum distance to trigger screen change
+                swipeEdgeResistance: 0.3, // How much movement at edges (30%)
 
                 // Computed: filtered sessions based on search query
                 get filteredSessions() {
@@ -3045,6 +3088,89 @@
                     } finally {
                         this.loadingPanel = false;
                     }
+                },
+
+                // Mobile swipe navigation handlers
+                handleSwipeStart(e) {
+                    // Only enable swipe on mobile and when we have multiple screens
+                    if (this.windowWidth >= 768 || this.screens.length <= 1) return;
+
+                    this.swipeStartX = e.touches[0].clientX;
+                    this.swipeStartY = e.touches[0].clientY;
+                    this.swipeCurrentX = this.swipeStartX;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
+                },
+
+                handleSwipeMove(e) {
+                    if (this.windowWidth >= 768 || this.screens.length <= 1) return;
+                    if (this.swipeStartX === 0) return;
+
+                    const currentX = e.touches[0].clientX;
+                    const currentY = e.touches[0].clientY;
+                    const deltaX = currentX - this.swipeStartX;
+                    const deltaY = currentY - this.swipeStartY;
+
+                    // Only start swiping if horizontal movement is greater than vertical
+                    if (!this.isSwiping) {
+                        if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+                            this.isSwiping = true;
+                        } else if (Math.abs(deltaY) > 10) {
+                            // User is scrolling vertically, abort swipe
+                            this.swipeStartX = 0;
+                            return;
+                        }
+                    }
+
+                    if (!this.isSwiping) return;
+
+                    // Prevent vertical scrolling while swiping
+                    e.preventDefault();
+
+                    const screenOrder = this.currentSession?.screen_order || [];
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+                    const isAtStart = currentIndex === 0;
+                    const isAtEnd = currentIndex === screenOrder.length - 1;
+
+                    // Apply edge resistance when at boundaries
+                    let adjustedDelta = deltaX;
+                    if ((deltaX > 0 && isAtStart) || (deltaX < 0 && isAtEnd)) {
+                        adjustedDelta = deltaX * this.swipeEdgeResistance;
+                    }
+
+                    this.swipeDeltaX = adjustedDelta;
+                    this.swipeCurrentX = currentX;
+                },
+
+                handleSwipeEnd(e) {
+                    if (this.windowWidth >= 768 || !this.isSwiping) {
+                        this.resetSwipeState();
+                        return;
+                    }
+
+                    const screenOrder = this.currentSession?.screen_order || [];
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+
+                    // Check if swipe exceeded threshold
+                    if (Math.abs(this.swipeDeltaX) > this.swipeThreshold) {
+                        if (this.swipeDeltaX > 0 && currentIndex > 0) {
+                            // Swipe right → previous screen
+                            this.activateScreen(screenOrder[currentIndex - 1]);
+                        } else if (this.swipeDeltaX < 0 && currentIndex < screenOrder.length - 1) {
+                            // Swipe left → next screen
+                            this.activateScreen(screenOrder[currentIndex + 1]);
+                        }
+                    }
+
+                    this.resetSwipeState();
+                },
+
+                resetSwipeState() {
+                    this.swipeStartX = 0;
+                    this.swipeStartY = 0;
+                    this.swipeCurrentX = 0;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
                 },
 
                 // Close/remove a screen
