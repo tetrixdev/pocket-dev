@@ -3091,9 +3091,28 @@
                 },
 
                 // Mobile swipe navigation handlers
+                // Check if an element or its parents have horizontal scroll available
+                isInHorizontalScrollArea(element) {
+                    let el = element;
+                    while (el && el !== document.body) {
+                        // Check if this element can scroll horizontally
+                        if (el.scrollWidth > el.clientWidth) {
+                            const style = window.getComputedStyle(el);
+                            if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
+                                return true;
+                            }
+                        }
+                        el = el.parentElement;
+                    }
+                    return false;
+                },
+
                 handleSwipeStart(e) {
                     // Only enable swipe on mobile and when we have multiple screens
                     if (this.windowWidth >= 768 || this.screens.length <= 1) return;
+
+                    // Don't activate swipe if touch started in a horizontally scrollable area
+                    if (this.isInHorizontalScrollArea(e.target)) return;
 
                     this.swipeStartX = e.touches[0].clientX;
                     this.swipeStartY = e.touches[0].clientY;
