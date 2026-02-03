@@ -75,9 +75,9 @@
                     <span class="text-xs text-gray-300 truncate flex-1" x-text="session.name || 'New Session'"></span>
                     {{-- Screen count badge --}}
                     <span class="text-[10px] text-gray-500" x-text="(session.screens?.length || 0) + ' tab' + ((session.screens?.length || 0) === 1 ? '' : 's')"></span>
-                    {{-- Session menu button (appears on hover) --}}
+                    {{-- Session menu button (always visible) --}}
                     <button @click.stop="openSessionMenu($event, session)"
-                            class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-600 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                            class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-600 rounded cursor-pointer shrink-0"
                             title="Session options">
                         <i class="fa-solid fa-ellipsis-vertical text-[10px]"></i>
                     </button>
@@ -118,6 +118,20 @@
                     class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
                 <i class="fa-solid fa-bookmark text-gray-400 w-4 text-center"></i>
                 Clear default
+            </button>
+            {{-- Divider --}}
+            <div class="border-t border-gray-600 my-1"></div>
+            {{-- Archive/Restore Session --}}
+            <button @click="filteredSessions.find(s => s.id === sessionMenuId)?.is_archived ? restoreSession(sessionMenuId) : archiveSession(sessionMenuId)"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
+                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                <span x-text="filteredSessions.find(s => s.id === sessionMenuId)?.is_archived ? 'Restore session' : 'Archive session'"></span>
+            </button>
+            {{-- Delete Session --}}
+            <button @click="deleteSession(sessionMenuId)"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-gray-600 w-full text-left cursor-pointer">
+                <i class="fa-solid fa-trash w-4 text-center"></i>
+                Delete session
             </button>
         </div>
     </div>

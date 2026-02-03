@@ -1,6 +1,7 @@
 {{-- Mobile Screen Tabs - Compact tabs for switching between screens --}}
 <div x-show="currentSession"
      x-cloak
+     id="screen-tabs-mobile"
      class="fixed top-[57px] left-0 right-0 z-10 flex items-center gap-1 bg-gray-800 border-b border-gray-700 px-2 py-1.5 overflow-x-auto"
      x-ref="mobileScreenTabsContainer"
      @screen-added.window="$nextTick(() => { if ($refs.mobileScreenTabsContainer) $refs.mobileScreenTabsContainer.scrollLeft = $refs.mobileScreenTabsContainer.scrollWidth; })"

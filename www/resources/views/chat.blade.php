@@ -671,6 +671,31 @@
             scrollbar-color: #4b5563 transparent;
         }
 
+        /* Custom horizontal scrollbar for screen tabs - dark theme */
+        #screen-tabs::-webkit-scrollbar,
+        #screen-tabs-mobile::-webkit-scrollbar {
+            height: 6px;
+        }
+        #screen-tabs::-webkit-scrollbar-track,
+        #screen-tabs-mobile::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #screen-tabs::-webkit-scrollbar-thumb,
+        #screen-tabs-mobile::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        #screen-tabs::-webkit-scrollbar-thumb:hover,
+        #screen-tabs-mobile::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        /* Firefox */
+        #screen-tabs,
+        #screen-tabs-mobile {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 transparent;
+        }
+
         /* Mobile swipe navigation */
         .swipe-active {
             /* Prevent content selection during swipe */
@@ -764,7 +789,7 @@
                              x-transition:leave="transition ease-in duration-75"
                              x-transition:leave-start="transform opacity-100 scale-100"
                              x-transition:leave-end="transform opacity-0 scale-95"
-                             class="hidden md:block fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-[100]"
+                             class="hidden md:block fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-[100] overflow-hidden"
                              style="top: 50px; right: 8px;">
                             {{-- Workspace --}}
                             <button @click="openWorkspaceSelector(); showConversationMenu = false"
@@ -779,21 +804,41 @@
                                 <i class="fa-solid fa-cog w-4 text-center"></i>
                                 Settings
                             </a>
-                            {{-- Archive/Unarchive --}}
+                            {{-- Session Section Header --}}
+                            <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
+                            {{-- Archive/Restore Session --}}
+                            <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
+                                    :disabled="!currentSession"
+                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                                <span x-text="currentSession?.is_archived ? 'Restore session' : 'Archive session'"></span>
+                            </button>
+                            {{-- Delete Session --}}
+                            <button @click="deleteSession(currentSession?.id); showConversationMenu = false"
+                                    :disabled="!currentSession"
+                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-trash w-4 text-center"></i>
+                                Delete session
+                            </button>
+                            {{-- Conversation Section Header --}}
+                            <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Conversation</div>
+                            {{-- Archive/Unarchive Conversation --}}
                             <button @click="toggleArchiveConversation(); showConversationMenu = false"
                                     :disabled="!currentConversationUuid"
                                     :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
                                     class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                                 <i class="fa-solid fa-box-archive w-4 text-center"></i>
-                                <span x-text="currentConversationStatus === 'archived' ? 'Unarchive' : 'Archive'"></span>
+                                <span x-text="currentConversationStatus === 'archived' ? 'Unarchive chat' : 'Archive chat'"></span>
                             </button>
-                            {{-- Delete --}}
+                            {{-- Delete Conversation --}}
                             <button @click="deleteConversation(); showConversationMenu = false"
                                     :disabled="!currentConversationUuid"
                                     :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
                                     class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                                 <i class="fa-solid fa-trash w-4 text-center"></i>
-                                Delete
+                                Delete chat
                             </button>
                         </div>
                     </template>
@@ -3568,13 +3613,122 @@
                     }, 3000);
                 },
 
+                // Archive a session
+                async archiveSession(sessionId) {
+                    if (!sessionId) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}/archive`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to archive session');
+
+                        // Update local state - modify sessions array (filteredSessions is a computed getter)
+                        const session = this.sessions.find(s => s.id === sessionId);
+                        if (session) {
+                            session.is_archived = true;
+                        }
+
+                        // If not showing archived, remove from list
+                        if (!this.showArchivedSessions) {
+                            this.sessions = this.sessions.filter(s => s.id !== sessionId);
+                        }
+
+                        // If this was the current session, load another or create new
+                        if (this.currentSession?.id === sessionId) {
+                            const nextSession = this.sessions.find(s => s.id !== sessionId && !s.is_archived);
+                            if (nextSession) {
+                                await this.loadSession(nextSession.id);
+                            } else {
+                                await this.newSession();
+                            }
+                        }
+
+                        this.showToast('Session archived');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to archive session:', err);
+                        this.showError('Failed to archive session');
+                    }
+                },
+
+                // Restore a session from archive
+                async restoreSession(sessionId) {
+                    if (!sessionId) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}/restore`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to restore session');
+
+                        // Update local state - modify sessions array (filteredSessions is a computed getter)
+                        const session = this.sessions.find(s => s.id === sessionId);
+                        if (session) {
+                            session.is_archived = false;
+                        }
+
+                        this.showToast('Session restored');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to restore session:', err);
+                        this.showError('Failed to restore session');
+                    }
+                },
+
+                // Delete a session (with confirmation)
+                async deleteSession(sessionId) {
+                    if (!sessionId) return;
+
+                    const session = this.sessions.find(s => s.id === sessionId);
+                    const sessionName = session?.name || 'this session';
+
+                    if (!confirm(`Delete "${sessionName}"? This will permanently remove the session and all its tabs. Conversations inside will be archived, not deleted.`)) {
+                        this.sessionMenuId = null;
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to delete session');
+
+                        // Remove from local list - modify sessions array (filteredSessions is a computed getter)
+                        this.sessions = this.sessions.filter(s => s.id !== sessionId);
+
+                        // If this was the current session, load another or create new
+                        if (this.currentSession?.id === sessionId) {
+                            const nextSession = this.sessions.find(s => !s.is_archived);
+                            if (nextSession) {
+                                await this.loadSession(nextSession.id);
+                            } else {
+                                await this.newSession();
+                            }
+                        }
+
+                        this.showToast('Session deleted');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to delete session:', err);
+                        this.showError('Failed to delete session');
+                    }
+                },
+
                 // Open session context menu
                 openSessionMenu(event, session) {
                     event.stopPropagation();
                     const rect = event.currentTarget.getBoundingClientRect();
                     this.sessionMenuPos = {
                         top: rect.bottom + 4,
-                        left: rect.left
+                        left: rect.left,
+                        right: rect.right
                     };
                     this.sessionMenuId = session.id;
                 },

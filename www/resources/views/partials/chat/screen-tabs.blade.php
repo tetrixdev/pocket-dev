@@ -1,5 +1,7 @@
 {{-- Screen Tabs - Shows all screens in the current session --}}
 <div x-show="currentSession"
+     x-cloak
+     id="screen-tabs"
      class="flex items-center gap-1 bg-gray-800 border-b border-gray-700 px-2 py-1 overflow-x-auto"
      x-ref="screenTabsContainer"
      @screen-added.window="$nextTick(() => scrollToActiveTab())">
@@ -57,6 +59,7 @@
         </button>
         {{-- Add Screen Dropdown - uses fixed positioning to escape overflow:hidden parent --}}
         <div x-show="showAddMenu"
+             x-cloak
              @click.outside="showAddMenu = false"
              x-transition:enter="transition ease-out duration-100"
              x-transition:enter-start="opacity-0 scale-95"

@@ -65,7 +65,7 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="opacity-100 scale-100"
                  x-transition:leave-end="opacity-0 scale-95"
-                 class="md:hidden fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-[100]"
+                 class="md:hidden fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-[100] overflow-hidden"
                  :style="{ top: ($refs.conversationMenuBtn?.getBoundingClientRect().bottom + 4) + 'px', right: '8px' }">
             {{-- Workspace --}}
             <button @click="openWorkspaceSelector(); showConversationMenu = false"
@@ -82,23 +82,45 @@
                 <i class="fa-solid fa-cog w-4 text-center"></i>
                 Settings
             </a>
-            {{-- Archive/Unarchive --}}
+            {{-- Session Section Header --}}
+            <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
+            {{-- Archive/Restore Session --}}
+            <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
+                    role="menuitem"
+                    :disabled="!currentSession"
+                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
+                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                <span x-text="currentSession?.is_archived ? 'Restore session' : 'Archive session'"></span>
+            </button>
+            {{-- Delete Session --}}
+            <button @click="deleteSession(currentSession?.id); showConversationMenu = false"
+                    role="menuitem"
+                    :disabled="!currentSession"
+                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600'"
+                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                <i class="fa-solid fa-trash w-4 text-center"></i>
+                Delete session
+            </button>
+            {{-- Conversation Section Header --}}
+            <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Conversation</div>
+            {{-- Archive/Unarchive Conversation --}}
             <button @click="toggleArchiveConversation(); showConversationMenu = false"
                     role="menuitem"
                     :disabled="!currentConversationUuid"
                     :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
                     class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                 <i class="fa-solid fa-box-archive w-4 text-center"></i>
-                <span x-text="currentConversationStatus === 'archived' ? 'Unarchive' : 'Archive'"></span>
+                <span x-text="currentConversationStatus === 'archived' ? 'Unarchive chat' : 'Archive chat'"></span>
             </button>
-            {{-- Delete --}}
+            {{-- Delete Conversation --}}
             <button @click="deleteConversation(); showConversationMenu = false"
                     role="menuitem"
                     :disabled="!currentConversationUuid"
                     :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600'"
                     class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                 <i class="fa-solid fa-trash w-4 text-center"></i>
-                Delete
+                Delete chat
             </button>
             </div>
         </template>
@@ -211,9 +233,9 @@
                     <span class="text-xs text-gray-300 truncate flex-1" x-text="session.name || 'New Session'"></span>
                     {{-- Screen count badge --}}
                     <span class="text-[10px] text-gray-500" x-text="(session.screens?.length || 0) + ' tab' + ((session.screens?.length || 0) === 1 ? '' : 's')"></span>
-                    {{-- Session menu button (appears on hover) --}}
+                    {{-- Session menu button (always visible) --}}
                     <button @click.stop="openSessionMenu($event, session)"
-                            class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-600 rounded opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                            class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-600 rounded cursor-pointer shrink-0"
                             title="Session options">
                         <i class="fa-solid fa-ellipsis-vertical text-[10px]"></i>
                     </button>
@@ -241,7 +263,7 @@
              x-transition:leave-start="opacity-100 scale-100"
              x-transition:leave-end="opacity-0 scale-95"
              class="fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50"
-             :style="{ top: sessionMenuPos.top + 'px', left: sessionMenuPos.left + 'px' }">
+             :style="{ top: sessionMenuPos.top + 'px', left: Math.max(8, sessionMenuPos.right - 192) + 'px' }">
             {{-- Save as Default --}}
             <button @click="saveSessionAsDefault(filteredSessions.find(s => s.id === sessionMenuId))"
                     class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
@@ -254,6 +276,20 @@
                     class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
                 <i class="fa-solid fa-bookmark text-gray-400 w-4 text-center"></i>
                 Clear default
+            </button>
+            {{-- Divider --}}
+            <div class="border-t border-gray-600 my-1"></div>
+            {{-- Archive/Restore Session --}}
+            <button @click="filteredSessions.find(s => s.id === sessionMenuId)?.is_archived ? restoreSession(sessionMenuId) : archiveSession(sessionMenuId)"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
+                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                <span x-text="filteredSessions.find(s => s.id === sessionMenuId)?.is_archived ? 'Restore session' : 'Archive session'"></span>
+            </button>
+            {{-- Delete Session --}}
+            <button @click="deleteSession(sessionMenuId)"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-gray-600 w-full text-left cursor-pointer">
+                <i class="fa-solid fa-trash w-4 text-center"></i>
+                Delete session
             </button>
         </div>
     </div>
