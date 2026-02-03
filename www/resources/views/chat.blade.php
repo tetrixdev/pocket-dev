@@ -1068,10 +1068,6 @@
                 // State
                 prompt: '',
                 messages: [],
-                conversations: [],
-                conversationsPage: 1,
-                conversationsLastPage: 1,
-                loadingMoreConversations: false,
                 cachedLatestActivity: null, // For sidebar polling
                 sidebarPollInterval: null, // Polling interval ID
                 currentConversationUuid: null,
@@ -1746,13 +1742,6 @@
                                 return;
                             }
                             this.debugLog('Agent switched on backend', { agentId: agent.id, conversation: this.currentConversationUuid });
-
-                            // Update the conversations array so sidebar shows correct agent
-                            const convIndex = this.conversations.findIndex(c => c.uuid === this.currentConversationUuid);
-                            if (convIndex !== -1) {
-                                this.conversations[convIndex].agent = { id: agent.id, name: agent.name };
-                                this.conversations[convIndex].agent_id = agent.id;
-                            }
                         } catch (err) {
                             console.error('Error switching agent:', err);
                             this.errorMessage = 'Failed to switch agent. Please try again.';
@@ -1961,28 +1950,31 @@
                             // Update default template state for new workspace
                             this.workspaceHasDefaultTemplate = !!(workspace.default_session_template?.screen_order?.length);
                             this.showWorkspaceSelector = false;
-                            this.debugLog('Workspace switched', { workspace: workspace.name, lastConversation: data.last_conversation_uuid });
+                            this.debugLog('Workspace switched', { workspace: workspace.name, lastSession: data.last_session_id });
 
                             // Clear old workspace state before loading new data
                             this.agents = [];
                             this.currentAgentId = null;
                             this.currentConversationUuid = null;
+                            this.currentSession = null;
+                            this.screens = [];
+                            this.activeScreenId = null;
 
-                            // Reload conversations and agents for the new workspace
-                            await this.fetchConversations();
+                            // Reload sessions and agents for the new workspace
+                            await this.fetchSessions();
                             await this.fetchAgents();
 
-                            // Restore last conversation for this workspace, or start new
-                            if (data.last_conversation_uuid) {
-                                // Check if conversation still exists in the loaded list
-                                const lastConvo = this.conversations.find(c => c.uuid === data.last_conversation_uuid);
-                                if (lastConvo) {
-                                    await this.loadConversation(data.last_conversation_uuid, true); // skipWorkspaceCheck=true
+                            // Restore last session for this workspace, or start new
+                            if (data.last_session_id) {
+                                // Check if session still exists in the loaded list
+                                const lastSession = this.sessions.find(s => s.id === data.last_session_id);
+                                if (lastSession) {
+                                    await this.loadSession(data.last_session_id);
                                 } else {
-                                    this.newConversation();
+                                    await this.newSession();
                                 }
                             } else {
-                                this.newConversation();
+                                await this.newSession();
                             }
                         } else {
                             console.error('Failed to switch workspace:', response.status);
@@ -2103,34 +2095,6 @@
                     return modelId.replace(/^claude-/, '').replace(/^gpt-/, 'GPT-').replace(/-\d+$/, '');
                 },
 
-                async fetchConversations() {
-                    try {
-                        let url = '/api/conversations';
-                        const params = [];
-                        if (this.currentWorkspaceId) {
-                            params.push('workspace_id=' + this.currentWorkspaceId);
-                        }
-                        if (this.showArchivedConversations) {
-                            params.push('include_archived=true');
-                        }
-                        if (params.length > 0) {
-                            url += '?' + params.join('&');
-                        }
-                        const response = await fetch(url);
-                        const data = await response.json();
-                        this.conversations = data.data || [];
-                        this.conversationsPage = data.current_page || 1;
-                        this.conversationsLastPage = data.last_page || 1;
-
-                        // Update cached latest activity from first conversation
-                        if (this.conversations.length > 0) {
-                            this.cachedLatestActivity = this.conversations[0].last_activity_at;
-                        }
-                    } catch (err) {
-                        console.error('Failed to fetch conversations:', err);
-                    }
-                },
-
                 // Start polling for sidebar updates (every 30s)
                 startSidebarPolling() {
                     // Clear any existing interval
@@ -2153,13 +2117,13 @@
 
                 // Check if sidebar needs refreshing
                 async checkForSidebarUpdates() {
-                    // Skip if search filter is active
-                    if (this.sessionSearchQuery) {
+                    // Skip if no workspace is active or search filter is active
+                    if (!this.currentWorkspaceId || this.sessionSearchQuery) {
                         return;
                     }
 
                     try {
-                        const response = await fetch('/api/sessions/latest-activity');
+                        const response = await fetch(`/api/sessions/latest-activity?workspace_id=${this.currentWorkspaceId}`);
                         const data = await response.json();
 
                         // If there's new activity, refresh the sessions list
@@ -2208,43 +2172,6 @@
                     }
                 },
 
-                async fetchMoreConversations() {
-                    if (this.loadingMoreConversations || this.conversationsPage >= this.conversationsLastPage) {
-                        return;
-                    }
-                    this.loadingMoreConversations = true;
-                    try {
-                        const nextPage = this.conversationsPage + 1;
-                        const params = [`page=${nextPage}`];
-                        if (this.currentWorkspaceId) {
-                            params.push('workspace_id=' + this.currentWorkspaceId);
-                        }
-                        if (this.showArchivedConversations) {
-                            params.push('include_archived=true');
-                        }
-                        const url = '/api/conversations?' + params.join('&');
-                        const response = await fetch(url);
-                        const data = await response.json();
-                        if (data.data && data.data.length > 0) {
-                            this.conversations = [...this.conversations, ...data.data];
-                            this.conversationsPage = data.current_page;
-                            this.conversationsLastPage = data.last_page;
-                        }
-                    } catch (err) {
-                        console.error('Failed to fetch more conversations:', err);
-                    } finally {
-                        this.loadingMoreConversations = false;
-                    }
-                },
-
-                handleConversationsScroll(event) {
-                    const el = event.target;
-                    const threshold = 50; // pixels from bottom
-                    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
-                        this.fetchMoreConversations();
-                    }
-                },
-
                 // Conversation search
                 async searchConversations() {
                     if (!this.conversationSearchQuery.trim()) {
@@ -2271,23 +2198,6 @@
                     } finally {
                         this.conversationSearchLoading = false;
                     }
-                },
-
-                clearConversationSearch() {
-                    this.conversationSearchQuery = '';
-                    this.conversationSearchResults = [];
-                    this.showSearchInput = false;
-                },
-
-                clearAllFilters() {
-                    this.conversationSearchQuery = '';
-                    this.conversationSearchResults = [];
-                    this.showArchivedConversations = false;
-                    this.showSearchInput = false;
-                    // Clear sessionStorage (also done by $watch, but explicit for clarity)
-                    sessionStorage.removeItem('pocketdev_showArchivedConversations');
-                    sessionStorage.removeItem('pocketdev_conversationSearchQuery');
-                    this.fetchConversations(); // Refresh list without archived
                 },
 
                 async loadSearchResult(result) {
@@ -2359,9 +2269,6 @@
                         // Update local state - 'idle' is intentional for unarchive since completed
                         // conversations naturally rest at 'idle', and 'failed' ones can be retried
                         this.currentConversationStatus = isArchived ? 'idle' : 'archived';
-
-                        // Refresh conversation list
-                        await this.fetchConversations();
                     } catch (err) {
                         console.error('Failed to toggle archive:', err);
                         this.showError('Failed to ' + action + ' conversation');
@@ -2384,9 +2291,6 @@
 
                         // Reset to new conversation
                         this.newConversation();
-
-                        // Refresh conversation list
-                        await this.fetchConversations();
                     } catch (err) {
                         console.error('Failed to delete conversation:', err);
                         this.showError('Failed to delete conversation');
@@ -2429,10 +2333,12 @@
                         const data = await response.json();
                         this.currentConversationTitle = data.title;
 
-                        // Update the conversation in the sidebar list
-                        const conv = this.conversations.find(c => c.uuid === this.currentConversationUuid);
-                        if (conv) {
-                            conv.title = data.title;
+                        // Also update the screen title in the current session if this conversation is displayed
+                        if (this.activeScreenId && this.screens) {
+                            const screen = this.getScreen(this.activeScreenId);
+                            if (screen?.type === 'chat' && screen.conversation?.uuid === this.currentConversationUuid) {
+                                screen.conversation.title = data.title;
+                            }
                         }
 
                         this.showRenameModal = false;
@@ -2504,8 +2410,8 @@
                                     this.currentWorkspace = targetWorkspace;
                                     this.currentWorkspaceId = targetWorkspace.id;
 
-                                    // Reload conversations and agents for the new workspace
-                                    await this.fetchConversations();
+                                    // Reload sessions and agents for the new workspace
+                                    await this.fetchSessions();
                                     await this.fetchAgents();
 
                                     // Clear the loading state before recursive call
@@ -2817,6 +2723,14 @@
                         if (this.currentSession?.id !== session.id) {
                             this.updateSessionUrl(session.id);
                         }
+
+                        // Save as last session for this workspace (for returning from settings)
+                        fetch(`/session/${sessionId}/last`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        }).catch(() => {}); // Fire and forget
 
                         // Set session state
                         this.currentSession = session;
@@ -4708,14 +4622,6 @@
                     this.isStreaming = true;
                     this.currentConversationStatus = 'processing'; // Update status badge
 
-                    // Optimistic update: immediately show 'processing' in sidebar
-                    // We'll fetch the real status after receiving the first event (when backend has definitely updated)
-                    const convIndex = this.conversations.findIndex(c => c.uuid === this.currentConversationUuid);
-                    if (convIndex !== -1) {
-                        this.conversations[convIndex].status = 'processing';
-                    }
-                    this._sidebarRefreshedThisStream = false;
-
                     this.streamAbortController = new AbortController();
 
                     try {
@@ -4776,8 +4682,6 @@
                                             } else {
                                                 this.isStreaming = false;
                                                 this.currentConversationStatus = 'failed'; // Update status badge
-                                                // Refresh sidebar to show failed status
-                                                this.fetchConversations();
                                                 this.showError('Failed to connect to stream');
                                                 return;
                                             }
@@ -4791,7 +4695,6 @@
                                             this._justCompletedStream = true;
                                             // Clear sessionStorage - stream is done, no longer need reconnection state
                                             this._clearStreamStorage(this.currentConversationUuid);
-                                            await this.fetchConversations();
                                             // Clear flag after a delay (increased from 1s to 3s for safety)
                                             setTimeout(() => { this._justCompletedStream = false; }, 3000);
                                         }
@@ -4809,12 +4712,6 @@
 
                                     // Handle regular stream events
                                     this.handleStreamEvent(event);
-
-                                    // On first real event, refresh sidebar (backend has now set status to 'processing')
-                                    if (!this._sidebarRefreshedThisStream) {
-                                        this._sidebarRefreshedThisStream = true;
-                                        this.fetchConversations();
-                                    }
 
                                 } catch (parseErr) {
                                     console.error('Parse error:', parseErr, line);

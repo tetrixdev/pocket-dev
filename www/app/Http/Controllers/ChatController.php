@@ -20,7 +20,7 @@ class ChatController extends Controller
 
     /**
      * Show the chat interface for a specific session.
-     * Sets the active workspace to match the session.
+     * Sets the active workspace and last session for returning from settings.
      */
     public function showSession(Request $request, string $sessionId): View
     {
@@ -28,9 +28,26 @@ class ChatController extends Controller
 
         if ($session && $session->workspace_id) {
             $request->session()->put('active_workspace_id', $session->workspace_id);
+            // Store per-workspace last session (for returning from settings)
+            $request->session()->put("last_session_{$session->workspace_id}", $session->id);
         }
 
         return view('chat');
+    }
+
+    /**
+     * Set the current session in PHP session (called by frontend when loading a session).
+     * Enables "Back to Chat" from settings to return to the correct session.
+     */
+    public function setLastSession(Request $request, string $sessionId): Response
+    {
+        $session = Session::find($sessionId);
+
+        if ($session && $session->workspace_id) {
+            $request->session()->put("last_session_{$session->workspace_id}", $session->id);
+        }
+
+        return response()->noContent();
     }
 
     /**

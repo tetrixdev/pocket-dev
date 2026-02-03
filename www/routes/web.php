@@ -35,6 +35,9 @@ Route::get("/session/{sessionId}", [ChatController::class, "showSession"])
 Route::post("/chat/{conversationUuid}/session", [ChatController::class, "setSession"])
     ->whereUuid("conversationUuid")
     ->name("chat.session");
+Route::post("/session/{sessionId}/last", [ChatController::class, "setLastSession"])
+    ->whereUuid("sessionId")
+    ->name("session.setLast");
 
 // Config - Redirect to last visited section
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");

@@ -277,11 +277,16 @@ class SessionController extends Controller
     }
 
     /**
-     * Get the latest activity timestamp for sessions.
+     * Get the latest activity timestamp for sessions in a workspace.
      */
-    public function latestActivity(): JsonResponse
+    public function latestActivity(Request $request): JsonResponse
     {
-        $latest = Session::max('updated_at');
+        $validated = $request->validate([
+            'workspace_id' => 'required|uuid|exists:workspaces,id',
+        ]);
+
+        $latest = Session::forWorkspace($validated['workspace_id'])
+            ->max('updated_at');
 
         return response()->json([
             'latest_activity_at' => $latest,

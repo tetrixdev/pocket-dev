@@ -127,6 +127,9 @@ class Conversation extends Model
             'status' => self::STATUS_IDLE,
             'last_activity_at' => now(),
         ]);
+
+        // Touch parent session so sidebar polling detects the activity
+        $this->screen?->session?->touch();
     }
 
     public function markFailed(): void
@@ -135,6 +138,9 @@ class Conversation extends Model
             'status' => self::STATUS_FAILED,
             'last_activity_at' => now(),
         ]);
+
+        // Touch parent session so sidebar polling detects the activity
+        $this->screen?->session?->touch();
     }
 
     public function archive(): void
