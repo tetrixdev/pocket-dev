@@ -68,7 +68,7 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan tool:update --slug=my-tool --name="Updated Name" --description="New description"
+pd tool:update --slug=my-tool --name="Updated Name" --description="New description"
 ```
 CLI;
 

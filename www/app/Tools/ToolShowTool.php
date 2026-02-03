@@ -38,8 +38,8 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan tool:show --slug=my-tool
-php artisan tool:show --slug=my-tool --include_script
+pd tool:show --slug=my-tool
+pd tool:show --slug=my-tool --include_script
 ```
 CLI;
 
@@ -111,7 +111,7 @@ API;
             $command = $tool->getArtisanCommand();
             if ($command) {
                 $lines[] = "";
-                $lines[] = "Artisan Command: php artisan {$command}";
+                $lines[] = "Artisan Command: pd {$command}";
             }
         }
 

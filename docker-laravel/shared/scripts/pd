@@ -1,0 +1,3 @@
+#!/bin/bash
+# PocketDev artisan wrapper - runs artisan commands from any directory
+cd /var/www && exec php artisan "$@"

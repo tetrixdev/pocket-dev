@@ -1,5 +1,6 @@
 {{-- Chat Modals --}}
 {{-- TODO: Refactor @include statements to use Laravel anonymous components (e.g., <x-chat.modals.agent-selector />) for consistency with coding guidelines --}}
+@include('partials.chat.toast')
 @include('partials.chat.modals.openai-key')
 @include('partials.chat.modals.claude-code-auth')
 @include('partials.chat.modals.agent-selector')

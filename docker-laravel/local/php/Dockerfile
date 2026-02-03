@@ -99,6 +99,11 @@ RUN mkdir -p /home/appuser/.claude /home/appuser/.codex \
 # regardless of whether called from PHP-FPM, entrypoint, or docker exec
 RUN usermod -d /home/appuser www-data
 
+# Install PocketDev artisan wrapper (allows running artisan from any directory)
+COPY docker-laravel/shared/scripts/pd /usr/local/bin/pd
+COPY docker-laravel/shared/scripts/pd /usr/local/bin/pocketdev
+RUN chmod +x /usr/local/bin/pd /usr/local/bin/pocketdev
+
 # Set working directory
 WORKDIR /var/www
 

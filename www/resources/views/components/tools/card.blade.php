@@ -46,7 +46,7 @@
 
         {{-- Row 3: Artisan command --}}
         @if($artisanCommand)
-            <code class="text-xs text-green-400 bg-gray-900 px-2 py-1 rounded inline-block">php artisan {{ $artisanCommand }}</code>
+            <code class="text-xs text-green-400 bg-gray-900 px-2 py-1 rounded inline-block">pd {{ $artisanCommand }}</code>
         @endif
 
         {{-- Row 4: Actions --}}

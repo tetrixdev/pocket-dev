@@ -70,6 +70,12 @@ mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.npm" "$HOME/.composer" 2>/dev/nu
 chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
 chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
+# Configure git safe.directory for pocketdev-source (needed for dogfooding)
+# Both www-data (PHP-FPM workers) and appuser need this config
+echo "Configuring git safe.directory..."
+git config --global --add safe.directory /pocketdev-source 2>/dev/null || true
+gosu appuser git config --global --add safe.directory /pocketdev-source 2>/dev/null || true
+
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then

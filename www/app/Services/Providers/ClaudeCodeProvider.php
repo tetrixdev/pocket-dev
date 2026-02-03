@@ -339,7 +339,15 @@ class ClaudeCodeProvider implements AIProviderInterface
         $env = array_filter($env, fn($v) => is_string($v) || is_numeric($v));
         $env = array_map(fn($v) => (string) $v, $env);
 
-        $process = proc_open($command, $descriptors, $pipes, base_path(), $env);
+        // Inject session ID for panel tool support
+        // This allows `php artisan tool:run` to automatically know the session context
+        $sessionId = $conversation->screen?->session?->id;
+        if ($sessionId) {
+            $env['POCKETDEV_SESSION_ID'] = $sessionId;
+        }
+
+        $workingDirectory = $conversation->working_directory ?? base_path();
+        $process = proc_open($command, $descriptors, $pipes, $workingDirectory, $env);
 
         if (!is_resource($process)) {
             yield StreamEvent::error('Failed to start Claude Code CLI process');

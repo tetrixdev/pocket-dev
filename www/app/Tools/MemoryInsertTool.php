@@ -80,7 +80,7 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan memory:insert --schema=default --table=characters --data='{"name":"Thorin Ironforge","class":"fighter","backstory":"A dwarf warrior seeking revenge for his fallen clan."}'
+pd memory:insert --schema=default --table=characters --data='{"name":"Thorin Ironforge","class":"fighter","backstory":"A dwarf warrior seeking revenge for his fallen clan."}'
 ```
 CLI;
 

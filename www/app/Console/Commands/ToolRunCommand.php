@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Session;
 use App\Tools\ExecutionContext;
 use App\Tools\ToolRunTool;
 use Illuminate\Console\Command;
@@ -10,9 +11,10 @@ class ToolRunCommand extends Command
 {
     protected $signature = 'tool:run
         {slug : The slug of the tool to run}
-        {arguments?* : Arguments to pass to the tool script (--name=value format)}';
+        {arguments?* : Arguments to pass to the tool script (--name=value format)}
+        {--session= : Session ID for panel tools (auto-detected from POCKETDEV_SESSION_ID env var if not provided)}';
 
-    protected $description = 'Run a user tool';
+    protected $description = 'Run a user tool (script or panel)';
 
     public function handle(): int
     {
@@ -26,7 +28,31 @@ class ToolRunCommand extends Command
             'arguments' => $arguments,
         ];
 
-        $context = new ExecutionContext(getcwd() ?: '/var/www');
+        // Get session if provided (needed for panel tools)
+        // Priority: 1) --session option, 2) POCKETDEV_SESSION_ID env var (set by CLI providers)
+        $session = null;
+        $sessionId = $this->option('session');
+
+        if (! $sessionId) {
+            $sessionId = getenv('POCKETDEV_SESSION_ID') ?: null;
+        }
+
+        if ($sessionId) {
+            $session = Session::find($sessionId);
+            if (! $session) {
+                $this->outputJson([
+                    'output' => "Session not found: {$sessionId}",
+                    'is_error' => true,
+                ]);
+
+                return Command::FAILURE;
+            }
+        }
+
+        $context = new ExecutionContext(
+            getcwd() ?: '/var/www',
+            session: $session
+        );
         $result = $tool->execute($input, $context);
 
         $this->outputJson($result->toArray());

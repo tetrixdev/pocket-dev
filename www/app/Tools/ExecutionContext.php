@@ -4,7 +4,9 @@ namespace App\Tools;
 
 use App\Models\Agent;
 use App\Models\MemoryDatabase;
+use App\Models\Session;
 use App\Models\Workspace;
+use App\Services\StreamManager;
 
 class ExecutionContext
 {
@@ -13,7 +15,18 @@ class ExecutionContext
         public ?Workspace $workspace = null,
         public ?MemoryDatabase $memoryDatabase = null,
         public ?Agent $agent = null,
+        public ?Session $session = null,
+        public ?StreamManager $streamManager = null,
+        public ?string $conversationUuid = null,
     ) {}
+
+    /**
+     * Get the session for this context.
+     */
+    public function getSession(): ?Session
+    {
+        return $this->session;
+    }
 
     public function getWorkingDirectory(): string
     {

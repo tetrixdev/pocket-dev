@@ -121,37 +121,37 @@ Before making any changes, verify what already exists:
 
 ```bash
 # Get world info (for context, rarely changes)
-php artisan memory:query --sql="SELECT id, name, major_conflict FROM memory.world_info" --limit=1
+pd memory:query --sql="SELECT id, name, major_conflict FROM memory.world_info" --limit=1
 
 # Check existing regions
-php artisan memory:query --sql="SELECT id, name FROM memory.regions" --limit=20
+pd memory:query --sql="SELECT id, name FROM memory.regions" --limit=20
 
 # Check existing factions
-php artisan memory:query --sql="SELECT id, name FROM memory.factions" --limit=20
+pd memory:query --sql="SELECT id, name FROM memory.factions" --limit=20
 
 # Check existing locations
-php artisan memory:query --sql="SELECT id, name, region_id FROM memory.locations WHERE name ILIKE '%[name]%'" --limit=10
+pd memory:query --sql="SELECT id, name, region_id FROM memory.locations WHERE name ILIKE '%[name]%'" --limit=10
 
 # Check existing entities
-php artisan memory:query --sql="SELECT id, name, entity_type FROM memory.entities WHERE name ILIKE '%[name]%'" --limit=10
+pd memory:query --sql="SELECT id, name, entity_type FROM memory.entities WHERE name ILIKE '%[name]%'" --limit=10
 
 # Check existing entity-location links
-php artisan memory:query --sql="SELECT el.id, e.name as entity, l.name as location, el.presence_type FROM memory.entity_locations el JOIN memory.entities e ON el.entity_id = e.id JOIN memory.locations l ON el.location_id = l.id" --limit=20
+pd memory:query --sql="SELECT el.id, e.name as entity, l.name as location, el.presence_type FROM memory.entity_locations el JOIN memory.entities e ON el.entity_id = e.id JOIN memory.locations l ON el.location_id = l.id" --limit=20
 
 # Check existing entity-faction links
-php artisan memory:query --sql="SELECT ef.id, e.name as entity, f.name as faction, ef.role, ef.status FROM memory.entity_factions ef JOIN memory.entities e ON ef.entity_id = e.id JOIN memory.factions f ON ef.faction_id = f.id" --limit=20
+pd memory:query --sql="SELECT ef.id, e.name as entity, f.name as faction, ef.role, ef.status FROM memory.entity_factions ef JOIN memory.entities e ON ef.entity_id = e.id JOIN memory.factions f ON ef.faction_id = f.id" --limit=20
 
 # Check existing story arcs
-php artisan memory:query --sql="SELECT id, name, current_status FROM memory.story_arcs WHERE is_active = true"
+pd memory:query --sql="SELECT id, name, current_status FROM memory.story_arcs WHERE is_active = true"
 
 # Get current game state
-php artisan memory:query --sql="SELECT * FROM memory.game_state" --limit=1
+pd memory:query --sql="SELECT * FROM memory.game_state" --limit=1
 
 # Get PC entity
-php artisan memory:query --sql="SELECT id, name, hp_current, gold, silver, copper, conditions FROM memory.entities WHERE entity_type = 'pc'" --limit=1
+pd memory:query --sql="SELECT id, name, hp_current, gold, silver, copper, conditions FROM memory.entities WHERE entity_type = 'pc'" --limit=1
 
 # Get next session number
-php artisan memory:query --sql="SELECT COALESCE(MAX(session_number), 0) + 1 as next_session FROM memory.session_logs"
+pd memory:query --sql="SELECT COALESCE(MAX(session_number), 0) + 1 as next_session FROM memory.session_logs"
 ```
 
 Cross-reference your extraction list against existing data:
@@ -191,67 +191,67 @@ Execute all memory operations in **dependency order** - tables that are referenc
 ### 4.1 Update World Info (rare)
 Only if campaign-level settings changed:
 ```bash
-php artisan memory:update --table=world_info --data='{...}' --where="id = 'uuid'"
+pd memory:update --table=world_info --data='{...}' --where="id = 'uuid'"
 ```
 
 ### 4.2 Create/Update Regions
 Regions must exist before locations can reference them:
 ```bash
 # Create new region
-php artisan memory:insert --table=regions --data='{"name":"...", "description":"...", "terrain":"...", "danger_level":5}'
+pd memory:insert --table=regions --data='{"name":"...", "description":"...", "terrain":"...", "danger_level":5}'
 
 # Update existing region (read first for append fields)
-php artisan memory:query --sql="SELECT description, atmosphere FROM memory.regions WHERE name = '[region]'" --limit=1
-php artisan memory:update --table=regions --data='{...}' --where="name = '[region]'"
+pd memory:query --sql="SELECT description, atmosphere FROM memory.regions WHERE name = '[region]'" --limit=1
+pd memory:update --table=regions --data='{...}' --where="name = '[region]'"
 ```
 
 ### 4.3 Create/Update Factions
 Factions must exist before entity_factions can reference them:
 ```bash
 # Create new faction
-php artisan memory:insert --table=factions --data='{"name":"...", "faction_type":"guild", "description":"...", "goals":"..."}'
+pd memory:insert --table=factions --data='{"name":"...", "faction_type":"guild", "description":"...", "goals":"..."}'
 
 # Update existing faction (READ FIRST for secrets field)
-php artisan memory:query --sql="SELECT secrets, goals FROM memory.factions WHERE name = '[faction]'" --limit=1
-php artisan memory:update --table=factions --data='{...}' --where="name = '[faction]'"
+pd memory:query --sql="SELECT secrets, goals FROM memory.factions WHERE name = '[faction]'" --limit=1
+pd memory:update --table=factions --data='{...}' --where="name = '[faction]'"
 ```
 
 ### 4.4 Create/Update Locations
 Locations must exist before entities can reference them:
 ```bash
 # Create new location (needs region_id)
-php artisan memory:insert --table=locations --data='{"name":"...", "location_type":"tavern", "region_id":"[region-uuid]", "description":"..."}'
+pd memory:insert --table=locations --data='{"name":"...", "location_type":"tavern", "region_id":"[region-uuid]", "description":"..."}'
 
 # Update existing location (READ FIRST for secrets field)
-php artisan memory:query --sql="SELECT secrets, description FROM memory.locations WHERE name = '[location]'" --limit=1
-php artisan memory:update --table=locations --data='{...}' --where="name = '[location]'"
+pd memory:query --sql="SELECT secrets, description FROM memory.locations WHERE name = '[location]'" --limit=1
+pd memory:update --table=locations --data='{...}' --where="name = '[location]'"
 ```
 
 ### 4.5 Create/Update Entities
 Entities must exist before relationship/link tables can reference them:
 ```bash
 # Create new NPC
-php artisan memory:insert --table=entities --data='{"name":"...", "entity_type":"npc", "size":"medium", "str":10, "dex":10, "con":10, "int":10, "wis":10, "cha":10, "proficiency_bonus":2, "hp_max":10, "hp_current":10, "ac":10, "speed_walk":30, "is_alive":true, "personality":"...", "appearance":"..."}'
+pd memory:insert --table=entities --data='{"name":"...", "entity_type":"npc", "size":"medium", "str":10, "dex":10, "con":10, "int":10, "wis":10, "cha":10, "proficiency_bonus":2, "hp_max":10, "hp_current":10, "ac":10, "speed_walk":30, "is_alive":true, "personality":"...", "appearance":"..."}'
 
 # Update existing entity (READ FIRST for notes, current_goals, backstory)
-php artisan memory:query --sql="SELECT notes, current_goals, backstory FROM memory.entities WHERE name = '[entity]'" --limit=1
-php artisan memory:update --table=entities --data='{...}' --where="name = '[entity]'"
+pd memory:query --sql="SELECT notes, current_goals, backstory FROM memory.entities WHERE name = '[entity]'" --limit=1
+pd memory:update --table=entities --data='{...}' --where="name = '[entity]'"
 ```
 
 ### 4.6 Update PC Entity
 ```bash
-php artisan memory:query --sql="SELECT id, notes, current_goals FROM memory.entities WHERE entity_type = 'pc'" --limit=1
-php artisan memory:update --table=entities --data='{"hp_current":..., "gold":..., "silver":..., "copper":..., "conditions":[...]}' --where="entity_type = 'pc'"
+pd memory:query --sql="SELECT id, notes, current_goals FROM memory.entities WHERE entity_type = 'pc'" --limit=1
+pd memory:update --table=entities --data='{"hp_current":..., "gold":..., "silver":..., "copper":..., "conditions":[...]}' --where="entity_type = 'pc'"
 ```
 
 ### 4.7 Create Entity-Location Links
 Links entities to their locations (requires both to exist):
 ```bash
 # Check if link already exists
-php artisan memory:query --sql="SELECT id FROM memory.entity_locations WHERE entity_id = '[entity-uuid]' AND location_id = '[location-uuid]'" --limit=1
+pd memory:query --sql="SELECT id FROM memory.entity_locations WHERE entity_id = '[entity-uuid]' AND location_id = '[location-uuid]'" --limit=1
 
 # Create if not exists
-php artisan memory:insert --table=entity_locations --data='{"entity_id":"...", "location_id":"...", "presence_type":"resides"}'
+pd memory:insert --table=entity_locations --data='{"entity_id":"...", "location_id":"...", "presence_type":"resides"}'
 # presence_type: resides, works, visits, patrols, haunts
 ```
 
@@ -259,10 +259,10 @@ php artisan memory:insert --table=entity_locations --data='{"entity_id":"...", "
 Links entities to their factions (requires both to exist):
 ```bash
 # Check if link already exists
-php artisan memory:query --sql="SELECT id FROM memory.entity_factions WHERE entity_id = '[entity-uuid]' AND faction_id = '[faction-uuid]'" --limit=1
+pd memory:query --sql="SELECT id FROM memory.entity_factions WHERE entity_id = '[entity-uuid]' AND faction_id = '[faction-uuid]'" --limit=1
 
 # Create if not exists
-php artisan memory:insert --table=entity_factions --data='{"entity_id":"...", "faction_id":"...", "role":"member", "status":"active"}'
+pd memory:insert --table=entity_factions --data='{"entity_id":"...", "faction_id":"...", "role":"member", "status":"active"}'
 # role: member, leader, ally, enemy, informant
 # status: active, former, secret, deceased
 ```
@@ -270,7 +270,7 @@ php artisan memory:insert --table=entity_factions --data='{"entity_id":"...", "f
 ### 4.9 Create Entity Relationships
 Append-only by session - create new rows for changed relationships:
 ```bash
-php artisan memory:insert --table=entity_relationships --data='{
+pd memory:insert --table=entity_relationships --data='{
   "entity_id": "[uuid]",
   "related_entity_id": "[uuid]",
   "session_number": N,
@@ -283,15 +283,15 @@ php artisan memory:insert --table=entity_relationships --data='{
 ### 4.10 Update Story Arcs (READ FIRST!)
 ```bash
 # Always read before updating to preserve existing content
-php artisan memory:query --sql="SELECT hooks, current_status, secrets_revealed FROM memory.story_arcs WHERE name = '[arc]'" --limit=1
+pd memory:query --sql="SELECT hooks, current_status, secrets_revealed FROM memory.story_arcs WHERE name = '[arc]'" --limit=1
 # Then append new content to existing
-php artisan memory:update --table=story_arcs --data='{"current_status":"[existing + new]", "hooks":"[existing + new]"}' --where="name = '[arc]'"
+pd memory:update --table=story_arcs --data='{"current_status":"[existing + new]", "hooks":"[existing + new]"}' --where="name = '[arc]'"
 ```
 
 ### 4.11 Update Game State
 ```bash
-php artisan memory:query --sql="SELECT id, pending_consequences FROM memory.game_state" --limit=1
-php artisan memory:update --table=game_state --data='{
+pd memory:query --sql="SELECT id, pending_consequences FROM memory.game_state" --limit=1
+pd memory:update --table=game_state --data='{
   "current_location": "...",
   "current_location_id": "[uuid]",
   "current_region": "...",
@@ -306,13 +306,13 @@ php artisan memory:update --table=game_state --data='{
 ### 4.12 Create DM Notes
 Preserve hidden DM reasoning that would otherwise be lost:
 ```bash
-php artisan memory:insert --table=dm_notes --data='{"session_number": N, "content": "..."}'
+pd memory:insert --table=dm_notes --data='{"session_number": N, "content": "..."}'
 ```
 
 ### 4.13 Create Session Log (LAST)
 Always last - captures the complete session:
 ```bash
-php artisan memory:insert --table=session_logs --data='{
+pd memory:insert --table=session_logs --data='{
   "session_number": N,
   "summary": "...",
   "key_events": "...",
@@ -332,31 +332,31 @@ After execution, verify the changes took effect:
 
 ```bash
 # Verify game state
-php artisan memory:query --sql="SELECT current_location, current_region, situation, time_of_day FROM memory.game_state" --limit=1
+pd memory:query --sql="SELECT current_location, current_region, situation, time_of_day FROM memory.game_state" --limit=1
 
 # Verify session log was created
-php artisan memory:query --sql="SELECT session_number, cliffhanger FROM memory.session_logs ORDER BY session_number DESC" --limit=1
+pd memory:query --sql="SELECT session_number, cliffhanger FROM memory.session_logs ORDER BY session_number DESC" --limit=1
 
 # Verify PC state
-php artisan memory:query --sql="SELECT name, hp_current, hp_max, gold, silver, copper, conditions FROM memory.entities WHERE entity_type = 'pc'" --limit=1
+pd memory:query --sql="SELECT name, hp_current, hp_max, gold, silver, copper, conditions FROM memory.entities WHERE entity_type = 'pc'" --limit=1
 
 # Verify new entities exist
-php artisan memory:query --sql="SELECT id, name, entity_type FROM memory.entities WHERE name IN ('[name1]', '[name2]')" --limit=10
+pd memory:query --sql="SELECT id, name, entity_type FROM memory.entities WHERE name IN ('[name1]', '[name2]')" --limit=10
 
 # Verify entity-location links
-php artisan memory:query --sql="SELECT e.name, l.name as location, el.presence_type FROM memory.entity_locations el JOIN memory.entities e ON el.entity_id = e.id JOIN memory.locations l ON el.location_id = l.id WHERE e.name IN ('[names]')" --limit=10
+pd memory:query --sql="SELECT e.name, l.name as location, el.presence_type FROM memory.entity_locations el JOIN memory.entities e ON el.entity_id = e.id JOIN memory.locations l ON el.location_id = l.id WHERE e.name IN ('[names]')" --limit=10
 
 # Verify entity-faction links
-php artisan memory:query --sql="SELECT e.name, f.name as faction, ef.role FROM memory.entity_factions ef JOIN memory.entities e ON ef.entity_id = e.id JOIN memory.factions f ON ef.faction_id = f.id WHERE e.name IN ('[names]')" --limit=10
+pd memory:query --sql="SELECT e.name, f.name as faction, ef.role FROM memory.entity_factions ef JOIN memory.entities e ON ef.entity_id = e.id JOIN memory.factions f ON ef.faction_id = f.id WHERE e.name IN ('[names]')" --limit=10
 
 # Verify relationships were recorded
-php artisan memory:query --sql="SELECT e1.name as entity, e2.name as related, er.session_number FROM memory.entity_relationships er JOIN memory.entities e1 ON er.entity_id = e1.id JOIN memory.entities e2 ON er.related_entity_id = e2.id ORDER BY er.session_number DESC" --limit=10
+pd memory:query --sql="SELECT e1.name as entity, e2.name as related, er.session_number FROM memory.entity_relationships er JOIN memory.entities e1 ON er.entity_id = e1.id JOIN memory.entities e2 ON er.related_entity_id = e2.id ORDER BY er.session_number DESC" --limit=10
 
 # Verify story arc updates
-php artisan memory:query --sql="SELECT name, current_status FROM memory.story_arcs WHERE is_active = true" --limit=10
+pd memory:query --sql="SELECT name, current_status FROM memory.story_arcs WHERE is_active = true" --limit=10
 
 # Verify DM notes
-php artisan memory:query --sql="SELECT session_number, LEFT(content, 100) as preview FROM memory.dm_notes ORDER BY session_number DESC" --limit=3
+pd memory:query --sql="SELECT session_number, LEFT(content, 100) as preview FROM memory.dm_notes ORDER BY session_number DESC" --limit=3
 ```
 
 **Verification Checklist:**

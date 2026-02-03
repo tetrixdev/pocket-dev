@@ -27,6 +27,7 @@ class StreamEvent
     public const SYSTEM_INFO = 'system_info';
     public const CONTEXT_COMPACTED = 'context_compacted';
     public const COMPACTION_SUMMARY = 'compaction_summary';
+    public const SCREEN_CREATED = 'screen_created';
 
     /**
      * Unique event ID for reliable event tracking.
@@ -188,6 +189,25 @@ class StreamEvent
         return new self(self::COMPACTION_SUMMARY, null, $summary, [
             'pre_tokens' => $metadata['pre_tokens'] ?? null,
             'trigger' => $metadata['trigger'] ?? 'auto',
+        ]);
+    }
+
+    /**
+     * Create a screen created event.
+     *
+     * Emitted when a new screen (panel or chat) is created in the session.
+     * Frontend uses this to refresh the screen tabs and switch to the new screen.
+     *
+     * @param string $screenId The UUID of the created screen
+     * @param string $screenType The type of screen ('panel' or 'chat')
+     * @param string|null $panelSlug The panel slug if type is 'panel'
+     */
+    public static function screenCreated(string $screenId, string $screenType, ?string $panelSlug = null): self
+    {
+        return new self(self::SCREEN_CREATED, null, null, [
+            'screen_id' => $screenId,
+            'screen_type' => $screenType,
+            'panel_slug' => $panelSlug,
         ]);
     }
 

@@ -1035,6 +1035,7 @@
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
                 _justCompletedStream: false,
+                _isReplaying: false, // True during page refresh stream replay (prevents duplicate screen refreshes)
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
                 ignoreScrollEvents: false, // Ignore scroll events during conversation loading
@@ -1352,6 +1353,23 @@
                     // Track window resize for responsive layout calculations
                     window.addEventListener('resize', () => {
                         this.windowWidth = window.innerWidth;
+                    });
+
+                    // Handle visibility changes (phone standby, tab switching)
+                    // Refresh session screens when page becomes visible again
+                    document.addEventListener('visibilitychange', () => {
+                        if (!document.hidden) {
+                            // Refresh screens if we have a session (catches panels opened while away)
+                            if (this.currentSession?.id) {
+                                setTimeout(() => {
+                                    this.refreshSessionScreens();
+                                }, 500);
+                            }
+                            // Reconnect stream if it might have died
+                            if (this.currentConversationUuid && this.isStreaming) {
+                                this.checkAndReconnectStream(this.currentConversationUuid);
+                            }
+                        }
                     });
 
                     // Track input heights for dynamic messages container positioning
@@ -3657,6 +3675,7 @@
                                 // PAGE REFRESH: Fresh page load during active stream
                                 // Reset state and replay ALL events from 0 to rebuild UI
                                 this._resetStreamStateForReplay();
+                                this._isReplaying = true; // Prevent screen_created events from triggering refreshes during replay
                                 fromIndex = 0;
                                 console.log('[Stream] Page refresh reconnect - replaying all events from 0');
                             } else {
@@ -4611,6 +4630,7 @@
                                         }
                                         if (event.status === 'completed' || event.status === 'failed') {
                                             this.isStreaming = false;
+                                            this._isReplaying = false; // Clear replay flag
                                             // Update status badge
                                             this.currentConversationStatus = event.status === 'failed' ? 'failed' : 'idle';
                                             // Prevent reconnection for a short period
@@ -5080,6 +5100,16 @@
                                 collapsed: true // Collapsed by default
                             });
                             this.scrollToBottom();
+                            break;
+
+                        case 'screen_created':
+                            // A new screen (panel) was created - refresh screen tabs
+                            // Only process during live streaming, not replay
+                            if (!this._isReplaying) {
+                                this.refreshSessionScreens();
+                                // Dispatch event for tabs to scroll to new screen
+                                this.$dispatch('screen-added');
+                            }
                             break;
 
                         case 'done':

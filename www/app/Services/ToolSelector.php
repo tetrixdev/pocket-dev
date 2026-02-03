@@ -579,7 +579,7 @@ class ToolSelector
             $lines[] = "- **{$shortName}**" . ($schema->description ? ": {$schema->description}" : "");
         }
 
-        $lines[] = "\nExample: `php artisan memory:query --schema={$schemas->first()->schema_name} --sql=\"SELECT * FROM {$schemas->first()->getFullSchemaName()}.schema_registry\"`";
+        $lines[] = "\nExample: `pd memory:query --schema={$schemas->first()->schema_name} --sql=\"SELECT * FROM {$schemas->first()->getFullSchemaName()}.schema_registry\"`";
         $lines[] = "";
 
         return implode("\n", $lines);
@@ -654,19 +654,21 @@ class ToolSelector
         return <<<'GUIDE'
 ## How to Invoke
 
+Use the `pd` command (PocketDev wrapper) to run artisan commands from any directory:
+
 **Built-in commands (memory, tool management):**
 ```bash
-php artisan memory:query --sql="SELECT id, name FROM memory_structures"
-php artisan memory:create --structure=project --name="My Project" --data='{"status":"active"}'
-php artisan tool:list
+pd memory:query --schema=default --sql="SELECT * FROM memory_default.schema_registry"
+pd memory:insert --schema=default --table=example --data='{"name":"Test"}'
+pd tool:list
 ```
 
 **User-created tools:**
 ```bash
-php artisan tool:run <slug> -- --arg1=value1 --arg2=value2
+pd tool:run <slug> -- --arg1=value1 --arg2=value2
 ```
 
-**Important:** Only `tool:run` requires the `--` separator, and it must appear before the tool arguments.
+**Important:** Only `tool:run` requires the `--` separator before tool arguments.
 
 GUIDE;
     }
@@ -834,7 +836,7 @@ GUIDE;
         $introContent = "# Skills\n\n";
         $introContent .= "PocketDev Skills should **always** be retrieved by querying the `skills` table in memory, matching by exact `name`.\n";
         $introContent .= "Use the Bash tool to run the artisan command:\n";
-        $introContent .= "```bash\nphp artisan memory:query --schema=<schema> --sql=\"SELECT instructions FROM memory_<schema>.skills WHERE name = 'skill-name'\"\n```\n\n";
+        $introContent .= "```bash\npd memory:query --schema=<schema> --sql=\"SELECT instructions FROM memory_<schema>.skills WHERE name = 'skill-name'\"\n```\n\n";
         $introContent .= "Replace `<schema>` with the schema name indicated for each skill below.\n\n";
         $introContent .= "Available skills:";
 

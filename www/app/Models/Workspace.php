@@ -23,12 +23,14 @@ class Workspace extends Model
         'description',
         'owner_id',
         'settings',
+        'default_session_template',
         'selected_packages',
         'claude_base_prompt',
     ];
 
     protected $casts = [
         'settings' => 'array',
+        'default_session_template' => 'array',
         'selected_packages' => 'array',
     ];
 
@@ -80,6 +82,14 @@ class Workspace extends Model
     public function conversations(): HasMany
     {
         return $this->hasMany(Conversation::class);
+    }
+
+    /**
+     * Get sessions belonging to this workspace.
+     */
+    public function sessions(): HasMany
+    {
+        return $this->hasMany(Session::class);
     }
 
     /**
