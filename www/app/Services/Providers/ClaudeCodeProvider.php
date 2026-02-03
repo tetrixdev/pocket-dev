@@ -283,23 +283,11 @@ class ClaudeCodeProvider implements AIProviderInterface
             $parts[] = escapeshellarg($options['system']);
         }
 
-        // Build environment variable prefix
-        $envVars = [];
+        // Note: Environment variables like MAX_THINKING_TOKENS are passed via
+        // the $env parameter to proc_open() in executeAndStream(), not as
+        // a command prefix. Shell-style "VAR=value cmd" doesn't work with proc_open().
 
-        // Note: We don't set ANTHROPIC_API_KEY here.
-        // Claude Code uses OAuth credentials from ~/.claude/.credentials.json
-        // (set up via `claude login`). If not authenticated, streamMessage()
-        // returns an error before we get here.
-
-        // Set thinking tokens via environment variable
-        $thinkingTokens = $this->getThinkingTokens($conversation);
-        if ($thinkingTokens > 0) {
-            $envVars[] = "MAX_THINKING_TOKENS={$thinkingTokens}";
-        }
-
-        $envPrefix = !empty($envVars) ? implode(' ', $envVars) . ' ' : '';
-
-        return $envPrefix . implode(' ', $parts) . ' 2>&1';
+        return implode(' ', $parts) . ' 2>&1';
     }
 
     /**
@@ -344,6 +332,12 @@ class ClaudeCodeProvider implements AIProviderInterface
         $sessionId = $conversation->screen?->session?->id;
         if ($sessionId) {
             $env['POCKETDEV_SESSION_ID'] = $sessionId;
+        }
+
+        // Set thinking tokens via environment variable (for extended thinking)
+        $thinkingTokens = $this->getThinkingTokens($conversation);
+        if ($thinkingTokens > 0) {
+            $env['MAX_THINKING_TOKENS'] = (string) $thinkingTokens;
         }
 
         $workingDirectory = $conversation->working_directory ?? base_path();
