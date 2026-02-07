@@ -15,6 +15,8 @@ class ToolUpdateCommand extends Command
         {--system-prompt= : New system prompt instructions}
         {--script= : New bash script content}
         {--script-file= : Path to file containing new bash script}
+        {--blade-template= : New Blade template content for panel tools}
+        {--blade-template-file= : Path to file containing new Blade template}
         {--category= : New category}
         {--input-schema= : New JSON Schema for input parameters}';
 
@@ -54,6 +56,21 @@ class ToolUpdateCommand extends Command
             $input['script'] = file_get_contents($scriptFile);
         } elseif ($this->option('script') !== null) {
             $input['script'] = $this->option('script');
+        }
+
+        // Handle blade template from file if provided
+        if ($this->option('blade-template-file') !== null) {
+            $templateFile = $this->option('blade-template-file');
+            if (!file_exists($templateFile)) {
+                $this->outputJson([
+                    'output' => "Blade template file not found: {$templateFile}",
+                    'is_error' => true,
+                ]);
+                return Command::FAILURE;
+            }
+            $input['blade_template'] = file_get_contents($templateFile);
+        } elseif ($this->option('blade-template') !== null) {
+            $input['blade_template'] = $this->option('blade-template');
         }
 
         if ($this->option('category') !== null) {

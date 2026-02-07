@@ -6,11 +6,8 @@
      x-ref="screenTabsContainer"
      @screen-added.window="$nextTick(() => scrollToActiveTab())">
 
-    {{-- DEBUG indicator - shows current session ID --}}
-    <span class="text-[10px] text-yellow-400 mr-2" x-text="'Session: ' + (currentSession?.id?.slice(0,8) || 'NULL')"></span>
-
-    {{-- Screen Tabs --}}
-    <template x-for="screenId in (currentSession?.screen_order || [])" :key="screenId">
+    {{-- Screen Tabs (only visible/non-archived screens) --}}
+    <template x-for="screenId in visibleScreenOrder" :key="screenId">
         <div class="group relative flex items-center shrink-0"
              data-screen-tab
              draggable="true"
@@ -23,7 +20,7 @@
                  'before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-blue-500 before:z-20': dragOverScreenId === screenId && dragDropPosition === 'before',
                  'after:absolute after:right-0 after:top-0 after:bottom-0 after:w-0.5 after:bg-blue-500 after:z-20': dragOverScreenId === screenId && dragDropPosition === 'after'
              }">
-            <button @click="console.log('Tab clicked:', screenId); activateScreen(screenId)"
+            <button @click="activateScreen(screenId)"
                     :class="activeScreenId === screenId
                         ? 'bg-gray-700 text-white border-gray-600'
                         : 'bg-gray-800/50 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 border-transparent'"
@@ -33,15 +30,16 @@
                 <span :class="getScreenTypeColor(screenId)">
                     <i :class="getScreenIcon(screenId)"></i>
                 </span>
-                {{-- Screen Title --}}
-                <span class="truncate" x-text="getScreenTitle(screenId)"></span>
+                {{-- Screen Tab Label (short form) --}}
+                <span class="truncate" x-text="getScreenTabLabel(screenId)"></span>
             </button>
-            {{-- Close Button --}}
-            <button @click.stop="console.log('Close clicked:', screenId); closeScreen(screenId)"
-                    x-show="screens.length > 1"
-                    class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-600 hover:bg-red-500 text-gray-300 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
-                    title="Close">
-                <i class="fa-solid fa-xmark text-[8px]"></i>
+            {{-- Archive/Close Button --}}
+            <button @click.stop="toggleArchiveConversation(screenId)"
+                    x-show="visibleScreenOrder.length > 1"
+                    :class="getScreen(screenId)?.type === 'panel' ? 'hover:bg-red-500' : 'hover:bg-amber-500'"
+                    class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-600 text-gray-300 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
+                    :title="getScreen(screenId)?.type === 'panel' ? 'Close' : 'Archive'">
+                <i :class="getScreen(screenId)?.type === 'panel' ? 'fa-solid fa-xmark' : 'fa-solid fa-box-archive'" class="text-[8px]"></i>
             </button>
         </div>
     </template>
@@ -70,7 +68,7 @@
              class="fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50"
              :style="{ top: menuPos.top + 'px', left: menuPos.left + 'px' }">
             {{-- New Chat --}}
-            <button @click="console.log('New Chat clicked'); addChatScreen(); showAddMenu = false"
+            <button @click="addChatScreen(); showAddMenu = false"
                     class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
                 <i class="fa-solid fa-comment text-blue-400 w-4 text-center"></i>
                 New Chat

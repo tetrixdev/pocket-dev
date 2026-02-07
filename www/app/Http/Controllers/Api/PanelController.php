@@ -200,9 +200,20 @@ class PanelController extends Controller
                     'PANEL_SLUG' => $slug,
                 ];
 
-                $process = Process::env($env)
-                    ->timeout(30)
-                    ->run($panel->script);
+                // Write script to temp file to avoid shell escaping issues with complex scripts
+                $tmpScript = tempnam(sys_get_temp_dir(), 'panel_action_');
+                file_put_contents($tmpScript, $panel->script);
+                chmod($tmpScript, 0755);
+
+                try {
+                    $process = Process::env($env)
+                        ->timeout(30)
+                        ->run(['sh', $tmpScript]);
+                } finally {
+                    // Suppress unlink errors - file may not exist if creation failed,
+                    // and cleanup failure is non-critical
+                    @unlink($tmpScript);
+                }
 
                 if ($process->failed()) {
                     return response()->json([
@@ -310,10 +321,20 @@ class PanelController extends Controller
                 'PANEL_SLUG' => $slug,
             ];
 
-            // Run the peek script
-            $process = Process::env($env)
-                ->timeout(30)
-                ->run($panel->script);
+            // Write script to temp file to avoid shell escaping issues with complex scripts
+            $tmpScript = tempnam(sys_get_temp_dir(), 'panel_peek_');
+            file_put_contents($tmpScript, $panel->script);
+            chmod($tmpScript, 0755);
+
+            try {
+                $process = Process::env($env)
+                    ->timeout(30)
+                    ->run(['sh', $tmpScript]);
+            } finally {
+                // Suppress unlink errors - file may not exist if creation failed,
+                // and cleanup failure is non-critical
+                @unlink($tmpScript);
+            }
 
             if ($process->failed()) {
                 \Log::warning('Panel peek script failed', [

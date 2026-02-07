@@ -5,6 +5,7 @@ namespace App\Tools;
 use App\Models\PanelState;
 use App\Models\PocketTool;
 use App\Models\Screen;
+use App\Panels\PanelRegistry;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -31,7 +32,7 @@ class PanelPeekTool extends Tool
             ],
             'id' => [
                 'type' => 'string',
-                'description' => 'Optional. The specific panel state ID (short form like "abc123" or full UUID). Use this when multiple instances of the same panel type are open.',
+                'description' => 'Optional. The specific panel state ID (full UUID). Use this when multiple instances of the same panel type are open.',
             ],
         ],
         'required' => ['panel_slug'],
@@ -57,7 +58,7 @@ INSTRUCTIONS;
 pd panel:peek file-explorer
 
 # Peek at a specific panel instance by ID
-pd panel:peek file-explorer --id=abc12345
+pd panel:peek file-explorer --id=019c2fcc-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 CLI;
 
@@ -75,7 +76,7 @@ Peek at a specific panel instance:
 ```json
 {
   "panel_slug": "file-explorer",
-  "id": "abc12345"
+  "id": "019c2fcc-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 }
 ```
 API;
@@ -93,38 +94,42 @@ API;
         $panelState = null;
 
         if ($id) {
-            // Try to find by ID (supports short form or full UUID)
+            // Find by exact UUID
             $panelState = PanelState::where('panel_slug', $panelSlug)
-                ->where(function ($query) use ($id) {
-                    $query->where('id', $id)
-                        ->orWhere('id', 'like', $id . '%');
-                })
+                ->where('id', $id)
                 ->first();
 
             if (!$panelState) {
-                return ToolResult::error("Panel state not found with id '{$id}' for panel type '{$panelSlug}'");
+                return ToolResult::error("Panel '{$panelSlug}' with id '{$id}' not found. It may have been closed.");
             }
         } else {
-            // Find the first panel state of this type
-            // Try to find one that's actually in an active screen
+            // No ID provided - get most recent panel of this type
             $panelState = PanelState::where('panel_slug', $panelSlug)
-                ->whereHas('screen')
-                ->orderBy('updated_at', 'desc')
+                ->orderBy('created_at', 'desc')
                 ->first();
 
             if (!$panelState) {
-                // Fall back to any panel state of this type
-                $panelState = PanelState::where('panel_slug', $panelSlug)
-                    ->orderBy('updated_at', 'desc')
-                    ->first();
-            }
+                // Build list of available panels for helpful error message
+                $availablePanels = $this->getAvailablePanelSlugs();
+                $availableList = empty($availablePanels)
+                    ? 'No panels are currently open.'
+                    : 'Available: ' . implode(', ', $availablePanels);
 
-            if (!$panelState) {
-                return ToolResult::error("No open panel found with slug '{$panelSlug}'. Check the Open Panels section to see available panels.");
+                return ToolResult::error(
+                    "No open panel found with slug '{$panelSlug}'. {$availableList}"
+                );
             }
         }
 
-        // Get the panel tool definition
+        // First check for system panel (from PanelRegistry)
+        $panelRegistry = app(PanelRegistry::class);
+        if ($panelRegistry->has($panelSlug)) {
+            $systemPanel = $panelRegistry->get($panelSlug);
+            $peekOutput = $systemPanel->peek($panelState->parameters ?? [], $panelState->state ?? []);
+            return ToolResult::success($peekOutput);
+        }
+
+        // Then check database panel (PocketTool)
         $panel = PocketTool::where('slug', $panelSlug)
             ->where('type', PocketTool::TYPE_PANEL)
             ->first();
@@ -133,7 +138,7 @@ API;
             return ToolResult::error("Panel type '{$panelSlug}' not found");
         }
 
-        // Generate peek output
+        // Generate peek output for database panel
         $peekOutput = $this->generatePeek($panel, $panelState);
 
         return ToolResult::success($peekOutput);
@@ -211,6 +216,18 @@ API;
         $output .= "\n*Note: No peek script defined for this panel. Showing raw state data.*\n";
 
         return $output;
+    }
+
+    /**
+     * Get list of currently open panel slugs.
+     */
+    private function getAvailablePanelSlugs(): array
+    {
+        return PanelState::select('panel_slug')
+            ->distinct()
+            ->orderBy('panel_slug')
+            ->pluck('panel_slug')
+            ->toArray();
     }
 
     public function getArtisanCommand(): ?string

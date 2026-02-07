@@ -191,6 +191,7 @@ Route::prefix('sessions')->group(function () {
     Route::post('{session}/restore', [\App\Http\Controllers\Api\SessionController::class, 'restore']);
     Route::post('{session}/save-as-default', [\App\Http\Controllers\Api\SessionController::class, 'saveAsDefault']);
     Route::post('{session}/clear-default', [\App\Http\Controllers\Api\SessionController::class, 'clearDefault']);
+    Route::get('{session}/archived-conversations', [\App\Http\Controllers\Api\SessionController::class, 'archivedConversations']);
 
     // Screen operations within a session
     Route::post('{session}/screens/chat', [\App\Http\Controllers\Api\ScreenController::class, 'createChat']);

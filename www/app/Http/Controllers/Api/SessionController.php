@@ -277,6 +277,30 @@ class SessionController extends Controller
     }
 
     /**
+     * Get archived conversations for a session.
+     */
+    public function archivedConversations(Session $session): JsonResponse
+    {
+        $archivedConversations = $session->screens()
+            ->chats()
+            ->whereHas('conversation', function ($q) {
+                $q->where('status', 'archived');
+            })
+            ->with('conversation:id,uuid,title,status,updated_at')
+            ->get()
+            ->map(fn ($screen) => [
+                'id' => $screen->conversation->uuid, // Use uuid for API calls (route model binding)
+                'title' => $screen->conversation->title,
+                'archived_at' => $screen->conversation->updated_at,
+            ]);
+
+        return response()->json([
+            'conversations' => $archivedConversations,
+            'count' => $archivedConversations->count(),
+        ]);
+    }
+
+    /**
      * Get the latest activity timestamp for sessions in a workspace.
      */
     public function latestActivity(Request $request): JsonResponse

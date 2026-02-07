@@ -806,6 +806,14 @@
                             </a>
                             {{-- Session Section Header --}}
                             <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
+                            {{-- Rename Session --}}
+                            <button @click="openRenameSessionModal(); showConversationMenu = false"
+                                    :disabled="!currentSession"
+                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-pen w-4 text-center"></i>
+                                Rename session
+                            </button>
                             {{-- Archive/Restore Session --}}
                             <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
                                     :disabled="!currentSession"
@@ -821,6 +829,13 @@
                                     class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
                                 <i class="fa-solid fa-trash w-4 text-center"></i>
                                 Delete session
+                            </button>
+                            {{-- Restore Chat (only show if session has archived conversations) --}}
+                            <button x-show="hasArchivedConversations"
+                                    @click="openRestoreChatModal(); showConversationMenu = false"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 cursor-pointer w-full text-left">
+                                <i class="fa-solid fa-rotate-left w-4 text-center"></i>
+                                Restore chat...
                             </button>
                             {{-- Conversation Section Header --}}
                             <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Conversation</div>
@@ -986,23 +1001,37 @@
                  @touchend="handleSwipeEnd($event)"
                  @touchcancel="resetSwipeState()">
 
-                {{-- Loading State --}}
-                <template x-if="loadingPanel">
-                    <div class="flex items-center justify-center h-full">
-                        <div class="flex flex-col items-center gap-3">
-                            <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            <span class="text-gray-400 text-sm">Loading panel...</span>
-                        </div>
+                {{-- Loading State - use x-show to avoid destroying panel Alpine state --}}
+                <div x-show="loadingPanel" class="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                    <div class="flex flex-col items-center gap-3">
+                        <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-gray-400 text-sm">Loading panel...</span>
                     </div>
-                </template>
+                </div>
 
-                {{-- Panel Content (rendered HTML) --}}
-                <template x-if="!loadingPanel">
-                    <div id="panel-content-container" x-html="panelContent" class="h-full"></div>
-                </template>
+                {{--
+                    Panel Content (rendered HTML)
+
+                    Uses x-effect to only update when content ACTUALLY changes (via _lastContent tracking).
+                    When content changes, Alpine.initTree() reinitializes all Alpine components in the panel.
+
+                    IMPORTANT for panel developers:
+                    - x-init and init() will re-run whenever panel content is refreshed
+                    - Store persistent state in panelState (synced to server) rather than local Alpine state
+                    - Side effects in init() should be idempotent or guarded
+                --}}
+                <div id="panel-content-container"
+                     x-effect="
+                         if (panelContent !== $el._lastContent) {
+                             $el._lastContent = panelContent;
+                             $el.innerHTML = panelContent;
+                             Alpine.initTree($el);
+                         }
+                     "
+                     class="h-full"></div>
             </div>
 
             {{-- Scroll to Bottom Button (mobile) - positioned above attachment FAB --}}
@@ -1101,6 +1130,11 @@
                 sessionMenuPos: { top: 0, left: 0 }, // Position for session context menu
                 workspaceHasDefaultTemplate: false, // Whether workspace has a default session template
 
+                // Restore chat modal
+                showRestoreChatModal: false, // Visibility of restore chat modal
+                archivedConversations: [], // Archived conversations for current session
+                loadingArchivedConversations: false, // Loading state
+
                 // Panel content
                 panelContent: '', // HTML content of active panel
                 loadingPanel: false, // Loading state for panel content
@@ -1131,6 +1165,18 @@
                     return this.sessions.filter(s =>
                         (s.name || '').toLowerCase().includes(query)
                     );
+                },
+
+                // Computed: visible screen order (excludes screens with archived conversations)
+                get visibleScreenOrder() {
+                    if (!this.currentSession?.screen_order) return [];
+                    return this.currentSession.screen_order.filter(screenId => {
+                        const screen = this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
+                        // Show all panel screens, only show chat screens if conversation is not archived
+                        if (!screen) return false;
+                        if (screen.type === 'panel') return true;
+                        return screen.conversation?.status !== 'archived';
+                    });
                 },
 
                 // Computed: get the active screen object
@@ -1185,12 +1231,18 @@
                 showErrorModal: false,
                 showSearchModal: false,
                 showRenameModal: false,
+                showRenameSessionModal: false,
                 showSystemPromptPreview: false,
 
                 // Conversation title (rename)
                 currentConversationTitle: null,
                 renameTitle: '',
+                renameTabLabel: '',
                 renameSaving: false,
+
+                // Session name (rename)
+                renameSessionName: '',
+                renameSessionSaving: false,
                 _systemPromptPreviewNonce: 0,
                 systemPromptPreview: {
                     loading: false,
@@ -2254,21 +2306,54 @@
                     }
                 },
 
-                async toggleArchiveConversation() {
+                async toggleArchiveConversation(screenId = null) {
                     // Note: API routes don't use CSRF middleware - Laravel excludes it by design for stateless APIs
-                    if (!this.currentConversationUuid) return;
+                    // If screenId provided, use that screen; otherwise use active screen
+                    const targetScreenId = screenId || this.activeScreenId;
+                    const screen = this.getScreen(targetScreenId);
 
-                    const isArchived = this.currentConversationStatus === 'archived';
+                    // Panel screens have no conversation - fall back to close
+                    if (screen?.type === 'panel') {
+                        return this.closeScreen(targetScreenId);
+                    }
+
+                    const conversationUuid = screen?.conversation?.uuid;
+                    if (!conversationUuid) return;
+
+                    const isArchived = screen?.conversation?.status === 'archived';
                     const action = isArchived ? 'unarchive' : 'archive';
+
                     try {
-                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/${action}`, {
+                        const response = await fetch(`/api/conversations/${conversationUuid}/${action}`, {
                             method: 'POST'
                         });
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                         // Update local state - 'idle' is intentional for unarchive since completed
                         // conversations naturally rest at 'idle', and 'failed' ones can be retried
-                        this.currentConversationStatus = isArchived ? 'idle' : 'archived';
+                        const newStatus = isArchived ? 'idle' : 'archived';
+
+                        // Update currentConversationStatus if targeting the active screen
+                        if (targetScreenId === this.activeScreenId) {
+                            this.currentConversationStatus = newStatus;
+                        }
+
+                        // Also update the screen's conversation status in local data
+                        if (screen?.conversation) {
+                            screen.conversation.status = newStatus;
+                        }
+
+                        // If archiving, switch to another visible screen
+                        if (!isArchived) {
+                            // Find another visible screen to switch to
+                            const otherVisibleScreen = this.visibleScreenOrder.find(id => id !== targetScreenId);
+                            if (otherVisibleScreen) {
+                                this.activateScreen(otherVisibleScreen);
+                            }
+                            this.showToast('Chat archived');
+                        } else {
+                            this.showToast('Chat restored');
+                        }
                     } catch (err) {
                         console.error('Failed to toggle archive:', err);
                         this.showError('Failed to ' + action + ' conversation');
@@ -2300,6 +2385,9 @@
                 openRenameModal() {
                     if (!this.currentConversationUuid) return;
                     this.renameTitle = this.currentConversationTitle || '';
+                    // Get tab_label from current screen's conversation
+                    const screen = this.getScreen(this.activeScreenId);
+                    this.renameTabLabel = screen?.conversation?.tab_label || '';
                     this.showRenameModal = true;
                     // Focus input after modal opens
                     this.$nextTick(() => {
@@ -2317,6 +2405,12 @@
                         return;
                     }
 
+                    // Enforce tab label max length (6 chars)
+                    if (this.renameTabLabel.trim().length > 6) {
+                        this.showError('Tab label cannot exceed 6 characters');
+                        return;
+                    }
+
                     this.renameSaving = true;
                     try {
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/title`, {
@@ -2325,7 +2419,10 @@
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                             },
-                            body: JSON.stringify({ title: this.renameTitle.trim() })
+                            body: JSON.stringify({
+                                title: this.renameTitle.trim(),
+                                tab_label: this.renameTabLabel.trim() || null
+                            })
                         });
 
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -2333,11 +2430,12 @@
                         const data = await response.json();
                         this.currentConversationTitle = data.title;
 
-                        // Also update the screen title in the current session if this conversation is displayed
+                        // Also update the screen in the current session if this conversation is displayed
                         if (this.activeScreenId && this.screens) {
                             const screen = this.getScreen(this.activeScreenId);
                             if (screen?.type === 'chat' && screen.conversation?.uuid === this.currentConversationUuid) {
                                 screen.conversation.title = data.title;
+                                screen.conversation.tab_label = data.tab_label;
                             }
                         }
 
@@ -2347,6 +2445,57 @@
                         this.showError('Failed to rename conversation');
                     } finally {
                         this.renameSaving = false;
+                    }
+                },
+
+                openRenameSessionModal() {
+                    if (!this.currentSession) return;
+                    this.renameSessionName = this.currentSession.name || '';
+                    this.showRenameSessionModal = true;
+                    // Focus input after modal opens
+                    this.$nextTick(() => {
+                        this.$refs.renameSessionInput?.focus();
+                        this.$refs.renameSessionInput?.select();
+                    });
+                },
+
+                async saveSessionName() {
+                    if (!this.currentSession || !this.renameSessionName.trim()) return;
+
+                    // Enforce max character limit
+                    if (this.renameSessionName.trim().length > window.TITLE_MAX_LENGTH) {
+                        this.showError(`Session name cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
+                        return;
+                    }
+
+                    this.renameSessionSaving = true;
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
+                            body: JSON.stringify({ name: this.renameSessionName.trim() })
+                        });
+
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                        const data = await response.json();
+                        this.currentSession.name = data.name;
+
+                        // Also update the session in the sessions list for sidebar
+                        const sessionInList = this.filteredSessions.find(s => s.id === this.currentSession.id);
+                        if (sessionInList) {
+                            sessionInList.name = data.name;
+                        }
+
+                        this.showRenameSessionModal = false;
+                    } catch (err) {
+                        console.error('Failed to rename session:', err);
+                        this.showError('Failed to rename session');
+                    } finally {
+                        this.renameSessionSaving = false;
                     }
                 },
 
@@ -2978,13 +3127,30 @@
                     return this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
                 },
 
-                // Get screen title for display
+                // Get screen title for display (full title, used for tooltips)
                 getScreenTitle(screenId) {
                     const screen = this.getScreen(screenId);
                     if (!screen) return 'Screen';
                     if (screen.type === 'chat') {
                         return screen.conversation?.title || 'Chat';
                     }
+                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                },
+
+                // Get screen tab label for display (short form for tabs)
+                getScreenTabLabel(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'Screen';
+                    if (screen.type === 'chat') {
+                        // Use tab_label if set, otherwise derive from title
+                        const tabLabel = screen.conversation?.tab_label;
+                        if (tabLabel && tabLabel.trim()) {
+                            return tabLabel;
+                        }
+                        const title = screen.conversation?.title || 'Chat';
+                        return title.length > 5 ? title.slice(0, 5) + '...' : title;
+                    }
+                    // For panels, use the full name (they're typically short already)
                     return screen.panel?.name || screen.panel_slug || 'Panel';
                 },
 
@@ -3034,31 +3200,25 @@
                 },
 
                 // Load panel content from server
-                async loadPanelContent(panelStateId) {
-                    console.log('[DEBUG] loadPanelContent called with:', panelStateId);
+                // Track currently loaded panel to avoid unnecessary reloads
+                _loadedPanelStateId: null,
+
+                async loadPanelContent(panelStateId, force = false) {
+                    // Skip reload if already loaded and not forced
+                    if (!force && this._loadedPanelStateId === panelStateId && this.panelContent) {
+                        return;
+                    }
+
                     this.loadingPanel = true;
                     try {
-                        const url = `/api/panel/${panelStateId}/render`;
-                        console.log('[DEBUG] Fetching panel from:', url);
-                        const response = await fetch(url);
-                        console.log('[DEBUG] Panel fetch response:', response.status);
+                        const response = await fetch(`/api/panel/${panelStateId}/render`);
                         if (!response.ok) {
-                            const errorText = await response.text();
-                            console.error('[DEBUG] Panel fetch error:', errorText);
                             throw new Error('Failed to load panel');
                         }
                         this.panelContent = await response.text();
-                        console.log('[DEBUG] Panel content received, length:', this.panelContent.length);
-
-                        // Initialize Alpine components in the dynamically loaded content
-                        // Must wait for DOM to update after setting panelContent
-                        this.$nextTick(() => {
-                            const panelContainer = document.getElementById('panel-content-container');
-                            if (panelContainer) {
-                                Alpine.initTree(panelContainer);
-                                console.log('[DEBUG] Alpine.initTree called on panel container');
-                            }
-                        });
+                        this._loadedPanelStateId = panelStateId;
+                        // Note: Alpine.initTree is now called by the x-effect on panel-content-container
+                        // when it detects the content has changed
                     } catch (err) {
                         console.error('Failed to load panel content:', err);
                         this.panelContent = '<div class="p-4 text-red-500">Failed to load panel content</div>';
@@ -3178,6 +3338,12 @@
 
                     try {
                         await fetch(`/api/screens/${screenId}`, { method: 'DELETE' });
+
+                        // Clear loaded panel cache if closing the currently loaded panel
+                        if (screen.type === 'panel' && screen.panel_id === this._loadedPanelStateId) {
+                            this._loadedPanelStateId = null;
+                            this.panelContent = '';
+                        }
 
                         // Remove from local state
                         this.screens = this.screens.filter(s => s.id !== screenId);
@@ -3650,6 +3816,72 @@
                 // Close session context menu
                 closeSessionMenu() {
                     this.sessionMenuId = null;
+                },
+
+                // Open restore chat modal and fetch archived conversations
+                async openRestoreChatModal() {
+                    if (!this.currentSession?.id) return;
+
+                    this.showRestoreChatModal = true;
+                    this.loadingArchivedConversations = true;
+                    this.archivedConversations = [];
+
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/archived-conversations`);
+                        if (!response.ok) throw new Error('Failed to fetch archived conversations');
+
+                        const data = await response.json();
+                        this.archivedConversations = data.conversations || [];
+                    } catch (err) {
+                        console.error('Failed to fetch archived conversations:', err);
+                        this.showError('Failed to load archived conversations');
+                    } finally {
+                        this.loadingArchivedConversations = false;
+                    }
+                },
+
+                // Close restore chat modal
+                closeRestoreChatModal() {
+                    this.showRestoreChatModal = false;
+                    this.archivedConversations = [];
+                },
+
+                // Restore an archived conversation (unarchive it)
+                async restoreArchivedConversation(conversationId) {
+                    if (!conversationId) return;
+
+                    try {
+                        const response = await fetch(`/api/conversations/${conversationId}/unarchive`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+
+                        // Remove from archived list
+                        this.archivedConversations = this.archivedConversations.filter(c => c.id !== conversationId);
+
+                        // Reload the session to show the restored conversation in tabs
+                        await this.loadSession(this.currentSession.id);
+
+                        this.showToast('Conversation restored');
+
+                        // Close modal if no more archived conversations
+                        if (this.archivedConversations.length === 0) {
+                            this.closeRestoreChatModal();
+                        }
+                    } catch (err) {
+                        console.error('Failed to restore conversation:', err);
+                        this.showError('Failed to restore conversation');
+                    }
+                },
+
+                // Check if current session has archived conversations (for showing/hiding menu item)
+                get hasArchivedConversations() {
+                    // This is populated when session is loaded - check screens for archived conversations
+                    return this.screens.some(s => s.type === 'chat' && s.conversation?.status === 'archived');
                 },
 
                 // ===== Panel State Sync =====

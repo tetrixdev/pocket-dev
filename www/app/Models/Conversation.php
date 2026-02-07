@@ -26,6 +26,7 @@ class Conversation extends Model
         'provider_type',
         'model',
         'title',
+        'tab_label',
         'working_directory',
         'total_input_tokens',
         'total_output_tokens',

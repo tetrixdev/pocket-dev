@@ -21,7 +21,7 @@ class PanelRegistry
     {
         // Add system panels here:
         $this->register(new FileExplorerPanel());
-        // $this->register(new GitStatusPanel());
+        $this->register(new GitStatusPanel());
     }
 
     public function register(Panel $panel): void
@@ -49,6 +49,7 @@ class PanelRegistry
 
     /**
      * Get all available panels (system + database).
+     * System panels take precedence over database panels with the same slug.
      */
     public function allAvailable(): array
     {
@@ -59,12 +60,20 @@ class PanelRegistry
             $panels[] = $panel->toArray();
         }
 
-        // Add database panels (user-created)
+        // Get system panel slugs for deduplication
+        $systemSlugs = array_keys($this->systemPanels);
+
+        // Add database panels (user-created), skipping duplicates
         $dbPanels = PocketTool::where('type', PocketTool::TYPE_PANEL)
             ->where('enabled', true)
             ->get();
 
         foreach ($dbPanels as $dbPanel) {
+            // Skip database panels that have a matching system panel slug
+            if (in_array($dbPanel->slug, $systemSlugs)) {
+                continue;
+            }
+
             $panels[] = [
                 'slug' => $dbPanel->slug,
                 'name' => $dbPanel->name,

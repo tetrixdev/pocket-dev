@@ -473,9 +473,8 @@ PROMPT;
                 }
             }
 
-            // Format: - panel-slug (id: abc123) @ /path/or/context
-            $shortId = substr($id, 0, 8);
-            $lines[] = "- {$slug} (id: {$shortId}) @ {$context}";
+            // Format: - panel-slug (id: full-uuid) @ /path/or/context
+            $lines[] = "- {$slug} (id: {$id}) @ {$context}";
         }
 
         $panelList = implode("\n", $lines);
@@ -488,7 +487,7 @@ PROMPT;
 To see what's currently visible in a panel, use the PanelPeek tool or run:
 ```bash
 pd panel:peek <panel-slug>
-pd panel:peek <panel-slug> --id=<short-id>
+pd panel:peek <panel-slug> --id=<panel-id>
 ```
 PROMPT;
     }

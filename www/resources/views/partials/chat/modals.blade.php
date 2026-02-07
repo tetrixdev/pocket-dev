@@ -12,6 +12,8 @@
 @include('partials.chat.modals.error')
 @include('partials.chat.modals.conversation-search')
 @include('partials.chat.modals.rename-conversation')
+@include('partials.chat.modals.rename-session')
+@include('partials.chat.modals.restore-chat')
 
 {{-- File Preview Modal --}}
 <x-file-preview-modal />

@@ -12,22 +12,30 @@
             x-bind:maxlength="window.TITLE_MAX_LENGTH"
         />
 
-        {{-- Preview with yellow highlighting for chars beyond mobile truncation --}}
-        <div x-show="renameTitle.length > 0" class="text-sm">
-            <span class="text-gray-400 text-xs">Preview:</span>
-            <div class="mt-1 font-medium">
-                <span class="text-white" x-text="renameTitle.slice(0, window.TITLE_MOBILE_LENGTH)"></span><span class="text-yellow-400" x-text="renameTitle.slice(window.TITLE_MOBILE_LENGTH, window.TITLE_MAX_LENGTH)"></span>
+        <x-text-input
+            type="text"
+            x-model="renameTabLabel"
+            @keydown.enter="saveConversationTitle()"
+            @keydown.escape="showRenameModal = false"
+            placeholder="e.g. Debug"
+            label="Tab Label (optional)"
+            hint="Max 6 characters. Shown in screen tabs."
+            maxlength="6"
+        />
+
+        {{-- Tab preview --}}
+        <div class="text-sm">
+            <span class="text-gray-400 text-xs">Tab preview:</span>
+            <div class="mt-1">
+                <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-700 rounded text-sm font-medium">
+                    <i class="fa-solid fa-comment text-[10px] text-gray-400"></i>
+                    <span x-text="renameTabLabel.trim() || (renameTitle.slice(0, 5) + (renameTitle.length > 5 ? '...' : ''))"></span>
+                </span>
             </div>
         </div>
 
-        <div class="text-xs space-y-1">
-            <p class="text-gray-500">
-                Maximum <span x-text="window.TITLE_MAX_LENGTH"></span> characters. Desktop shows full title, mobile truncates at ~<span x-text="window.TITLE_MOBILE_LENGTH"></span>.
-            </p>
-            <p class="text-yellow-400/80" x-show="renameTitle.length > window.TITLE_MOBILE_LENGTH">
-                <i class="fas fa-exclamation-triangle mr-1"></i>
-                Yellow characters may not be visible on mobile.
-            </p>
+        <div class="text-xs text-gray-500">
+            The tab label appears in screen tabs. If not set, the first 5 characters of the title + "..." will be used.
         </div>
 
         <div class="flex gap-2">

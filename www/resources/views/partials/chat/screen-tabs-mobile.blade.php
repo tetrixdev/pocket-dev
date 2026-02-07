@@ -7,8 +7,8 @@
      @screen-added.window="$nextTick(() => { if ($refs.mobileScreenTabsContainer) $refs.mobileScreenTabsContainer.scrollLeft = $refs.mobileScreenTabsContainer.scrollWidth; })"
      style="-webkit-overflow-scrolling: touch;">
 
-    {{-- Screen Tabs --}}
-    <template x-for="screenId in (currentSession?.screen_order || [])" :key="screenId">
+    {{-- Screen Tabs (only visible/non-archived screens) --}}
+    <template x-for="screenId in visibleScreenOrder" :key="screenId">
         <div class="group relative flex items-center shrink-0">
             <button @click="activateScreen(screenId)"
                     :class="activeScreenId === screenId
@@ -20,14 +20,15 @@
                 <span :class="getScreenTypeColor(screenId)">
                     <i :class="getScreenIcon(screenId)"></i>
                 </span>
-                {{-- Screen Title (abbreviated) --}}
-                <span class="truncate max-w-[80px]" x-text="getScreenTitle(screenId).substring(0, 12) + (getScreenTitle(screenId).length > 12 ? '...' : '')"></span>
-                {{-- Close Button (inline for mobile, always visible when 2+ screens) --}}
-                <span x-show="screens.length > 1"
-                      @click.stop="closeScreen(screenId)"
-                      class="ml-1 w-5 h-5 rounded-full bg-gray-600 hover:bg-red-500 text-gray-300 hover:text-white flex items-center justify-center cursor-pointer shrink-0"
-                      title="Close">
-                    <i class="fa-solid fa-xmark text-[10px]"></i>
+                {{-- Screen Tab Label (short form) --}}
+                <span class="truncate max-w-[80px]" x-text="getScreenTabLabel(screenId)"></span>
+                {{-- Archive/Close Button (inline for mobile, always visible when 2+ visible screens) --}}
+                <span x-show="visibleScreenOrder.length > 1"
+                      @click.stop="toggleArchiveConversation(screenId)"
+                      :class="getScreen(screenId)?.type === 'panel' ? 'hover:bg-red-500' : 'hover:bg-amber-500'"
+                      class="ml-1 w-5 h-5 rounded-full bg-gray-600 text-gray-300 hover:text-white flex items-center justify-center cursor-pointer shrink-0"
+                      :title="getScreen(screenId)?.type === 'panel' ? 'Close' : 'Archive'">
+                    <i :class="getScreen(screenId)?.type === 'panel' ? 'fa-solid fa-xmark' : 'fa-solid fa-box-archive'" class="text-[10px]"></i>
                 </span>
             </button>
         </div>

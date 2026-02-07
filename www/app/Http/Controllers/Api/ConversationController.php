@@ -599,13 +599,14 @@ class ConversationController extends Controller
     }
 
     /**
-     * Update the conversation title.
+     * Update the conversation title and/or tab label.
      */
     public function updateTitle(Request $request, Conversation $conversation): JsonResponse
     {
         // Trim before validation to handle whitespace-only input
         $request->merge([
             'title' => is_string($request->input('title')) ? trim($request->input('title')) : $request->input('title'),
+            'tab_label' => is_string($request->input('tab_label')) ? trim($request->input('tab_label')) : $request->input('tab_label'),
         ]);
 
         $validated = $request->validate([
@@ -619,15 +620,22 @@ class ConversationController extends Controller
                     }
                 },
             ],
+            'tab_label' => 'nullable|string|max:6',
         ]);
 
-        $conversation->update([
-            'title' => $validated['title'],
-        ]);
+        $updates = ['title' => $validated['title']];
+
+        // Only update tab_label if provided in the request (allow setting to null/empty)
+        if ($request->has('tab_label')) {
+            $updates['tab_label'] = $validated['tab_label'] ?: null;
+        }
+
+        $conversation->update($updates);
 
         return response()->json([
             'success' => true,
             'title' => $conversation->title,
+            'tab_label' => $conversation->tab_label,
         ]);
     }
 

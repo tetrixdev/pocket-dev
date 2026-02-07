@@ -125,6 +125,7 @@ class WorkspaceController extends Controller
                 'name' => $workspace->name,
                 'directory' => $workspace->directory,
                 'working_directory_path' => $workspace->getWorkingDirectoryPath(),
+                'default_session_template' => $workspace->default_session_template,
             ],
             'last_session_id' => $lastSessionId,
         ]);
@@ -161,6 +162,7 @@ class WorkspaceController extends Controller
                 'name' => $workspace->name,
                 'directory' => $workspace->directory,
                 'working_directory_path' => $workspace->getWorkingDirectoryPath(),
+                'default_session_template' => $workspace->default_session_template,
             ],
             'last_session_id' => $lastSessionId,
         ]);

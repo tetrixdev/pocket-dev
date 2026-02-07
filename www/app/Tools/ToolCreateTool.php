@@ -3,6 +3,7 @@
 namespace App\Tools;
 
 use App\Models\PocketTool;
+use App\Panels\PanelRegistry;
 
 /**
  * Create a new user tool or panel.
@@ -302,7 +303,13 @@ API;
             }
         }
 
-        // Check for duplicate slug
+        // Check for duplicate slug against system panels
+        $panelRegistry = app(PanelRegistry::class);
+        if ($panelRegistry->has($slug)) {
+            return ToolResult::error("A system panel with slug '{$slug}' already exists. Choose a different slug.");
+        }
+
+        // Check for duplicate slug against database tools
         if (PocketTool::where('slug', $slug)->exists()) {
             return ToolResult::error("A tool with slug '{$slug}' already exists");
         }

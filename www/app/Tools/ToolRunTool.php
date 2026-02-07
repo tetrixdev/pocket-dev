@@ -96,6 +96,13 @@ API;
             return ToolResult::error('slug is required');
         }
 
+        // First check for system panels (from PanelRegistry)
+        $panelRegistry = app(PanelRegistry::class);
+        if ($panelRegistry->has($slug)) {
+            return $this->executeSystemPanel($panelRegistry->get($slug), $arguments, $context);
+        }
+
+        // Then check database tools
         $tool = PocketTool::where('slug', $slug)->first();
 
         if (!$tool) {
@@ -193,19 +200,61 @@ API;
      */
     private function executePanel(PocketTool $tool, array $arguments, ExecutionContext $context): ToolResult
     {
+        return $this->openPanel(
+            slug: $tool->slug,
+            name: $tool->name,
+            arguments: $arguments,
+            context: $context,
+            peekGenerator: fn (PanelState $panelState) => $this->generatePeek($tool, $panelState)
+        );
+    }
+
+    /**
+     * Execute a system panel (from PanelRegistry).
+     */
+    private function executeSystemPanel(\App\Panels\Panel $panel, array $arguments, ExecutionContext $context): ToolResult
+    {
+        return $this->openPanel(
+            slug: $panel->slug,
+            name: $panel->name,
+            arguments: $arguments,
+            context: $context,
+            peekGenerator: fn (PanelState $panelState) => $panel->peek(
+                $panelState->parameters ?? [],
+                $panelState->state ?? []
+            )
+        );
+    }
+
+    /**
+     * Common logic for opening a panel (database or system).
+     *
+     * @param string $slug Panel slug
+     * @param string $name Panel display name
+     * @param array $arguments Arguments to pass as panel parameters
+     * @param ExecutionContext $context Execution context
+     * @param callable $peekGenerator Function that takes PanelState and returns peek output string
+     */
+    private function openPanel(
+        string $slug,
+        string $name,
+        array $arguments,
+        ExecutionContext $context,
+        callable $peekGenerator
+    ): ToolResult {
         $session = $context->getSession();
 
         if (! $session) {
             return ToolResult::error(
                 "Cannot open panel: no active session context. ".
                 "Panel tools require execution within a PocketDev conversation. ".
-                "If running from terminal, use: pd tool:run {$tool->slug} --session=<session-id>"
+                "If running from terminal, use: pd tool:run {$slug} --session=<session-id>"
             );
         }
 
         // Create panel state with the provided arguments as parameters
         $panelState = PanelState::create([
-            'panel_slug' => $tool->slug,
+            'panel_slug' => $slug,
             'parameters' => $arguments,
             'state' => [],
         ]);
@@ -213,7 +262,7 @@ API;
         // Create screen in the session
         $screen = Screen::createPanelScreen(
             $session,
-            $tool->slug,
+            $slug,
             $panelState,
             $arguments
         );
@@ -222,20 +271,18 @@ API;
         $screen->activate();
 
         // Emit screen_created event if we have a stream context
-        // This notifies the frontend to refresh the screen tabs
         if ($context->streamManager && $context->conversationUuid) {
             $context->streamManager->appendEvent(
                 $context->conversationUuid,
-                StreamEvent::screenCreated($screen->id, 'panel', $tool->slug)
+                StreamEvent::screenCreated($screen->id, 'panel', $slug)
             );
         }
 
-        // Generate peek output so AI knows what the user sees
-        $peekOutput = $this->generatePeek($tool, $panelState);
+        // Generate peek output
+        $peekOutput = $peekGenerator($panelState);
 
         // Build response with structured info + peek
-        $shortId = substr($panelState->id, 0, 8);
-        $output = "Opened panel '{$tool->name}' (id: {$shortId})\n";
+        $output = "Opened panel '{$name}' (id: {$panelState->id})\n";
         $output .= "The panel is now visible in the user's UI.\n\n";
         $output .= "---\n\n";
         $output .= $peekOutput;
