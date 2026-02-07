@@ -308,7 +308,14 @@ class SystemPromptBuilder
             'Dynamic (per conversation)'
         );
 
-        // 9. Environment
+        // 9. Open panels (placeholder - actual panels are per-session)
+        $sections[] = $createSection(
+            'Open Panels',
+            "# Open Panels\n\n*This section shows panels currently open in the session.*\n\nExample:\n- git-status (id: abc-123) @ /workspace/default\n- file-explorer (id: def-456) @ /workspace/default\n\nUse `pd panel:peek <panel-slug>` to see current visible state.",
+            'Dynamic (per session)'
+        );
+
+        // 10. Environment
         $envContent = $this->buildEnvironmentSection($workspace);
         if (!empty($envContent)) {
             $sections[] = $createSection(
