@@ -75,7 +75,7 @@ class PanelRegistry
 
         foreach ($dbPanels as $dbPanel) {
             // Skip database panels that have a matching system panel slug
-            if (in_array($dbPanel->slug, $systemSlugs)) {
+            if (in_array($dbPanel->slug, $systemSlugs, true)) {
                 continue;
             }
 

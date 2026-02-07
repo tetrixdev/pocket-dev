@@ -18,6 +18,7 @@ use App\Services\StreamManager;
 use App\Streaming\SseWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -65,6 +66,9 @@ class ConversationController extends Controller
             // Use factory with session structure if workspace provided
             if (!empty($validated['workspace_id'])) {
                 $workspace = Workspace::find($validated['workspace_id']);
+                if (!$workspace) {
+                    return response()->json(['error' => 'Workspace not found'], 404);
+                }
                 $result = $this->conversationFactory->createWithSessionStructure(
                     $agent,
                     $workspace,
@@ -94,22 +98,23 @@ class ConversationController extends Controller
 
             // Create session and screen for this conversation if workspace provided
             if ($conversation->workspace_id) {
-                $session = Session::create([
-                    'workspace_id' => $conversation->workspace_id,
-                    'name' => $conversation->title ?? 'New Session',
-                    'screen_order' => [],
-                ]);
+                DB::transaction(function () use ($conversation) {
+                    $session = Session::create([
+                        'workspace_id' => $conversation->workspace_id,
+                        'name' => $conversation->title ?? 'New Session',
+                        'screen_order' => [],
+                    ]);
 
-                $screen = Screen::createChatScreen($session, $conversation);
+                    $screen = Screen::createChatScreen($session, $conversation);
 
-                // Update session with screen order
-                $session->update([
-                    'screen_order' => [$screen->id],
-                    'last_active_screen_id' => $screen->id,
-                ]);
+                    // screen_order already set by createChatScreen, just set active screen
+                    $session->update([
+                        'last_active_screen_id' => $screen->id,
+                    ]);
 
-                // Load the screen relationship for the response
-                $conversation->load('screen.session.screens.conversation');
+                    // Load the screen relationship for the response
+                    $conversation->load('screen.session.screens.conversation');
+                });
             }
 
             $provider = $this->providerFactory->make($conversation->provider_type);

@@ -248,8 +248,7 @@ API;
         if (! $session) {
             return ToolResult::error(
                 "Cannot open panel: no active session context. ".
-                "Panel tools require execution within a PocketDev conversation. ".
-                "If running from terminal, use: pd tool:run {$slug} --session=<session-id>"
+                "Panel tools require execution within a PocketDev conversation."
             );
         }
 

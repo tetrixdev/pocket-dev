@@ -252,6 +252,12 @@ class PanelController extends Controller
                     'error' => null,
                 ]);
             } catch (\Throwable $e) {
+                \Log::error('Database panel action error', [
+                    'panel_slug' => $slug,
+                    'action' => $action,
+                    'error' => $e->getMessage(),
+                ]);
+
                 return response()->json([
                     'ok' => false,
                     'error' => $e->getMessage(),

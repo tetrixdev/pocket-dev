@@ -19,9 +19,48 @@ class FileExplorerPanel extends Panel
         ],
     ];
 
+    /**
+     * Validate that a path is within allowed directories.
+     *
+     * @param string $path The path to validate
+     * @return string|null The real path if valid, null otherwise
+     */
+    private function validatePath(string $path): ?string
+    {
+        $realPath = realpath($path);
+        if ($realPath === false) {
+            return null;
+        }
+
+        $allowedPrefixes = ['/workspace/', '/pocketdev-source', '/home/appuser/', '/tmp/'];
+        foreach ($allowedPrefixes as $prefix) {
+            if (str_starts_with($realPath, $prefix) || $realPath === rtrim($prefix, '/')) {
+                return $realPath;
+            }
+        }
+
+        return null;
+    }
+
     public function render(array $params, array $state, ?string $panelStateId = null): string
     {
         $rootPath = $params['path'] ?? '/workspace/default';
+
+        // Validate root path is within allowed directories
+        $validatedPath = $this->validatePath($rootPath);
+        if ($validatedPath === null) {
+            return view('panels.file-explorer', [
+                'rootPath' => $rootPath,
+                'tree' => [],
+                'expanded' => [],
+                'selected' => null,
+                'loadedPaths' => [],
+                'panelStateId' => $panelStateId,
+                'error' => 'Access denied: path not within allowed directories',
+            ])->render();
+        }
+        $rootPath = $validatedPath;
+
         $expanded = $state['expanded'] ?? [];
         $selected = $state['selected'] ?? null;
         $loadedPaths = $state['loadedPaths'] ?? [];
@@ -64,12 +103,16 @@ class FileExplorerPanel extends Panel
             // Get root path from panel parameters or state
             $rootPath = $panelParams['path'] ?? $state['rootPath'] ?? '/workspace/default';
 
-            // Validate path is within root to prevent path traversal
-            $realPath = realpath($path);
-            $realRoot = realpath($rootPath);
+            // Validate path is within allowed directories
+            $realPath = $this->validatePath($path);
+            if ($realPath === null) {
+                return ['error' => 'Access denied: path not within allowed directories'];
+            }
 
-            if ($realPath === false || $realRoot === false) {
-                return ['error' => 'Invalid path'];
+            // Validate root path as well
+            $realRoot = $this->validatePath($rootPath);
+            if ($realRoot === null) {
+                return ['error' => 'Access denied: root path not within allowed directories'];
             }
 
             // Ensure requested path is within the configured root
@@ -77,12 +120,12 @@ class FileExplorerPanel extends Panel
                 return ['error' => 'Access denied: path outside allowed root'];
             }
 
-            if (!File::isDirectory($path)) {
+            if (!File::isDirectory($realPath)) {
                 return ['error' => 'Invalid path'];
             }
 
-            // Build children for this path
-            $children = $this->buildDirectoryContents($path);
+            // Build children for this path (use validated real path)
+            $children = $this->buildDirectoryContents($realPath);
 
             // Render the children HTML
             $html = view('panels.partials.file-tree-children', [
@@ -90,10 +133,10 @@ class FileExplorerPanel extends Panel
                 'depth' => $depth,
             ])->render();
 
-            // Track loaded paths in state
+            // Track loaded paths in state (use validated real path)
             $loadedPaths = $state['loadedPaths'] ?? [];
-            if (!in_array($path, $loadedPaths)) {
-                $loadedPaths[] = $path;
+            if (!in_array($realPath, $loadedPaths)) {
+                $loadedPaths[] = $realPath;
             }
 
             return [

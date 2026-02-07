@@ -175,7 +175,7 @@ class ScreenController extends Controller
 
             // If this was the active screen, activate another one
             if ($session->last_active_screen_id === $screenId) {
-                $nextScreen = $session->screens()
+                $nextScreen = $session->orderedScreens()
                     ->where('id', '!=', $screenId)
                     ->first();
 

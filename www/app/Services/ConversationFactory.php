@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\Screen;
 use App\Models\Session;
 use App\Models\Workspace;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -128,6 +129,7 @@ class ConversationFactory
         ?Agent $agent = null,
         ?string $title = null,
     ): Conversation {
+        $session->loadMissing('workspace');
         $workingDirectory = $session->workspace->getWorkingDirectoryPath();
         $workspaceId = $session->workspace_id;
 
@@ -160,38 +162,39 @@ class ConversationFactory
         Workspace $workspace,
         ?string $title = null,
     ): array {
-        // Create conversation
-        $conversation = $this->createFromAgent(
-            $agent,
-            $workspace->getWorkingDirectoryPath(),
-            $workspace->id,
-            $title
-        );
+        return DB::transaction(function () use ($agent, $workspace, $title) {
+            // Create conversation
+            $conversation = $this->createFromAgent(
+                $agent,
+                $workspace->getWorkingDirectoryPath(),
+                $workspace->id,
+                $title
+            );
 
-        // Create session
-        $session = Session::create([
-            'workspace_id' => $workspace->id,
-            'name' => $title ?? 'New Session',
-            'screen_order' => [],
-        ]);
+            // Create session
+            $session = Session::create([
+                'workspace_id' => $workspace->id,
+                'name' => $title ?? 'New Session',
+                'screen_order' => [],
+            ]);
 
-        // Create screen
-        $screen = Screen::createChatScreen($session, $conversation);
+            // Create screen (Screen::createChatScreen already calls addScreenToOrder)
+            $screen = Screen::createChatScreen($session, $conversation);
 
-        // Update session with screen order
-        $session->update([
-            'screen_order' => [$screen->id],
-            'last_active_screen_id' => $screen->id,
-        ]);
+            // Update session with last active screen
+            $session->update([
+                'last_active_screen_id' => $screen->id,
+            ]);
 
-        // Load relationships for response
-        $conversation->load('screen.session.screens.conversation');
+            // Load relationships for response
+            $conversation->load('screen.session.screens.conversation');
 
-        return [
-            'conversation' => $conversation,
-            'session' => $session,
-            'screen' => $screen,
-        ];
+            return [
+                'conversation' => $conversation,
+                'session' => $session,
+                'screen' => $screen,
+            ];
+        });
     }
 
     /**

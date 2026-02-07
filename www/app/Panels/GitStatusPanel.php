@@ -69,17 +69,20 @@ class GitStatusPanel extends Panel
         // Validate repoPath is within allowed directories
         $realRepoPath = realpath($repoPath);
         if ($realRepoPath === false ||
-            (!str_starts_with($realRepoPath, '/workspace/') && !str_starts_with($realRepoPath, '/pocketdev-source'))) {
+            (!str_starts_with($realRepoPath, '/workspace/') &&
+             !str_starts_with($realRepoPath, '/pocketdev-source') &&
+             !str_starts_with($realRepoPath, '/home/appuser/') &&
+             !str_starts_with($realRepoPath, '/tmp/'))) {
             return ['error' => 'Access denied: invalid repository path'];
         }
 
-        if (!is_dir($repoPath . '/.git')) {
-            return ['error' => 'Not a git repository: ' . $repoPath];
+        if (!is_dir($realRepoPath . '/.git')) {
+            return ['error' => 'Not a git repository: ' . $realRepoPath];
         }
 
-        // Build git diff command
+        // Build git diff command (use validated real path)
         $escapedFile = escapeshellarg($file);
-        $escapedPath = escapeshellarg($repoPath);
+        $escapedPath = escapeshellarg($realRepoPath);
 
         if (!empty($compareBranch)) {
             // Branch comparison mode
@@ -259,6 +262,17 @@ class GitStatusPanel extends Panel
     {
         $path = $params['path'] ?? '/workspace/default';
         $compareBranch = $params['compare_branch'] ?? null;
+
+        // Validate path is within allowed directories
+        $realPath = realpath($path);
+        if ($realPath === false ||
+            (!str_starts_with($realPath, '/workspace/') &&
+             !str_starts_with($realPath, '/pocketdev-source') &&
+             !str_starts_with($realPath, '/home/appuser/') &&
+             !str_starts_with($realPath, '/tmp/'))) {
+            return "## Error: Access denied\n\nPath not within allowed directories: {$path}";
+        }
+        $path = $realPath;
 
         if (!is_dir($path . '/.git')) {
             return "## Error: Not a git repository\n\nPath: {$path}";

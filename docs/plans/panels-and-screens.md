@@ -1698,6 +1698,12 @@ public function saveAsDefault(Session $session) {
     $table = $parameters['table'] ?? 'entities';
     $limit = $parameters['limit'] ?? 50;
 
+    // Validate schema and table names to prevent SQL injection
+    // Only allow alphanumeric characters and underscores
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $schema) || !preg_match('/^[a-zA-Z0-9_]+$/', $table)) {
+        throw new \InvalidArgumentException('Invalid schema or table name');
+    }
+
     $results = DB::connection('memory')
         ->table("memory_{$schema}.{$table}")
         ->limit($limit)
