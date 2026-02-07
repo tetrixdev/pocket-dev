@@ -11,8 +11,7 @@ class ToolRunCommand extends Command
 {
     protected $signature = 'tool:run
         {slug : The slug of the tool to run}
-        {arguments?* : Arguments to pass to the tool script (--name=value format)}
-        {--session= : Session ID for panel tools (auto-detected from POCKETDEV_SESSION_ID env var if not provided)}';
+        {arguments?* : Arguments to pass to the tool script (--name=value format)}';
 
     protected $description = 'Run a user tool (script or panel)';
 
@@ -28,14 +27,10 @@ class ToolRunCommand extends Command
             'arguments' => $arguments,
         ];
 
-        // Get session if provided (needed for panel tools)
-        // Priority: 1) --session option, 2) POCKETDEV_SESSION_ID env var (set by CLI providers)
+        // Get session from environment (needed for panel tools)
+        // POCKETDEV_SESSION_ID is set by CLI providers (ClaudeCodeProvider, CodexProvider)
         $session = null;
-        $sessionId = $this->option('session');
-
-        if (! $sessionId) {
-            $sessionId = getenv('POCKETDEV_SESSION_ID') ?: null;
-        }
+        $sessionId = getenv('POCKETDEV_SESSION_ID') ?: null;
 
         if ($sessionId) {
             $session = Session::find($sessionId);
