@@ -222,6 +222,7 @@ class ConversationFactory
             ->first()
             ?? Agent::where('workspace_id', $workspace->id)
                 ->where('enabled', true)
+                ->orderBy('created_at')
                 ->first();
     }
 }

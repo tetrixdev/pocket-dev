@@ -67,7 +67,7 @@
                 <template x-for="panel in availablePanels" :key="panel.slug">
                     <button @click="addPanelScreen(panel.slug); showMobileAddMenu = false"
                             class="flex items-center gap-2 px-4 py-3 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer min-h-[44px]">
-                        <i class="fa-solid fa-table-columns text-purple-400 w-4 text-center"></i>
+                        <i :class="panel.icon || 'fa-solid fa-table-columns'" class="text-purple-400 w-4 text-center"></i>
                         <span x-text="panel.name"></span>
                     </button>
                 </template>

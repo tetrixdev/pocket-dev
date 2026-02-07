@@ -104,6 +104,7 @@ class Session extends Model
     /**
      * Restore the session from archive.
      */
+    // TODO: Rename to unarchive() to avoid conflict with SoftDeletes::restore()
     public function restore(): void
     {
         $this->update(['is_archived' => false]);

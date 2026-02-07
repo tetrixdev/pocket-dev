@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Panels\PanelRegistry;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
@@ -12,7 +13,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(\App\Panels\PanelRegistry::class);
+        $this->app->singleton(PanelRegistry::class);
     }
 
     /**

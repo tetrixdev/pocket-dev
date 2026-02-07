@@ -8,6 +8,7 @@ use App\Models\PanelState;
 use App\Models\PocketTool;
 use App\Models\Screen;
 use App\Models\Session;
+use App\Panels\PanelRegistry;
 use App\Services\ConversationFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ class ScreenController extends Controller
 {
     public function __construct(
         private ConversationFactory $conversationFactory,
+        private PanelRegistry $panelRegistry,
     ) {}
 
     /**
@@ -68,8 +70,7 @@ class ScreenController extends Controller
         ]);
 
         // Check for system panel first (in PanelRegistry)
-        $registry = app(\App\Panels\PanelRegistry::class);
-        $systemPanel = $registry->get($validated['panel_slug']);
+        $systemPanel = $this->panelRegistry->get($validated['panel_slug']);
 
         // Then check database for user-created panels
         $dbPanel = PocketTool::where('slug', $validated['panel_slug'])

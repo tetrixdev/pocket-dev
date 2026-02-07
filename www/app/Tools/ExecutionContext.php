@@ -20,14 +20,6 @@ class ExecutionContext
         public ?string $conversationUuid = null,
     ) {}
 
-    /**
-     * Get the session for this context.
-     */
-    public function getSession(): ?Session
-    {
-        return $this->session;
-    }
-
     public function getWorkingDirectory(): string
     {
         return $this->workingDirectory;

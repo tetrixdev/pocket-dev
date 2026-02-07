@@ -7,6 +7,7 @@ use App\Models\PocketTool;
 class PanelRegistry
 {
     protected array $systemPanels = [];
+    private ?array $cachedAllPanels = null;
 
     public function __construct()
     {
@@ -53,6 +54,10 @@ class PanelRegistry
      */
     public function allAvailable(): array
     {
+        if ($this->cachedAllPanels !== null) {
+            return $this->cachedAllPanels;
+        }
+
         $panels = [];
 
         // Add system panels
@@ -83,6 +88,8 @@ class PanelRegistry
                 'is_system' => false,
             ];
         }
+
+        $this->cachedAllPanels = $panels;
 
         return $panels;
     }

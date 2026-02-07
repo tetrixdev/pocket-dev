@@ -108,7 +108,7 @@ API;
             $lines[] = "---";
         }
 
-        if (!empty($tool->blade_template)) {
+        if ($tool->hasBladeTemplate()) {
             $lines[] = "";
             $lines[] = "Blade Template:";
             $lines[] = "---";

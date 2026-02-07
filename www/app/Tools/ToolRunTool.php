@@ -243,7 +243,7 @@ API;
         ExecutionContext $context,
         callable $peekGenerator
     ): ToolResult {
-        $session = $context->getSession();
+        $session = $context->session;
 
         if (! $session) {
             return ToolResult::error(

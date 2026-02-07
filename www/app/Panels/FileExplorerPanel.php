@@ -238,59 +238,6 @@ class FileExplorerPanel extends Panel
         return $items;
     }
 
-    protected function buildTree(string $path, array $expanded, int $depth, int $maxDepth): array
-    {
-        if (!File::isDirectory($path) || $depth > $maxDepth) {
-            return [];
-        }
-
-        $items = [];
-
-        try {
-            $entries = File::directories($path);
-            sort($entries);
-
-            foreach ($entries as $dir) {
-                $name = basename($dir);
-                if (str_starts_with($name, '.')) continue; // Skip hidden
-
-                $isExpanded = in_array($dir, $expanded);
-
-                // Always build children up to maxDepth so expanding works client-side
-                // The x-show directive will hide them until expanded
-                $children = $this->buildTree($dir, $expanded, $depth + 1, $maxDepth);
-
-                $items[] = [
-                    'type' => 'directory',
-                    'name' => $name,
-                    'path' => $dir,
-                    'expanded' => $isExpanded,
-                    'children' => $children,
-                ];
-            }
-
-            $files = File::files($path);
-            usort($files, fn($a, $b) => strcmp($a->getFilename(), $b->getFilename()));
-
-            foreach ($files as $file) {
-                $name = $file->getFilename();
-                if (str_starts_with($name, '.')) continue; // Skip hidden
-
-                $items[] = [
-                    'type' => 'file',
-                    'name' => $name,
-                    'path' => $file->getPathname(),
-                    'size' => $file->getSize(),
-                    'extension' => $file->getExtension(),
-                ];
-            }
-        } catch (\Exception $e) {
-            // Permission denied or other error
-        }
-
-        return $items;
-    }
-
     protected function buildPeekTree(string $path, array $expanded, int $indent): string
     {
         if (!File::isDirectory($path)) {

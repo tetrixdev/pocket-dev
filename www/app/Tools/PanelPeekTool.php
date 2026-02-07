@@ -91,7 +91,7 @@ API;
         }
 
         // Get session for scoping queries
-        $session = $context->getSession();
+        $session = $context->session;
         $sessionId = $session?->id;
 
         // Find the panel state (scoped to session if available)
