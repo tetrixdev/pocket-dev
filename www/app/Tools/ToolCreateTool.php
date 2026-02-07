@@ -196,6 +196,59 @@ For script-based panels, the action is handled by running the script with env va
 - `PANEL_PARAMS` - JSON-encoded params
 - `PANEL_STATE` - JSON-encoded current state
 
+## Advanced Panel Patterns
+
+**AbortController for cancellable fetches:**
+When users click rapidly, cancel previous in-flight requests:
+```blade
+diffAbortController: null,
+
+async fetchData(id) {
+    if (this.diffAbortController) this.diffAbortController.abort();
+    this.diffAbortController = new AbortController();
+    try {
+        const response = await fetch(`/api/panel/${this.panelStateId}/action`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: this.diffAbortController.signal,
+            body: JSON.stringify({ action: 'load', params: { id } })
+        });
+        // handle response...
+    } catch (e) {
+        if (e.name === 'AbortError') return; // User clicked something else
+        this.error = e.message;
+    }
+}
+```
+
+**State restore on init:**
+When panel state is persisted, restore the view on init:
+```blade
+init() {
+    if (this.savedViewState) {
+        this.loadView(this.savedViewState, true); // skipSync=true avoids re-render loop
+    }
+}
+```
+
+**Debounced state sync with immediate option:**
+```blade
+syncState(immediate = false) {
+    if (this.syncTimeout) clearTimeout(this.syncTimeout);
+    const doSync = () => {
+        fetch(`/api/panel/${this.panelStateId}/state`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ state: { /* ... */ }, merge: true })
+        });
+    };
+    if (immediate) doSync();
+    else this.syncTimeout = setTimeout(doSync, 300);
+}
+```
+
+**Animations:** Use Alpine's `x-collapse` directive for smooth expand/collapse on tree nodes or collapsible sections.
+
 ## Notes
 - Scripts have a 5-minute timeout
 - Panels can include an optional `script` field for peek and action handling
