@@ -3,6 +3,7 @@
 namespace App\Panels;
 
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 
 class FileExplorerPanel extends Panel
 {
@@ -206,7 +207,10 @@ class FileExplorerPanel extends Panel
                 ];
             }
         } catch (\Exception $e) {
-            // Permission denied or other error
+            Log::warning('FileExplorerPanel: failed to read directory', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return $items;
@@ -259,7 +263,10 @@ class FileExplorerPanel extends Panel
                 ];
             }
         } catch (\Exception $e) {
-            // Permission denied or other error
+            Log::warning('FileExplorerPanel: failed to read directory', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return $items;
@@ -338,7 +345,10 @@ class FileExplorerPanel extends Panel
                 $counts['total']++;
             }
         } catch (\Exception $e) {
-            // Ignore
+            Log::warning('FileExplorerPanel: failed to count directory contents', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return $counts;

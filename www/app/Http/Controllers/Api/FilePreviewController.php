@@ -141,17 +141,11 @@ class FilePreviewController extends Controller
         $realPath = PathValidator::validate($path);
 
         if ($realPath === null) {
-            // Could be either not found or not allowed - check which
-            if (!file_exists($path)) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'File not found',
-                ], 404);
-            }
-
+            // Return generic error to prevent information disclosure
+            // (don't reveal whether file exists outside allowed paths)
             return response()->json([
                 'success' => false,
-                'error' => 'Access denied',
+                'error' => 'File not found or access denied',
             ], 403);
         }
 
@@ -222,23 +216,18 @@ class FilePreviewController extends Controller
      */
     private function validatePath(string $path): array
     {
-        // Check if file exists first
-        if (!file_exists($path)) {
-            return [
-                'error' => true,
-                'response' => ['exists' => false, 'error' => 'File not found'],
-                'status' => 404,
-            ];
-        }
-
         // Validate path is within allowed directories
+        // PathValidator::validate() returns null for both non-existent paths
+        // (realpath returns false) and paths outside allowed directories
         $realPath = PathValidator::validate($path);
 
         if ($realPath === null) {
+            // Return generic error to prevent information disclosure
+            // (don't reveal whether file exists outside allowed paths)
             return [
                 'error' => true,
-                'response' => ['exists' => false, 'error' => 'Access denied: path outside allowed directories'],
-                'status' => 403,
+                'response' => ['exists' => false, 'error' => 'File not found or access denied'],
+                'status' => 404,
             ];
         }
 
