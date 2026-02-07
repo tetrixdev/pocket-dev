@@ -32,7 +32,7 @@ class FileExplorerPanel extends Panel
             return null;
         }
 
-        $allowedPrefixes = ['/workspace/', '/pocketdev-source', '/home/appuser/', '/tmp/'];
+        $allowedPrefixes = ['/workspace/', '/pocketdev-source/', '/home/appuser/', '/tmp/'];
         foreach ($allowedPrefixes as $prefix) {
             if (str_starts_with($realPath, $prefix) || $realPath === rtrim($prefix, '/')) {
                 return $realPath;
@@ -154,6 +154,13 @@ class FileExplorerPanel extends Panel
     {
         $rootPath = $params['path'] ?? '/workspace/default';
         $expanded = $state['expanded'] ?? [];
+
+        // Validate path is within allowed directories
+        $validatedPath = $this->validatePath($rootPath);
+        if ($validatedPath === null) {
+            return "## File Explorer: Error\n\nAccess denied: path not within allowed directories: {$rootPath}";
+        }
+        $rootPath = $validatedPath;
 
         $output = "## File Explorer: {$rootPath}\n\n";
         $output .= $this->buildPeekTree($rootPath, $expanded, 0);

@@ -29,6 +29,17 @@ class GitStatusPanel extends Panel
         $path = $params['path'] ?? '/workspace/default';
         $compareBranch = $params['compare_branch'] ?? null;
 
+        // Validate path is within allowed directories
+        $realPath = realpath($path);
+        if ($realPath === false ||
+            (!str_starts_with($realPath, '/workspace/') &&
+             !str_starts_with($realPath, '/pocketdev-source/') &&
+             !str_starts_with($realPath, '/home/appuser/') &&
+             !str_starts_with($realPath, '/tmp/'))) {
+            return '<div class="p-4 text-red-500">Access denied: path not within allowed directories</div>';
+        }
+        $path = $realPath;
+
         return view('panels.git-status', [
             'path' => $path,
             'compareBranch' => $compareBranch,
@@ -70,10 +81,15 @@ class GitStatusPanel extends Panel
         $realRepoPath = realpath($repoPath);
         if ($realRepoPath === false ||
             (!str_starts_with($realRepoPath, '/workspace/') &&
-             !str_starts_with($realRepoPath, '/pocketdev-source') &&
+             !str_starts_with($realRepoPath, '/pocketdev-source/') &&
              !str_starts_with($realRepoPath, '/home/appuser/') &&
              !str_starts_with($realRepoPath, '/tmp/'))) {
             return ['error' => 'Access denied: invalid repository path'];
+        }
+
+        // Validate file path - must be relative and not contain traversal
+        if (str_contains($file, '..') || str_starts_with($file, '/')) {
+            return ['error' => 'Invalid file path'];
         }
 
         if (!is_dir($realRepoPath . '/.git')) {
@@ -267,7 +283,7 @@ class GitStatusPanel extends Panel
         $realPath = realpath($path);
         if ($realPath === false ||
             (!str_starts_with($realPath, '/workspace/') &&
-             !str_starts_with($realPath, '/pocketdev-source') &&
+             !str_starts_with($realPath, '/pocketdev-source/') &&
              !str_starts_with($realPath, '/home/appuser/') &&
              !str_starts_with($realPath, '/tmp/'))) {
             return "## Error: Access denied\n\nPath not within allowed directories: {$path}";
