@@ -30,21 +30,23 @@
             <span class="w-3"></span>
             @php
                 $ext = $item['extension'] ?? '';
-                $iconClass = match($ext) {
-                    'php' => 'fa-brands fa-php text-purple-400',
-                    'js', 'ts' => 'fa-brands fa-js text-yellow-400',
-                    'json' => 'fa-solid fa-brackets-curly text-yellow-300',
-                    'md' => 'fa-solid fa-file-lines text-blue-300',
-                    'blade.php' => 'fa-solid fa-code text-orange-400',
-                    'css', 'scss' => 'fa-brands fa-css3 text-blue-400',
-                    'html' => 'fa-brands fa-html5 text-orange-500',
-                    'vue' => 'fa-brands fa-vuejs text-green-400',
-                    'py' => 'fa-brands fa-python text-blue-300',
-                    'sh', 'bash' => 'fa-solid fa-terminal text-green-300',
-                    'sql' => 'fa-solid fa-database text-blue-400',
-                    'env' => 'fa-solid fa-gear text-gray-400',
-                    'yml', 'yaml' => 'fa-solid fa-file-code text-pink-400',
-                    'jpg', 'jpeg', 'png', 'gif', 'svg', 'webp' => 'fa-solid fa-image text-pink-300',
+                $name = $item['name'] ?? '';
+                // Check for .blade.php first (pathinfo returns 'php' for these)
+                $iconClass = match(true) {
+                    str_ends_with($name, '.blade.php') => 'fa-solid fa-code text-orange-400',
+                    $ext === 'php' => 'fa-brands fa-php text-purple-400',
+                    in_array($ext, ['js', 'ts']) => 'fa-brands fa-js text-yellow-400',
+                    $ext === 'json' => 'fa-solid fa-brackets-curly text-yellow-300',
+                    $ext === 'md' => 'fa-solid fa-file-lines text-blue-300',
+                    in_array($ext, ['css', 'scss']) => 'fa-brands fa-css3 text-blue-400',
+                    $ext === 'html' => 'fa-brands fa-html5 text-orange-500',
+                    $ext === 'vue' => 'fa-brands fa-vuejs text-green-400',
+                    $ext === 'py' => 'fa-brands fa-python text-blue-300',
+                    in_array($ext, ['sh', 'bash']) => 'fa-solid fa-terminal text-green-300',
+                    $ext === 'sql' => 'fa-solid fa-database text-blue-400',
+                    $ext === 'env' => 'fa-solid fa-gear text-gray-400',
+                    in_array($ext, ['yml', 'yaml']) => 'fa-solid fa-file-code text-pink-400',
+                    in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp']) => 'fa-solid fa-image text-pink-300',
                     default => 'fa-solid fa-file text-gray-400',
                 };
             @endphp

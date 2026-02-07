@@ -52,7 +52,7 @@
 
                  if (result.ok && result.html) {
                      // Find the children container and insert HTML
-                     const container = document.querySelector(`[data-children-for='${path}']`);
+                     const container = document.querySelector(`[data-children-for='${CSS.escape(path)}']`);
                      if (container) {
                          container.innerHTML = result.html;
                          // Initialize Alpine on new content

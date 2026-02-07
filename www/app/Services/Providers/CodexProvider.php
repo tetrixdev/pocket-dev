@@ -290,7 +290,7 @@ class CodexProvider implements AIProviderInterface
         $env = array_map(fn($v) => (string) $v, $env);
 
         // Inject session ID for panel tool support
-        // This allows `php artisan tool:run` to automatically know the session context
+        // This allows `pd tool:run` to automatically know the session context
         $sessionId = $conversation->screen?->session?->id;
         if ($sessionId) {
             $env['POCKETDEV_SESSION_ID'] = $sessionId;

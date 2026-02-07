@@ -5,7 +5,7 @@ namespace App\Tools;
 /**
  * Manage system packages (CLI tools, libraries) installed in the container.
  *
- * This tool provides documentation only - actual execution is via artisan command.
+ * This tool provides documentation only - actual execution is via the pd CLI.
  */
 class SystemPackageTool extends Tool
 {
@@ -92,10 +92,10 @@ CLI;
 
     /**
      * This tool is documentation-only for CLI providers.
-     * Execution happens via direct artisan command.
+     * Execution happens via the pd CLI.
      */
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
-        return ToolResult::error('This tool should be invoked via artisan command: pd system:package <action>');
+        return ToolResult::error('This tool should be invoked via: pd system:package <action>');
     }
 }

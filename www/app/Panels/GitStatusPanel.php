@@ -211,7 +211,7 @@ class GitStatusPanel extends Panel
             }
 
             // Context line - strip the leading space
-            if (str_starts_with($line, ' ') || $line === '') {
+            if (str_starts_with($line, ' ')) {
                 $content = $line !== '' ? substr($line, 1) : ''; // Remove leading space
                 $escaped = e($content);
                 $html .= '<div class="flex hover:bg-gray-800/50">';
@@ -242,9 +242,9 @@ class GitStatusPanel extends Panel
         $deletions = 0;
 
         foreach ($lines as $line) {
-            if (preg_match('/^\+[^+]/', $line)) {
+            if (preg_match('/^\+(?!\+)/', $line)) {
                 $additions++;
-            } elseif (preg_match('/^-[^-]/', $line)) {
+            } elseif (preg_match('/^-(?!-)/', $line)) {
                 $deletions++;
             }
         }

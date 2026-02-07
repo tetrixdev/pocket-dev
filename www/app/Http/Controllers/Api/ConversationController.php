@@ -346,14 +346,14 @@ class ConversationController extends Controller
         );
         RequestFlowLogger::log('controller.stream.job_dispatched', 'Job dispatched to queue');
 
-            RequestFlowLogger::log('controller.stream.success', 'Returning success response');
-            RequestFlowLogger::endRequest('success');
-            return response()->json([
-                'success' => true,
-                'conversation_uuid' => $conversation->uuid,
-                'started_at' => now()->toIso8601String(),
-                'message' => 'Streaming started. Connect to /stream-events to receive updates.',
-            ]);
+        RequestFlowLogger::log('controller.stream.success', 'Returning success response');
+        RequestFlowLogger::endRequest('success');
+        return response()->json([
+            'success' => true,
+            'conversation_uuid' => $conversation->uuid,
+            'started_at' => now()->toIso8601String(),
+            'message' => 'Streaming started. Connect to /stream-events to receive updates.',
+        ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             RequestFlowLogger::log('controller.stream.validation_failed', 'Validation failed', [
                 'errors' => $e->errors(),

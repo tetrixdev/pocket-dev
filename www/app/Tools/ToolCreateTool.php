@@ -261,7 +261,7 @@ INSTRUCTIONS;
 ```bash
 pd tool:create --slug=git-status --name="Git Status" \
   --description="Check git branch and status" \
-  --system_prompt="Returns current git branch and working tree status." \
+  --system-prompt="Returns current git branch and working tree status." \
   --script='#!/bin/bash
 echo "{\"branch\": \"$(git branch --show-current)\"}"'
 ```
@@ -272,7 +272,7 @@ echo "{\"branch\": \"$(git branch --show-current)\"}"'
 pd tool:create --slug=counter --name="Counter Panel" \
   --type=panel \
   --description="Simple counter panel" \
-  --system_prompt="Opens a counter panel." \
+  --system-prompt="Opens a counter panel." \
   --blade-template='<div x-data="{ count: 0 }" class="p-4">
     <button @click="count++" class="px-4 py-2 bg-blue-500 text-white rounded">
         Count: <span x-text="count"></span>
