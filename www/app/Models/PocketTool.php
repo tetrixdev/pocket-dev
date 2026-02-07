@@ -17,6 +17,10 @@ class PocketTool extends Model
     public const SOURCE_POCKETDEV = 'pocketdev';
     public const SOURCE_USER = 'user';
 
+    // Type constants
+    public const TYPE_SCRIPT = 'script';
+    public const TYPE_PANEL = 'panel';
+
     // Common category values (not enforced - categories are flexible labels)
     // These are just convenience constants for common categories
     public const CATEGORY_MEMORY = 'memory';
@@ -32,9 +36,11 @@ class PocketTool extends Model
         'description',
         'source',
         'category',
+        'type',
         'system_prompt',
         'input_schema',
         'script',
+        'blade_template',
         'enabled',
     ];
 
@@ -76,6 +82,22 @@ class PocketTool extends Model
     }
 
     /**
+     * Scope to script tools only.
+     */
+    public function scopeScripts(Builder $query): Builder
+    {
+        return $query->where('type', self::TYPE_SCRIPT);
+    }
+
+    /**
+     * Scope to panel tools only.
+     */
+    public function scopePanels(Builder $query): Builder
+    {
+        return $query->where('type', self::TYPE_PANEL);
+    }
+
+    /**
      * Check if this tool is a PocketDev tool.
      */
     public function isPocketdev(): bool
@@ -105,6 +127,30 @@ class PocketTool extends Model
     public function hasScript(): bool
     {
         return !empty($this->script);
+    }
+
+    /**
+     * Check if this tool is a panel.
+     */
+    public function isPanel(): bool
+    {
+        return $this->type === self::TYPE_PANEL;
+    }
+
+    /**
+     * Check if this tool is a script tool.
+     */
+    public function isScript(): bool
+    {
+        return $this->type === self::TYPE_SCRIPT;
+    }
+
+    /**
+     * Check if this tool has a Blade template.
+     */
+    public function hasBladeTemplate(): bool
+    {
+        return !empty($this->blade_template);
     }
 
     /**

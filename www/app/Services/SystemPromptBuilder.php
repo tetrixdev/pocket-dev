@@ -7,6 +7,7 @@ use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Credential;
 use App\Models\MemoryDatabase;
+use App\Models\Screen;
 use App\Models\SystemPackage;
 use App\Models\Workspace;
 
@@ -28,8 +29,9 @@ use App\Models\Workspace;
  * 6. Workspace Prompt - workspace-level base prompt
  * 7. Agent instructions - task-specific behavior
  * 8. Working directory - current context
- * 9. Environment - available resources
- * 10. Context usage - current state
+ * 9. Open panels - currently visible panels in session
+ * 10. Environment - available resources
+ * 11. Context usage - current state
  */
 class SystemPromptBuilder
 {
@@ -94,12 +96,17 @@ class SystemPromptBuilder
         // 8. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 9. Environment (credentials and packages)
+        // 9. Open panels (if any panels are open in the session)
+        if ($openPanelsSection = $this->buildOpenPanelsSection($conversation)) {
+            $sections[] = $openPanelsSection;
+        }
+
+        // 10. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 10. Context usage (dynamic)
+        // 11. Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -164,12 +171,17 @@ class SystemPromptBuilder
         // 8. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 9. Environment (credentials and packages)
+        // 9. Open panels (if any panels are open in the session)
+        if ($openPanelsSection = $this->buildOpenPanelsSection($conversation)) {
+            $sections[] = $openPanelsSection;
+        }
+
+        // 10. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 10. Context usage (dynamic)
+        // 11. Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -297,7 +309,14 @@ class SystemPromptBuilder
             'Dynamic (per conversation)'
         );
 
-        // 9. Environment
+        // 9. Open panels (placeholder - actual panels are per-session)
+        $sections[] = $createSection(
+            'Open Panels',
+            "# Open Panels\n\n*This section shows panels currently open in the session.*\n\nExample:\n- git-status (id: abc-123) @ /workspace/default\n- file-explorer (id: def-456) @ /workspace/default\n\nUse `pd panel:peek <panel-slug>` to see current visible state.",
+            'Dynamic (per session)'
+        );
+
+        // 10. Environment
         $envContent = $this->buildEnvironmentSection($workspace);
         if (!empty($envContent)) {
             $sections[] = $createSection(
@@ -414,5 +433,70 @@ PROMPT;
         }
 
         return "# Environment\n\n".implode("\n", $lines);
+    }
+
+    /**
+     * Build open panels section showing which panels are currently open.
+     *
+     * This helps AI know what panels are available in the current session,
+     * avoiding duplicate opens and enabling peek functionality.
+     */
+    private function buildOpenPanelsSection(Conversation $conversation): ?string
+    {
+        // Get the screen for this conversation
+        $screen = $conversation->screen()->with('session')->first();
+
+        if (!$screen || !$screen->session) {
+            return null;
+        }
+
+        $session = $screen->session;
+
+        // Get all panel screens in this session with their panel states
+        $panelScreens = Screen::where('session_id', $session->id)
+            ->where('type', Screen::TYPE_PANEL)
+            ->with('panelState')
+            ->get();
+
+        if ($panelScreens->isEmpty()) {
+            return null;
+        }
+
+        $lines = [];
+        foreach ($panelScreens as $panelScreen) {
+            $panelState = $panelScreen->panelState;
+            $slug = $panelScreen->panel_slug;
+            $id = $panelState?->id ?? $panelScreen->panel_id ?? 'unknown';
+
+            // Try to get a meaningful context from parameters (e.g., path)
+            $context = 'N/A';
+            if ($panelState && !empty($panelState->parameters)) {
+                // Common parameter names that provide context
+                $contextKeys = ['path', 'directory', 'file', 'query', 'schema', 'table'];
+                foreach ($contextKeys as $key) {
+                    if (isset($panelState->parameters[$key])) {
+                        $context = $panelState->parameters[$key];
+                        break;
+                    }
+                }
+            }
+
+            // Format: - panel-slug (id: full-uuid) @ /path/or/context
+            $lines[] = "- {$slug} (id: {$id}) @ {$context}";
+        }
+
+        $panelList = implode("\n", $lines);
+
+        return <<<PROMPT
+# Open Panels
+
+{$panelList}
+
+To see what's currently visible in a panel, use the PanelPeek tool or run:
+```bash
+pd panel:peek <panel-slug>
+pd panel:peek <panel-slug> --id=<panel-id>
+```
+PROMPT;
     }
 }

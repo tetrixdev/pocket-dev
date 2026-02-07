@@ -69,7 +69,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ]);
 
         try {
-            $conversation = Conversation::where('uuid', $this->conversationUuid)->firstOrFail();
+            $conversation = Conversation::where('uuid', $this->conversationUuid)
+                ->with('screen.session')
+                ->firstOrFail();
             RequestFlowLogger::log('job.handle.conversation_loaded', 'Conversation loaded', [
                 'provider_type' => $conversation->provider_type,
                 'model' => $conversation->model,
@@ -656,7 +658,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 'tool_count' => count($pendingToolUses),
                 'tool_names' => array_map(fn($t) => $t['name'], $pendingToolUses),
             ]);
-            $toolResults = $this->executeTools($pendingToolUses, $conversation, $toolRegistry);
+            $toolResults = $this->executeTools($pendingToolUses, $conversation, $toolRegistry, $streamManager);
             RequestFlowLogger::log('job.loop.tools_executed', 'Tools executed', [
                 'result_count' => count($toolResults),
             ]);
@@ -792,12 +794,19 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ]);
     }
 
-    private function executeTools(array $toolUses, Conversation $conversation, ToolRegistry $toolRegistry): array
+    private function executeTools(array $toolUses, Conversation $conversation, ToolRegistry $toolRegistry, StreamManager $streamManager): array
     {
-        // Pass workspace to context so tools can access workspace-specific credentials
+        // Get session from conversation's screen (for panel tools that need to create screens)
+        $session = $conversation->screen?->session;
+
+        // Pass workspace, session, and stream context so tools can access workspace-specific credentials,
+        // create panel screens, and emit stream events when needed
         $context = new ExecutionContext(
             $conversation->working_directory,
-            workspace: $conversation->workspace
+            workspace: $conversation->workspace,
+            session: $session,
+            streamManager: $streamManager,
+            conversationUuid: $this->conversationUuid,
         );
         $results = [];
 

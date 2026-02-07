@@ -22,42 +22,28 @@ class ToolShowTool extends Tool
                 'type' => 'string',
                 'description' => 'The slug of the tool to show.',
             ],
-            'include_script' => [
-                'type' => 'boolean',
-                'description' => 'Include the full script content in output.',
-            ],
         ],
         'required' => ['slug'],
     ];
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-Use ToolShow to get detailed information about a tool.
+Use ToolShow when preparing to update a tool. Most tool info (description, parameters) is already in your system prompt, so this shows the additional content: script and blade_template.
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
 ## CLI Example
 
 ```bash
-php artisan tool:show --slug=my-tool
-php artisan tool:show --slug=my-tool --include_script
+pd tool:show my-tool
 ```
 CLI;
 
     public ?string $apiExamples = <<<'API'
 ## API Example (JSON input)
 
-Show basic info:
 ```json
 {
   "slug": "my-tool"
-}
-```
-
-Show info including script:
-```json
-{
-  "slug": "my-tool",
-  "include_script": true
 }
 ```
 API;
@@ -65,7 +51,6 @@ API;
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
         $slug = $input['slug'] ?? '';
-        $includeScript = $input['include_script'] ?? false;
 
         if (empty($slug)) {
             return ToolResult::error('slug is required');
@@ -77,12 +62,12 @@ API;
             return ToolResult::error("Tool '{$slug}' not found");
         }
 
-        $output = $this->formatToolDetails($tool, $includeScript);
+        $output = $this->formatToolDetails($tool);
 
         return ToolResult::success($output);
     }
 
-    private function formatToolDetails(PocketTool $tool, bool $includeScript): string
+    private function formatToolDetails(PocketTool $tool): string
     {
         $lines = [
             "Tool: {$tool->name}",
@@ -111,15 +96,23 @@ API;
             $command = $tool->getArtisanCommand();
             if ($command) {
                 $lines[] = "";
-                $lines[] = "Artisan Command: php artisan {$command}";
+                $lines[] = "Artisan Command: pd {$command}";
             }
         }
 
-        if ($includeScript && $tool->hasScript()) {
+        if ($tool->hasScript()) {
             $lines[] = "";
             $lines[] = "Script:";
             $lines[] = "---";
             $lines[] = $tool->script;
+            $lines[] = "---";
+        }
+
+        if ($tool->hasBladeTemplate()) {
+            $lines[] = "";
+            $lines[] = "Blade Template:";
+            $lines[] = "---";
+            $lines[] = $tool->blade_template;
             $lines[] = "---";
         }
 

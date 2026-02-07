@@ -116,12 +116,12 @@
 <body class="bg-gray-900 text-white" x-data="{ showMobileDrawer: false }">
     <!-- Desktop Layout -->
     @php
-        // Get last conversation for the active workspace
+        // Get last session for the active workspace
         $activeWorkspaceId = session('active_workspace_id');
-        $lastConversationUuid = $activeWorkspaceId
-            ? session("last_conversation_{$activeWorkspaceId}")
-            : session('last_conversation_default');
-        $backToChatUrl = $lastConversationUuid ? '/chat/' . $lastConversationUuid : '/';
+        $lastSessionId = $activeWorkspaceId
+            ? session("last_session_{$activeWorkspaceId}")
+            : null;
+        $backToChatUrl = $lastSessionId ? '/session/' . $lastSessionId : '/';
     @endphp
     <div class="desktop-layout flex" style="height: 100dvh;">
 

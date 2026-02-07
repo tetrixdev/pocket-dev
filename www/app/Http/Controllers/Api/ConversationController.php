@@ -6,6 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ProcessConversationStream;
 use App\Models\Agent;
 use App\Models\Conversation;
+use App\Models\Screen;
+use App\Models\Session;
+use App\Models\Workspace;
+use App\Services\ConversationFactory;
 use App\Services\ConversationStreamLogger;
 use App\Services\NativeToolService;
 use App\Services\ProviderFactory;
@@ -14,6 +18,7 @@ use App\Services\StreamManager;
 use App\Streaming\SseWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -25,6 +30,7 @@ class ConversationController extends Controller
     public function __construct(
         private ProviderFactory $providerFactory,
         private StreamManager $streamManager,
+        private ConversationFactory $conversationFactory,
     ) {}
 
     /**
@@ -32,6 +38,8 @@ class ConversationController extends Controller
      *
      * When agent_id is provided, the conversation is linked to the agent
      * and inherits its settings (provider, model, reasoning, etc.).
+     *
+     * Uses ConversationFactory to ensure all settings are properly copied.
      */
     public function store(Request $request): JsonResponse
     {
@@ -43,14 +51,9 @@ class ConversationController extends Controller
             // Legacy fields (used when no agent_id provided)
             'provider_type' => 'nullable|string|in:anthropic,openai,claude_code,codex,openai_compatible',
             'model' => 'nullable|string|max:100',
-            'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
-            'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
-            'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
-            'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
-            'response_level' => 'nullable|integer|min:0|max:5',
         ]);
 
-        // If agent_id provided, use agent settings
+        // If agent_id provided, use agent settings via factory
         if (!empty($validated['agent_id'])) {
             $agent = Agent::find($validated['agent_id']);
 
@@ -60,67 +63,61 @@ class ConversationController extends Controller
                 ], 400);
             }
 
-            $conversationData = [
-                'workspace_id' => $validated['workspace_id'] ?? null,
-                'agent_id' => $agent->id,
-                'provider_type' => $agent->provider,
-                'model' => $agent->model,
-                'title' => $validated['title'] ?? null,
-                'working_directory' => $validated['working_directory'],
-                'response_level' => $agent->response_level,
-                'anthropic_thinking_budget' => $agent->anthropic_thinking_budget,
-                'openai_reasoning_effort' => $agent->openai_reasoning_effort,
-                'openai_compatible_reasoning_effort' => $agent->openai_compatible_reasoning_effort ?? 'none',
-                'claude_code_thinking_tokens' => $agent->claude_code_thinking_tokens,
-            ];
+            // Use factory with session structure if workspace provided
+            if (!empty($validated['workspace_id'])) {
+                $workspace = Workspace::find($validated['workspace_id']);
+                if (!$workspace) {
+                    return response()->json(['error' => 'Workspace not found'], 404);
+                }
+                $result = $this->conversationFactory->createWithSessionStructure(
+                    $agent,
+                    $workspace,
+                    $validated['title'] ?? null
+                );
+                $conversation = $result['conversation'];
+            } else {
+                // No workspace - create conversation only
+                $conversation = $this->conversationFactory->createFromAgent(
+                    $agent,
+                    $validated['working_directory'],
+                    null,
+                    $validated['title'] ?? null
+                );
+            }
 
             $provider = $this->providerFactory->make($agent->provider);
         } else {
-            // Legacy: use individual settings
-            $providerType = $validated['provider_type'] ?? config('ai.default_provider', 'anthropic');
-            if (!in_array($providerType, $this->providerFactory->availableTypes(), true)) {
-                $providerType = 'anthropic';
-            }
-            $provider = $this->providerFactory->make($providerType);
+            // Legacy: use defaults via factory
+            $conversation = $this->conversationFactory->createWithDefaults(
+                $validated['working_directory'],
+                $validated['workspace_id'] ?? null,
+                $validated['title'] ?? null,
+                $validated['provider_type'] ?? null,
+                $validated['model'] ?? null
+            );
 
-            $conversationData = [
-                'workspace_id' => $validated['workspace_id'] ?? null,
-                'provider_type' => $providerType,
-                'model' => $validated['model'] ?? config("ai.providers.{$providerType}.default_model"),
-                'title' => $validated['title'] ?? null,
-                'working_directory' => $validated['working_directory'],
-                'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
-            ];
+            // Create session and screen for this conversation if workspace provided
+            if ($conversation->workspace_id) {
+                DB::transaction(function () use ($conversation) {
+                    $session = Session::create([
+                        'workspace_id' => $conversation->workspace_id,
+                        'name' => $conversation->title ?? 'New Session',
+                        'screen_order' => [],
+                    ]);
 
-            // Add provider-specific reasoning settings
-            if ($providerType === 'anthropic' && isset($validated['anthropic_thinking_budget'])) {
-                $conversationData['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
-            }
-            if ($providerType === 'openai' && isset($validated['openai_reasoning_effort'])) {
-                $conversationData['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
-            }
-            if ($providerType === 'openai_compatible' && isset($validated['openai_compatible_reasoning_effort'])) {
-                $conversationData['openai_compatible_reasoning_effort'] = $validated['openai_compatible_reasoning_effort'];
-            }
-            if ($providerType === 'claude_code' && isset($validated['claude_code_thinking_tokens'])) {
-                $conversationData['claude_code_thinking_tokens'] = $validated['claude_code_thinking_tokens'];
-            }
-        }
+                    $screen = Screen::createChatScreen($session, $conversation);
 
-        $conversation = Conversation::create($conversationData);
+                    // screen_order already set by createChatScreen, just set active screen
+                    $session->update([
+                        'last_active_screen_id' => $screen->id,
+                    ]);
 
-        // Set initial context window size for the model
-        try {
-            $contextWindow = $provider->getContextWindow($conversation->model);
-            $conversation->updateContextWindowSize($contextWindow);
-        } catch (\Exception $e) {
-            // Model not found or config error - will be updated when we get actual token data
-            \Log::debug('ConversationController: Failed to initialize context window', [
-                'conversation' => $conversation->uuid,
-                'model' => $conversation->model,
-                'provider' => $conversation->provider_type,
-                'error' => $e->getMessage(),
-            ]);
+                    // Load the screen relationship for the response
+                    $conversation->load('screen.session.screens.conversation');
+                });
+            }
+
+            $provider = $this->providerFactory->make($conversation->provider_type);
         }
 
         return response()->json([
@@ -138,7 +135,7 @@ class ConversationController extends Controller
      */
     public function show(Request $request, Conversation $conversation): JsonResponse
     {
-        $conversation->load(['messages.agent', 'agent']);
+        $conversation->load(['messages.agent', 'agent', 'screen.session.screens.conversation']);
 
         return response()->json([
             'conversation' => $conversation,
@@ -354,14 +351,14 @@ class ConversationController extends Controller
         );
         RequestFlowLogger::log('controller.stream.job_dispatched', 'Job dispatched to queue');
 
-            RequestFlowLogger::log('controller.stream.success', 'Returning success response');
-            RequestFlowLogger::endRequest('success');
-            return response()->json([
-                'success' => true,
-                'conversation_uuid' => $conversation->uuid,
-                'started_at' => now()->toIso8601String(),
-                'message' => 'Streaming started. Connect to /stream-events to receive updates.',
-            ]);
+        RequestFlowLogger::log('controller.stream.success', 'Returning success response');
+        RequestFlowLogger::endRequest('success');
+        return response()->json([
+            'success' => true,
+            'conversation_uuid' => $conversation->uuid,
+            'started_at' => now()->toIso8601String(),
+            'message' => 'Streaming started. Connect to /stream-events to receive updates.',
+        ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             RequestFlowLogger::log('controller.stream.validation_failed', 'Validation failed', [
                 'errors' => $e->errors(),
@@ -607,13 +604,14 @@ class ConversationController extends Controller
     }
 
     /**
-     * Update the conversation title.
+     * Update the conversation title and/or tab label.
      */
     public function updateTitle(Request $request, Conversation $conversation): JsonResponse
     {
         // Trim before validation to handle whitespace-only input
         $request->merge([
             'title' => is_string($request->input('title')) ? trim($request->input('title')) : $request->input('title'),
+            'tab_label' => is_string($request->input('tab_label')) ? trim($request->input('tab_label')) : $request->input('tab_label'),
         ]);
 
         $validated = $request->validate([
@@ -627,15 +625,22 @@ class ConversationController extends Controller
                     }
                 },
             ],
+            'tab_label' => 'nullable|string|max:6',
         ]);
 
-        $conversation->update([
-            'title' => $validated['title'],
-        ]);
+        $updates = ['title' => $validated['title']];
+
+        // Only update tab_label if provided in the request (allow setting to null/empty)
+        if ($request->has('tab_label')) {
+            $updates['tab_label'] = $validated['tab_label'] ?: null;
+        }
+
+        $conversation->update($updates);
 
         return response()->json([
             'success' => true,
             'title' => $conversation->title,
+            'tab_label' => $conversation->tab_label,
         ]);
     }
 

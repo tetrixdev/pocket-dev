@@ -1,5 +1,6 @@
 {{-- Chat Modals --}}
 {{-- TODO: Refactor @include statements to use Laravel anonymous components (e.g., <x-chat.modals.agent-selector />) for consistency with coding guidelines --}}
+@include('partials.chat.toast')
 @include('partials.chat.modals.openai-key')
 @include('partials.chat.modals.claude-code-auth')
 @include('partials.chat.modals.agent-selector')
@@ -11,6 +12,8 @@
 @include('partials.chat.modals.error')
 @include('partials.chat.modals.conversation-search')
 @include('partials.chat.modals.rename-conversation')
+@include('partials.chat.modals.rename-session')
+@include('partials.chat.modals.restore-chat')
 
 {{-- File Preview Modal --}}
 <x-file-preview-modal />

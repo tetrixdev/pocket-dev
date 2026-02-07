@@ -83,8 +83,8 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan memory:schema:execute --schema=default --sql="CREATE INDEX idx_characters_name ON memory_default.characters(name)"
-php artisan memory:schema:execute --schema=default --sql="DROP TABLE IF EXISTS memory_default.old_table"
+pd memory:schema:execute --schema=default --sql="CREATE INDEX idx_characters_name ON memory_default.characters(name)"
+pd memory:schema:execute --schema=default --sql="DROP TABLE IF EXISTS memory_default.old_table"
 ```
 CLI;
 

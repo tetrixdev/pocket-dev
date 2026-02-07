@@ -31,7 +31,7 @@ cat > /tmp/data.json << 'ENDJSON'
 {"name": "Example", "notes": "Any content here"}
 ENDJSON
 
-php artisan memory:insert --schema=default --table=example --data="$(cat /tmp/data.json)"
+pd memory:insert --schema=default --table=example --data="$(cat /tmp/data.json)"
 ```
 
 ## Error Handling for PocketDev Tools

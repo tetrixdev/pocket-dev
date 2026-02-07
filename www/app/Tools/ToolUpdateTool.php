@@ -11,7 +11,7 @@ class ToolUpdateTool extends Tool
 {
     public string $name = 'ToolUpdate';
 
-    public string $description = 'Update an existing user tool (name, description, script, etc.).';
+    public string $description = 'Update an existing user tool (name, description, script, blade_template, etc.).';
 
     public string $category = 'tools';
 
@@ -38,6 +38,10 @@ class ToolUpdateTool extends Tool
                 'type' => 'string',
                 'description' => 'New bash script content.',
             ],
+            'blade_template' => [
+                'type' => 'string',
+                'description' => 'New Blade template content for panel tools.',
+            ],
             'category' => [
                 'type' => 'string',
                 'description' => 'New category (memory, tools, file_ops, custom).',
@@ -57,6 +61,12 @@ Use ToolUpdate to modify an existing user-created tool.
 - Only user-created tools can be modified
 - PocketDev built-in tools cannot be changed
 
+## Updatable Fields
+- name, description, system_prompt: Basic tool info
+- script: Bash script content for script-based tools
+- blade_template: Blade template content for panel tools
+- category, input_schema: Tool configuration
+
 ## Valid Categories
 - memory: Memory-related tools
 - tools: Tool management
@@ -68,7 +78,8 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan tool:update --slug=my-tool --name="Updated Name" --description="New description"
+pd tool:update my-tool --name="Updated Name" --description="New description"
+pd tool:update my-panel-tool --blade-template-file=/path/to/template.blade.php
 ```
 CLI;
 
@@ -80,6 +91,14 @@ Update a tool's script:
 {
   "slug": "my-tool",
   "script": "#!/bin/bash\necho \"Updated script\""
+}
+```
+
+Update a panel tool's blade template:
+```json
+{
+  "slug": "my-panel-tool",
+  "blade_template": "<div>Updated template content</div>"
 }
 ```
 
@@ -133,6 +152,11 @@ API;
             $changes[] = 'script';
         }
 
+        if (isset($input['blade_template'])) {
+            $tool->blade_template = $input['blade_template'];
+            $changes[] = 'blade_template';
+        }
+
         if (isset($input['category'])) {
             $category = $input['category'];
             $allowedCategories = [
@@ -157,7 +181,7 @@ API;
         }
 
         if (empty($changes)) {
-            return ToolResult::error('No changes specified. Use name, description, system_prompt, script, category, or input_schema.');
+            return ToolResult::error('No changes specified. Use name, description, system_prompt, script, blade_template, category, or input_schema.');
         }
 
         try {

@@ -29,12 +29,15 @@ Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->nam
 
 // Chat - Multi-provider conversation interface
 Route::get("/", [ChatController::class, "index"])->name("chat.index");
-Route::get("/chat/{conversationUuid}", [ChatController::class, "show"])
-    ->whereUuid("conversationUuid")
-    ->name("chat.conversation");
+Route::get("/session/{sessionId}", [ChatController::class, "showSession"])
+    ->whereUuid("sessionId")
+    ->name("session.show");
 Route::post("/chat/{conversationUuid}/session", [ChatController::class, "setSession"])
     ->whereUuid("conversationUuid")
     ->name("chat.session");
+Route::post("/session/{sessionId}/last", [ChatController::class, "setLastSession"])
+    ->whereUuid("sessionId")
+    ->name("session.setLast");
 
 // Config - Redirect to last visited section
 Route::get("/config", [ConfigController::class, "index"])->name("config.index");

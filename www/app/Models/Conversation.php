@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,6 +26,7 @@ class Conversation extends Model
         'provider_type',
         'model',
         'title',
+        'tab_label',
         'working_directory',
         'total_input_tokens',
         'total_output_tokens',
@@ -92,6 +94,14 @@ class Conversation extends Model
     }
 
     /**
+     * Get the screen that displays this conversation (if any).
+     */
+    public function screen(): HasOne
+    {
+        return $this->hasOne(Screen::class);
+    }
+
+    /**
      * Get the workspace this conversation belongs to.
      */
     public function workspace(): BelongsTo
@@ -118,6 +128,9 @@ class Conversation extends Model
             'status' => self::STATUS_IDLE,
             'last_activity_at' => now(),
         ]);
+
+        // Touch parent session so sidebar polling detects the activity
+        $this->screen?->session?->touch();
     }
 
     public function markFailed(): void
@@ -126,6 +139,9 @@ class Conversation extends Model
             'status' => self::STATUS_FAILED,
             'last_activity_at' => now(),
         ]);
+
+        // Touch parent session so sidebar polling detects the activity
+        $this->screen?->session?->touch();
     }
 
     public function archive(): void

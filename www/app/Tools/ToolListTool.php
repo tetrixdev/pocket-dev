@@ -55,9 +55,9 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan tool:list
-php artisan tool:list --enabled --user
-php artisan tool:list --category=memory
+pd tool:list
+pd tool:list --enabled --user
+pd tool:list --category=memory
 ```
 CLI;
 

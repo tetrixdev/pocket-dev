@@ -568,7 +568,7 @@
         /* Hide elements until Alpine.js initializes */
         [x-cloak] { display: none !important; }
 
-        .markdown-content { line-height: 1.6; }
+        .markdown-content { line-height: 1.6; overflow-wrap: break-word; word-wrap: break-word; }
         .markdown-content h1 { font-size: 1.5em; font-weight: bold; margin: 1em 0 0.5em; }
         .markdown-content h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.5em; }
         .markdown-content h3 { font-size: 1.1em; font-weight: bold; margin: 1em 0 0.5em; }
@@ -580,9 +580,13 @@
         .markdown-content pre code { background: none; padding: 0; }
         .markdown-content blockquote { border-left: 4px solid #4b5563; padding-left: 1em; margin: 1em 0; color: #9ca3af; }
         .markdown-content a { color: #60a5fa; text-decoration: underline; }
-        .markdown-content table { border-collapse: collapse; margin: 1em 0; width: 100%; }
-        .markdown-content th, .markdown-content td { border: 1px solid #4b5563; padding: 0.5em; text-align: left; }
+        .markdown-content table { border-collapse: collapse; margin: 1em 0; width: max-content; min-width: 100%; }
+        .markdown-content th, .markdown-content td { border: 1px solid #4b5563; padding: 0.5em; text-align: left; white-space: nowrap; }
         .markdown-content th { background: #374151; font-weight: bold; }
+
+        /* Wrapper for horizontal scroll on tables - applied via JS */
+        .table-wrapper { overflow-x: auto; margin: 1em 0; -webkit-overflow-scrolling: touch; }
+        .table-wrapper table { margin: 0; }
 
         /* File path links - clickable paths that open file preview modal */
         .file-path-link {
@@ -592,7 +596,7 @@
             padding: 0.1em 0.4em;
             border-radius: 0.25em;
             transition: background-color 0.15s ease;
-            white-space: nowrap;
+            word-break: break-all;
         }
         .file-path-link:hover {
             background: rgba(59, 130, 246, 0.25);
@@ -632,29 +636,79 @@
             scrollbar-color: #4b5563 transparent;
         }
 
-        /* Custom scrollbar for messages and conversations - dark theme */
+        /* Custom scrollbar for messages, conversations, and sessions - dark theme */
         #messages::-webkit-scrollbar,
-        #conversations-list::-webkit-scrollbar {
+        #conversations-list::-webkit-scrollbar,
+        #sessions-list::-webkit-scrollbar,
+        #mobile-sessions-list::-webkit-scrollbar {
             width: 6px;
         }
         #messages::-webkit-scrollbar-track,
-        #conversations-list::-webkit-scrollbar-track {
+        #conversations-list::-webkit-scrollbar-track,
+        #sessions-list::-webkit-scrollbar-track,
+        #mobile-sessions-list::-webkit-scrollbar-track {
             background: transparent;
         }
         #messages::-webkit-scrollbar-thumb,
-        #conversations-list::-webkit-scrollbar-thumb {
+        #conversations-list::-webkit-scrollbar-thumb,
+        #sessions-list::-webkit-scrollbar-thumb,
+        #mobile-sessions-list::-webkit-scrollbar-thumb {
             background: #4b5563;
             border-radius: 3px;
         }
         #messages::-webkit-scrollbar-thumb:hover,
-        #conversations-list::-webkit-scrollbar-thumb:hover {
+        #conversations-list::-webkit-scrollbar-thumb:hover,
+        #sessions-list::-webkit-scrollbar-thumb:hover,
+        #mobile-sessions-list::-webkit-scrollbar-thumb:hover {
             background: #6b7280;
         }
         /* Firefox */
         #messages,
-        #conversations-list {
+        #conversations-list,
+        #sessions-list,
+        #mobile-sessions-list {
             scrollbar-width: thin;
             scrollbar-color: #4b5563 transparent;
+        }
+
+        /* Custom horizontal scrollbar for screen tabs - dark theme */
+        #screen-tabs::-webkit-scrollbar,
+        #screen-tabs-mobile::-webkit-scrollbar {
+            height: 6px;
+        }
+        #screen-tabs::-webkit-scrollbar-track,
+        #screen-tabs-mobile::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #screen-tabs::-webkit-scrollbar-thumb,
+        #screen-tabs-mobile::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        #screen-tabs::-webkit-scrollbar-thumb:hover,
+        #screen-tabs-mobile::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        /* Firefox */
+        #screen-tabs,
+        #screen-tabs-mobile {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 transparent;
+        }
+
+        /* Mobile swipe navigation */
+        .swipe-active {
+            /* Prevent content selection during swipe */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Add subtle shadow during swipe to indicate depth */
+        @media (max-width: 767px) {
+            #messages,
+            [x-show="isActiveScreenPanel"] {
+                will-change: transform;
+            }
         }
     </style>
 </head>
@@ -671,6 +725,11 @@
         {{-- Mobile Header (hidden on desktop) --}}
         <div class="md:hidden">
             @include('partials.chat.mobile-layout')
+        </div>
+
+        {{-- Mobile Screen Tabs (hidden on desktop) --}}
+        <div class="md:hidden">
+            @include('partials.chat.screen-tabs-mobile')
         </div>
 
         {{-- Main Content Area --}}
@@ -718,48 +777,92 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                     </button>
-                    {{-- Dropdown Menu --}}
-                    <div x-show="showConversationMenu"
-                         x-cloak
-                         @click.outside="showConversationMenu = false"
-                         x-transition:enter="transition ease-out duration-100"
-                         x-transition:enter-start="transform opacity-0 scale-95"
-                         x-transition:enter-end="transform opacity-100 scale-100"
-                         x-transition:leave="transition ease-in duration-75"
-                         x-transition:leave-start="transform opacity-100 scale-100"
-                         x-transition:leave-end="transform opacity-0 scale-95"
-                         class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
-                        {{-- Workspace --}}
-                        <button @click="openWorkspaceSelector(); showConversationMenu = false"
-                                class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
-                            <i class="fa-solid fa-folder w-4 text-center"></i>
-                            <span class="flex-1">Workspace</span>
-                            <span class="text-xs text-gray-400 truncate max-w-[80px]" x-text="currentWorkspace?.name || 'Default'"></span>
-                        </button>
-                        {{-- Settings --}}
-                        <a href="{{ route('config.index') }}"
-                           class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
-                            <i class="fa-solid fa-cog w-4 text-center"></i>
-                            Settings
-                        </a>
-                        {{-- Archive/Unarchive --}}
-                        <button @click="toggleArchiveConversation(); showConversationMenu = false"
-                                :disabled="!currentConversationUuid"
-                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
-                                class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
-                            <i class="fa-solid fa-box-archive w-4 text-center"></i>
-                            <span x-text="currentConversationStatus === 'archived' ? 'Unarchive' : 'Archive'"></span>
-                        </button>
-                        {{-- Delete --}}
-                        <button @click="deleteConversation(); showConversationMenu = false"
-                                :disabled="!currentConversationUuid"
-                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
-                                class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
-                            <i class="fa-solid fa-trash w-4 text-center"></i>
-                            Delete
-                        </button>
-                    </div>
+                    {{-- Dropdown Menu - Teleported to body to escape stacking context --}}
+                    <template x-teleport="body">
+                        <div x-show="showConversationMenu"
+                             x-cloak
+                             @click.outside="showConversationMenu = false"
+                             @keydown.escape="showConversationMenu = false"
+                             x-transition:enter="transition ease-out duration-100"
+                             x-transition:enter-start="transform opacity-0 scale-95"
+                             x-transition:enter-end="transform opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-75"
+                             x-transition:leave-start="transform opacity-100 scale-100"
+                             x-transition:leave-end="transform opacity-0 scale-95"
+                             class="hidden md:block fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-[100] overflow-hidden"
+                             style="top: 50px; right: 8px;">
+                            {{-- Workspace --}}
+                            <button @click="openWorkspaceSelector(); showConversationMenu = false"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
+                                <i class="fa-solid fa-folder w-4 text-center"></i>
+                                <span class="flex-1">Workspace</span>
+                                <span class="text-xs text-gray-400 truncate max-w-[80px]" x-text="currentWorkspace?.name || 'Default'"></span>
+                            </button>
+                            {{-- Settings --}}
+                            <a href="{{ route('config.index') }}"
+                               class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
+                                <i class="fa-solid fa-cog w-4 text-center"></i>
+                                Settings
+                            </a>
+                            {{-- Session Section Header --}}
+                            <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
+                            {{-- Rename Session --}}
+                            <button @click="openRenameSessionModal(); showConversationMenu = false"
+                                    :disabled="!currentSession"
+                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-pen w-4 text-center"></i>
+                                Rename session
+                            </button>
+                            {{-- Archive/Restore Session --}}
+                            <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
+                                    :disabled="!currentSession"
+                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                                <span x-text="currentSession?.is_archived ? 'Restore session' : 'Archive session'"></span>
+                            </button>
+                            {{-- Delete Session --}}
+                            <button @click="deleteSession(currentSession?.id); showConversationMenu = false"
+                                    :disabled="!currentSession"
+                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-trash w-4 text-center"></i>
+                                Delete session
+                            </button>
+                            {{-- Restore Chat (only show if session has archived conversations) --}}
+                            <button x-show="hasArchivedConversations"
+                                    @click="openRestoreChatModal(); showConversationMenu = false"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 cursor-pointer w-full text-left">
+                                <i class="fa-solid fa-rotate-left w-4 text-center"></i>
+                                Restore chat...
+                            </button>
+                            {{-- Conversation Section Header --}}
+                            <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Conversation</div>
+                            {{-- Archive/Unarchive Conversation --}}
+                            <button @click="toggleArchiveConversation(); showConversationMenu = false"
+                                    :disabled="!currentConversationUuid"
+                                    :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                                <span x-text="currentConversationStatus === 'archived' ? 'Unarchive chat' : 'Archive chat'"></span>
+                            </button>
+                            {{-- Delete Conversation --}}
+                            <button @click="deleteConversation(); showConversationMenu = false"
+                                    :disabled="!currentConversationUuid"
+                                    :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-trash w-4 text-center"></i>
+                                Delete chat
+                            </button>
+                        </div>
+                    </template>
                 </div>
+            </div>
+
+            {{-- Screen Tabs (Desktop only) - fixed below header --}}
+            <div class="hidden md:block md:fixed md:top-[57px] md:left-64 md:right-0 md:z-10">
+                @include('partials.chat.screen-tabs')
             </div>
 
             {{-- Messages Container with Drag-and-Drop --}}
@@ -778,10 +881,11 @@
                  class="relative md:flex-1 md:flex md:flex-col md:min-h-0">
 
                 {{-- Drop Overlay (Desktop only) - fixed position matching #messages --}}
+                {{-- Top offset: header (57px) + tabs (38px when visible) --}}
                 <div x-cloak
                      class="fixed left-64 right-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg hidden"
                      :class="isDragging ? 'md:flex' : 'md:hidden'"
-                     :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
+                     :style="{ top: currentSession ? '95px' : '57px', bottom: desktopInputHeight + 'px' }">
                     <div class="bg-gray-800 rounded-lg p-6 text-center shadow-xl border-2 border-dashed border-blue-400">
                         <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-400 mb-2"></i>
                         <p class="text-gray-200 font-medium">Drop files to attach</p>
@@ -798,8 +902,8 @@
                          x-transition:leave="transition ease-in duration-100"
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
-                         class="fixed top-[57px] left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         :style="{ bottom: mobileInputHeight + 'px' }">
+                         class="fixed left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
+                         :style="{ top: (currentSession ? '105px' : '57px'), bottom: mobileInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -811,6 +915,7 @@
                 </div>
 
                 {{-- Loading Conversation Overlay (Desktop) - visible at md breakpoint and above only --}}
+                {{-- Top offset: header (57px) + tabs (38px when visible) --}}
                 <div class="hidden md:block">
                     <div x-cloak
                          x-show="loadingConversation"
@@ -821,7 +926,7 @@
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
                          class="fixed left-64 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
+                         :style="{ top: currentSession ? '95px' : '57px', bottom: desktopInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -832,12 +937,24 @@
                     </div>
                 </div>
 
-                <div id="messages"
+                {{-- Messages top offset: header (57px) + tabs (38px when visible on desktop) --}}
+                {{-- Only show messages container when not viewing a panel --}}
+                <div x-show="!isActiveScreenPanel"
+                     id="messages"
                      class="p-4 space-y-4 overflow-y-auto bg-gray-900 fixed left-0 right-0 z-0
                             md:left-64 md:pt-4 md:pb-4"
-                     :class="isDragging ? 'ring-2 ring-blue-500 ring-inset' : ''"
-                     :style="{ top: '57px', bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px' }"
-                     @scroll="handleMessagesScroll($event)">
+                     :class="[isDragging ? 'ring-2 ring-blue-500 ring-inset' : '', isSwiping ? 'swipe-active' : '']"
+                     :style="{
+                         top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'),
+                         bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px',
+                         transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
+                         transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+                     }"
+                     @scroll="handleMessagesScroll($event)"
+                     @touchstart="handleSwipeStart($event)"
+                     @touchmove="handleSwipeMove($event)"
+                     @touchend="handleSwipeEnd($event)"
+                     @touchcancel="resetSwipeState()">
 
                 {{-- Empty State --}}
                 <template x-if="messages.length === 0">
@@ -866,8 +983,60 @@
             </div>
             </div> {{-- End drag-and-drop wrapper --}}
 
+            {{-- Panel Content Container --}}
+            {{-- Shows rendered panel content when viewing a panel screen --}}
+            <div x-show="isActiveScreenPanel"
+                 x-cloak
+                 class="fixed left-0 right-0 z-0 bg-gray-900 overflow-auto
+                        md:left-64"
+                 :class="isSwiping ? 'swipe-active' : ''"
+                 :style="{
+                     top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'),
+                     bottom: '0px',
+                     transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
+                     transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+                 }"
+                 @touchstart="handleSwipeStart($event)"
+                 @touchmove="handleSwipeMove($event)"
+                 @touchend="handleSwipeEnd($event)"
+                 @touchcancel="resetSwipeState()">
+
+                {{-- Loading State - use x-show to avoid destroying panel Alpine state --}}
+                <div x-show="loadingPanel" class="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                    <div class="flex flex-col items-center gap-3">
+                        <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-gray-400 text-sm">Loading panel...</span>
+                    </div>
+                </div>
+
+                {{--
+                    Panel Content (rendered HTML)
+
+                    Uses x-effect to only update when content ACTUALLY changes (via _lastContent tracking).
+                    When content changes, Alpine.initTree() reinitializes all Alpine components in the panel.
+
+                    IMPORTANT for panel developers:
+                    - x-init and init() will re-run whenever panel content is refreshed
+                    - Store persistent state in panelState (synced to server) rather than local Alpine state
+                    - Side effects in init() should be idempotent or guarded
+                --}}
+                <div id="panel-content-container"
+                     x-effect="
+                         if (panelContent !== $el._lastContent) {
+                             $el._lastContent = panelContent;
+                             $el.innerHTML = panelContent;
+                             Alpine.initTree($el);
+                         }
+                     "
+                     class="h-full"></div>
+            </div>
+
             {{-- Scroll to Bottom Button (mobile) - positioned above attachment FAB --}}
-            <button @click="autoScrollEnabled = true; scrollToBottom()"
+            <button x-show="!isActiveScreenPanel"
+                    @click="autoScrollEnabled = true; scrollToBottom()"
                     :class="(!isAtBottom && messages.length > 0) ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'"
                     class="md:hidden fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 right-4"
                     :style="{ bottom: (mobileInputHeight + 64) + 'px' }"
@@ -875,12 +1044,14 @@
                 <i class="fas fa-arrow-down"></i>
             </button>
 
-            {{-- File Attachment FAB (mobile) --}}
-            @include('partials.chat.attachment-fab')
+            {{-- File Attachment FAB (mobile) - hidden when viewing panels --}}
+            <template x-if="!isActiveScreenPanel">
+                @include('partials.chat.attachment-fab')
+            </template>
 
             {{-- Scroll to Bottom Button (desktop) --}}
             <button x-cloak
-                    x-show="!isAtBottom && messages.length > 0"
+                    x-show="!isAtBottom && messages.length > 0 && !isActiveScreenPanel"
                     x-transition:enter="transition ease-out duration-200"
                     x-transition:enter-start="opacity-0 scale-75"
                     x-transition:enter-end="opacity-100 scale-100"
@@ -894,15 +1065,15 @@
                 <i class="fas fa-arrow-down"></i>
             </button>
 
-            {{-- Desktop Input (hidden on mobile) - fixed at bottom to match fixed #messages --}}
-            <div x-ref="desktopInput" class="hidden md:block md:fixed md:bottom-0 md:left-64 md:right-0 md:z-10">
+            {{-- Desktop Input (hidden on mobile and when viewing panels) - fixed at bottom to match fixed #messages --}}
+            <div x-show="!isActiveScreenPanel" x-ref="desktopInput" class="hidden md:block md:fixed md:bottom-0 md:left-64 md:right-0 md:z-10">
                 @include('partials.chat.input-desktop')
             </div>
         </div>
     </div>
 
-    {{-- Mobile Input (hidden on desktop) --}}
-    <div class="md:hidden">
+    {{-- Mobile Input (hidden on desktop and when viewing panels) --}}
+    <div x-show="!isActiveScreenPanel" class="md:hidden">
         @include('partials.chat.input-mobile')
     </div>
 
@@ -926,10 +1097,6 @@
                 // State
                 prompt: '',
                 messages: [],
-                conversations: [],
-                conversationsPage: 1,
-                conversationsLastPage: 1,
-                loadingMoreConversations: false,
                 cachedLatestActivity: null, // For sidebar polling
                 sidebarPollInterval: null, // Polling interval ID
                 currentConversationUuid: null,
@@ -938,6 +1105,7 @@
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
                 _justCompletedStream: false,
+                _isReplaying: false, // True during page refresh stream replay (prevents duplicate screen refreshes)
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
                 ignoreScrollEvents: false, // Ignore scroll events during conversation loading
@@ -946,6 +1114,81 @@
                 _initDone: false, // Guard against double initialization
                 sessionCost: 0,
                 totalTokens: 0,
+
+                // Sessions & Screens
+                sessions: [], // All sessions for current workspace
+                sessionsPage: 1, // Current page for pagination
+                sessionsLastPage: 1, // Last page number
+                loadingMoreSessions: false, // Loading state for infinite scroll
+                currentSession: null, // Current session object with screens
+                screens: [], // Flat array of screen objects in the current session
+                activeScreenId: null, // Currently active screen ID
+                availablePanels: [], // Available panel tools
+                showArchivedSessions: false, // Filter toggle
+                sessionSearchQuery: '', // Filter by name
+                sessionMenuId: null, // Which session's context menu is open
+                sessionMenuPos: { top: 0, left: 0 }, // Position for session context menu
+                workspaceHasDefaultTemplate: false, // Whether workspace has a default session template
+
+                // Restore chat modal
+                showRestoreChatModal: false, // Visibility of restore chat modal
+                archivedConversations: [], // Archived conversations for current session
+                loadingArchivedConversations: false, // Loading state
+
+                // Panel content
+                panelContent: '', // HTML content of active panel
+                loadingPanel: false, // Loading state for panel content
+
+                // Screen tab drag-and-drop state
+                draggedScreenId: null, // ID of screen being dragged
+                dragOverScreenId: null, // ID of screen being dragged over
+                dragDropPosition: null, // 'before' or 'after' drop position
+
+                // Toast notification
+                toastMessage: '',
+                toastVisible: false,
+
+                // Mobile swipe navigation
+                swipeStartX: 0,
+                swipeStartY: 0,
+                swipeCurrentX: 0,
+                swipeDeltaX: 0,
+                isSwiping: false,
+                swipeThreshold: 80, // Minimum distance to trigger screen change
+                swipeEdgeResistance: 0.3, // How much movement at edges (30%)
+
+                // Computed: filtered sessions based on search query
+                get filteredSessions() {
+                    // Return all sessions if no search query
+                    if (!this.sessionSearchQuery) return this.sessions;
+                    const query = this.sessionSearchQuery.toLowerCase();
+                    return this.sessions.filter(s =>
+                        (s.name || '').toLowerCase().includes(query)
+                    );
+                },
+
+                // Computed: visible screen order (excludes screens with archived conversations)
+                get visibleScreenOrder() {
+                    if (!this.currentSession?.screen_order) return [];
+                    return this.currentSession.screen_order.filter(screenId => {
+                        const screen = this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
+                        // Show all panel screens, only show chat screens if conversation is not archived
+                        if (!screen) return false;
+                        if (screen.type === 'panel') return true;
+                        return screen.conversation?.status !== 'archived';
+                    });
+                },
+
+                // Computed: get the active screen object
+                get activeScreen() {
+                    if (!this.activeScreenId) return null;
+                    return this._screenMap?.[this.activeScreenId] || this.screens.find(s => s.id === this.activeScreenId);
+                },
+
+                // Computed: is the active screen a panel?
+                get isActiveScreenPanel() {
+                    return this.activeScreen?.type === 'panel';
+                },
 
                 // Agents
                 agents: [],
@@ -988,12 +1231,18 @@
                 showErrorModal: false,
                 showSearchModal: false,
                 showRenameModal: false,
+                showRenameSessionModal: false,
                 showSystemPromptPreview: false,
 
                 // Conversation title (rename)
                 currentConversationTitle: null,
                 renameTitle: '',
+                renameTabLabel: '',
                 renameSaving: false,
+
+                // Session name (rename)
+                renameSessionName: '',
+                renameSessionSaving: false,
                 _systemPromptPreviewNonce: 0,
                 systemPromptPreview: {
                     loading: false,
@@ -1123,39 +1372,25 @@
                     // Fetch available agents (filtered by workspace)
                     await this.fetchAgents();
 
+                    // Fetch available panels for the "Add Panel" menu
+                    await this.fetchAvailablePanels();
+
                     // Restore filter states from sessionStorage
-                    const savedArchiveFilter = sessionStorage.getItem('pocketdev_showArchivedConversations');
+                    const savedArchiveFilter = sessionStorage.getItem('pocketdev_showArchivedSessions');
                     if (savedArchiveFilter === 'true') {
-                        this.showArchivedConversations = true;
-                        this.showSearchInput = true; // Show filter panel so user sees active filter
-                    }
-                    const savedSearchQuery = sessionStorage.getItem('pocketdev_conversationSearchQuery');
-                    if (savedSearchQuery) {
-                        this.conversationSearchQuery = savedSearchQuery;
-                        this.showSearchInput = true; // Open filter panel if search was active
+                        this.showArchivedSessions = true;
+                        this.showSearchInput = true;
                     }
 
-                    // Load conversations list
-                    await this.fetchConversations();
-
-                    // If search query was restored, perform the search
-                    if (this.conversationSearchQuery) {
-                        await this.searchConversations();
-                    }
+                    // Load sessions list
+                    await this.fetchSessions();
 
                     // Watch for filter changes to persist to sessionStorage
-                    this.$watch('showArchivedConversations', (value) => {
+                    this.$watch('showArchivedSessions', (value) => {
                         if (value) {
-                            sessionStorage.setItem('pocketdev_showArchivedConversations', 'true');
+                            sessionStorage.setItem('pocketdev_showArchivedSessions', 'true');
                         } else {
-                            sessionStorage.removeItem('pocketdev_showArchivedConversations');
-                        }
-                    });
-                    this.$watch('conversationSearchQuery', (value) => {
-                        if (value) {
-                            sessionStorage.setItem('pocketdev_conversationSearchQuery', value);
-                        } else {
-                            sessionStorage.removeItem('pocketdev_conversationSearchQuery');
+                            sessionStorage.removeItem('pocketdev_showArchivedSessions');
                         }
                     });
 
@@ -1174,24 +1409,13 @@
                         localStorage.removeItem('pocketdev_returning_from_settings');
                     }
 
-                    // Check URL for conversation UUID and load if present
-                    const urlConversationUuid = this.getConversationUuidFromUrl();
-                    if (urlConversationUuid) {
-                        // Check for ?turn= query parameter to scroll to specific turn
-                        const urlParams = new URLSearchParams(window.location.search);
-                        const turnParam = urlParams.get('turn');
-                        if (turnParam) {
-                            const turnNumber = parseInt(turnParam, 10);
-                            if (!isNaN(turnNumber)) {
-                                this.pendingScrollToTurn = turnNumber;
-                                this.autoScrollEnabled = false;
-                            }
-                        }
+                    // Check URL for session ID and load if present
+                    const urlSessionId = this.getSessionIdFromUrl();
+                    if (urlSessionId) {
+                        await this.loadSession(urlSessionId);
 
-                        await this.loadConversation(urlConversationUuid);
-
-                        // Scroll to bottom if returning from settings (only if not scrolling to turn)
-                        if (returningFromSettings && this.pendingScrollToTurn === null) {
+                        // Scroll to bottom if returning from settings
+                        if (returningFromSettings) {
                             this.$nextTick(() => this.scrollToBottom());
                         }
                     }
@@ -1203,43 +1427,42 @@
                             return;
                         }
 
-                        // Check for turn parameter in URL
-                        const urlParams = new URLSearchParams(window.location.search);
-                        const turnParam = urlParams.get('turn');
-                        let turnNumber = null;
-                        if (turnParam) {
-                            const parsed = parseInt(turnParam, 10);
-                            if (!isNaN(parsed)) {
-                                turnNumber = parsed;
-                            }
-                        }
-
-                        if (event.state && event.state.conversationUuid) {
-                            // Don't reload if we're already on this conversation
-                            if (this.currentConversationUuid === event.state.conversationUuid) {
-                                // But still handle turn scrolling if requested
-                                if (turnNumber !== null) {
-                                    this.pendingScrollToTurn = turnNumber;
-                                    this.autoScrollEnabled = false;
-                                    this.scrollToTurn(turnNumber);
-                                }
+                        if (event.state && event.state.sessionId) {
+                            // Don't reload if we're already on this session
+                            if (this.currentSession?.id === event.state.sessionId) {
                                 return;
                             }
-                            // Set pending scroll for new conversation load
-                            if (turnNumber !== null) {
-                                this.pendingScrollToTurn = turnNumber;
-                                this.autoScrollEnabled = false;
-                            }
-                            this.loadConversation(event.state.conversationUuid);
+                            this.loadSession(event.state.sessionId);
                         } else {
-                            // Back to new conversation state
-                            this.newConversation();
+                            // Back to home state - clear session
+                            this.currentSession = null;
+                            this.screens = [];
+                            this.activeScreenId = null;
+                            this.messages = [];
+                            this.currentConversationUuid = null;
                         }
                     });
 
                     // Track window resize for responsive layout calculations
                     window.addEventListener('resize', () => {
                         this.windowWidth = window.innerWidth;
+                    });
+
+                    // Handle visibility changes (phone standby, tab switching)
+                    // Refresh session screens when page becomes visible again
+                    document.addEventListener('visibilitychange', () => {
+                        if (!document.hidden) {
+                            // Refresh screens if we have a session (catches panels opened while away)
+                            if (this.currentSession?.id) {
+                                setTimeout(() => {
+                                    this.refreshSessionScreens();
+                                }, 500);
+                            }
+                            // Reconnect stream if it might have died
+                            if (this.currentConversationUuid && this.isStreaming) {
+                                this.checkAndReconnectStream(this.currentConversationUuid);
+                            }
+                        }
                     });
 
                     // Track input heights for dynamic messages container positioning
@@ -1285,18 +1508,18 @@
                     });
                 },
 
-                // Extract conversation UUID from URL path (strict UUID validation)
-                getConversationUuidFromUrl() {
+                // Extract session ID from URL path (strict UUID validation)
+                getSessionIdFromUrl() {
                     const path = window.location.pathname.replace(/\/+$/, ''); // tolerate trailing slash
-                    const match = path.match(/^\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+                    const match = path.match(/^\/session\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
                     return match ? match[1] : null;
                 },
 
-                // Update URL to reflect current conversation
+                // Update URL to reflect current session
                 // Use replace: true to avoid back-button loops when clearing invalid URLs
-                updateUrl(conversationUuid = null, { replace = false } = {}) {
-                    const newPath = conversationUuid ? `/chat/${conversationUuid}` : '/';
-                    const state = conversationUuid ? { conversationUuid } : {};
+                updateSessionUrl(sessionId = null, { replace = false } = {}) {
+                    const newPath = sessionId ? `/session/${sessionId}` : '/';
+                    const state = sessionId ? { sessionId } : {};
 
                     // Only update if path actually changed
                     if (window.location.pathname !== newPath) {
@@ -1305,16 +1528,6 @@
                         } else {
                             window.history.pushState(state, '', newPath);
                         }
-                    }
-
-                    // Set session for "Back to Chat" in settings
-                    if (conversationUuid) {
-                        fetch(`/chat/${conversationUuid}/session`, {
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                            }
-                        });
                     }
                 },
 
@@ -1581,13 +1794,6 @@
                                 return;
                             }
                             this.debugLog('Agent switched on backend', { agentId: agent.id, conversation: this.currentConversationUuid });
-
-                            // Update the conversations array so sidebar shows correct agent
-                            const convIndex = this.conversations.findIndex(c => c.uuid === this.currentConversationUuid);
-                            if (convIndex !== -1) {
-                                this.conversations[convIndex].agent = { id: agent.id, name: agent.name };
-                                this.conversations[convIndex].agent_id = agent.id;
-                            }
                         } catch (err) {
                             console.error('Error switching agent:', err);
                             this.errorMessage = 'Failed to switch agent. Please try again.';
@@ -1755,6 +1961,8 @@
                             if (data.workspace) {
                                 this.currentWorkspace = data.workspace;
                                 this.currentWorkspaceId = data.workspace.id;
+                                // Check if workspace has a default session template
+                                this.workspaceHasDefaultTemplate = !!(data.workspace.default_session_template?.screen_order?.length);
                                 this.debugLog('Active workspace loaded', { workspace: data.workspace.name });
                             }
                         }
@@ -1791,29 +1999,34 @@
                             const data = await response.json();
                             this.currentWorkspace = workspace;
                             this.currentWorkspaceId = workspace.id;
+                            // Update default template state for new workspace
+                            this.workspaceHasDefaultTemplate = !!(workspace.default_session_template?.screen_order?.length);
                             this.showWorkspaceSelector = false;
-                            this.debugLog('Workspace switched', { workspace: workspace.name, lastConversation: data.last_conversation_uuid });
+                            this.debugLog('Workspace switched', { workspace: workspace.name, lastSession: data.last_session_id });
 
                             // Clear old workspace state before loading new data
                             this.agents = [];
                             this.currentAgentId = null;
                             this.currentConversationUuid = null;
+                            this.currentSession = null;
+                            this.screens = [];
+                            this.activeScreenId = null;
 
-                            // Reload conversations and agents for the new workspace
-                            await this.fetchConversations();
+                            // Reload sessions and agents for the new workspace
+                            await this.fetchSessions();
                             await this.fetchAgents();
 
-                            // Restore last conversation for this workspace, or start new
-                            if (data.last_conversation_uuid) {
-                                // Check if conversation still exists in the loaded list
-                                const lastConvo = this.conversations.find(c => c.uuid === data.last_conversation_uuid);
-                                if (lastConvo) {
-                                    await this.loadConversation(data.last_conversation_uuid, true); // skipWorkspaceCheck=true
+                            // Restore last session for this workspace, or start new
+                            if (data.last_session_id) {
+                                // Check if session still exists in the loaded list
+                                const lastSession = this.sessions.find(s => s.id === data.last_session_id);
+                                if (lastSession) {
+                                    await this.loadSession(data.last_session_id);
                                 } else {
-                                    this.newConversation();
+                                    await this.newSession();
                                 }
                             } else {
-                                this.newConversation();
+                                await this.newSession();
                             }
                         } else {
                             console.error('Failed to switch workspace:', response.status);
@@ -1934,34 +2147,6 @@
                     return modelId.replace(/^claude-/, '').replace(/^gpt-/, 'GPT-').replace(/-\d+$/, '');
                 },
 
-                async fetchConversations() {
-                    try {
-                        let url = '/api/conversations';
-                        const params = [];
-                        if (this.currentWorkspaceId) {
-                            params.push('workspace_id=' + this.currentWorkspaceId);
-                        }
-                        if (this.showArchivedConversations) {
-                            params.push('include_archived=true');
-                        }
-                        if (params.length > 0) {
-                            url += '?' + params.join('&');
-                        }
-                        const response = await fetch(url);
-                        const data = await response.json();
-                        this.conversations = data.data || [];
-                        this.conversationsPage = data.current_page || 1;
-                        this.conversationsLastPage = data.last_page || 1;
-
-                        // Update cached latest activity from first conversation
-                        if (this.conversations.length > 0) {
-                            this.cachedLatestActivity = this.conversations[0].last_activity_at;
-                        }
-                    } catch (err) {
-                        console.error('Failed to fetch conversations:', err);
-                    }
-                },
-
                 // Start polling for sidebar updates (every 30s)
                 startSidebarPolling() {
                     // Clear any existing interval
@@ -1984,16 +2169,16 @@
 
                 // Check if sidebar needs refreshing
                 async checkForSidebarUpdates() {
-                    // Skip if search filter is active
-                    if (this.conversationSearchQuery) {
+                    // Skip if no workspace is active or search filter is active
+                    if (!this.currentWorkspaceId || this.sessionSearchQuery) {
                         return;
                     }
 
                     try {
-                        const response = await fetch('/api/conversations/latest-activity');
+                        const response = await fetch(`/api/sessions/latest-activity?workspace_id=${this.currentWorkspaceId}`);
                         const data = await response.json();
 
-                        // If there's new activity, refresh the first page
+                        // If there's new activity, refresh the sessions list
                         if (data.latest_activity_at && data.latest_activity_at !== this.cachedLatestActivity) {
                             this.debugLog('Sidebar: new activity detected, refreshing');
                             await this.refreshSidebar();
@@ -2005,72 +2190,37 @@
 
                 // Refresh sidebar without losing scroll position or current selection
                 async refreshSidebar() {
-                    try {
-                        let url = '/api/conversations';
-                        const params = [];
-                        if (this.currentWorkspaceId) {
-                            params.push('workspace_id=' + this.currentWorkspaceId);
-                        }
-                        if (this.showArchivedConversations) {
-                            params.push('include_archived=true');
-                        }
-                        if (params.length > 0) {
-                            url += '?' + params.join('&');
-                        }
-                        const response = await fetch(url);
-                        const data = await response.json();
-                        const newConversations = data.data || [];
-
-                        // Update cached latest activity
-                        if (newConversations.length > 0) {
-                            this.cachedLatestActivity = newConversations[0].last_activity_at;
-                        }
-
-                        // Merge new conversations with existing (preserve any extra pages loaded)
-                        const existingUuids = new Set(newConversations.map(c => c.uuid));
-                        const extraConversations = this.conversations.filter(c => !existingUuids.has(c.uuid));
-
-                        // Replace first page, keep any extras from infinite scroll
-                        this.conversations = [...newConversations, ...extraConversations];
-                    } catch (err) {
-                        console.error('Failed to refresh sidebar:', err);
-                    }
-                },
-
-                async fetchMoreConversations() {
-                    if (this.loadingMoreConversations || this.conversationsPage >= this.conversationsLastPage) {
+                    // Skip if no workspace ID
+                    if (!this.currentWorkspaceId) {
                         return;
                     }
-                    this.loadingMoreConversations = true;
-                    try {
-                        const nextPage = this.conversationsPage + 1;
-                        const params = [`page=${nextPage}`];
-                        if (this.currentWorkspaceId) {
-                            params.push('workspace_id=' + this.currentWorkspaceId);
-                        }
-                        if (this.showArchivedConversations) {
-                            params.push('include_archived=true');
-                        }
-                        const url = '/api/conversations?' + params.join('&');
-                        const response = await fetch(url);
-                        const data = await response.json();
-                        if (data.data && data.data.length > 0) {
-                            this.conversations = [...this.conversations, ...data.data];
-                            this.conversationsPage = data.current_page;
-                            this.conversationsLastPage = data.last_page;
-                        }
-                    } catch (err) {
-                        console.error('Failed to fetch more conversations:', err);
-                    } finally {
-                        this.loadingMoreConversations = false;
-                    }
-                },
 
-                handleConversationsScroll(event) {
-                    const el = event.target;
-                    const threshold = 50; // pixels from bottom
-                    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
-                        this.fetchMoreConversations();
+                    try {
+                        const params = new URLSearchParams({
+                            workspace_id: this.currentWorkspaceId,
+                            include_archived: this.showArchivedSessions ? '1' : '0',
+                        });
+                        const response = await fetch(`/api/sessions?${params}`);
+                        if (!response.ok) {
+                            console.error('Failed to refresh sidebar:', response.status);
+                            return;
+                        }
+                        const data = await response.json();
+                        const newSessions = data.data || [];
+
+                        // Update cached latest activity
+                        if (newSessions.length > 0) {
+                            this.cachedLatestActivity = newSessions[0].updated_at;
+                        }
+
+                        // Merge new sessions with any additional pages already loaded
+                        const newIds = new Set(newSessions.map(s => s.id));
+                        const extraSessions = this.sessions.filter(s => !newIds.has(s.id));
+                        this.sessions = [...newSessions, ...extraSessions];
+                        this.sessionsPage = data.current_page || 1;
+                        this.sessionsLastPage = data.last_page || 1;
+                    } catch (err) {
+                        console.error('Failed to refresh sidebar:', err);
                     }
                 },
 
@@ -2102,23 +2252,6 @@
                     }
                 },
 
-                clearConversationSearch() {
-                    this.conversationSearchQuery = '';
-                    this.conversationSearchResults = [];
-                    this.showSearchInput = false;
-                },
-
-                clearAllFilters() {
-                    this.conversationSearchQuery = '';
-                    this.conversationSearchResults = [];
-                    this.showArchivedConversations = false;
-                    this.showSearchInput = false;
-                    // Clear sessionStorage (also done by $watch, but explicit for clarity)
-                    sessionStorage.removeItem('pocketdev_showArchivedConversations');
-                    sessionStorage.removeItem('pocketdev_conversationSearchQuery');
-                    this.fetchConversations(); // Refresh list without archived
-                },
-
                 async loadSearchResult(result) {
                     // Close mobile drawer but keep search input visible while search is active
                     this.showMobileDrawer = false;
@@ -2142,6 +2275,12 @@
                     this.currentConversationTitle = null; // Reset title for new conversation
                     this.conversationProvider = null; // Reset for new conversation
                     this.messages = [];
+
+                    // Clear session/screen state for new conversation
+                    this.currentSession = null;
+                    this.screens = [];
+                    this.activeScreenId = null;
+                    this._screenMap = {};
                     this.sessionCost = 0;
                     this.totalTokens = 0;
                     this.inputTokens = 0;
@@ -2153,7 +2292,7 @@
                     this.resetContextTracking();
 
                     // Clear URL to base path
-                    this.updateUrl(null);
+                    this.updateSessionUrl(null);
 
                     // Re-fetch agents and reload current agent's settings
                     await this.fetchAgents();
@@ -2167,24 +2306,54 @@
                     }
                 },
 
-                async toggleArchiveConversation() {
+                async toggleArchiveConversation(screenId = null) {
                     // Note: API routes don't use CSRF middleware - Laravel excludes it by design for stateless APIs
-                    if (!this.currentConversationUuid) return;
+                    // If screenId provided, use that screen; otherwise use active screen
+                    const targetScreenId = screenId || this.activeScreenId;
+                    const screen = this.getScreen(targetScreenId);
 
-                    const isArchived = this.currentConversationStatus === 'archived';
+                    // Panel screens have no conversation - fall back to close
+                    if (screen?.type === 'panel') {
+                        return this.closeScreen(targetScreenId);
+                    }
+
+                    const conversationUuid = screen?.conversation?.uuid;
+                    if (!conversationUuid) return;
+
+                    const isArchived = screen?.conversation?.status === 'archived';
                     const action = isArchived ? 'unarchive' : 'archive';
+
                     try {
-                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/${action}`, {
+                        const response = await fetch(`/api/conversations/${conversationUuid}/${action}`, {
                             method: 'POST'
                         });
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                         // Update local state - 'idle' is intentional for unarchive since completed
                         // conversations naturally rest at 'idle', and 'failed' ones can be retried
-                        this.currentConversationStatus = isArchived ? 'idle' : 'archived';
+                        const newStatus = isArchived ? 'idle' : 'archived';
 
-                        // Refresh conversation list
-                        await this.fetchConversations();
+                        // Update currentConversationStatus if targeting the active screen
+                        if (targetScreenId === this.activeScreenId) {
+                            this.currentConversationStatus = newStatus;
+                        }
+
+                        // Also update the screen's conversation status in local data
+                        if (screen?.conversation) {
+                            screen.conversation.status = newStatus;
+                        }
+
+                        // If archiving, switch to another visible screen
+                        if (!isArchived) {
+                            // Find another visible screen to switch to
+                            const otherVisibleScreen = this.visibleScreenOrder.find(id => id !== targetScreenId);
+                            if (otherVisibleScreen) {
+                                this.activateScreen(otherVisibleScreen);
+                            }
+                            this.showToast('Chat archived');
+                        } else {
+                            this.showToast('Chat restored');
+                        }
                     } catch (err) {
                         console.error('Failed to toggle archive:', err);
                         this.showError('Failed to ' + action + ' conversation');
@@ -2207,9 +2376,6 @@
 
                         // Reset to new conversation
                         this.newConversation();
-
-                        // Refresh conversation list
-                        await this.fetchConversations();
                     } catch (err) {
                         console.error('Failed to delete conversation:', err);
                         this.showError('Failed to delete conversation');
@@ -2219,6 +2385,9 @@
                 openRenameModal() {
                     if (!this.currentConversationUuid) return;
                     this.renameTitle = this.currentConversationTitle || '';
+                    // Get tab_label from current screen's conversation
+                    const screen = this.getScreen(this.activeScreenId);
+                    this.renameTabLabel = screen?.conversation?.tab_label || '';
                     this.showRenameModal = true;
                     // Focus input after modal opens
                     this.$nextTick(() => {
@@ -2236,6 +2405,12 @@
                         return;
                     }
 
+                    // Enforce tab label max length (6 chars)
+                    if (this.renameTabLabel.trim().length > 6) {
+                        this.showError('Tab label cannot exceed 6 characters');
+                        return;
+                    }
+
                     this.renameSaving = true;
                     try {
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/title`, {
@@ -2244,7 +2419,10 @@
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                             },
-                            body: JSON.stringify({ title: this.renameTitle.trim() })
+                            body: JSON.stringify({
+                                title: this.renameTitle.trim(),
+                                tab_label: this.renameTabLabel.trim() || null
+                            })
                         });
 
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -2252,10 +2430,13 @@
                         const data = await response.json();
                         this.currentConversationTitle = data.title;
 
-                        // Update the conversation in the sidebar list
-                        const conv = this.conversations.find(c => c.uuid === this.currentConversationUuid);
-                        if (conv) {
-                            conv.title = data.title;
+                        // Also update the screen in the current session if this conversation is displayed
+                        if (this.activeScreenId && this.screens) {
+                            const screen = this.getScreen(this.activeScreenId);
+                            if (screen?.type === 'chat' && screen.conversation?.uuid === this.currentConversationUuid) {
+                                screen.conversation.title = data.title;
+                                screen.conversation.tab_label = data.tab_label;
+                            }
                         }
 
                         this.showRenameModal = false;
@@ -2264,6 +2445,57 @@
                         this.showError('Failed to rename conversation');
                     } finally {
                         this.renameSaving = false;
+                    }
+                },
+
+                openRenameSessionModal() {
+                    if (!this.currentSession) return;
+                    this.renameSessionName = this.currentSession.name || '';
+                    this.showRenameSessionModal = true;
+                    // Focus input after modal opens
+                    this.$nextTick(() => {
+                        this.$refs.renameSessionInput?.focus();
+                        this.$refs.renameSessionInput?.select();
+                    });
+                },
+
+                async saveSessionName() {
+                    if (!this.currentSession || !this.renameSessionName.trim()) return;
+
+                    // Enforce max character limit
+                    if (this.renameSessionName.trim().length > window.TITLE_MAX_LENGTH) {
+                        this.showError(`Session name cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
+                        return;
+                    }
+
+                    this.renameSessionSaving = true;
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
+                            body: JSON.stringify({ name: this.renameSessionName.trim() })
+                        });
+
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                        const data = await response.json();
+                        this.currentSession.name = data.name;
+
+                        // Also update the session in the sessions list for sidebar
+                        const sessionInList = this.filteredSessions.find(s => s.id === this.currentSession.id);
+                        if (sessionInList) {
+                            sessionInList.name = data.name;
+                        }
+
+                        this.showRenameSessionModal = false;
+                    } catch (err) {
+                        console.error('Failed to rename session:', err);
+                        this.showError('Failed to rename session');
+                    } finally {
+                        this.renameSessionSaving = false;
                     }
                 },
 
@@ -2327,8 +2559,8 @@
                                     this.currentWorkspace = targetWorkspace;
                                     this.currentWorkspaceId = targetWorkspace.id;
 
-                                    // Reload conversations and agents for the new workspace
-                                    await this.fetchConversations();
+                                    // Reload sessions and agents for the new workspace
+                                    await this.fetchSessions();
                                     await this.fetchAgents();
 
                                     // Clear the loading state before recursive call
@@ -2355,8 +2587,8 @@
                         // Only set state after validating response
                         this.currentConversationUuid = uuid;
 
-                        // Update URL to reflect loaded conversation
-                        this.updateUrl(uuid);
+                        // Note: URL is session-based, so we don't update it when loading a conversation
+                        // The session URL is set when loadSession() is called
                         this.messages = [];
                         this.isAtBottom = true; // Hide scroll button during load
                         // Only enable auto-scroll if not coming from search result
@@ -2440,7 +2672,10 @@
                         // Update provider/model from conversation
                         if (data.conversation?.provider_type) {
                             this.provider = data.conversation.provider_type;
-                            this.conversationProvider = data.conversation.provider_type; // Store for agent filtering
+                            // Only lock provider (for mid-conversation agent filtering) if conversation has messages
+                            // New conversations should allow switching to any agent/provider
+                            const hasMessages = data.conversation.messages && data.conversation.messages.length > 0;
+                            this.conversationProvider = hasMessages ? data.conversation.provider_type : null;
                             this.updateModels(); // Refresh available models for this provider
                         }
                         if (data.conversation?.model) {
@@ -2453,13 +2688,31 @@
                         // Update conversation title for header
                         this.currentConversationTitle = data.conversation?.title || null;
 
-                        // Set agent from conversation (don't use selectAgent which would PATCH backend)
-                        if (data.conversation?.agent_id) {
-                            // If agents not yet loaded, fetch them first
-                            if (this.agents.length === 0) {
-                                await this.fetchAgents();
-                            }
+                        // Load session and screens if available
+                        console.log('[DEBUG] Screen data:', data.conversation?.screen);
+                        console.log('[DEBUG] Session data:', data.conversation?.screen?.session);
+                        if (data.conversation?.screen?.session) {
+                            console.log('[DEBUG] Loading session from conversation');
+                            await this.loadSessionFromConversation(data.conversation.screen.session);
+                            this.activeScreenId = data.conversation.screen.id;
+                            console.log('[DEBUG] currentSession set:', this.currentSession);
+                            console.log('[DEBUG] activeScreenId set:', this.activeScreenId);
+                        } else {
+                            console.log('[DEBUG] No screen.session found - clearing session state');
+                            // Clear session state if conversation has no screen
+                            this.currentSession = null;
+                            this.screens = [];
+                            this.activeScreenId = null;
+                            this._screenMap = {};
+                        }
 
+                        // Set agent from conversation (don't use selectAgent which would PATCH backend)
+                        // If agents not yet loaded, fetch them first
+                        if (this.agents.length === 0) {
+                            await this.fetchAgents();
+                        }
+
+                        if (data.conversation?.agent_id) {
                             const agent = this.agents.find(a => a.id === data.conversation.agent_id);
                             if (agent) {
                                 // Set agent state directly - don't call selectAgent() as that
@@ -2474,8 +2727,24 @@
                                 this.currentAgentId = null;
                             }
                         } else {
-                            // Conversation has no agent - reset agent state
-                            this.currentAgentId = null;
+                            // Conversation has no agent - use default agent for NEW conversations (no messages)
+                            const hasMessages = data.conversation.messages && data.conversation.messages.length > 0;
+                            if (!hasMessages && this.agents.length > 0) {
+                                // New conversation: select default agent
+                                const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+                                if (defaultAgent) {
+                                    this.currentAgentId = defaultAgent.id;
+                                    this.claudeCodeAllowedTools = defaultAgent.allowed_tools || [];
+                                    this.provider = defaultAgent.provider;
+                                    this.model = defaultAgent.model;
+                                    this.clearActiveSkill();
+                                    this.fetchSkills();
+                                    this.updateModels();
+                                }
+                            } else {
+                                // Existing conversation without agent - leave as null
+                                this.currentAgentId = null;
+                            }
                         }
 
                         // Load provider-specific reasoning settings from conversation
@@ -2505,9 +2774,1184 @@
                         // Reset local state and clear URL without creating a back-button loop
                         this.currentConversationUuid = null;
                         this.messages = [];
-                        this.updateUrl(null, { replace: true });
+                        this.updateSessionUrl(null, { replace: true });
                     }
                 },
+
+                // ===== Sessions & Screens =====
+
+                // Fetch sessions for current workspace (first page)
+                async fetchSessions() {
+                    console.log('[DEBUG] fetchSessions called, workspaceId:', this.currentWorkspaceId);
+                    if (!this.currentWorkspaceId) {
+                        console.log('[DEBUG] fetchSessions: No workspace ID, returning early');
+                        return;
+                    }
+
+                    try {
+                        const params = new URLSearchParams({
+                            workspace_id: this.currentWorkspaceId,
+                            include_archived: this.showArchivedSessions ? '1' : '0',
+                        });
+                        console.log('[DEBUG] fetchSessions: Fetching from /api/sessions?' + params.toString());
+                        const response = await fetch(`/api/sessions?${params}`);
+                        console.log('[DEBUG] fetchSessions: Response status:', response.status);
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.sessions = data.data || [];
+                            this.sessionsPage = data.current_page || 1;
+                            this.sessionsLastPage = data.last_page || 1;
+                            console.log('[DEBUG] Fetched sessions:', this.sessions.length, 'page', this.sessionsPage, 'of', this.sessionsLastPage);
+                        } else {
+                            console.error('[DEBUG] fetchSessions: Non-OK response', response.status, await response.text());
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch sessions:', err);
+                    }
+                },
+
+                // Fetch more sessions (infinite scroll)
+                async fetchMoreSessions() {
+                    console.log('[DEBUG] fetchMoreSessions called, page:', this.sessionsPage, 'lastPage:', this.sessionsLastPage, 'loading:', this.loadingMoreSessions);
+                    if (this.loadingMoreSessions || this.sessionsPage >= this.sessionsLastPage) {
+                        console.log('[DEBUG] fetchMoreSessions skipped - already loading or at last page');
+                        return;
+                    }
+
+                    this.loadingMoreSessions = true;
+                    try {
+                        const nextPage = this.sessionsPage + 1;
+                        const params = new URLSearchParams({
+                            workspace_id: this.currentWorkspaceId,
+                            include_archived: this.showArchivedSessions ? '1' : '0',
+                            page: nextPage.toString(),
+                        });
+                        console.log('[DEBUG] fetchMoreSessions fetching page:', nextPage);
+                        const response = await fetch(`/api/sessions?${params}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            const newSessions = data.data || [];
+
+                            // Deduplicate: only add sessions not already in the array
+                            // This handles race conditions with refreshSidebar which resets sessionsPage
+                            const existingIds = new Set(this.sessions.map(s => s.id));
+                            const uniqueNewSessions = newSessions.filter(s => !existingIds.has(s.id));
+
+                            console.log('[DEBUG] fetchMoreSessions received:', newSessions.length, 'items,', uniqueNewSessions.length, 'unique, page:', data.current_page);
+                            this.sessions = [...this.sessions, ...uniqueNewSessions];
+                            this.sessionsPage = data.current_page || nextPage;
+                            this.sessionsLastPage = data.last_page || this.sessionsLastPage;
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch more sessions:', err);
+                    } finally {
+                        this.loadingMoreSessions = false;
+                    }
+                },
+
+                // Handle sessions list scroll for infinite scroll
+                handleSessionsScroll(event) {
+                    const el = event.target;
+                    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+                    if (nearBottom) {
+                        this.fetchMoreSessions();
+                    }
+                },
+
+                // Load a session by ID
+                async loadSession(sessionId) {
+                    console.log('[DEBUG] loadSession called:', sessionId);
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}`);
+                        if (!response.ok) throw new Error('Failed to load session');
+
+                        const session = await response.json();
+                        console.log('[DEBUG] Loaded session:', session.id, session.name, 'screens:', session.screens?.length);
+
+                        // Update URL to session (only if different session)
+                        if (this.currentSession?.id !== session.id) {
+                            this.updateSessionUrl(session.id);
+                        }
+
+                        // Save as last session for this workspace (for returning from settings)
+                        fetch(`/session/${sessionId}/last`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        }).catch(() => {}); // Fire and forget
+
+                        // Set session state
+                        this.currentSession = session;
+                        this.screens = session.screens || [];
+
+                        // Build lookup map
+                        this._screenMap = {};
+                        for (const screen of this.screens) {
+                            this._screenMap[screen.id] = screen;
+                        }
+
+                        // Determine which screen to show (last active or first)
+                        const activeScreenId = session.last_active_screen_id || session.screen_order?.[0];
+                        this.activeScreenId = activeScreenId;
+
+                        // If it's a chat screen, load the conversation
+                        const activeScreen = this.getScreen(activeScreenId);
+                        if (activeScreen?.type === 'chat' && activeScreen.conversation_id) {
+                            const convUuid = activeScreen.conversation?.uuid;
+                            if (convUuid) {
+                                // Load conversation without triggering session reload
+                                await this.loadConversationForScreen(convUuid);
+                            }
+                        }
+                        // If it's a panel screen, load the panel content
+                        if (activeScreen?.type === 'panel' && activeScreen.panel_id) {
+                            await this.loadPanelContent(activeScreen.panel_id);
+                        }
+
+                    } catch (err) {
+                        console.error('Failed to load session:', err);
+                        this.showError('Failed to load session');
+                    }
+                },
+
+                // Refresh screens list without reloading conversation (for when panels are opened programmatically)
+                async refreshSessionScreens() {
+                    if (!this.currentSession?.id) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}`);
+                        if (!response.ok) throw new Error('Failed to refresh session');
+
+                        const session = await response.json();
+
+                        // Update screens list
+                        this.screens = session.screens || [];
+
+                        // Update currentSession with new screen_order (this drives the tab rendering)
+                        if (this.currentSession) {
+                            this.currentSession.screen_order = session.screen_order || [];
+                            this.currentSession.last_active_screen_id = session.last_active_screen_id;
+                        }
+
+                        // Rebuild lookup map
+                        this._screenMap = {};
+                        for (const screen of this.screens) {
+                            this._screenMap[screen.id] = screen;
+                        }
+
+                        // Update to the newly active screen (the one that was just opened)
+                        if (session.last_active_screen_id && session.last_active_screen_id !== this.activeScreenId) {
+                            this.activeScreenId = session.last_active_screen_id;
+                            const activeScreen = this.getScreen(this.activeScreenId);
+
+                            // If it's a panel, load its content
+                            if (activeScreen?.type === 'panel' && activeScreen.panel_id) {
+                                await this.loadPanelContent(activeScreen.panel_id);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Failed to refresh session screens:', err);
+                    }
+                },
+
+                // Load conversation without reloading session (for screen switching)
+                async loadConversationForScreen(uuid) {
+                    this.loadingConversation = true;
+                    this._loadingConversationUuid = uuid;
+                    this.disconnectFromStream();
+
+                    try {
+                        const response = await fetch(`/api/conversations/${uuid}`);
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const data = await response.json();
+
+                        if (this._loadingConversationUuid !== uuid) return;
+
+                        this.currentConversationUuid = uuid;
+                        // Note: Don't update URL here - URLs are session-based, not conversation-based
+                        this.messages = [];
+                        this.isAtBottom = true;
+                        this.autoScrollEnabled = true;
+                        this.ignoreScrollEvents = true;
+
+                        // Reset counters
+                        this.inputTokens = 0;
+                        this.outputTokens = 0;
+                        this.cacheCreationTokens = 0;
+                        this.cacheReadTokens = 0;
+                        this.sessionCost = 0;
+
+                        // Sum costs from messages
+                        if (data.conversation?.messages) {
+                            for (const msg of data.conversation.messages) {
+                                this.inputTokens += msg.input_tokens || 0;
+                                this.outputTokens += msg.output_tokens || 0;
+                                if (msg.cost) this.sessionCost += msg.cost;
+                            }
+                        }
+                        this.totalTokens = this.inputTokens + this.outputTokens;
+
+                        // Load context tracking
+                        if (data.context) {
+                            this.contextWindowSize = data.context.context_window_size || 0;
+                            this.lastContextTokens = data.context.last_context_tokens || 0;
+                            this.contextPercentage = data.context.usage_percentage || 0;
+                            this.contextWarningLevel = data.context.warning_level || 'safe';
+                        }
+
+                        // Load messages
+                        if (data.conversation?.messages?.length > 0) {
+                            await this.loadMessagesProgressively(data.conversation.messages, null, uuid);
+                        } else {
+                            this.loadingConversation = false;
+                            this._loadingConversationUuid = null;
+                        }
+
+                        // Update provider/model
+                        const hasMessages = data.conversation?.messages && data.conversation.messages.length > 0;
+                        if (data.conversation?.provider_type) {
+                            this.provider = data.conversation.provider_type;
+                            // Only lock provider for mid-conversation agent filtering if conversation has started
+                            this.conversationProvider = hasMessages ? data.conversation.provider_type : null;
+                            this.updateModels();
+                        }
+                        if (data.conversation?.model) {
+                            this.model = data.conversation.model;
+                        }
+
+                        this.currentConversationStatus = data.conversation?.status || 'idle';
+                        this.currentConversationTitle = data.conversation?.title || null;
+
+                        // Set agent
+                        if (data.conversation?.agent_id) {
+                            const agent = this.agents.find(a => a.id === data.conversation.agent_id);
+                            if (agent) {
+                                this.currentAgentId = agent.id;
+                                this.claudeCodeAllowedTools = agent.allowed_tools || [];
+                                this.clearActiveSkill();
+                                this.fetchSkills();
+                            }
+                        } else if (!hasMessages && this.agents.length > 0) {
+                            // New conversation without agent: use default agent
+                            const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+                            if (defaultAgent) {
+                                this.currentAgentId = defaultAgent.id;
+                                this.claudeCodeAllowedTools = defaultAgent.allowed_tools || [];
+                                this.provider = defaultAgent.provider;
+                                this.model = defaultAgent.model;
+                                this.clearActiveSkill();
+                                this.fetchSkills();
+                                this.updateModels();
+                            }
+                        } else {
+                            this.currentAgentId = null;
+                        }
+
+                        this.$nextTick(() => {
+                            this.ignoreScrollEvents = false;
+                        });
+
+                        await this.checkAndReconnectStream(uuid);
+
+                    } catch (err) {
+                        this.loadingConversation = false;
+                        this._loadingConversationUuid = null;
+                        console.error('Failed to load conversation:', err);
+                    }
+                },
+
+                // Create a new session
+                async newSession() {
+                    if (!this.currentWorkspaceId) return;
+
+                    try {
+                        const response = await fetch('/api/sessions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                workspace_id: this.currentWorkspaceId,
+                                name: 'New Session',
+                                create_initial_chat: true,
+                            }),
+                        });
+
+                        if (!response.ok) throw new Error('Failed to create session');
+
+                        const session = await response.json();
+                        console.log('[DEBUG] Created new session:', session.id);
+
+                        // Add to sessions list
+                        this.sessions.unshift(session);
+
+                        // Load the new session
+                        await this.loadSession(session.id);
+
+                    } catch (err) {
+                        console.error('Failed to create session:', err);
+                        this.showError('Failed to create session');
+                    }
+                },
+
+                // Filter sessions (triggered by search input)
+                filterSessions() {
+                    // The filtering is done by the computed getter `filteredSessions`
+                    // This method exists for the @input handler
+                },
+
+                // Clear all filters (updated for sessions)
+                clearAllFilters() {
+                    this.showArchivedSessions = false;
+                    this.sessionSearchQuery = '';
+                    this.fetchSessions();
+                },
+
+                // Load session data from a conversation's screen.session relationship
+                async loadSessionFromConversation(session) {
+                    console.log('[DEBUG] loadSessionFromConversation called with session:', session?.id, session?.name);
+                    console.log('[DEBUG] Session screens:', session?.screens?.length, session?.screens?.map(s => s.id));
+                    console.log('[DEBUG] Session screen_order:', session?.screen_order);
+                    this.currentSession = session;
+                    this.screens = session.screens || [];
+                    console.log('[DEBUG] currentSession now set to:', this.currentSession?.id);
+
+                    // Build a lookup map for quick screen access
+                    this._screenMap = {};
+                    for (const screen of this.screens) {
+                        this._screenMap[screen.id] = screen;
+                    }
+                },
+
+                // Get screen by ID
+                getScreen(screenId) {
+                    return this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
+                },
+
+                // Get screen title for display (full title, used for tooltips)
+                getScreenTitle(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'Screen';
+                    if (screen.type === 'chat') {
+                        return screen.conversation?.title || 'Chat';
+                    }
+                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                },
+
+                // Get screen tab label for display (short form for tabs)
+                getScreenTabLabel(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'Screen';
+                    if (screen.type === 'chat') {
+                        // Use tab_label if set, otherwise derive from title
+                        const tabLabel = screen.conversation?.tab_label;
+                        if (tabLabel && tabLabel.trim()) {
+                            return tabLabel;
+                        }
+                        const title = screen.conversation?.title || 'Chat';
+                        return title.length > 5 ? title.slice(0, 5) + '...' : title;
+                    }
+                    // For panels, use the full name (they're typically short already)
+                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                },
+
+                // Get screen type icon class
+                getScreenIcon(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'fa-solid fa-square';
+                    return screen.type === 'chat' ? 'fa-solid fa-comment' : 'fa-solid fa-table-columns';
+                },
+
+                // Get screen type color class
+                getScreenTypeColor(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'text-gray-400';
+                    return screen.type === 'chat' ? 'text-blue-400' : 'text-purple-400';
+                },
+
+                // Activate a screen (switch to it)
+                async activateScreen(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return;
+
+                    // If clicking the already active screen, do nothing
+                    if (this.activeScreenId === screenId) return;
+
+                    // Update local state first
+                    this.activeScreenId = screenId;
+
+                    // Update server state (sets last_active_screen_id on session)
+                    try {
+                        await fetch(`/api/screens/${screenId}/activate`, { method: 'POST' });
+                    } catch (err) {
+                        console.error('Failed to activate screen:', err);
+                    }
+
+                    // For chat screens, load the conversation content
+                    if (screen.type === 'chat' && screen.conversation_id) {
+                        const convUuid = screen.conversation?.uuid;
+                        if (convUuid) {
+                            await this.loadConversationForScreen(convUuid);
+                        }
+                    }
+                    // For panel screens, load panel content
+                    if (screen.type === 'panel' && screen.panel_id) {
+                        await this.loadPanelContent(screen.panel_id);
+                    }
+                },
+
+                // Load panel content from server
+                // Track currently loaded panel to avoid unnecessary reloads
+                _loadedPanelStateId: null,
+
+                async loadPanelContent(panelStateId, force = false) {
+                    // Skip reload if already loaded and not forced
+                    if (!force && this._loadedPanelStateId === panelStateId && this.panelContent) {
+                        return;
+                    }
+
+                    this.loadingPanel = true;
+                    try {
+                        const response = await fetch(`/api/panel/${panelStateId}/render`);
+                        if (!response.ok) {
+                            throw new Error('Failed to load panel');
+                        }
+                        this.panelContent = await response.text();
+                        this._loadedPanelStateId = panelStateId;
+                        // Note: Alpine.initTree is now called by the x-effect on panel-content-container
+                        // when it detects the content has changed
+                    } catch (err) {
+                        console.error('Failed to load panel content:', err);
+                        this.panelContent = '<div class="p-4 text-red-500">Failed to load panel content</div>';
+                    } finally {
+                        this.loadingPanel = false;
+                    }
+                },
+
+                // Mobile swipe navigation handlers
+                // Check if an element or its parents have horizontal scroll available
+                isInHorizontalScrollArea(element) {
+                    let el = element;
+                    while (el && el !== document.body) {
+                        // Check if this element can scroll horizontally
+                        if (el.scrollWidth > el.clientWidth) {
+                            const style = window.getComputedStyle(el);
+                            if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
+                                return true;
+                            }
+                        }
+                        el = el.parentElement;
+                    }
+                    return false;
+                },
+
+                handleSwipeStart(e) {
+                    // Only enable swipe on mobile and when we have multiple screens
+                    if (this.windowWidth >= 768 || this.screens.length <= 1) return;
+
+                    // Don't activate swipe if touch started in a horizontally scrollable area
+                    if (this.isInHorizontalScrollArea(e.target)) return;
+
+                    this.swipeStartX = e.touches[0].clientX;
+                    this.swipeStartY = e.touches[0].clientY;
+                    this.swipeCurrentX = this.swipeStartX;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
+                },
+
+                handleSwipeMove(e) {
+                    if (this.windowWidth >= 768 || this.screens.length <= 1) return;
+                    if (this.swipeStartX === 0) return;
+
+                    const currentX = e.touches[0].clientX;
+                    const currentY = e.touches[0].clientY;
+                    const deltaX = currentX - this.swipeStartX;
+                    const deltaY = currentY - this.swipeStartY;
+
+                    // Only start swiping if horizontal movement is greater than vertical
+                    if (!this.isSwiping) {
+                        if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+                            this.isSwiping = true;
+                        } else if (Math.abs(deltaY) > 10) {
+                            // User is scrolling vertically, abort swipe
+                            this.swipeStartX = 0;
+                            return;
+                        }
+                    }
+
+                    if (!this.isSwiping) return;
+
+                    // Prevent vertical scrolling while swiping
+                    e.preventDefault();
+
+                    const screenOrder = this.currentSession?.screen_order || [];
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+                    const isAtStart = currentIndex === 0;
+                    const isAtEnd = currentIndex === screenOrder.length - 1;
+
+                    // Apply edge resistance when at boundaries
+                    let adjustedDelta = deltaX;
+                    if ((deltaX > 0 && isAtStart) || (deltaX < 0 && isAtEnd)) {
+                        adjustedDelta = deltaX * this.swipeEdgeResistance;
+                    }
+
+                    this.swipeDeltaX = adjustedDelta;
+                    this.swipeCurrentX = currentX;
+                },
+
+                handleSwipeEnd(e) {
+                    if (this.windowWidth >= 768 || !this.isSwiping) {
+                        this.resetSwipeState();
+                        return;
+                    }
+
+                    const screenOrder = this.currentSession?.screen_order || [];
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+
+                    // Check if swipe exceeded threshold
+                    if (Math.abs(this.swipeDeltaX) > this.swipeThreshold) {
+                        if (this.swipeDeltaX > 0 && currentIndex > 0) {
+                            // Swipe right → previous screen
+                            this.activateScreen(screenOrder[currentIndex - 1]);
+                        } else if (this.swipeDeltaX < 0 && currentIndex < screenOrder.length - 1) {
+                            // Swipe left → next screen
+                            this.activateScreen(screenOrder[currentIndex + 1]);
+                        }
+                    }
+
+                    this.resetSwipeState();
+                },
+
+                resetSwipeState() {
+                    this.swipeStartX = 0;
+                    this.swipeStartY = 0;
+                    this.swipeCurrentX = 0;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
+                },
+
+                // Close/remove a screen
+                async closeScreen(screenId) {
+                    if (this.screens.length <= 1) return; // Don't close last screen
+
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return;
+
+                    try {
+                        await fetch(`/api/screens/${screenId}`, { method: 'DELETE' });
+
+                        // Clear loaded panel cache if closing the currently loaded panel
+                        if (screen.type === 'panel' && screen.panel_id === this._loadedPanelStateId) {
+                            this._loadedPanelStateId = null;
+                            this.panelContent = '';
+                        }
+
+                        // Remove from local state
+                        this.screens = this.screens.filter(s => s.id !== screenId);
+                        if (this.currentSession?.screen_order) {
+                            this.currentSession.screen_order = this.currentSession.screen_order.filter(id => id !== screenId);
+                        }
+                        delete this._screenMap[screenId];
+
+                        // If we closed the active screen, switch to another
+                        if (this.activeScreenId === screenId) {
+                            const nextScreen = this.screens[0];
+                            if (nextScreen) {
+                                await this.activateScreen(nextScreen.id);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Failed to close screen:', err);
+                        this.showError('Failed to close screen');
+                    }
+                },
+
+                // Add a new chat screen
+                async addChatScreen() {
+                    // If no session exists yet, create one first
+                    if (!this.currentSession) {
+                        try {
+                            const response = await fetch('/api/sessions', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    name: 'New Session',
+                                    workspace_id: this.currentWorkspaceId
+                                })
+                            });
+                            if (!response.ok) throw new Error('Failed to create session');
+                            const session = await response.json();
+                            this.currentSession = session;
+                            this.sessions.unshift(session);
+                            this.screens = session.screens || [];
+                            this._screenMap = {};
+                            for (const screen of this.screens) {
+                                this._screenMap[screen.id] = screen;
+                            }
+                            console.log('[DEBUG] Created new session for chat:', session.id);
+                        } catch (err) {
+                            console.error('Failed to create session for chat:', err);
+                            this.showError('Failed to create session');
+                            return;
+                        }
+                    }
+
+                    try {
+                        // Get default agent for new conversations (same logic as loadConversation)
+                        const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/chat`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                activate: true,
+                                agent_id: defaultAgent?.id || null
+                            })
+                        });
+
+                        if (!response.ok) throw new Error('Failed to create chat screen');
+
+                        const screen = await response.json();
+                        this.screens.push(screen);
+                        this._screenMap[screen.id] = screen;
+                        this.currentSession.screen_order = [...(this.currentSession.screen_order || []), screen.id];
+                        this.activeScreenId = screen.id;
+
+                        // Load the new conversation
+                        if (screen.conversation?.uuid) {
+                            await this.loadConversation(screen.conversation.uuid);
+
+                            // Fallback: ensure conversation is set even if loadConversation returned early
+                            // This handles race conditions where _loadingConversationUuid changed
+                            // Note: URL is session-based, so we don't update it when switching screens
+                            if (this.currentConversationUuid !== screen.conversation.uuid) {
+                                this.currentConversationUuid = screen.conversation.uuid;
+                            }
+                        }
+
+                        // Dispatch event to scroll tabs
+                        this.$dispatch('screen-added');
+                    } catch (err) {
+                        console.error('Failed to add chat screen:', err);
+                        this.showError('Failed to add new chat');
+                    }
+                },
+
+                // Add a new panel screen
+                async addPanelScreen(panelSlug) {
+                    // If no session exists yet, create one first
+                    if (!this.currentSession) {
+                        try {
+                            const response = await fetch('/api/sessions', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    name: 'New Session',
+                                    workspace_id: this.currentWorkspaceId
+                                })
+                            });
+                            if (!response.ok) throw new Error('Failed to create session');
+                            const session = await response.json();
+                            this.currentSession = session;
+                            this.sessions.unshift(session);
+                            this.screens = session.screens || [];
+                            this._screenMap = {};
+                            for (const screen of this.screens) {
+                                this._screenMap[screen.id] = screen;
+                            }
+                            console.log('[DEBUG] Created new session for panel:', session.id);
+                        } catch (err) {
+                            console.error('Failed to create session for panel:', err);
+                            this.showError('Failed to create session');
+                            return;
+                        }
+                    }
+
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/panel`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ panel_slug: panelSlug, activate: true })
+                        });
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error('Panel creation failed:', response.status, errorText);
+                            throw new Error('Failed to create panel screen');
+                        }
+
+                        const data = await response.json();
+                        console.log('[DEBUG] Panel screen created:', data);
+                        const screen = data.screen;
+                        // Store panel info in screen for tab display
+                        if (data.panel) {
+                            screen.panel = data.panel;
+                        }
+                        this.screens.push(screen);
+                        this._screenMap[screen.id] = screen;
+                        this.currentSession.screen_order = [...(this.currentSession.screen_order || []), screen.id];
+                        this.activeScreenId = screen.id;
+                        console.log('[DEBUG] Active screen set:', screen.id, 'type:', screen.type, 'panel_id:', screen.panel_id);
+                        console.log('[DEBUG] isActiveScreenPanel:', this.isActiveScreenPanel);
+
+                        // Load panel content
+                        if (screen.panel_id) {
+                            console.log('[DEBUG] Loading panel content for:', screen.panel_id);
+                            await this.loadPanelContent(screen.panel_id);
+                            console.log('[DEBUG] Panel content loaded, length:', this.panelContent?.length);
+                        } else {
+                            console.warn('[DEBUG] No panel_id on screen:', screen);
+                        }
+
+                        // Dispatch event to scroll tabs
+                        this.$dispatch('screen-added');
+                    } catch (err) {
+                        console.error('Failed to add panel screen:', err);
+                        this.showError('Failed to add panel');
+                    }
+                },
+
+                // Scroll to the active tab in the tabs container
+                scrollToActiveTab() {
+                    const container = this.$refs.screenTabsContainer;
+                    if (!container) return;
+                    const activeTab = container.querySelector(`button[class*="bg-gray-700"]`);
+                    if (activeTab) {
+                        activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                    }
+                },
+
+                // Drag-and-drop handlers for screen tab reordering
+                handleDragStart(event, screenId) {
+                    this.draggedScreenId = screenId;
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', screenId);
+                    // Add a slight delay to allow the drag image to form before adding styling
+                    setTimeout(() => {
+                        if (event.target) {
+                            event.target.closest('[data-screen-tab]')?.classList.add('opacity-50');
+                        }
+                    }, 0);
+                },
+
+                handleDragOver(event, screenId) {
+                    if (!this.draggedScreenId || this.draggedScreenId === screenId) {
+                        this.dragOverScreenId = null;
+                        this.dragDropPosition = null;
+                        return;
+                    }
+
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+
+                    // Determine if dropping before or after based on mouse position
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const midpoint = rect.left + rect.width / 2;
+                    this.dragOverScreenId = screenId;
+                    this.dragDropPosition = event.clientX < midpoint ? 'before' : 'after';
+                },
+
+                handleDragLeave(event) {
+                    // Only clear if we're leaving the tab entirely (not entering a child)
+                    if (!event.currentTarget.contains(event.relatedTarget)) {
+                        this.dragOverScreenId = null;
+                        this.dragDropPosition = null;
+                    }
+                },
+
+                handleDrop(event, targetScreenId) {
+                    event.preventDefault();
+
+                    if (!this.draggedScreenId || this.draggedScreenId === targetScreenId) {
+                        this.resetDragState();
+                        return;
+                    }
+
+                    const currentOrder = [...(this.currentSession?.screen_order || [])];
+                    const draggedIndex = currentOrder.indexOf(this.draggedScreenId);
+                    const targetIndex = currentOrder.indexOf(targetScreenId);
+
+                    if (draggedIndex === -1 || targetIndex === -1) {
+                        this.resetDragState();
+                        return;
+                    }
+
+                    // Remove dragged item from current position
+                    currentOrder.splice(draggedIndex, 1);
+
+                    // Calculate new position
+                    let newIndex = currentOrder.indexOf(targetScreenId);
+                    if (this.dragDropPosition === 'after') {
+                        newIndex += 1;
+                    }
+
+                    // Insert at new position
+                    currentOrder.splice(newIndex, 0, this.draggedScreenId);
+
+                    // Reorder screens
+                    this.reorderScreens(currentOrder);
+                    this.resetDragState();
+                },
+
+                handleDragEnd(event) {
+                    // Remove styling from dragged element
+                    event.target.closest('[data-screen-tab]')?.classList.remove('opacity-50');
+                    this.resetDragState();
+                },
+
+                resetDragState() {
+                    this.draggedScreenId = null;
+                    this.dragOverScreenId = null;
+                    this.dragDropPosition = null;
+                },
+
+                // Persist screen order to server
+                async reorderScreens(newOrder) {
+                    if (!this.currentSession) return;
+
+                    // Update local state immediately for responsiveness
+                    this.currentSession.screen_order = newOrder;
+
+                    try {
+                        // Persist to server
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/reorder`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ screen_order: newOrder })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Failed to reorder screens');
+                        }
+                    } catch (err) {
+                        console.error('Failed to reorder screens:', err);
+                        // Optionally: revert local state or show error
+                        this.showError('Failed to save screen order');
+                    }
+                },
+
+                // Fetch available panels
+                async fetchAvailablePanels() {
+                    try {
+                        const response = await fetch('/api/panels');
+                        if (response.ok) {
+                            this.availablePanels = await response.json();
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch panels:', err);
+                    }
+                },
+
+                // Save session layout as workspace default template
+                async saveSessionAsDefault(session) {
+                    if (!session?.id) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${session.id}/save-as-default`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to save as default');
+
+                        const data = await response.json();
+                        this.workspaceHasDefaultTemplate = true;
+                        this.showToast('Session layout saved as default template');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to save session as default:', err);
+                        this.showError('Failed to save session as default template');
+                    }
+                },
+
+                // Clear the workspace default session template
+                async clearDefaultTemplate() {
+                    if (!this.currentSession?.id) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/clear-default`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to clear default');
+
+                        this.workspaceHasDefaultTemplate = false;
+                        this.showToast('Default template cleared');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to clear default template:', err);
+                        this.showError('Failed to clear default template');
+                    }
+                },
+
+                // Show a toast notification
+                showToast(message) {
+                    this.toastMessage = message;
+                    this.toastVisible = true;
+                    setTimeout(() => {
+                        this.toastVisible = false;
+                    }, 3000);
+                },
+
+                // Archive a session
+                async archiveSession(sessionId) {
+                    if (!sessionId) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}/archive`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to archive session');
+
+                        // Update local state - modify sessions array (filteredSessions is a computed getter)
+                        const session = this.sessions.find(s => s.id === sessionId);
+                        if (session) {
+                            session.is_archived = true;
+                        }
+
+                        // If not showing archived, remove from list
+                        if (!this.showArchivedSessions) {
+                            this.sessions = this.sessions.filter(s => s.id !== sessionId);
+                        }
+
+                        // If this was the current session, load another or create new
+                        if (this.currentSession?.id === sessionId) {
+                            const nextSession = this.sessions.find(s => s.id !== sessionId && !s.is_archived);
+                            if (nextSession) {
+                                await this.loadSession(nextSession.id);
+                            } else {
+                                await this.newSession();
+                            }
+                        }
+
+                        this.showToast('Session archived');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to archive session:', err);
+                        this.showError('Failed to archive session');
+                    }
+                },
+
+                // Restore a session from archive
+                async restoreSession(sessionId) {
+                    if (!sessionId) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}/restore`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to restore session');
+
+                        // Update local state - modify sessions array (filteredSessions is a computed getter)
+                        const session = this.sessions.find(s => s.id === sessionId);
+                        if (session) {
+                            session.is_archived = false;
+                        }
+
+                        this.showToast('Session restored');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to restore session:', err);
+                        this.showError('Failed to restore session');
+                    }
+                },
+
+                // Delete a session (with confirmation)
+                async deleteSession(sessionId) {
+                    if (!sessionId) return;
+
+                    const session = this.sessions.find(s => s.id === sessionId);
+                    const sessionName = session?.name || 'this session';
+
+                    if (!confirm(`Delete "${sessionName}"? This will permanently remove the session and all its tabs. Conversations inside will be archived, not deleted.`)) {
+                        this.sessionMenuId = null;
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to delete session');
+
+                        // Remove from local list - modify sessions array (filteredSessions is a computed getter)
+                        this.sessions = this.sessions.filter(s => s.id !== sessionId);
+
+                        // If this was the current session, load another or create new
+                        if (this.currentSession?.id === sessionId) {
+                            const nextSession = this.sessions.find(s => !s.is_archived);
+                            if (nextSession) {
+                                await this.loadSession(nextSession.id);
+                            } else {
+                                await this.newSession();
+                            }
+                        }
+
+                        this.showToast('Session deleted');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to delete session:', err);
+                        this.showError('Failed to delete session');
+                    }
+                },
+
+                // Open session context menu
+                openSessionMenu(event, session) {
+                    event.stopPropagation();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    this.sessionMenuPos = {
+                        top: rect.bottom + 4,
+                        left: rect.left,
+                        right: rect.right
+                    };
+                    this.sessionMenuId = session.id;
+                },
+
+                // Close session context menu
+                closeSessionMenu() {
+                    this.sessionMenuId = null;
+                },
+
+                // Open restore chat modal and fetch archived conversations
+                async openRestoreChatModal() {
+                    if (!this.currentSession?.id) return;
+
+                    this.showRestoreChatModal = true;
+                    this.loadingArchivedConversations = true;
+                    this.archivedConversations = [];
+
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/archived-conversations`);
+                        if (!response.ok) throw new Error('Failed to fetch archived conversations');
+
+                        const data = await response.json();
+                        this.archivedConversations = data.conversations || [];
+                    } catch (err) {
+                        console.error('Failed to fetch archived conversations:', err);
+                        this.showError('Failed to load archived conversations');
+                    } finally {
+                        this.loadingArchivedConversations = false;
+                    }
+                },
+
+                // Close restore chat modal
+                closeRestoreChatModal() {
+                    this.showRestoreChatModal = false;
+                    this.archivedConversations = [];
+                },
+
+                // Restore an archived conversation (unarchive it)
+                async restoreArchivedConversation(conversationId) {
+                    if (!conversationId) return;
+
+                    try {
+                        const response = await fetch(`/api/conversations/${conversationId}/unarchive`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+
+                        // Remove from archived list
+                        this.archivedConversations = this.archivedConversations.filter(c => c.id !== conversationId);
+
+                        // Reload the session to show the restored conversation in tabs
+                        await this.loadSession(this.currentSession.id);
+
+                        this.showToast('Conversation restored');
+
+                        // Close modal if no more archived conversations
+                        if (this.archivedConversations.length === 0) {
+                            this.closeRestoreChatModal();
+                        }
+                    } catch (err) {
+                        console.error('Failed to restore conversation:', err);
+                        this.showError('Failed to restore conversation');
+                    }
+                },
+
+                // Check if current session has archived conversations (for showing/hiding menu item)
+                get hasArchivedConversations() {
+                    // This is populated when session is loaded - check screens for archived conversations
+                    return this.screens.some(s => s.type === 'chat' && s.conversation?.status === 'archived');
+                },
+
+                // ===== Panel State Sync =====
+
+                // Store for debounce timers per panel
+                _panelSyncTimers: {},
+
+                /**
+                 * Sync panel state to server with debouncing.
+                 * Call this from panel templates when state changes.
+                 *
+                 * Usage in panel Blade template:
+                 *   <div x-data="{ expanded: [], ... }"
+                 *        x-effect="$root.syncPanelState('@{{ $panelState->id }}', { expanded })">
+                 *
+                 * @param {string} panelStateId - The UUID of the panel state
+                 * @param {object} state - The state object to sync
+                 * @param {boolean} merge - If true, merge with existing state; otherwise replace
+                 */
+                syncPanelState(panelStateId, state, merge = true) {
+                    // Clear any existing timer for this panel
+                    if (this._panelSyncTimers[panelStateId]) {
+                        clearTimeout(this._panelSyncTimers[panelStateId]);
+                    }
+
+                    // Set a new debounced sync (500ms delay)
+                    this._panelSyncTimers[panelStateId] = setTimeout(async () => {
+                        try {
+                            const response = await fetch(`/api/panel/${panelStateId}/state`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ state, merge })
+                            });
+
+                            if (!response.ok) {
+                                console.warn('Failed to sync panel state:', response.status);
+                            }
+                        } catch (err) {
+                            console.error('Error syncing panel state:', err);
+                        }
+                    }, 500);
+                },
+
+                /**
+                 * Immediately sync panel state (no debounce).
+                 * Use for critical state changes like before navigation.
+                 */
+                async syncPanelStateImmediate(panelStateId, state, merge = true) {
+                    // Clear any pending debounced sync
+                    if (this._panelSyncTimers[panelStateId]) {
+                        clearTimeout(this._panelSyncTimers[panelStateId]);
+                        delete this._panelSyncTimers[panelStateId];
+                    }
+
+                    try {
+                        const response = await fetch(`/api/panel/${panelStateId}/state`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ state, merge })
+                        });
+
+                        if (!response.ok) {
+                            console.warn('Failed to sync panel state:', response.status);
+                        }
+                    } catch (err) {
+                        console.error('Error syncing panel state:', err);
+                    }
+                },
+
+                // ===== End Sessions & Screens =====
 
                 // Check for active stream and reconnect if found
                 async checkAndReconnectStream(uuid) {
@@ -2531,6 +3975,7 @@
                                 // PAGE REFRESH: Fresh page load during active stream
                                 // Reset state and replay ALL events from 0 to rebuild UI
                                 this._resetStreamStateForReplay();
+                                this._isReplaying = true; // Prevent screen_created events from triggering refreshes during replay
                                 fromIndex = 0;
                                 console.log('[Stream] Page refresh reconnect - replaying all events from 0');
                             } else {
@@ -3196,6 +4641,12 @@
                     if (!this.prompt.trim() && !attachments.hasFiles && !this.activeSkill) return;
                     if (this.isStreaming) return;
 
+                    // Block sending while conversation is being loaded (prevents race conditions)
+                    if (this.loadingConversation) {
+                        this.showError('Please wait for the conversation to load');
+                        return;
+                    }
+
                     // Block unmatched /commands - if prompt starts with / but no skill is active
                     if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
                         const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0];
@@ -3280,10 +4731,16 @@
                             this.currentConversationTitle = data.conversation.title || null;
                             this.conversationProvider = this.provider; // Lock provider for this conversation
 
-                            // Update URL with new conversation UUID
-                            this.updateUrl(this.currentConversationUuid);
-
-                            await this.fetchConversations();
+                            // Load session and screens if returned from the API
+                            if (data.conversation?.screen?.session) {
+                                console.log('[DEBUG] New conversation has session:', data.conversation.screen.session.id);
+                                await this.loadSessionFromConversation(data.conversation.screen.session);
+                                this.activeScreenId = data.conversation.screen.id;
+                                // Refresh sessions list to include the new session
+                                await this.fetchSessions();
+                                // Update URL with new session ID
+                                this.updateSessionUrl(data.conversation.screen.session.id);
+                            }
                         } catch (err) {
                             this.showError('Failed to create conversation: ' + err.message);
                             this.prompt = userPrompt; // Restore prompt so user can retry
@@ -3397,14 +4854,6 @@
                     this.isStreaming = true;
                     this.currentConversationStatus = 'processing'; // Update status badge
 
-                    // Optimistic update: immediately show 'processing' in sidebar
-                    // We'll fetch the real status after receiving the first event (when backend has definitely updated)
-                    const convIndex = this.conversations.findIndex(c => c.uuid === this.currentConversationUuid);
-                    if (convIndex !== -1) {
-                        this.conversations[convIndex].status = 'processing';
-                    }
-                    this._sidebarRefreshedThisStream = false;
-
                     this.streamAbortController = new AbortController();
 
                     try {
@@ -3465,21 +4914,19 @@
                                             } else {
                                                 this.isStreaming = false;
                                                 this.currentConversationStatus = 'failed'; // Update status badge
-                                                // Refresh sidebar to show failed status
-                                                this.fetchConversations();
                                                 this.showError('Failed to connect to stream');
                                                 return;
                                             }
                                         }
                                         if (event.status === 'completed' || event.status === 'failed') {
                                             this.isStreaming = false;
+                                            this._isReplaying = false; // Clear replay flag
                                             // Update status badge
                                             this.currentConversationStatus = event.status === 'failed' ? 'failed' : 'idle';
                                             // Prevent reconnection for a short period
                                             this._justCompletedStream = true;
                                             // Clear sessionStorage - stream is done, no longer need reconnection state
                                             this._clearStreamStorage(this.currentConversationUuid);
-                                            await this.fetchConversations();
                                             // Clear flag after a delay (increased from 1s to 3s for safety)
                                             setTimeout(() => { this._justCompletedStream = false; }, 3000);
                                         }
@@ -3497,12 +4944,6 @@
 
                                     // Handle regular stream events
                                     this.handleStreamEvent(event);
-
-                                    // On first real event, refresh sidebar (backend has now set status to 'processing')
-                                    if (!this._sidebarRefreshedThisStream) {
-                                        this._sidebarRefreshedThisStream = true;
-                                        this.fetchConversations();
-                                    }
 
                                 } catch (parseErr) {
                                     console.error('Parse error:', parseErr, line);
@@ -3835,6 +5276,24 @@
                                 }
                                 // Remove from pending set - tool execution is complete
                                 state.waitingForToolResults.delete(toolResultId);
+
+                                // Detect if a panel was opened and refresh screens
+                                // The content may be raw text OR JSON with an "output" field
+                                let panelOutput = event.content;
+                                if (typeof panelOutput === 'string') {
+                                    try {
+                                        const parsed = JSON.parse(panelOutput);
+                                        if (parsed.output) {
+                                            panelOutput = parsed.output;
+                                        }
+                                    } catch (e) {
+                                        // Not JSON, use as-is
+                                    }
+                                }
+                                const outputStr = typeof panelOutput === 'string' ? panelOutput : '';
+                                if (outputStr.startsWith("Opened panel '")) {
+                                    this.refreshSessionScreens();
+                                }
                             } else {
                                 console.warn('tool_result event missing tool_id in metadata');
                             }
@@ -3924,6 +5383,16 @@
                                 collapsed: true // Collapsed by default
                             });
                             this.scrollToBottom();
+                            break;
+
+                        case 'screen_created':
+                            // A new screen (panel) was created - refresh screen tabs
+                            // Only process during live streaming, not replay
+                            if (!this._isReplaying) {
+                                this.refreshSessionScreens();
+                                // Dispatch event for tabs to scroll to new screen
+                                this.$dispatch('screen-added');
+                            }
                             break;
 
                         case 'done':
@@ -4237,6 +5706,11 @@
                     // Parse markdown, linkify file paths, then sanitize
                     let html = marked.parse(text);
                     html = window.linkifyFilePaths(html);
+
+                    // Wrap tables in scrollable container for mobile
+                    html = html.replace(/<table>/g, '<div class="table-wrapper"><table>');
+                    html = html.replace(/<\/table>/g, '</table></div>');
+
                     return DOMPurify.sanitize(html);
                 },
 

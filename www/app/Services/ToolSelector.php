@@ -9,6 +9,7 @@ use App\Models\PocketTool;
 use App\Models\ToolConflict;
 use App\Models\Workspace;
 use App\Services\MemorySchemaService;
+use App\Panels\PanelRegistry;
 use App\Tools\Tool;
 use App\Tools\UserTool;
 use Illuminate\Support\Collection;
@@ -27,7 +28,8 @@ use Illuminate\Support\Collection;
 class ToolSelector
 {
     public function __construct(
-        private ToolRegistry $registry
+        private ToolRegistry $registry,
+        private PanelRegistry $panelRegistry
     ) {}
 
     /**
@@ -456,6 +458,11 @@ class ToolSelector
             ];
         }
 
+        // Add system panels section
+        if ($systemPanelsSection = $this->buildSystemPanelsSection($isCliProvider)) {
+            $groupChildren[] = $systemPanelsSection;
+        }
+
         $totalTokens = (int) ceil(strlen($preamble) / 4) + array_sum(array_column($groupChildren, 'estimated_tokens'));
 
         return [
@@ -579,7 +586,7 @@ class ToolSelector
             $lines[] = "- **{$shortName}**" . ($schema->description ? ": {$schema->description}" : "");
         }
 
-        $lines[] = "\nExample: `php artisan memory:query --schema={$schemas->first()->schema_name} --sql=\"SELECT * FROM {$schemas->first()->getFullSchemaName()}.schema_registry\"`";
+        $lines[] = "\nExample: `pd memory:query --schema={$schemas->first()->schema_name} --sql=\"SELECT * FROM {$schemas->first()->getFullSchemaName()}.schema_registry\"`";
         $lines[] = "";
 
         return implode("\n", $lines);
@@ -654,19 +661,21 @@ class ToolSelector
         return <<<'GUIDE'
 ## How to Invoke
 
+Use the `pd` command (PocketDev wrapper) to run artisan commands from any directory:
+
 **Built-in commands (memory, tool management):**
 ```bash
-php artisan memory:query --sql="SELECT id, name FROM memory_structures"
-php artisan memory:create --structure=project --name="My Project" --data='{"status":"active"}'
-php artisan tool:list
+pd memory:query --schema=default --sql="SELECT * FROM memory_default.schema_registry"
+pd memory:insert --schema=default --table=example --data='{"name":"Test"}'
+pd tool:list
 ```
 
 **User-created tools:**
 ```bash
-php artisan tool:run <slug> -- --arg1=value1 --arg2=value2
+pd tool:run <slug> -- --arg1=value1 --arg2=value2
 ```
 
-**Important:** Only `tool:run` requires the `--` separator, and it must appear before the tool arguments.
+**Important:** Only `tool:run` requires the `--` separator before tool arguments.
 
 GUIDE;
     }
@@ -834,7 +843,7 @@ GUIDE;
         $introContent = "# Skills\n\n";
         $introContent .= "PocketDev Skills should **always** be retrieved by querying the `skills` table in memory, matching by exact `name`.\n";
         $introContent .= "Use the Bash tool to run the artisan command:\n";
-        $introContent .= "```bash\nphp artisan memory:query --schema=<schema> --sql=\"SELECT instructions FROM memory_<schema>.skills WHERE name = 'skill-name'\"\n```\n\n";
+        $introContent .= "```bash\npd memory:query --schema=<schema> --sql=\"SELECT instructions FROM memory_<schema>.skills WHERE name = 'skill-name'\"\n```\n\n";
         $introContent .= "Replace `<schema>` with the schema name indicated for each skill below.\n\n";
         $introContent .= "Available skills:";
 
@@ -945,5 +954,52 @@ GUIDE;
         }
 
         return $allSkills;
+    }
+
+    /**
+     * Build the system panels section for the tools hierarchy.
+     * Returns a group node containing all system panels from PanelRegistry.
+     *
+     * @param bool $isCliProvider Whether to format for CLI (artisan commands)
+     * @return array|null The section node or null if no system panels
+     */
+    private function buildSystemPanelsSection(bool $isCliProvider): ?array
+    {
+        $systemPanels = $this->panelRegistry->all();
+
+        if (empty($systemPanels)) {
+            return null;
+        }
+
+        $panelChildren = [];
+        foreach ($systemPanels as $panel) {
+            $toolTitle = $isCliProvider ? "tool:run {$panel->slug}" : $panel->name;
+            $toolContent = "#### {$toolTitle}\n\n";
+            $toolContent .= $panel->getSystemPrompt();
+
+            $panelChildren[] = [
+                'title' => $toolTitle,
+                'content' => $toolContent,
+                'source' => "system-panel:{$panel->slug}",
+                'collapsed' => true,
+                'chars' => strlen($toolContent),
+                'estimated_tokens' => (int) ceil(strlen($toolContent) / 4),
+                'children' => [],
+            ];
+        }
+
+        $groupContent = "## System Panels\n\nBuilt-in interactive UI panels. Use `pd panel:peek <slug>` to see current visible state.";
+        $childChars = array_sum(array_column($panelChildren, 'chars'));
+        $childTokens = array_sum(array_column($panelChildren, 'estimated_tokens'));
+
+        return [
+            'title' => 'System Panels',
+            'content' => $groupContent,
+            'source' => 'system-panels',
+            'collapsed' => true,
+            'chars' => strlen($groupContent) + $childChars,
+            'estimated_tokens' => (int) ceil(strlen($groupContent) / 4) + $childTokens,
+            'children' => $panelChildren,
+        ];
     }
 }

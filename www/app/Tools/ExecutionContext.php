@@ -4,7 +4,9 @@ namespace App\Tools;
 
 use App\Models\Agent;
 use App\Models\MemoryDatabase;
+use App\Models\Session;
 use App\Models\Workspace;
+use App\Services\StreamManager;
 
 class ExecutionContext
 {
@@ -13,6 +15,9 @@ class ExecutionContext
         public ?Workspace $workspace = null,
         public ?MemoryDatabase $memoryDatabase = null,
         public ?Agent $agent = null,
+        public ?Session $session = null,
+        public ?StreamManager $streamManager = null,
+        public ?string $conversationUuid = null,
     ) {}
 
     public function getWorkingDirectory(): string

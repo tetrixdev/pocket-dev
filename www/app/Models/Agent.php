@@ -38,6 +38,7 @@ class Agent extends Model
         'model',
         'anthropic_thinking_budget',
         'openai_reasoning_effort',
+        'openai_compatible_reasoning_effort',
         'claude_code_thinking_tokens',
         'codex_reasoning_effort',
         'response_level',
@@ -229,6 +230,7 @@ class Agent extends Model
         return match ($this->provider) {
             Provider::Anthropic->value => $this->anthropic_thinking_budget ?? 0,
             Provider::OpenAI->value => $this->openai_reasoning_effort ?? 'none',
+            Provider::OpenAICompatible->value => $this->openai_compatible_reasoning_effort ?? 'none',
             Provider::ClaudeCode->value => $this->claude_code_thinking_tokens ?? 0,
             Provider::Codex->value => $this->codex_reasoning_effort ?? 'none',
             default => null,
@@ -248,6 +250,10 @@ class Agent extends Model
             Provider::OpenAI->value => [
                 'type' => 'openai',
                 'effort' => $this->openai_reasoning_effort ?? 'none',
+            ],
+            Provider::OpenAICompatible->value => [
+                'type' => 'openai_compatible',
+                'effort' => $this->openai_compatible_reasoning_effort ?? 'none',
             ],
             Provider::ClaudeCode->value => [
                 'type' => 'claude_code',

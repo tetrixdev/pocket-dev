@@ -13,13 +13,16 @@ class ToolCreateCommand extends Command
         {--name= : Display name for the tool}
         {--description= : Short description of what the tool does}
         {--system-prompt= : Detailed instructions for AI (added to system prompt when enabled)}
-        {--script= : Bash script content}
+        {--type=script : Tool type: "script" for bash tools, "panel" for interactive UI}
+        {--script= : Bash script content (required for type=script)}
         {--script-file= : Path to file containing bash script}
+        {--blade-template= : Blade template for panel rendering (required for type=panel)}
+        {--blade-template-file= : Path to file containing Blade template}
         {--category=custom : Tool category}
         {--input-schema= : JSON Schema for input parameters}
         {--disabled : Create the tool in disabled state}';
 
-    protected $description = 'Create a new user tool';
+    protected $description = 'Create a new user tool or panel';
 
     public function handle(): int
     {
@@ -44,6 +47,10 @@ class ToolCreateCommand extends Command
             $input['system_prompt'] = $this->option('system-prompt');
         }
 
+        if ($this->option('type') !== null) {
+            $input['type'] = $this->option('type');
+        }
+
         // Handle script from file if provided
         if ($this->option('script-file') !== null) {
             $scriptFile = $this->option('script-file');
@@ -57,6 +64,21 @@ class ToolCreateCommand extends Command
             $input['script'] = file_get_contents($scriptFile);
         } elseif ($this->option('script') !== null) {
             $input['script'] = $this->option('script');
+        }
+
+        // Handle blade template from file if provided
+        if ($this->option('blade-template-file') !== null) {
+            $templateFile = $this->option('blade-template-file');
+            if (!file_exists($templateFile)) {
+                $this->outputJson([
+                    'output' => "Blade template file not found: {$templateFile}",
+                    'is_error' => true,
+                ]);
+                return Command::FAILURE;
+            }
+            $input['blade_template'] = file_get_contents($templateFile);
+        } elseif ($this->option('blade-template') !== null) {
+            $input['blade_template'] = $this->option('blade-template');
         }
 
         if ($this->option('category') !== null) {

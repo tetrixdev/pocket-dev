@@ -94,7 +94,7 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan memory:delete --schema=default --table=characters --where="id = '123e4567-e89b-12d3-a456-426614174000'"
+pd memory:delete --schema=default --table=characters --where="id = '123e4567-e89b-12d3-a456-426614174000'"
 ```
 CLI;
 

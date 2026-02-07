@@ -169,3 +169,58 @@ Route::prefix('file')->group(function () {
     Route::post('upload', [\App\Http\Controllers\Api\FileUploadController::class, 'upload']);
     Route::post('delete', [\App\Http\Controllers\Api\FileUploadController::class, 'delete']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Session & Screen Routes
+|--------------------------------------------------------------------------
+|
+| Sessions group screens (chats + panels) into workspaces.
+| Screens are individual tabs within a session.
+|
+*/
+
+Route::prefix('sessions')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\SessionController::class, 'index']);
+    Route::get('latest-activity', [\App\Http\Controllers\Api\SessionController::class, 'latestActivity']);
+    Route::post('/', [\App\Http\Controllers\Api\SessionController::class, 'store']);
+    Route::get('{session}', [\App\Http\Controllers\Api\SessionController::class, 'show']);
+    Route::patch('{session}', [\App\Http\Controllers\Api\SessionController::class, 'update']);
+    Route::delete('{session}', [\App\Http\Controllers\Api\SessionController::class, 'destroy']);
+    Route::post('{session}/archive', [\App\Http\Controllers\Api\SessionController::class, 'archive']);
+    Route::post('{session}/restore', [\App\Http\Controllers\Api\SessionController::class, 'restore']);
+    Route::post('{session}/save-as-default', [\App\Http\Controllers\Api\SessionController::class, 'saveAsDefault']);
+    Route::post('{session}/clear-default', [\App\Http\Controllers\Api\SessionController::class, 'clearDefault']);
+    Route::get('{session}/archived-conversations', [\App\Http\Controllers\Api\SessionController::class, 'archivedConversations']);
+
+    // Screen operations within a session
+    Route::post('{session}/screens/chat', [\App\Http\Controllers\Api\ScreenController::class, 'createChat']);
+    Route::post('{session}/screens/panel', [\App\Http\Controllers\Api\ScreenController::class, 'createPanel']);
+    Route::post('{session}/screens/reorder', [\App\Http\Controllers\Api\ScreenController::class, 'reorder']);
+});
+
+Route::prefix('screens')->group(function () {
+    Route::get('{screen}', [\App\Http\Controllers\Api\ScreenController::class, 'show']);
+    Route::post('{screen}/activate', [\App\Http\Controllers\Api\ScreenController::class, 'activate']);
+    Route::delete('{screen}', [\App\Http\Controllers\Api\ScreenController::class, 'destroy']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Panel Routes
+|--------------------------------------------------------------------------
+|
+| Panel state management, rendering, and peek (AI awareness).
+|
+*/
+
+Route::get('panels', [\App\Http\Controllers\Api\PanelController::class, 'availablePanels']);
+
+Route::prefix('panel/{panelState}')->group(function () {
+    Route::get('render', [\App\Http\Controllers\Api\PanelController::class, 'render']);
+    Route::get('state', [\App\Http\Controllers\Api\PanelController::class, 'getState']);
+    Route::post('state', [\App\Http\Controllers\Api\PanelController::class, 'updateState']);
+    Route::post('action', [\App\Http\Controllers\Api\PanelController::class, 'action']);
+    Route::get('peek', [\App\Http\Controllers\Api\PanelController::class, 'peek']);
+    Route::delete('/', [\App\Http\Controllers\Api\PanelController::class, 'destroy']);
+});

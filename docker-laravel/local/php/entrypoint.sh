@@ -70,6 +70,16 @@ mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.npm" "$HOME/.composer" 2>/dev/nu
 chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
 chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
 
+# Fix permissions for /pocketdev-source (dogfooding - AI edits PocketDev source)
+# PHP-FPM runs as www-data, so we need group ownership for git operations
+# This avoids the CVE-2022-24765 "dubious ownership" error
+if [ -d "/pocketdev-source" ]; then
+    echo "Setting permissions on /pocketdev-source..."
+    chgrp -R 33 /pocketdev-source 2>/dev/null || true
+    find /pocketdev-source -type d -exec chmod g+rwx {} \; 2>/dev/null || true
+    find /pocketdev-source -type f -exec chmod g+rw {} \; 2>/dev/null || true
+fi
+
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then

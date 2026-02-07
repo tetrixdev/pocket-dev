@@ -35,10 +35,10 @@ Write or create files.
 
 ```bash
 # Create a new file
-php artisan write --file_path=config/custom.php --content='<?php return [];'
+pd write --file_path=config/custom.php --content='<?php return [];'
 
 # Write multi-line content (use $'...' for newlines)
-php artisan write --file_path=README.md --content=$'# Project\n\nDescription here.'
+pd write --file_path=README.md --content=$'# Project\n\nDescription here.'
 ```
 
 ## Notes
