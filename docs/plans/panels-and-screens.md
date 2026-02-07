@@ -922,6 +922,124 @@ Panel shows secrets, API keys. AI peeks and now it's in conversation history.
 
 ---
 
+## Part 1c: System Panels vs User Panels
+
+PocketDev has two types of panels:
+
+### User Panels (Database-stored)
+
+Created via `tool:create` command with `type=panel`. Stored in `pocket_tools` table.
+
+```php
+// User creates panel via AI
+pd tool:create --slug=my-panel --type=panel --blade-template='...'
+
+// Stored in pocket_tools table with:
+// - type = 'panel'
+// - blade_template = '...'
+```
+
+**Characteristics:**
+- Blade template stored in database
+- Parameters defined in input_schema
+- State managed via `panel_states` table
+- Peek implemented via optional `script` field
+
+### System Panels (Code-based)
+
+Built-in panels that ship with PocketDev. Defined as PHP classes extending `App\Panels\Panel`.
+
+**Current system panels:**
+- `GitStatusPanel` - Git repository status with file tree and diff viewer
+- `FileExplorerPanel` - Interactive file browser
+
+**Location:** `app/Panels/`
+
+### Panel Base Class
+
+All system panels extend `App\Panels\Panel`:
+
+```php
+abstract class Panel
+{
+    // Identity
+    public string $slug;
+    public string $name;
+    public string $description;
+
+    // Called to render the panel's Blade template
+    abstract public function render(array $parameters, array $state, PanelState $panelState): string;
+
+    // Returns text representation for AI peek (what user currently sees)
+    public function peek(array $parameters, array $state): string;
+
+    // Handles server-side actions (lazy loading, etc.)
+    public function handleAction(string $action, array $params, array $state): array;
+
+    // System prompt instructions for AI
+    public function getSystemPrompt(): ?string;
+
+    // Input parameter schema (JSON Schema format)
+    public function getInputSchema(): ?array;
+}
+```
+
+### Panel Registry
+
+`App\Panels\PanelRegistry` discovers and manages system panels:
+
+```php
+$registry = app(PanelRegistry::class);
+
+// List all system panels
+$panels = $registry->all();
+
+// Get specific panel
+$panel = $registry->get('git-status');
+
+// Check if panel exists
+$exists = $registry->has('file-explorer');
+```
+
+**Discovery:** System panels are auto-discovered from `app/Panels/*Panel.php`.
+
+### Action Endpoint
+
+Both system and user panels can handle server-side actions:
+
+```
+POST /api/panel/{panelState}/action
+{
+    "action": "getDiff",
+    "params": { "file": "src/index.js", "isStaged": true }
+}
+```
+
+**Response:**
+```json
+{
+    "ok": true,
+    "html": "<div class='diff'>...</div>",
+    "state": { "viewingFile": "src/index.js" },
+    "data": { "stats": { "additions": 5, "deletions": 2 } },
+    "error": null
+}
+```
+
+**System panels:** `handleAction()` method processes the action
+**User panels:** `script` field runs with `PANEL_ACTION` and `PANEL_PARAMS` env vars
+
+### Which to Use?
+
+| Use Case | Type | Why |
+|----------|------|-----|
+| Ship with PocketDev | System | Version controlled, tested, documented |
+| User creates for themselves | User | Quick iteration, AI-assisted development |
+| Complex interactions | System | Full PHP power, testable |
+| Simple displays | User | Blade template sufficient |
+
+---
+
 ## Part 2: Sessions & Screen Architecture
 
 ### New Entity: Session
