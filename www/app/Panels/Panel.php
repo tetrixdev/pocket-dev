@@ -2,6 +2,8 @@
 
 namespace App\Panels;
 
+use App\Support\PathValidator;
+
 abstract class Panel
 {
     // Panel metadata (override in subclasses)
@@ -62,6 +64,17 @@ abstract class Panel
     public function getSystemPrompt(): string
     {
         return "Opens {$this->name} panel. {$this->description}";
+    }
+
+    /**
+     * Validate that a path is within allowed directories.
+     *
+     * @param string $path The path to validate
+     * @return string|null The resolved real path if valid, null otherwise
+     */
+    protected function validatePath(string $path): ?string
+    {
+        return PathValidator::validate($path);
     }
 
     /**

@@ -19,29 +19,6 @@ class FileExplorerPanel extends Panel
         ],
     ];
 
-    /**
-     * Validate that a path is within allowed directories.
-     *
-     * @param string $path The path to validate
-     * @return string|null The real path if valid, null otherwise
-     */
-    private function validatePath(string $path): ?string
-    {
-        $realPath = realpath($path);
-        if ($realPath === false) {
-            return null;
-        }
-
-        $allowedPrefixes = ['/workspace/', '/pocketdev-source/', '/home/appuser/', '/tmp/'];
-        foreach ($allowedPrefixes as $prefix) {
-            if (str_starts_with($realPath, $prefix) || $realPath === rtrim($prefix, '/')) {
-                return $realPath;
-            }
-        }
-
-        return null;
-    }
-
     public function render(array $params, array $state, ?string $panelStateId = null): string
     {
         $rootPath = $params['path'] ?? '/workspace/default';

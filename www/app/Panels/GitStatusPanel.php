@@ -30,15 +30,11 @@ class GitStatusPanel extends Panel
         $compareBranch = $params['compare_branch'] ?? null;
 
         // Validate path is within allowed directories
-        $realPath = realpath($path);
-        if ($realPath === false ||
-            (!str_starts_with($realPath, '/workspace/') &&
-             !str_starts_with($realPath, '/pocketdev-source/') &&
-             !str_starts_with($realPath, '/home/appuser/') &&
-             !str_starts_with($realPath, '/tmp/'))) {
+        $validatedPath = $this->validatePath($path);
+        if ($validatedPath === null) {
             return '<div class="p-4 text-red-500">Access denied: path not within allowed directories</div>';
         }
-        $path = $realPath;
+        $path = $validatedPath;
 
         return view('panels.git-status', [
             'path' => $path,
@@ -78,12 +74,8 @@ class GitStatusPanel extends Panel
         }
 
         // Validate repoPath is within allowed directories
-        $realRepoPath = realpath($repoPath);
-        if ($realRepoPath === false ||
-            (!str_starts_with($realRepoPath, '/workspace/') &&
-             !str_starts_with($realRepoPath, '/pocketdev-source/') &&
-             !str_starts_with($realRepoPath, '/home/appuser/') &&
-             !str_starts_with($realRepoPath, '/tmp/'))) {
+        $realRepoPath = $this->validatePath($repoPath);
+        if ($realRepoPath === null) {
             return ['error' => 'Access denied: invalid repository path'];
         }
 
@@ -280,15 +272,11 @@ class GitStatusPanel extends Panel
         $compareBranch = $params['compare_branch'] ?? null;
 
         // Validate path is within allowed directories
-        $realPath = realpath($path);
-        if ($realPath === false ||
-            (!str_starts_with($realPath, '/workspace/') &&
-             !str_starts_with($realPath, '/pocketdev-source/') &&
-             !str_starts_with($realPath, '/home/appuser/') &&
-             !str_starts_with($realPath, '/tmp/'))) {
+        $validatedPath = $this->validatePath($path);
+        if ($validatedPath === null) {
             return "## Error: Access denied\n\nPath not within allowed directories: {$path}";
         }
-        $path = $realPath;
+        $path = $validatedPath;
 
         if (!is_dir($path . '/.git')) {
             return "## Error: Not a git repository\n\nPath: {$path}";

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Support\PathValidator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -137,27 +138,17 @@ class FilePreviewController extends Controller
 
         // For new files, we can't use realpath (file doesn't exist yet)
         // But for editing existing files via file preview, the file should exist
-        $realPath = realpath($path);
+        $realPath = PathValidator::validate($path);
 
-        if ($realPath === false) {
-            return response()->json([
-                'success' => false,
-                'error' => 'File not found',
-            ], 404);
-        }
-
-        // Security: Restrict to allowed base directories
-        $isAllowed = false;
-        $allowedPaths = config('ai.file_preview.allowed_paths', ['/var/www']);
-        foreach ($allowedPaths as $basePath) {
-            $basePath = rtrim($basePath, '/'); // Normalize trailing slashes
-            if (str_starts_with($realPath, $basePath . '/') || $realPath === $basePath) {
-                $isAllowed = true;
-                break;
+        if ($realPath === null) {
+            // Could be either not found or not allowed - check which
+            if (!file_exists($path)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'File not found',
+                ], 404);
             }
-        }
 
-        if (!$isAllowed) {
             return response()->json([
                 'success' => false,
                 'error' => 'Access denied',
@@ -231,11 +222,8 @@ class FilePreviewController extends Controller
      */
     private function validatePath(string $path): array
     {
-        // Normalize path (resolve . and ..)
-        $realPath = realpath($path);
-
-        // Check if file exists
-        if ($realPath === false || !file_exists($realPath)) {
+        // Check if file exists first
+        if (!file_exists($path)) {
             return [
                 'error' => true,
                 'response' => ['exists' => false, 'error' => 'File not found'],
@@ -243,17 +231,10 @@ class FilePreviewController extends Controller
             ];
         }
 
-        // Security: Restrict to allowed base directories
-        $isAllowed = false;
-        $allowedPaths = config('ai.file_preview.allowed_paths', ['/var/www']);
-        foreach ($allowedPaths as $basePath) {
-            if (str_starts_with($realPath, $basePath . '/') || $realPath === $basePath) {
-                $isAllowed = true;
-                break;
-            }
-        }
+        // Validate path is within allowed directories
+        $realPath = PathValidator::validate($path);
 
-        if (!$isAllowed) {
+        if ($realPath === null) {
             return [
                 'error' => true,
                 'response' => ['exists' => false, 'error' => 'Access denied: path outside allowed directories'],
