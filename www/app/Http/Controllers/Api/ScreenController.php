@@ -216,6 +216,15 @@ class ScreenController extends Controller
             ], 400);
         }
 
+        // Verify all session screens are included (no omissions allowed)
+        $missingIds = array_diff($sessionScreenIds, $validated['screen_order']);
+        if (!empty($missingIds)) {
+            return response()->json([
+                'error' => 'All session screens must be included in the reorder',
+                'missing_ids' => array_values($missingIds),
+            ], 400);
+        }
+
         $session->reorderScreens($validated['screen_order']);
 
         return response()->json([

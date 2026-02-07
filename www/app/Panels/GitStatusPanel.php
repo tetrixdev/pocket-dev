@@ -133,7 +133,7 @@ class GitStatusPanel extends Panel
             'state' => null,
             'data' => [
                 'stats' => $stats,
-                'debug' => "repoPath={$repoPath}, file={$file}, isStaged=" . ($isStaged ? 'true' : 'false'),
+                'debug' => "repoPath={$realRepoPath}, file={$file}, isStaged=" . ($isStaged ? 'true' : 'false'),
             ],
             'error' => null,
         ];
@@ -408,10 +408,10 @@ Opens a Git Status panel showing repository status as a collapsible file tree.
 ## CLI Example
 ```bash
 # Working directory mode (staged/unstaged)
-php artisan tool:run git-status -- --path=/workspace/default
+pd tool:run git-status -- --path=/workspace/default
 
 # Branch comparison mode (diff vs another branch)
-php artisan tool:run git-status -- --path=/workspace/default --compare_branch=main
+pd tool:run git-status -- --path=/workspace/default --compare_branch=main
 ```
 
 ## Parameters
@@ -436,7 +436,7 @@ When compare_branch is set, shows:
 - Only directories with changes are shown
 - Files show git status code with color coding
 
-Use `php artisan panel:peek git-status` to see current state.
+Use `pd panel:peek git-status` to see current state.
 PROMPT;
     }
 }
