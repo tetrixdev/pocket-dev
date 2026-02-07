@@ -42,9 +42,10 @@ abstract class Panel
      * @param string $action The action name (e.g., 'loadChildren', 'updateStat')
      * @param array $params Action parameters from the client
      * @param array $state Current panel state
+     * @param array $panelParams Panel parameters (configured when panel was opened)
      * @return array Response with optional keys: html, state, data, error
      */
-    public function handleAction(string $action, array $params, array $state): array
+    public function handleAction(string $action, array $params, array $state, array $panelParams = []): array
     {
         return [
             'html' => null,

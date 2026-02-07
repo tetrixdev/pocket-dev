@@ -186,19 +186,20 @@
                 // Prefix with section to make keys unique between staged/unstaged
                 $sectionPrefix = $isStaged ? 'staged:' : 'unstaged:';
                 $expandKey = $sectionPrefix . $nodePath;
-                $escapedExpandKey = htmlspecialchars($expandKey, ENT_QUOTES);
+                // json_encode for JS escaping, then htmlspecialchars for HTML attribute context
+                $escapedExpandKey = htmlspecialchars(json_encode($expandKey), ENT_QUOTES);
                 $fileCount = $countFiles($node['children']);
                 $html .= '<div>';
-                $html .= '<button @click="toggleDir(\'' . $escapedExpandKey . '\')" ';
+                $html .= '<button @click="toggleDir(' . $escapedExpandKey . ')" ';
                 $html .= 'class="flex items-center gap-1.5 w-full text-left py-0.5 px-1 md:px-2 hover:bg-gray-800 rounded text-sm" ';
                 $html .= 'style="padding-left: ' . ($indent + 4) . 'px">';
                 $html .= '<i class="fa-solid text-xs transition-transform text-gray-500" ';
-                $html .= ':class="isDirExpanded(\'' . $escapedExpandKey . '\') ? \'fa-chevron-down\' : \'fa-chevron-right\'"></i>';
+                $html .= ':class="isDirExpanded(' . $escapedExpandKey . ') ? \'fa-chevron-down\' : \'fa-chevron-right\'"></i>';
                 $html .= '<i class="fa-solid fa-folder text-yellow-600 text-xs"></i>';
                 $html .= '<span class="text-gray-300">' . htmlspecialchars($node['name']) . '</span>';
                 $html .= '<span class="text-xs text-gray-600 ml-1">(' . $fileCount . ')</span>';
                 $html .= '</button>';
-                $html .= '<div x-show="isDirExpanded(\'' . $escapedExpandKey . '\')" x-collapse>';
+                $html .= '<div x-show="isDirExpanded(' . $escapedExpandKey . ')" x-collapse>';
                 $html .= $renderTree($node['children'], $depth + 1, $isStaged);
                 $html .= '</div>';
                 $html .= '</div>';

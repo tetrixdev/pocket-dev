@@ -29,8 +29,9 @@ use App\Models\Workspace;
  * 6. Workspace Prompt - workspace-level base prompt
  * 7. Agent instructions - task-specific behavior
  * 8. Working directory - current context
- * 9. Environment - available resources
- * 10. Context usage - current state
+ * 9. Open panels - currently visible panels in session
+ * 10. Environment - available resources
+ * 11. Context usage - current state
  */
 class SystemPromptBuilder
 {

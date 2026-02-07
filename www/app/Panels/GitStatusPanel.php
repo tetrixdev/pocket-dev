@@ -40,27 +40,37 @@ class GitStatusPanel extends Panel
     /**
      * Handle panel actions for diff viewing.
      */
-    public function handleAction(string $action, array $params, array $state): array
+    public function handleAction(string $action, array $params, array $state, array $panelParams = []): array
     {
         if ($action === 'getDiff') {
-            return $this->getDiff($params);
+            // Pass panel params to getDiff for path validation
+            return $this->getDiff($params, $panelParams);
         }
 
-        return parent::handleAction($action, $params, $state);
+        return parent::handleAction($action, $params, $state, $panelParams);
     }
 
     /**
      * Get diff for a specific file.
      */
-    protected function getDiff(array $params): array
+    protected function getDiff(array $params, array $panelParams = []): array
     {
         $file = $params['file'] ?? '';
         $isStaged = $params['isStaged'] ?? false;
-        $repoPath = $params['repoPath'] ?? '/workspace/default';
-        $compareBranch = $params['compareBranch'] ?? null;
+        // Use panel params for repoPath to prevent path traversal
+        // Fall back to request params for backward compatibility, but validate
+        $repoPath = $panelParams['path'] ?? $params['repoPath'] ?? '/workspace/default';
+        $compareBranch = $panelParams['compare_branch'] ?? $params['compareBranch'] ?? null;
 
         if (empty($file)) {
             return ['error' => 'No file specified'];
+        }
+
+        // Validate repoPath is within allowed directories
+        $realRepoPath = realpath($repoPath);
+        if ($realRepoPath === false ||
+            (!str_starts_with($realRepoPath, '/workspace/') && !str_starts_with($realRepoPath, '/pocketdev-source'))) {
+            return ['error' => 'Access denied: invalid repository path'];
         }
 
         if (!is_dir($repoPath . '/.git')) {

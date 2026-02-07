@@ -55,13 +55,29 @@ class FileExplorerPanel extends Panel
     /**
      * Handle panel actions for lazy loading.
      */
-    public function handleAction(string $action, array $params, array $state): array
+    public function handleAction(string $action, array $params, array $state, array $panelParams = []): array
     {
         if ($action === 'loadChildren') {
             $path = $params['path'] ?? '';
             $depth = $params['depth'] ?? 1;
 
-            if (empty($path) || !File::isDirectory($path)) {
+            // Get root path from panel parameters or state
+            $rootPath = $panelParams['path'] ?? $state['rootPath'] ?? '/workspace/default';
+
+            // Validate path is within root to prevent path traversal
+            $realPath = realpath($path);
+            $realRoot = realpath($rootPath);
+
+            if ($realPath === false || $realRoot === false) {
+                return ['error' => 'Invalid path'];
+            }
+
+            // Ensure requested path is within the configured root
+            if (!str_starts_with($realPath . '/', $realRoot . '/') && $realPath !== $realRoot) {
+                return ['error' => 'Access denied: path outside allowed root'];
+            }
+
+            if (!File::isDirectory($path)) {
                 return ['error' => 'Invalid path'];
             }
 
@@ -88,7 +104,7 @@ class FileExplorerPanel extends Panel
             ];
         }
 
-        return parent::handleAction($action, $params, $state);
+        return parent::handleAction($action, $params, $state, $panelParams);
     }
 
     public function peek(array $params, array $state): string

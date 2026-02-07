@@ -8,6 +8,7 @@ use App\Models\PocketTool;
 use App\Models\Screen;
 use App\Panels\PanelRegistry;
 use App\Streaming\StreamEvent;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 
 /**
@@ -252,20 +253,25 @@ API;
             );
         }
 
-        // Create panel state with the provided arguments as parameters
-        $panelState = PanelState::create([
-            'panel_slug' => $slug,
-            'parameters' => $arguments,
-            'state' => [],
-        ]);
+        // Create panel state and screen atomically to prevent orphaned records
+        [$panelState, $screen] = DB::transaction(function () use ($slug, $arguments, $session) {
+            // Create panel state with the provided arguments as parameters
+            $panelState = PanelState::create([
+                'panel_slug' => $slug,
+                'parameters' => $arguments,
+                'state' => [],
+            ]);
 
-        // Create screen in the session
-        $screen = Screen::createPanelScreen(
-            $session,
-            $slug,
-            $panelState,
-            $arguments
-        );
+            // Create screen in the session
+            $screen = Screen::createPanelScreen(
+                $session,
+                $slug,
+                $panelState,
+                $arguments
+            );
+
+            return [$panelState, $screen];
+        });
 
         // Activate the screen so it's immediately visible
         $screen->activate();
@@ -309,10 +315,18 @@ API;
                 'PANEL_SLUG' => $panelState->panel_slug,
             ];
 
-            // Run the peek script
-            $process = Process::env($env)
-                ->timeout(30)
-                ->run($panel->script);
+            // Write script to temp file to handle multi-line scripts correctly
+            $tmpScript = tempnam(sys_get_temp_dir(), 'panel_peek_');
+            file_put_contents($tmpScript, $panel->script);
+            chmod($tmpScript, 0755);
+
+            try {
+                $process = Process::env($env)
+                    ->timeout(30)
+                    ->run(['sh', $tmpScript]);
+            } finally {
+                @unlink($tmpScript);
+            }
 
             if ($process->failed()) {
                 \Log::warning('Panel peek script failed', [

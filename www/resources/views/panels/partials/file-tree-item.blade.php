@@ -2,25 +2,27 @@
     $isDir = $item['type'] === 'directory';
     $paddingLeft = ($depth * 16) + 8;
     $isLoaded = $item['loaded'] ?? false;
+    // Use Js::from() to safely escape path for JS contexts
+    $jsPath = \Illuminate\Support\Js::from($item['path']);
 @endphp
 
 <div class="group" data-path="{{ $item['path'] }}">
     <div class="flex items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-gray-800 transition-colors"
          style="padding-left: {{ $paddingLeft }}px"
          @if($isDir)
-         @click="toggle('{{ $item['path'] }}', {{ $depth + 1 }})"
+         @click="toggle({{ $jsPath }}, {{ $depth + 1 }})"
          @else
-         @click="select('{{ $item['path'] }}')"
+         @click="select({{ $jsPath }})"
          @endif
-         :class="{ 'bg-gray-800': selected === '{{ $item['path'] }}' }">
+         :class="{ 'bg-gray-800': selected === {{ $jsPath }} }">
 
         @if($isDir)
             {{-- Directory --}}
             <i class="fa-solid text-xs w-3 transition-transform"
-               :class="isExpanded('{{ $item['path'] }}') ? 'fa-chevron-down' : 'fa-chevron-right text-gray-500'"
-               x-show="!isLoading('{{ $item['path'] }}')"></i>
+               :class="isExpanded({{ $jsPath }}) ? 'fa-chevron-down' : 'fa-chevron-right text-gray-500'"
+               x-show="!isLoading({{ $jsPath }})"></i>
             <i class="fa-solid fa-spinner fa-spin text-xs w-3 text-gray-500"
-               x-show="isLoading('{{ $item['path'] }}')" x-cloak></i>
+               x-show="isLoading({{ $jsPath }})" x-cloak></i>
             <i class="fa-solid fa-folder text-yellow-500"></i>
             <span class="text-sm truncate">{{ $item['name'] }}</span>
         @else
@@ -54,7 +56,7 @@
 
     @if($isDir)
         {{-- Children container - may be empty if not loaded yet --}}
-        <div x-show="isExpanded('{{ $item['path'] }}')" x-collapse
+        <div x-show="isExpanded({{ $jsPath }})" x-collapse
              class="children-container" data-children-for="{{ $item['path'] }}">
             @if($isLoaded && !empty($item['children']))
                 @foreach($item['children'] as $child)

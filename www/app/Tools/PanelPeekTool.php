@@ -90,27 +90,40 @@ API;
             return ToolResult::error('panel_slug is required');
         }
 
-        // Find the panel state
+        // Get session for scoping queries
+        $session = $context->getSession();
+        $sessionId = $session?->id;
+
+        // Find the panel state (scoped to session if available)
         $panelState = null;
 
         if ($id) {
-            // Find by exact UUID
-            $panelState = PanelState::where('panel_slug', $panelSlug)
-                ->where('id', $id)
-                ->first();
+            // Find by exact UUID, scoped to session
+            $query = PanelState::where('panel_slug', $panelSlug)
+                ->where('id', $id);
+
+            if ($sessionId) {
+                $query->whereHas('screen', fn($q) => $q->where('session_id', $sessionId));
+            }
+
+            $panelState = $query->first();
 
             if (!$panelState) {
                 return ToolResult::error("Panel '{$panelSlug}' with id '{$id}' not found. It may have been closed.");
             }
         } else {
-            // No ID provided - get most recent panel of this type
-            $panelState = PanelState::where('panel_slug', $panelSlug)
-                ->orderBy('created_at', 'desc')
-                ->first();
+            // No ID provided - get most recent panel of this type, scoped to session
+            $query = PanelState::where('panel_slug', $panelSlug);
+
+            if ($sessionId) {
+                $query->whereHas('screen', fn($q) => $q->where('session_id', $sessionId));
+            }
+
+            $panelState = $query->orderBy('created_at', 'desc')->first();
 
             if (!$panelState) {
                 // Build list of available panels for helpful error message
-                $availablePanels = $this->getAvailablePanelSlugs();
+                $availablePanels = $this->getAvailablePanelSlugs($sessionId);
                 $availableList = empty($availablePanels)
                     ? 'No panels are currently open.'
                     : 'Available: ' . implode(', ', $availablePanels);
@@ -163,10 +176,18 @@ API;
                 'PANEL_SLUG' => $panelState->panel_slug,
             ];
 
-            // Run the peek script
-            $process = Process::env($env)
-                ->timeout(30)
-                ->run($panel->script);
+            // Write script to temp file to handle multi-line scripts correctly
+            $tmpScript = tempnam(sys_get_temp_dir(), 'panel_peek_');
+            file_put_contents($tmpScript, $panel->script);
+            chmod($tmpScript, 0755);
+
+            try {
+                $process = Process::env($env)
+                    ->timeout(30)
+                    ->run(['sh', $tmpScript]);
+            } finally {
+                @unlink($tmpScript);
+            }
 
             if ($process->failed()) {
                 \Log::warning('Panel peek script failed', [
@@ -219,13 +240,17 @@ API;
     }
 
     /**
-     * Get list of currently open panel slugs.
+     * Get list of currently open panel slugs, scoped to session if provided.
      */
-    private function getAvailablePanelSlugs(): array
+    private function getAvailablePanelSlugs(?string $sessionId = null): array
     {
-        return PanelState::select('panel_slug')
-            ->distinct()
-            ->orderBy('panel_slug')
+        $query = PanelState::select('panel_slug')->distinct();
+
+        if ($sessionId) {
+            $query->whereHas('screen', fn($q) => $q->where('session_id', $sessionId));
+        }
+
+        return $query->orderBy('panel_slug')
             ->pluck('panel_slug')
             ->toArray();
     }

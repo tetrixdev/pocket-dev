@@ -62,13 +62,19 @@ class Session extends Model
             return $this->screens()->orderBy('created_at');
         }
 
-        // Order by position in screen_order array
+        // Order by position in screen_order array using parameter binding
+        // to prevent SQL injection
+        $bindings = [];
         $orderCase = collect($this->screen_order)
-            ->map(fn($id, $index) => "WHEN id = '{$id}' THEN {$index}")
+            ->map(function ($id, $index) use (&$bindings) {
+                $bindings[] = $id;
+                $bindings[] = $index;
+                return "WHEN id = ? THEN ?";
+            })
             ->join(' ');
 
         return $this->screens()
-            ->orderByRaw("CASE {$orderCase} ELSE 999 END");
+            ->orderByRaw("CASE {$orderCase} ELSE 999 END", $bindings);
     }
 
     /**

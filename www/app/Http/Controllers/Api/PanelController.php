@@ -148,7 +148,8 @@ class PanelController extends Controller
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
-                $result = $systemPanel->handleAction($action, $params, $state);
+                $panelParams = $panelState->parameters ?? [];
+                $result = $systemPanel->handleAction($action, $params, $state, $panelParams);
 
                 // If action returned state updates, merge them into panel state
                 if (!empty($result['state'])) {
