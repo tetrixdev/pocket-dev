@@ -69,7 +69,7 @@
         /* Notification styles */
         .notification {
             position: fixed;
-            top: 20px;
+            top: 70px;
             right: 20px;
             padding: 16px 24px;
             border-radius: 8px;
@@ -99,7 +99,7 @@
         }
 
         @keyframes fadeOut {
-            to { opacity: 0; transform: translateX(400px); }
+            to { opacity: 0; transform: translateX(400px); pointer-events: none; }
         }
 
         /* Hide desktop layout on mobile */
