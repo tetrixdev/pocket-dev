@@ -3697,7 +3697,7 @@
                 // Used when archiving/deleting to select the session "below" in the sidebar
                 findNextSessionByPosition(excludeSessionId, options = {}) {
                     const { excludeArchived = true, sessionsArray = null } = options;
-                    const sessions = sessionsArray || this.sessions;
+                    const sessions = sessionsArray || this.filteredSessions;
 
                     // Find current index
                     const currentIndex = sessions.findIndex(s => s.id === excludeSessionId);
