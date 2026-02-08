@@ -48,6 +48,7 @@ class ConversationSearchService
 
         // Search turn embeddings using cosine similarity
         // Fetch extra results to account for grouping by turn (best chunk per turn)
+        // Join with screens and sessions to include session context in results
         $results = DB::select("
             SELECT
                 cte.conversation_id,
@@ -58,9 +59,14 @@ class ConversationSearchService
                 c.uuid as conversation_uuid,
                 c.agent_id,
                 c.updated_at as conversation_updated_at,
+                sc.id as screen_id,
+                s.id as session_id,
+                s.name as session_name,
                 ROUND(((1 - (cte.embedding <=> ?::vector)) * 100)::numeric, 1) as similarity
             FROM conversation_turn_embeddings cte
             JOIN conversations c ON c.id = cte.conversation_id
+            LEFT JOIN screens sc ON sc.conversation_id = c.id
+            LEFT JOIN pocketdev_sessions s ON s.id = sc.session_id
             WHERE c.deleted_at IS NULL
               {$statusFilter}
             ORDER BY cte.embedding <=> ?::vector
