@@ -253,6 +253,7 @@ syncState(immediate = false) {
 - Scripts have a 5-minute timeout
 - Panels can include an optional `script` field for peek and action handling
 - Use `tool:show <slug>` to inspect a tool's details
+- **Refer to the Panel Dependencies section for available CSS/JS libraries in panels**
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'

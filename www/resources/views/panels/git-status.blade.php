@@ -417,9 +417,9 @@
      }">
 
     {{-- File Tree View --}}
-    <div x-show="!viewingFile" class="h-full overflow-auto p-2 md:p-4">
-        {{-- Header --}}
-        <div class="flex items-center gap-2 mb-3 md:mb-4 pb-2 border-b border-gray-700">
+    <div x-show="!viewingFile" class="h-full flex flex-col">
+        {{-- Sticky Header --}}
+        <div class="flex-none flex items-center gap-2 p-2 md:p-4 pb-2 md:pb-2 border-b border-gray-700 bg-gray-900">
             <i class="fa-brands fa-git-alt text-orange-500"></i>
             <span class="font-medium text-sm truncate">{{ $branch }}</span>
             @if($compareBranch)
@@ -434,6 +434,8 @@
             <span class="ml-auto text-xs text-gray-500 truncate max-w-[80px] md:max-w-[100px]">{{ basename($path) }}</span>
         </div>
 
+        {{-- Scrollable Content --}}
+        <div class="flex-1 overflow-auto p-2 md:p-4 pt-2 md:pt-3">
         @if(empty($status))
             <div class="text-center text-gray-500 py-8">
                 <i class="fa-solid fa-check-circle text-2xl text-green-500 mb-2"></i>
@@ -493,6 +495,7 @@
                 </div>
             @endif
         @endif
+        </div>
     </div>
 
     {{-- Diff View --}}

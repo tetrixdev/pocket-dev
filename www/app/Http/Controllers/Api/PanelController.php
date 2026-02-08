@@ -15,6 +15,65 @@ use Illuminate\Support\Facades\Process;
 class PanelController extends Controller
 {
     /**
+     * Wrap panel HTML in a full document with all configured dependencies.
+     * Uses config/panels.php as the single source of truth for CDN libraries.
+     */
+    private function wrapPanelHtml(string $html): string
+    {
+        $config = config('panels');
+
+        // Fallback if config is not available
+        if (!$config) {
+            return "<!DOCTYPE html><html><head></head><body>{$html}</body></html>";
+        }
+
+        $headTags = $this->buildPanelHeadTags($config['dependencies']);
+        $tailwindTheme = $config['tailwind_theme'];
+        $baseCss = $config['base_css'];
+
+        return <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+{$headTags}
+    <style type="text/tailwindcss">
+{$tailwindTheme}
+    </style>
+    <style>
+{$baseCss}
+    </style>
+</head>
+<body>
+{$html}
+</body>
+</html>
+HTML;
+    }
+
+    /**
+     * Build script and stylesheet tags from dependency config.
+     */
+    private function buildPanelHeadTags(array $dependencies): string
+    {
+        $tags = [];
+
+        foreach ($dependencies as $name => $dep) {
+            if ($dep['type'] === 'script') {
+                $defer = ($dep['defer'] ?? false) ? ' defer' : '';
+                $tags[] = "    <script{$defer} src=\"{$dep['url']}\"></script>";
+            } elseif ($dep['type'] === 'stylesheet') {
+                $integrity = isset($dep['integrity']) ? " integrity=\"{$dep['integrity']}\"" : '';
+                $crossorigin = isset($dep['crossorigin']) ? " crossorigin=\"{$dep['crossorigin']}\"" : '';
+                $tags[] = "    <link rel=\"stylesheet\" href=\"{$dep['url']}\"{$integrity}{$crossorigin} referrerpolicy=\"no-referrer\">";
+            }
+        }
+
+        return implode("\n", $tags);
+    }
+
+    /**
      * Render a panel's Blade template.
      *
      * Returns HTML that can be inserted into the panel container.
@@ -30,7 +89,7 @@ class PanelController extends Controller
         if ($systemPanel) {
             try {
                 $html = $systemPanel->render($params, $state, $panelState->id);
-                return response($html)->header('Content-Type', 'text/html');
+                return response($this->wrapPanelHtml($html))->header('Content-Type', 'text/html');
             } catch (\Throwable $e) {
                 \Log::error('System panel render error', [
                     'panel_slug' => $slug,
@@ -67,7 +126,7 @@ class PanelController extends Controller
                 'panel' => $panel,
             ]);
 
-            return response($html)
+            return response($this->wrapPanelHtml($html))
                 ->header('Content-Type', 'text/html');
         } catch (\Throwable $e) {
             \Log::error('Panel render error', [
@@ -193,13 +252,16 @@ class PanelController extends Controller
         // If panel has a script, run it with action context
         if ($panel->hasScript()) {
             try {
-                $env = [
+                // Get credentials for environment injection
+                $credentials = \App\Models\Credential::getAllAsEnvArray();
+
+                $env = array_merge($credentials, [
                     'PANEL_ACTION' => $action,
                     'PANEL_PARAMS' => json_encode($params),
                     'PANEL_STATE' => json_encode($state),
                     'PANEL_INSTANCE_ID' => $panelState->id,
                     'PANEL_SLUG' => $slug,
-                ];
+                ]);
 
                 // Write script to temp file to avoid shell escaping issues with complex scripts
                 $tmpScript = tempnam(sys_get_temp_dir(), 'panel_action_');
@@ -320,13 +382,16 @@ class PanelController extends Controller
         }
 
         try {
+            // Get credentials for environment injection
+            $credentials = \App\Models\Credential::getAllAsEnvArray();
+
             // Set environment variables for the peek script
-            $env = [
+            $env = array_merge($credentials, [
                 'PANEL_STATE' => json_encode($state),
                 'PANEL_PARAMS' => json_encode($params),
                 'PANEL_INSTANCE_ID' => $panelState->id,
                 'PANEL_SLUG' => $slug,
-            ];
+            ]);
 
             // Write script to temp file to avoid shell escaping issues with complex scripts
             $tmpScript = tempnam(sys_get_temp_dir(), 'panel_peek_');

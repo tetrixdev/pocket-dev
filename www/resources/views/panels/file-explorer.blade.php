@@ -1,6 +1,6 @@
 {{-- File Explorer Panel --}}
 {{-- Uses inline x-data for compatibility with dynamic loading via x-html + Alpine.initTree() --}}
-<div class="h-full bg-gray-900 text-gray-200 overflow-auto p-4"
+<div class="h-full bg-gray-900 text-gray-200 flex flex-col"
      x-data="{
          rootPath: @js($rootPath),
          expanded: @js($expanded),
@@ -126,7 +126,8 @@
          }
      }">
 
-    <div class="flex items-center gap-2 mb-4 pb-2 border-b border-gray-700">
+    {{-- Sticky Header --}}
+    <div class="flex-none flex items-center gap-2 p-4 pb-2 border-b border-gray-700 bg-gray-900">
         <i class="fa-solid fa-folder-tree text-blue-400"></i>
         <span class="font-medium text-sm truncate" x-text="rootPath"></span>
         <button @click="refresh()"
@@ -136,9 +137,12 @@
         </button>
     </div>
 
-    <div class="space-y-0.5">
-        @foreach($tree as $item)
-            @include('panels.partials.file-tree-item', ['item' => $item, 'depth' => 0])
-        @endforeach
+    {{-- Scrollable Content --}}
+    <div class="flex-1 overflow-auto p-4 pt-3">
+        <div class="space-y-0.5">
+            @foreach($tree as $item)
+                @include('panels.partials.file-tree-item', ['item' => $item, 'depth' => 0])
+            @endforeach
+        </div>
     </div>
 </div>
