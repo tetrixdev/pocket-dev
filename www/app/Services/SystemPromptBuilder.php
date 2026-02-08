@@ -23,15 +23,16 @@ use App\Models\Workspace;
  * 2. Tools - capabilities and how to use them
  * 3. Memory - available data schemas
  * 4. Skills - slash commands that can be invoked
+ * 5. Panel dependencies - CDN libraries for panel creation/update
  *
  * RECENCY ZONE (end - high attention, task-relevant):
- * 5. Additional system prompt - project-wide customs (global)
- * 6. Workspace Prompt - workspace-level base prompt
- * 7. Agent instructions - task-specific behavior
- * 8. Working directory - current context
- * 9. Open panels - currently visible panels in session
- * 10. Environment - available resources
- * 11. Context usage - current state
+ * 6. Additional system prompt - project-wide customs (global)
+ * 7. Workspace Prompt - workspace-level base prompt
+ * 8. Agent instructions - task-specific behavior
+ * 9. Working directory - current context
+ * 10. Open panels - currently visible panels in session
+ * 11. Environment - available resources
+ * 12. Context usage - current state
  */
 class SystemPromptBuilder
 {
