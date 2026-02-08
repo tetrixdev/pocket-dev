@@ -3131,27 +3131,32 @@
                     // Close mobile drawer
                     this.showMobileDrawer = false;
 
-                    // Set pending scroll target - loadConversation will scroll to this turn
-                    this.pendingScrollToTurn = result.turn_number;
+                    const targetTurn = result.turn_number;
 
-                    // Disable auto-scroll to prevent other code from scrolling to bottom
-                    this.autoScrollEnabled = false;
-
-                    // If we have session info, load the session first
+                    // If we have session info, load the session and activate the screen
                     if (result.session_id) {
                         await this.loadSession(result.session_id);
 
-                        // Find and switch to the screen with this conversation
+                        // Find the screen with this conversation
                         const screen = this.screens.find(s =>
                             s.conversation?.uuid === result.conversation_uuid
                         );
                         if (screen) {
-                            await this.switchToScreen(screen.id);
+                            // Activate the screen (loads conversation via loadConversationForScreen)
+                            await this.activateScreen(screen.id);
+
+                            // After conversation loads, scroll to the target turn
+                            this.$nextTick(() => {
+                                this.autoScrollEnabled = false;
+                                this.scrollToTurn(targetTurn);
+                            });
                             return;
                         }
                     }
 
-                    // Fallback: load conversation directly
+                    // Fallback: load conversation directly (handles pendingScrollToTurn internally)
+                    this.pendingScrollToTurn = targetTurn;
+                    this.autoScrollEnabled = false;
                     await this.loadConversation(result.conversation_uuid);
                 },
 
