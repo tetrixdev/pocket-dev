@@ -49,12 +49,17 @@ echo "$packages_json" | jq -c '.[]' 2>/dev/null | while read -r pkg; do
 
     # Auto-rewrite /tmp/ to /var/tmp/ in install scripts
     # This fixes curl write errors caused by the shared /tmp volume during startup
-    # Only replaces /tmp/ when preceded by space, quote, or equals (not /var/tmp/ or /path/tmp/)
+    # Replaces /tmp/ in common contexts: space, quotes, equals, and shell redirects
     pkg_script=$(echo "$pkg_script" | sed \
         -e 's| /tmp/| /var/tmp/|g' \
         -e 's|"/tmp/|"/var/tmp/|g' \
         -e "s|'/tmp/|'/var/tmp/|g" \
-        -e 's|=/tmp/|=/var/tmp/|g')
+        -e 's|=/tmp/|=/var/tmp/|g' \
+        -e 's|>/tmp/|>/var/tmp/|g' \
+        -e 's|>>/tmp/|>>/var/tmp/|g' \
+        -e 's|2>/tmp/|2>/var/tmp/|g' \
+        -e 's|2>>/tmp/|2>>/var/tmp/|g' \
+        -e 's|>&/tmp/|>&/var/tmp/|g')
 
     # Mark as failed if no script defined
     if [ -z "$pkg_script" ] || [ "$pkg_script" = "null" ]; then

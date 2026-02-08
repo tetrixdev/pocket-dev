@@ -135,7 +135,7 @@ chmod 664 /home/appuser/.claude/settings.json 2>/dev/null || true
 # =============================================================================
 # Install user-configured system packages so they're available for workers.
 if [ -x /usr/local/bin/install-system-packages ]; then
-    /usr/local/bin/install-system-packages
+    /usr/local/bin/install-system-packages || echo "Warning: System package installation had errors"
 fi
 
 # =============================================================================
@@ -166,10 +166,9 @@ fi
 # Export user-configured credentials as environment variables.
 # These will be inherited by all worker processes.
 if [ -x /usr/local/bin/load-credentials ]; then
-    cred_output=$(/usr/local/bin/load-credentials 2>&1)
-    cred_exit_code=$?
-    if [ $cred_exit_code -ne 0 ]; then
+    if ! cred_output=$(/usr/local/bin/load-credentials 2>&1); then
         echo "Credential loading failed - aborting startup"
+        echo "$cred_output"
         exit 1
     fi
     cred_exports=$(echo "$cred_output" | grep '^export ' || true)

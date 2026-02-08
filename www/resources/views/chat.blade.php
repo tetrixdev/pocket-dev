@@ -1030,13 +1030,15 @@
                         x-show="activeIframeBuffer === 'A'"
                         class="w-full h-full border-0 bg-transparent"
                         sandbox="allow-scripts allow-same-origin allow-forms"
-                        referrerpolicy="no-referrer"></iframe>
+                        referrerpolicy="no-referrer"
+                        title="Panel content"></iframe>
                 <iframe id="panel-content-container-b"
                         x-ref="iframeB"
                         x-show="activeIframeBuffer === 'B'"
                         class="w-full h-full border-0 bg-transparent"
                         sandbox="allow-scripts allow-same-origin allow-forms"
-                        referrerpolicy="no-referrer"></iframe>
+                        referrerpolicy="no-referrer"
+                        title="Panel content"></iframe>
             </div>
 
             {{-- Scroll to Bottom Button (mobile) - positioned above attachment FAB --}}
@@ -3208,6 +3210,7 @@
                 // Load panel content from server
                 // Track currently loaded panel to avoid unnecessary reloads
                 _loadedPanelStateId: null,
+                _panelLoadToken: 0,
 
                 async loadPanelContent(panelStateId, force = false) {
                     // Skip reload if already loaded and not forced
@@ -3216,12 +3219,19 @@
                     }
 
                     this.loadingPanel = true;
+                    // Generate unique token to guard against stale loads from rapid switching
+                    const loadToken = ++this._panelLoadToken;
+
                     try {
                         const response = await fetch(`/api/panel/${panelStateId}/render`);
                         if (!response.ok) {
                             throw new Error('Failed to load panel');
                         }
                         const content = await response.text();
+
+                        // Discard stale result if a newer load was started
+                        if (loadToken !== this._panelLoadToken) return;
+
                         this.panelContent = content;
                         this._loadedPanelStateId = panelStateId;
 
@@ -3245,6 +3255,9 @@
                             });
                             await Promise.race([loadPromise, timeoutPromise]);
 
+                            // Discard if a newer load was started during iframe load
+                            if (loadToken !== this._panelLoadToken) return;
+
                             // Swap visibility instantly
                             this.activeIframeBuffer = inactiveBuffer;
 
@@ -3254,6 +3267,9 @@
                             }
                         }
                     } catch (err) {
+                        // Discard stale error if a newer load was started
+                        if (loadToken !== this._panelLoadToken) return;
+
                         console.error('Failed to load panel content:', err);
                         this.panelContent = '<div class="p-4 text-red-500">Failed to load panel content</div>';
                         // On error, load directly into current iframe
@@ -3262,7 +3278,10 @@
                             currentIframe.srcdoc = this.panelContent;
                         }
                     } finally {
-                        this.loadingPanel = false;
+                        // Only clear loading state if this is still the current load
+                        if (loadToken === this._panelLoadToken) {
+                            this.loadingPanel = false;
+                        }
                     }
                 },
 

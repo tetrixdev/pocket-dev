@@ -302,7 +302,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 6. Workspace Prompt
+        // 7. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
             $sections[] = $createSection(
                 'Workspace Prompt',
@@ -311,7 +311,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 7. Agent instructions
+        // 8. Agent instructions
         if (!empty($agentSystemPrompt)) {
             $sections[] = $createSection(
                 'Agent Instructions',

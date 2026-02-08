@@ -29,25 +29,24 @@ return [
     'dependencies' => [
         'tailwind' => [
             'type' => 'script',
-            'url' => 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.0.0',
+            'url' => 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.18',
             'description' => 'Tailwind CSS v4 - All utility classes available including arbitrary values like w-[137px]',
         ],
         'alpine-collapse' => [
             'type' => 'script',
-            'url' => 'https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.14.8/dist/cdn.min.js',
+            'url' => 'https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.15.8/dist/cdn.min.js',
             'defer' => true,
             'description' => 'Alpine.js Collapse plugin - Use x-collapse for smooth expand/collapse animations',
         ],
         'alpine' => [
             'type' => 'script',
-            'url' => 'https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js',
+            'url' => 'https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js',
             'defer' => true,
             'description' => 'Alpine.js - Reactive UI with x-data, x-show, x-on, x-effect, x-for, x-text, etc.',
         ],
         'font-awesome' => [
             'type' => 'stylesheet',
-            'url' => 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css',
-            'integrity' => 'sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==',
+            'url' => 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css',
             'crossorigin' => 'anonymous',
             'description' => 'Font Awesome 6 - Icons via fa-* classes (e.g., fa-solid fa-folder, fa-brands fa-github)',
         ],

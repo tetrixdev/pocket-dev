@@ -59,7 +59,7 @@ HTML;
     {
         $tags = [];
 
-        foreach ($dependencies as $name => $dep) {
+        foreach ($dependencies as $dep) {
             if ($dep['type'] === 'script') {
                 $defer = ($dep['defer'] ?? false) ? ' defer' : '';
                 $tags[] = "    <script{$defer} src=\"{$dep['url']}\"></script>";
