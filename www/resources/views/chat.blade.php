@@ -2944,6 +2944,9 @@
                     this._loadingConversationUuid = uuid;
                     this.disconnectFromStream();
 
+                    // Capture pendingScrollToTurn before loading (it will be cleared after use)
+                    const targetTurn = this.pendingScrollToTurn;
+
                     try {
                         const response = await fetch(`/api/conversations/${uuid}`);
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -2955,7 +2958,8 @@
                         // Note: Don't update URL here - URLs are session-based, not conversation-based
                         this.messages = [];
                         this.isAtBottom = true;
-                        this.autoScrollEnabled = true;
+                        // Disable auto-scroll when targeting a specific turn (like loadConversation does)
+                        this.autoScrollEnabled = targetTurn === null;
                         this.ignoreScrollEvents = true;
 
                         // Reset counters
@@ -2983,13 +2987,16 @@
                             this.contextWarningLevel = data.context.warning_level || 'safe';
                         }
 
-                        // Load messages
+                        // Load messages (pass targetTurn to center initial batch if searching)
                         if (data.conversation?.messages?.length > 0) {
-                            await this.loadMessagesProgressively(data.conversation.messages, null, uuid);
+                            await this.loadMessagesProgressively(data.conversation.messages, targetTurn, uuid);
                         } else {
                             this.loadingConversation = false;
                             this._loadingConversationUuid = null;
                         }
+
+                        // Clear pendingScrollToTurn after applying (so later loads behave normally)
+                        this.pendingScrollToTurn = null;
 
                         // Update provider/model
                         const hasMessages = data.conversation?.messages && data.conversation.messages.length > 0;
@@ -3156,14 +3163,10 @@
                             s.conversation?.uuid === result.conversation_uuid
                         );
                         if (screen) {
-                            // Activate the screen (loads conversation via loadConversationForScreen)
+                            // Set pendingScrollToTurn so loadConversationForScreen centers around it
+                            this.pendingScrollToTurn = targetTurn;
+                            this.autoScrollEnabled = false;
                             await this.activateScreen(screen.id);
-
-                            // After conversation loads, scroll to the target turn
-                            this.$nextTick(() => {
-                                this.autoScrollEnabled = false;
-                                this.scrollToTurn(targetTurn);
-                            });
                             return;
                         }
                     }
