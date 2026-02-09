@@ -3165,7 +3165,17 @@
                             // Set pendingScrollToTurn so loadConversationForScreen centers around it
                             this.pendingScrollToTurn = targetTurn;
                             this.autoScrollEnabled = false;
-                            await this.activateScreen(screen.id);
+
+                            // If screen is already active, activateScreen returns early without loading
+                            // so we need to scroll directly instead
+                            if (this.activeScreenId === screen.id) {
+                                this.$nextTick(() => {
+                                    this.scrollToTurn(targetTurn);
+                                    this.pendingScrollToTurn = null;
+                                });
+                            } else {
+                                await this.activateScreen(screen.id);
+                            }
                             return;
                         }
                     }
