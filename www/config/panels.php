@@ -133,4 +133,38 @@ EXAMPLE,
 </div>
 EXAMPLE,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Script Environment Documentation
+    |--------------------------------------------------------------------------
+    |
+    | Documentation about the script execution environment, included in the
+    | Panel Dependencies section of the system prompt.
+    |
+    */
+    'script_environment' => <<<'DOC'
+## Script Environment
+
+Scripts run with POSIX shell (`sh`), not bash. Avoid bash-specific syntax:
+
+| Avoid | Use Instead |
+|-------|-------------|
+| `[[ ]]` | `[ ]` |
+| `${var,,}` | `echo "$var" \| tr '[:upper:]' '[:lower:]'` |
+| `<<<` | `echo ... \| cmd` |
+| `source file` | `. file` |
+
+**Available commands:** curl, wget, git, jq, php, node, npm, python3
+
+**Error handling pattern:**
+
+```sh
+#!/bin/sh
+set -e  # Exit on first error
+[ -z "$TOOL_INPUT" ] && { echo '{"error":"input required"}'; exit 0; }
+result=$(command) || { echo '{"error":"command failed"}'; exit 0; }
+echo "{\"data\":$result}"
+```
+DOC,
 ];

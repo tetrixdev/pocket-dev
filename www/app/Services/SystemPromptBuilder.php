@@ -577,6 +577,11 @@ PROMPT;
             $doc .= "### Card Component\n```blade\n" . trim($examples['card']) . "\n```\n\n";
         }
 
+        // Add script environment documentation if present
+        if (!empty($config['script_environment'])) {
+            $doc .= "\n" . $config['script_environment'] . "\n";
+        }
+
         return $doc;
     }
 }
