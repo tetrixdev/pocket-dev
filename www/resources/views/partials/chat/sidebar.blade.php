@@ -22,7 +22,7 @@
                 <i class="fa-solid fa-filter"></i>
             </button>
             {{-- Clear filters button (red, only visible when filters active) --}}
-            <button x-show="sessionSearchQuery || showArchivedSessions"
+            <button x-show="sessionSearchQuery || showArchivedSessions || conversationSearchQuery"
                     x-cloak
                     @click="clearAllFilters()"
                     class="flex-1 py-2 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors bg-rose-600/90 hover:bg-rose-500 text-white cursor-pointer"
@@ -34,32 +34,19 @@
 
     {{-- Filter Panel (shown when filter button clicked) --}}
     <div x-show="showSearchInput" x-cloak class="px-4 pt-3 pb-3 border-b border-gray-700">
-        {{-- Archive Toggle --}}
-        <label class="flex items-center gap-2 text-sm text-gray-300 mb-3 cursor-pointer hover:text-white">
-            <input type="checkbox"
-                   x-model="showArchivedSessions"
-                   @change="fetchSessions()"
-                   class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0">
-            <span>Show Archived Sessions</span>
-        </label>
-
-        {{-- Search Input (for future implementation) --}}
-        <div class="border-t border-gray-600 pt-3">
-            <p class="text-xs text-gray-400 mb-2">Search sessions</p>
-            <div class="relative">
-                <input type="text"
-                       x-model="sessionSearchQuery"
-                       x-ref="sidebarSearchInput"
-                       @input.debounce.400ms="filterSessions()"
-                       @keydown.escape="showSearchInput = false; sessionSearchQuery = ''"
-                       placeholder="Filter by name..."
-                       class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:border-blue-500">
-            </div>
-        </div>
+        @include('partials.chat.conversation-search-panel', [
+            'sessionInputRef' => 'sidebarSearchInput',
+            'conversationInputRef' => 'conversationSearchInput'
+        ])
     </div>
 
-    {{-- Sessions List --}}
-    <div class="flex-1 overflow-y-auto p-2" id="sessions-list" @scroll="handleSessionsScroll($event)">
+    {{-- Conversation Search Results (shown when in search mode with query) --}}
+    <div x-show="sidebarSearchMode === 'conversations' && conversationSearchQuery" x-cloak class="flex-1 overflow-y-auto p-2">
+        @include('partials.chat.conversation-search-results')
+    </div>
+
+    {{-- Sessions List (hidden when showing conversation search results) --}}
+    <div x-show="!(sidebarSearchMode === 'conversations' && conversationSearchQuery)" class="flex-1 overflow-y-auto p-2" id="sessions-list" @scroll="handleSessionsScroll($event)">
         <template x-if="filteredSessions.length === 0 && !loadingMoreSessions">
             <div class="text-center text-gray-500 text-xs mt-4">No sessions yet</div>
         </template>

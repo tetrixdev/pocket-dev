@@ -1126,6 +1126,7 @@
                 availablePanels: [], // Available panel tools
                 showArchivedSessions: false, // Filter toggle
                 sessionSearchQuery: '', // Filter by name
+                sidebarSearchMode: 'sessions', // 'sessions' or 'conversations'
                 sessionMenuId: null, // Which session's context menu is open
                 sessionMenuPos: { top: 0, left: 0 }, // Position for session context menu
                 workspaceHasDefaultTemplate: false, // Whether workspace has a default session template
@@ -1271,6 +1272,7 @@
                 conversationSearchQuery: '',
                 conversationSearchResults: [],
                 conversationSearchLoading: false,
+                conversationSearchRequestId: 0, // For ignoring stale search responses
                 showArchivedConversations: false, // Filter to include archived conversations
                 pendingScrollToTurn: null, // Set when loading from search result
 
@@ -1381,6 +1383,15 @@
                         this.showArchivedSessions = true;
                         this.showSearchInput = true;
                     }
+                    const savedSearchMode = sessionStorage.getItem('pocketdev_sidebarSearchMode');
+                    if (savedSearchMode === 'conversations') {
+                        this.sidebarSearchMode = 'conversations';
+                        this.showSearchInput = true;
+                    }
+                    const savedArchivedConversations = sessionStorage.getItem('pocketdev_showArchivedConversations');
+                    if (savedArchivedConversations === 'true') {
+                        this.showArchivedConversations = true;
+                    }
 
                     // Load sessions list
                     await this.fetchSessions();
@@ -1391,6 +1402,20 @@
                             sessionStorage.setItem('pocketdev_showArchivedSessions', 'true');
                         } else {
                             sessionStorage.removeItem('pocketdev_showArchivedSessions');
+                        }
+                    });
+                    this.$watch('sidebarSearchMode', (value) => {
+                        if (value === 'conversations') {
+                            sessionStorage.setItem('pocketdev_sidebarSearchMode', 'conversations');
+                        } else {
+                            sessionStorage.removeItem('pocketdev_sidebarSearchMode');
+                        }
+                    });
+                    this.$watch('showArchivedConversations', (value) => {
+                        if (value) {
+                            sessionStorage.setItem('pocketdev_showArchivedConversations', 'true');
+                        } else {
+                            sessionStorage.removeItem('pocketdev_showArchivedConversations');
                         }
                     });
 
@@ -2224,48 +2249,6 @@
                     }
                 },
 
-                // Conversation search
-                async searchConversations() {
-                    if (!this.conversationSearchQuery.trim()) {
-                        this.conversationSearchResults = [];
-                        return;
-                    }
-
-                    this.conversationSearchLoading = true;
-                    try {
-                        let url = `/api/conversations/search?query=${encodeURIComponent(this.conversationSearchQuery)}&limit=20`;
-                        if (this.currentWorkspaceId) {
-                            url += '&workspace_id=' + this.currentWorkspaceId;
-                        }
-                        if (this.showArchivedConversations) {
-                            url += '&include_archived=true';
-                        }
-                        const response = await fetch(url);
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                        const data = await response.json();
-                        this.conversationSearchResults = data.results || [];
-                    } catch (err) {
-                        console.error('Failed to search conversations:', err);
-                        this.conversationSearchResults = [];
-                    } finally {
-                        this.conversationSearchLoading = false;
-                    }
-                },
-
-                async loadSearchResult(result) {
-                    // Close mobile drawer but keep search input visible while search is active
-                    this.showMobileDrawer = false;
-
-                    // Set pending scroll target - loadConversation will scroll to this turn
-                    this.pendingScrollToTurn = result.turn_number;
-
-                    // Disable auto-scroll to prevent other code from scrolling to bottom
-                    this.autoScrollEnabled = false;
-
-                    // Load the conversation (will scroll to turn instead of bottom)
-                    await this.loadConversation(result.conversation_uuid);
-                },
-
                 async newConversation() {
                     // Disconnect from any active stream
                     this.disconnectFromStream();
@@ -2961,6 +2944,9 @@
                     this._loadingConversationUuid = uuid;
                     this.disconnectFromStream();
 
+                    // Capture pendingScrollToTurn before loading (it will be cleared after use)
+                    const targetTurn = this.pendingScrollToTurn;
+
                     try {
                         const response = await fetch(`/api/conversations/${uuid}`);
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -2972,7 +2958,8 @@
                         // Note: Don't update URL here - URLs are session-based, not conversation-based
                         this.messages = [];
                         this.isAtBottom = true;
-                        this.autoScrollEnabled = true;
+                        // Disable auto-scroll when targeting a specific turn (like loadConversation does)
+                        this.autoScrollEnabled = targetTurn === null;
                         this.ignoreScrollEvents = true;
 
                         // Reset counters
@@ -3000,13 +2987,16 @@
                             this.contextWarningLevel = data.context.warning_level || 'safe';
                         }
 
-                        // Load messages
+                        // Load messages (pass targetTurn to center initial batch if searching)
                         if (data.conversation?.messages?.length > 0) {
-                            await this.loadMessagesProgressively(data.conversation.messages, null, uuid);
+                            await this.loadMessagesProgressively(data.conversation.messages, targetTurn, uuid);
                         } else {
                             this.loadingConversation = false;
                             this._loadingConversationUuid = null;
                         }
+
+                        // Clear pendingScrollToTurn after applying (so later loads behave normally)
+                        this.pendingScrollToTurn = null;
 
                         // Update provider/model
                         const hasMessages = data.conversation?.messages && data.conversation.messages.length > 0;
@@ -3099,11 +3089,101 @@
                     // This method exists for the @input handler
                 },
 
-                // Clear all filters (updated for sessions)
+                // Clear all filters (sessions and conversation search)
                 clearAllFilters() {
                     this.showArchivedSessions = false;
                     this.sessionSearchQuery = '';
+                    this.sidebarSearchMode = 'sessions';
+                    this.showArchivedConversations = false;
+                    this.clearConversationSearch(); // Invalidates in-flight requests
                     this.fetchSessions();
+                },
+
+                // Search conversations semantically
+                async searchConversations() {
+                    if (!this.conversationSearchQuery.trim()) {
+                        this.clearConversationSearch(); // Invalidates in-flight requests
+                        return;
+                    }
+
+                    // Increment request ID to track this specific request
+                    const requestId = ++this.conversationSearchRequestId;
+                    this.conversationSearchLoading = true;
+
+                    try {
+                        const params = new URLSearchParams({
+                            query: this.conversationSearchQuery.trim(),
+                            limit: '20',
+                        });
+                        if (this.showArchivedConversations) {
+                            params.set('include_archived', 'true');
+                        }
+                        const response = await fetch(`/api/conversations/search?${params}`);
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const data = await response.json();
+
+                        // Only update if this is still the latest request
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchResults = data.results || [];
+                        }
+                    } catch (err) {
+                        console.error('Failed to search conversations:', err);
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchResults = [];
+                        }
+                    } finally {
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchLoading = false;
+                        }
+                    }
+                },
+
+                // Clear conversation search
+                clearConversationSearch() {
+                    this.conversationSearchRequestId++; // Invalidate any in-flight requests
+                    this.conversationSearchQuery = '';
+                    this.conversationSearchResults = [];
+                    this.conversationSearchLoading = false;
+                },
+
+                // Load a conversation from search result
+                async loadSearchResult(result) {
+                    // Close mobile drawer
+                    this.showMobileDrawer = false;
+
+                    const targetTurn = result.turn_number;
+
+                    // If we have session info, load the session and activate the screen
+                    if (result.session_id) {
+                        await this.loadSession(result.session_id);
+
+                        // Find the screen with this conversation
+                        const screen = this.screens.find(s =>
+                            s.conversation?.uuid === result.conversation_uuid
+                        );
+                        if (screen) {
+                            // Set pendingScrollToTurn so loadConversationForScreen centers around it
+                            this.pendingScrollToTurn = targetTurn;
+                            this.autoScrollEnabled = false;
+
+                            // If screen is already active, activateScreen returns early without loading
+                            // so we need to scroll directly instead
+                            if (this.activeScreenId === screen.id) {
+                                this.$nextTick(() => {
+                                    this.scrollToTurn(targetTurn);
+                                    this.pendingScrollToTurn = null;
+                                });
+                            } else {
+                                await this.activateScreen(screen.id);
+                            }
+                            return;
+                        }
+                    }
+
+                    // Fallback: load conversation directly (handles pendingScrollToTurn internally)
+                    this.pendingScrollToTurn = targetTurn;
+                    this.autoScrollEnabled = false;
+                    await this.loadConversation(result.conversation_uuid);
                 },
 
                 // Load session data from a conversation's screen.session relationship
