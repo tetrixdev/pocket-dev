@@ -3094,16 +3094,15 @@
                     this.showArchivedSessions = false;
                     this.sessionSearchQuery = '';
                     this.sidebarSearchMode = 'sessions';
-                    this.conversationSearchQuery = '';
-                    this.conversationSearchResults = [];
                     this.showArchivedConversations = false;
+                    this.clearConversationSearch(); // Invalidates in-flight requests
                     this.fetchSessions();
                 },
 
                 // Search conversations semantically
                 async searchConversations() {
                     if (!this.conversationSearchQuery.trim()) {
-                        this.conversationSearchResults = [];
+                        this.clearConversationSearch(); // Invalidates in-flight requests
                         return;
                     }
 
