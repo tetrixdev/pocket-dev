@@ -1272,6 +1272,7 @@
                 conversationSearchQuery: '',
                 conversationSearchResults: [],
                 conversationSearchLoading: false,
+                conversationSearchRequestId: 0, // For ignoring stale search responses
                 showArchivedConversations: false, // Filter to include archived conversations
                 pendingScrollToTurn: null, // Set when loading from search result
 
@@ -3099,10 +3100,13 @@
                         return;
                     }
 
+                    // Increment request ID to track this specific request
+                    const requestId = ++this.conversationSearchRequestId;
                     this.conversationSearchLoading = true;
+
                     try {
                         const params = new URLSearchParams({
-                            query: this.conversationSearchQuery,
+                            query: this.conversationSearchQuery.trim(),
                             limit: '20',
                         });
                         if (this.showArchivedConversations) {
@@ -3111,19 +3115,29 @@
                         const response = await fetch(`/api/conversations/search?${params}`);
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
                         const data = await response.json();
-                        this.conversationSearchResults = data.results || [];
+
+                        // Only update if this is still the latest request
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchResults = data.results || [];
+                        }
                     } catch (err) {
                         console.error('Failed to search conversations:', err);
-                        this.conversationSearchResults = [];
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchResults = [];
+                        }
                     } finally {
-                        this.conversationSearchLoading = false;
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchLoading = false;
+                        }
                     }
                 },
 
                 // Clear conversation search
                 clearConversationSearch() {
+                    this.conversationSearchRequestId++; // Invalidate any in-flight requests
                     this.conversationSearchQuery = '';
                     this.conversationSearchResults = [];
+                    this.conversationSearchLoading = false;
                 },
 
                 // Load a conversation from search result

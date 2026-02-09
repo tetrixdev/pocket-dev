@@ -1,11 +1,14 @@
 {{--
 Conversation Search Panel - Shared between desktop sidebar and mobile drawer
 
-Props:
+Variables (passed via @include):
 - $sessionInputRef: x-ref name for session filter input (e.g., 'sidebarSearchInput' or 'mobileSearchInput')
 - $conversationInputRef: x-ref name for conversation search input (e.g., 'conversationSearchInput' or 'mobileConversationSearchInput')
 --}}
-@props(['sessionInputRef' => 'sidebarSearchInput', 'conversationInputRef' => 'conversationSearchInput'])
+@php
+    $sessionInputRef ??= 'sidebarSearchInput';
+    $conversationInputRef ??= 'conversationSearchInput';
+@endphp
 
 {{-- Search Mode Tabs --}}
 <div class="flex gap-1 mb-3">
