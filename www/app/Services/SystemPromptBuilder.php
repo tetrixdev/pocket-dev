@@ -23,15 +23,16 @@ use App\Models\Workspace;
  * 2. Tools - capabilities and how to use them
  * 3. Memory - available data schemas
  * 4. Skills - slash commands that can be invoked
+ * 5. Panel dependencies - CDN libraries for panel creation/update
  *
  * RECENCY ZONE (end - high attention, task-relevant):
- * 5. Additional system prompt - project-wide customs (global)
- * 6. Workspace Prompt - workspace-level base prompt
- * 7. Agent instructions - task-specific behavior
- * 8. Working directory - current context
- * 9. Open panels - currently visible panels in session
- * 10. Environment - available resources
- * 11. Context usage - current state
+ * 6. Additional system prompt - project-wide customs (global)
+ * 7. Workspace Prompt - workspace-level base prompt
+ * 8. Agent instructions - task-specific behavior
+ * 9. Working directory - current context
+ * 10. Open panels - currently visible panels in session
+ * 11. Environment - available resources
+ * 12. Context usage - current state
  */
 class SystemPromptBuilder
 {
@@ -75,38 +76,43 @@ class SystemPromptBuilder
             $sections[] = $skillsSection;
         }
 
+        // 5. Panel dependencies (for creating/updating panels)
+        if ($panelSection = $this->buildPanelDependenciesSection($allowedTools)) {
+            $sections[] = $panelSection;
+        }
+
         // === RECENCY ZONE (task-relevant) ===
-        // 5. Additional system prompt (global)
+        // 6. Additional system prompt (global)
         $additionalPrompt = $this->systemPromptService->getAdditional();
         if (!empty($additionalPrompt)) {
             $sections[] = $additionalPrompt;
         }
 
-        // 6. Workspace Prompt
+        // 7. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
             $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
         }
 
-        // 7. Agent-specific instructions
+        // 8. Agent-specific instructions
         $agentPrompt = $agent?->system_prompt;
         if (!empty($agentPrompt)) {
             $sections[] = $this->buildAgentSection($agentPrompt);
         }
 
-        // 8. Working directory context
+        // 9. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 9. Open panels (if any panels are open in the session)
+        // 10. Open panels (if any panels are open in the session)
         if ($openPanelsSection = $this->buildOpenPanelsSection($conversation)) {
             $sections[] = $openPanelsSection;
         }
 
-        // 10. Environment (credentials and packages)
+        // 11. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 11. Context usage (dynamic)
+        // 12. Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -150,38 +156,43 @@ class SystemPromptBuilder
             $sections[] = $skillsSection;
         }
 
+        // 5. Panel dependencies (for creating/updating panels)
+        if ($panelSection = $this->buildPanelDependenciesSection($allowedTools)) {
+            $sections[] = $panelSection;
+        }
+
         // === RECENCY ZONE (task-relevant) ===
-        // 5. Additional system prompt (global)
+        // 6. Additional system prompt (global)
         $additionalPrompt = $this->systemPromptService->getAdditional();
         if (!empty($additionalPrompt)) {
             $sections[] = $additionalPrompt;
         }
 
-        // 6. Workspace Prompt
+        // 7. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
             $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
         }
 
-        // 7. Agent-specific instructions
+        // 8. Agent-specific instructions
         $agentPrompt = $agent?->system_prompt;
         if (!empty($agentPrompt)) {
             $sections[] = $this->buildAgentSection($agentPrompt);
         }
 
-        // 8. Working directory context
+        // 9. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 9. Open panels (if any panels are open in the session)
+        // 10. Open panels (if any panels are open in the session)
         if ($openPanelsSection = $this->buildOpenPanelsSection($conversation)) {
             $sections[] = $openPanelsSection;
         }
 
-        // 10. Environment (credentials and packages)
+        // 11. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 11. Context usage (dynamic)
+        // 12. Context usage (dynamic)
         if ($contextUsage = $this->buildContextUsageSection($conversation)) {
             $sections[] = $contextUsage;
         }
@@ -272,8 +283,17 @@ class SystemPromptBuilder
             $sections[] = $skillsHierarchy;
         }
 
+        // 5. Panel dependencies
+        if ($panelSection = $this->buildPanelDependenciesSection($allowedTools)) {
+            $sections[] = $createSection(
+                'Panel Dependencies',
+                $panelSection,
+                'config/panels.php'
+            );
+        }
+
         // === RECENCY ZONE (task-relevant) ===
-        // 5. Additional system prompt (global)
+        // 6. Additional system prompt (global)
         $additionalPrompt = $this->systemPromptService->getAdditional();
         if (!empty($additionalPrompt)) {
             $sections[] = $createSection(
@@ -283,7 +303,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 6. Workspace Prompt
+        // 7. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
             $sections[] = $createSection(
                 'Workspace Prompt',
@@ -292,7 +312,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 7. Agent instructions
+        // 8. Agent instructions
         if (!empty($agentSystemPrompt)) {
             $sections[] = $createSection(
                 'Agent Instructions',
@@ -301,7 +321,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 8. Working directory
+        // 9. Working directory
         $workingDir = $workspace?->getWorkingDirectoryPath() ?? '/workspace';
         $sections[] = $createSection(
             'Working Directory',
@@ -309,14 +329,14 @@ class SystemPromptBuilder
             'Dynamic (per conversation)'
         );
 
-        // 9. Open panels (placeholder - actual panels are per-session)
+        // 10. Open panels (placeholder - actual panels are per-session)
         $sections[] = $createSection(
             'Open Panels',
             "# Open Panels\n\n*This section shows panels currently open in the session.*\n\nExample:\n- git-status (id: abc-123) @ /workspace/default\n- file-explorer (id: def-456) @ /workspace/default\n\nUse `pd panel:peek <panel-slug>` to see current visible state.",
             'Dynamic (per session)'
         );
 
-        // 10. Environment
+        // 11. Environment
         $envContent = $this->buildEnvironmentSection($workspace);
         if (!empty($envContent)) {
             $sections[] = $createSection(
@@ -498,5 +518,65 @@ pd panel:peek <panel-slug>
 pd panel:peek <panel-slug> --id=<panel-id>
 ```
 PROMPT;
+    }
+
+    /**
+     * Build panel dependencies section from config.
+     * This is shown once in the system prompt for panel creation/update reference.
+     * Only included if tool-create or tool-update is allowed (or all tools allowed).
+     */
+    private function buildPanelDependenciesSection(?array $allowedTools = null): ?string
+    {
+        // Only include if panel tools are allowed
+        // null = all tools allowed, otherwise check for tool-create or tool-update
+        if ($allowedTools !== null) {
+            $panelToolsAllowed = in_array('tool-create', $allowedTools) || in_array('tool-update', $allowedTools);
+            if (!$panelToolsAllowed) {
+                return null;
+            }
+        }
+
+        $config = config('panels');
+
+        if (!$config) {
+            return null;
+        }
+
+        $deps = $config['dependencies'] ?? [];
+        $examples = $config['examples'] ?? [];
+        $baseCss = $config['base_css'] ?? '';
+        $tailwindTheme = $config['tailwind_theme'] ?? '';
+
+        $doc = "# Panel Dependencies\n\n";
+        $doc .= "When creating or updating panels, these libraries are pre-loaded in the iframe:\n\n";
+
+        foreach ($deps as $name => $dep) {
+            $displayName = ucwords(str_replace('-', ' ', $name));
+            $doc .= "## {$displayName}\n";
+            $doc .= "- **URL:** `" . ($dep['url'] ?? 'N/A') . "`\n";
+            $doc .= "- " . ($dep['description'] ?? '') . "\n\n";
+        }
+
+        $doc .= "## Base CSS (Always Present)\n\n";
+        $doc .= "```css\n" . trim($baseCss) . "\n```\n\n";
+
+        $doc .= "## Tailwind Theme\n\n";
+        $doc .= "```css\n" . trim($tailwindTheme) . "\n```\n\n";
+
+        $doc .= "## Examples\n\n";
+
+        if (!empty($examples['icons'])) {
+            $doc .= "### Icons (Font Awesome)\n```html\n" . trim($examples['icons']) . "\n```\n\n";
+        }
+
+        if (!empty($examples['collapse'])) {
+            $doc .= "### Collapse Animation\n```blade\n" . trim($examples['collapse']) . "\n```\n\n";
+        }
+
+        if (!empty($examples['card'])) {
+            $doc .= "### Card Component\n```blade\n" . trim($examples['card']) . "\n```\n\n";
+        }
+
+        return $doc;
     }
 }

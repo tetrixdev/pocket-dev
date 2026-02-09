@@ -72,6 +72,8 @@ Use ToolUpdate to modify an existing user-created tool.
 - tools: Tool management
 - file_ops: File operations
 - custom: Custom tools (default)
+
+**Refer to the Panel Dependencies section for available CSS/JS libraries when updating panel templates.**
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'

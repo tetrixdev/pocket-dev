@@ -131,89 +131,11 @@ chmod 660 /home/appuser/.claude.json /home/appuser/.claude.json.backup 2>/dev/nu
 chmod 664 /home/appuser/.claude/settings.json 2>/dev/null || true
 
 # =============================================================================
-# SYSTEM PACKAGE INSTALLATION
+# SYSTEM PACKAGE INSTALLATION (requires root)
 # =============================================================================
-# Install user-configured system packages from database (requires root).
-#
-# IMPORTANT: /tmp vs /var/tmp
-# ---------------------------
-# /tmp is a shared Docker volume (shared-tmp) between PHP and Queue containers.
-# This allows agents to write temp files that PHP can read for the chat UI.
-# However, during container STARTUP, writing to shared /tmp can cause issues:
-#   - curl: (23) client returned ERROR on write
-# This is a timing/race condition with the shared volume during early boot.
-#
-# SOLUTION: We auto-rewrite /tmp/ to /var/tmp/ in install scripts below.
-# /var/tmp is container-local and works reliably during startup.
-# Users can write scripts with /tmp naturally - it gets fixed automatically.
-#
-# The shared /tmp works fine at RUNTIME when agents use it.
-# =============================================================================
-
-# Ensure jq is installed first (needed for JSON parsing)
-if ! command -v jq &> /dev/null; then
-    echo "Installing jq (required for package management)..."
-    if ! apt-get update -qq || ! apt-get install -y -qq jq; then
-        echo "ERROR: Failed to install jq - marking all pending packages as failed"
-        cd /var/www && php artisan system:package fail-all-pending --message="System error: failed to install jq (required for package management)" 2>/dev/null || true
-    fi
-fi
-
-# Only proceed if jq is available
-if command -v jq &> /dev/null; then
-    packages_json=$(cd /var/www && php artisan system:package export-scripts 2>/dev/null)
-
-    if [ -n "$packages_json" ] && [ "$packages_json" != "[]" ]; then
-        # Verify JSON is parseable
-        if ! echo "$packages_json" | jq -e . >/dev/null 2>&1; then
-            echo "ERROR: Failed to parse package JSON - marking all pending packages as failed"
-            cd /var/www && php artisan system:package fail-all-pending --message="System error: failed to parse package list JSON" 2>/dev/null || true
-        else
-            echo "Installing system packages..."
-
-            # Parse JSON and install each package
-            echo "$packages_json" | jq -c '.[]' 2>/dev/null | while read -r pkg; do
-                pkg_id=$(echo "$pkg" | jq -r '.id')
-                pkg_name=$(echo "$pkg" | jq -r '.name')
-                pkg_script=$(echo "$pkg" | jq -r '.script')
-
-                # Auto-rewrite /tmp/ to /var/tmp/ in install scripts
-                # This fixes curl write errors caused by the shared /tmp volume during startup
-                # Only replaces /tmp/ when preceded by space, quote, or equals (not /var/tmp/ or /path/tmp/)
-                pkg_script=$(echo "$pkg_script" | sed -e 's| /tmp/| /var/tmp/|g' -e 's|"/tmp/|"/var/tmp/|g' -e "s|'/tmp/|'/var/tmp/|g" -e 's|=/tmp/|=/var/tmp/|g')
-
-                # Mark as failed if no script defined
-                if [ -z "$pkg_script" ] || [ "$pkg_script" = "null" ]; then
-                    echo "  ✗ $pkg_name: No install script defined"
-                    cd /var/www && php artisan system:package status-by-id --id="$pkg_id" --status=failed --message="No install script defined" 2>/dev/null || true
-                    continue
-                fi
-
-                echo "  Installing: $pkg_name"
-
-                # Run the install script (non-interactive)
-                # Use && / || pattern to avoid set -e exiting on failure
-                install_output=$(bash -c "$pkg_script" 2>&1) && install_status=0 || install_status=$?
-
-                if [ $install_status -eq 0 ]; then
-                    echo "  ✓ $pkg_name installed"
-                    cd /var/www && php artisan system:package status-by-id --id="$pkg_id" --status=installed 2>/dev/null || true
-                else
-                    echo "  ✗ $pkg_name failed"
-                    # Capture last few lines of error
-                    error_msg=$(echo "$install_output" | tail -3 | tr '\n' ' ')
-                    [ -z "$error_msg" ] && error_msg="Install script exited with code $install_status"
-                    echo "    Error: $error_msg"
-                    cd /var/www && php artisan system:package status-by-id --id="$pkg_id" --status=failed --message="$error_msg" 2>/dev/null || true
-                fi
-            done
-            echo "System package installation complete"
-        fi
-    else
-        echo "No system packages configured"
-    fi
-else
-    echo "WARNING: jq not available - skipping package installation"
+# Install user-configured system packages so they're available for workers.
+if [ -x /usr/local/bin/install-system-packages ]; then
+    /usr/local/bin/install-system-packages || echo "Warning: System package installation had errors"
 fi
 
 # =============================================================================
@@ -238,16 +160,21 @@ if [ -n "$CLAUDE_CODE_VERSION" ]; then
     fi
 fi
 
-# Export user-configured credentials as environment variables
-# These will be inherited by supervisord and all queue workers
-echo "Loading credentials into environment..."
-cred_exports=$(cd /var/www && php artisan credential export 2>/dev/null)
-if [ -n "$cred_exports" ]; then
-    eval "$cred_exports"
-    cred_count=$(echo "$cred_exports" | wc -l)
-    echo "  Loaded $cred_count credential(s)"
-else
-    echo "  No credentials configured"
+# =============================================================================
+# CREDENTIAL LOADING (requires DB ready)
+# =============================================================================
+# Export user-configured credentials as environment variables.
+# These will be inherited by all worker processes.
+if [ -x /usr/local/bin/load-credentials ]; then
+    if ! cred_output=$(/usr/local/bin/load-credentials 2>&1); then
+        echo "Credential loading failed - aborting startup"
+        echo "$cred_output"
+        exit 1
+    fi
+    cred_exports=$(echo "$cred_output" | grep '^export ' || true)
+    if [ -n "$cred_exports" ]; then
+        eval "$cred_exports"
+    fi
 fi
 
 # =============================================================================

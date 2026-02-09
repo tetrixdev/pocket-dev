@@ -1013,25 +1013,32 @@
                 </div>
 
                 {{--
-                    Panel Content (rendered HTML)
+                    Panel Content (rendered HTML) - Double-buffered iframes
 
-                    Uses x-effect to only update when content ACTUALLY changes (via _lastContent tracking).
-                    When content changes, Alpine.initTree() reinitializes all Alpine components in the panel.
+                    Uses two iframes (A and B) to eliminate flash when switching panels:
+                    - One iframe is visible (showing current panel)
+                    - The other is hidden (used for preloading next panel)
+                    - On panel switch, content loads into hidden iframe, then we swap visibility
 
                     IMPORTANT for panel developers:
                     - x-init and init() will re-run whenever panel content is refreshed
                     - Store persistent state in panelState (synced to server) rather than local Alpine state
                     - Side effects in init() should be idempotent or guarded
                 --}}
-                <div id="panel-content-container"
-                     x-effect="
-                         if (panelContent !== $el._lastContent) {
-                             $el._lastContent = panelContent;
-                             $el.innerHTML = panelContent;
-                             Alpine.initTree($el);
-                         }
-                     "
-                     class="h-full"></div>
+                <iframe id="panel-content-container-a"
+                        x-ref="iframeA"
+                        x-show="activeIframeBuffer === 'A'"
+                        class="w-full h-full border-0 bg-transparent"
+                        sandbox="allow-scripts allow-same-origin allow-forms"
+                        referrerpolicy="no-referrer"
+                        title="Panel content"></iframe>
+                <iframe id="panel-content-container-b"
+                        x-ref="iframeB"
+                        x-show="activeIframeBuffer === 'B'"
+                        class="w-full h-full border-0 bg-transparent"
+                        sandbox="allow-scripts allow-same-origin allow-forms"
+                        referrerpolicy="no-referrer"
+                        title="Panel content"></iframe>
             </div>
 
             {{-- Scroll to Bottom Button (mobile) - positioned above attachment FAB --}}
@@ -1139,6 +1146,7 @@
                 // Panel content
                 panelContent: '', // HTML content of active panel
                 loadingPanel: false, // Loading state for panel content
+                activeIframeBuffer: 'A', // Which iframe is currently visible ('A' or 'B')
 
                 // Screen tab drag-and-drop state
                 draggedScreenId: null, // ID of screen being dragged
@@ -3282,6 +3290,7 @@
                 // Load panel content from server
                 // Track currently loaded panel to avoid unnecessary reloads
                 _loadedPanelStateId: null,
+                _panelLoadToken: 0,
 
                 async loadPanelContent(panelStateId, force = false) {
                     // Skip reload if already loaded and not forced
@@ -3290,20 +3299,69 @@
                     }
 
                     this.loadingPanel = true;
+                    // Generate unique token to guard against stale loads from rapid switching
+                    const loadToken = ++this._panelLoadToken;
+
                     try {
                         const response = await fetch(`/api/panel/${panelStateId}/render`);
                         if (!response.ok) {
                             throw new Error('Failed to load panel');
                         }
-                        this.panelContent = await response.text();
+                        const content = await response.text();
+
+                        // Discard stale result if a newer load was started
+                        if (loadToken !== this._panelLoadToken) return;
+
+                        this.panelContent = content;
                         this._loadedPanelStateId = panelStateId;
-                        // Note: Alpine.initTree is now called by the x-effect on panel-content-container
-                        // when it detects the content has changed
+
+                        // Double-buffer: load into hidden iframe, then swap visibility
+                        const inactiveBuffer = this.activeIframeBuffer === 'A' ? 'B' : 'A';
+                        const inactiveIframe = this.$refs[`iframe${inactiveBuffer}`];
+                        const activeIframe = this.$refs[`iframe${this.activeIframeBuffer}`];
+
+                        if (inactiveIframe) {
+                            // Create a promise that resolves when the iframe loads (with 30s timeout)
+                            const loadPromise = new Promise((resolve) => {
+                                const onLoad = () => {
+                                    inactiveIframe.removeEventListener('load', onLoad);
+                                    resolve('loaded');
+                                };
+                                inactiveIframe.addEventListener('load', onLoad);
+                                inactiveIframe.srcdoc = content;
+                            });
+                            const timeoutPromise = new Promise((resolve) => {
+                                setTimeout(() => resolve('timeout'), 30000);
+                            });
+                            await Promise.race([loadPromise, timeoutPromise]);
+
+                            // Discard if a newer load was started during iframe load
+                            if (loadToken !== this._panelLoadToken) return;
+
+                            // Swap visibility instantly
+                            this.activeIframeBuffer = inactiveBuffer;
+
+                            // Clear the now-hidden iframe to free resources
+                            if (activeIframe) {
+                                activeIframe.srcdoc = '';
+                            }
+                        }
                     } catch (err) {
+                        // Discard stale error if a newer load was started
+                        if (loadToken !== this._panelLoadToken) return;
+
                         console.error('Failed to load panel content:', err);
                         this.panelContent = '<div class="p-4 text-red-500">Failed to load panel content</div>';
+                        // On error, load directly into current iframe
+                        const currentIframe = this.$refs[`iframe${this.activeIframeBuffer}`];
+                        if (currentIframe) {
+                            currentIframe.srcdoc = this.panelContent;
+                        }
                     } finally {
-                        this.loadingPanel = false;
+                        // Only clear loading state if this is still the current load
+                        if (loadToken === this._panelLoadToken) {
+                            this.loadingPanel = false;
+                        }
                     }
                 },
 
