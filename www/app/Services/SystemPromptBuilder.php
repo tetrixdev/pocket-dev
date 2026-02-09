@@ -553,8 +553,8 @@ PROMPT;
         foreach ($deps as $name => $dep) {
             $displayName = ucwords(str_replace('-', ' ', $name));
             $doc .= "## {$displayName}\n";
-            $doc .= "- **URL:** `{$dep['url']}`\n";
-            $doc .= "- {$dep['description']}\n\n";
+            $doc .= "- **URL:** `" . ($dep['url'] ?? 'N/A') . "`\n";
+            $doc .= "- " . ($dep['description'] ?? '') . "\n\n";
         }
 
         $doc .= "## Base CSS (Always Present)\n\n";
