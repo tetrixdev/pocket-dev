@@ -3693,6 +3693,34 @@
                     }, 3000);
                 },
 
+                // Find the next session by position (below first, then above as fallback)
+                // Used when archiving/deleting to select the session "below" in the sidebar
+                findNextSessionByPosition(excludeSessionId, options = {}) {
+                    const { excludeArchived = true, sessionsArray = null } = options;
+                    const sessions = sessionsArray || this.filteredSessions;
+
+                    // Find current index
+                    const currentIndex = sessions.findIndex(s => s.id === excludeSessionId);
+                    if (currentIndex === -1) return null;
+
+                    // Look below first (older sessions - higher index since sorted by updated_at DESC)
+                    for (let i = currentIndex + 1; i < sessions.length; i++) {
+                        const s = sessions[i];
+                        if (excludeArchived && s.is_archived) continue;
+                        return s;
+                    }
+
+                    // Fallback: look above (newer sessions - lower index)
+                    for (let i = currentIndex - 1; i >= 0; i--) {
+                        const s = sessions[i];
+                        if (s.id === excludeSessionId) continue;
+                        if (excludeArchived && s.is_archived) continue;
+                        return s;
+                    }
+
+                    return null;
+                },
+
                 // Archive a session
                 async archiveSession(sessionId) {
                     if (!sessionId) return;
@@ -3705,6 +3733,12 @@
 
                         if (!response.ok) throw new Error('Failed to archive session');
 
+                        // Find next session BEFORE modifying array (to preserve position calculation)
+                        const wasCurrentSession = this.currentSession?.id === sessionId;
+                        const nextSession = wasCurrentSession
+                            ? this.findNextSessionByPosition(sessionId, { excludeArchived: true })
+                            : null;
+
                         // Update local state - modify sessions array (filteredSessions is a computed getter)
                         const session = this.sessions.find(s => s.id === sessionId);
                         if (session) {
@@ -3716,9 +3750,8 @@
                             this.sessions = this.sessions.filter(s => s.id !== sessionId);
                         }
 
-                        // If this was the current session, load another or create new
-                        if (this.currentSession?.id === sessionId) {
-                            const nextSession = this.sessions.find(s => s.id !== sessionId && !s.is_archived);
+                        // If this was the current session, load the next one below (older) or create new
+                        if (wasCurrentSession) {
                             if (nextSession) {
                                 await this.loadSession(nextSession.id);
                             } else {
@@ -3780,12 +3813,17 @@
 
                         if (!response.ok) throw new Error('Failed to delete session');
 
+                        // Find next session BEFORE removing (to preserve position calculation)
+                        const wasCurrentSession = this.currentSession?.id === sessionId;
+                        const nextSession = wasCurrentSession
+                            ? this.findNextSessionByPosition(sessionId, { excludeArchived: true })
+                            : null;
+
                         // Remove from local list - modify sessions array (filteredSessions is a computed getter)
                         this.sessions = this.sessions.filter(s => s.id !== sessionId);
 
-                        // If this was the current session, load another or create new
-                        if (this.currentSession?.id === sessionId) {
-                            const nextSession = this.sessions.find(s => !s.is_archived);
+                        // If this was the current session, load the next one below (older) or create new
+                        if (wasCurrentSession) {
                             if (nextSession) {
                                 await this.loadSession(nextSession.id);
                             } else {
