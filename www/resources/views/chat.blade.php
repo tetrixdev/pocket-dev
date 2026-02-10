@@ -1847,6 +1847,15 @@
                     return screen.conversation?.status || 'idle';
                 },
 
+                getActiveTabCount(session) {
+                    if (!session.screens) return 0;
+                    return session.screens.filter(s => {
+                        if (!s) return false;
+                        if (s.type === 'panel') return true;
+                        return s.conversation?.status !== 'archived';
+                    }).length;
+                },
+
                 getSessionStatus(session) {
                     if (session.is_archived) return 'archived';
 
