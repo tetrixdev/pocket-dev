@@ -5452,24 +5452,6 @@
                                 }
                                 // Remove from pending set - tool execution is complete
                                 state.waitingForToolResults.delete(toolResultId);
-
-                                // Detect if a panel was opened and refresh screens
-                                // The content may be raw text OR JSON with an "output" field
-                                let panelOutput = event.content;
-                                if (typeof panelOutput === 'string') {
-                                    try {
-                                        const parsed = JSON.parse(panelOutput);
-                                        if (parsed.output) {
-                                            panelOutput = parsed.output;
-                                        }
-                                    } catch (e) {
-                                        // Not JSON, use as-is
-                                    }
-                                }
-                                const outputStr = typeof panelOutput === 'string' ? panelOutput : '';
-                                if (outputStr.startsWith("Opened panel '")) {
-                                    this.refreshSessionScreens();
-                                }
                             } else {
                                 console.warn('tool_result event missing tool_id in metadata');
                             }
