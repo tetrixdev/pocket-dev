@@ -98,6 +98,12 @@ RUN mkdir -p /home/appuser/.claude /home/appuser/.codex \
 # regardless of whether called from PHP-FPM, entrypoint, or docker exec
 RUN usermod -d /home/appuser www-data
 
+# Allow git to operate in any directory regardless of ownership
+# PHP-FPM (www-data, uid 33) and queue (appuser, uid 1000) both need git access
+# to workspace repos owned by appuser — without this, git's CVE-2022-24765
+# safe.directory check causes silent failures in the git-status panel
+RUN git config --system safe.directory '*'
+
 # Install PocketDev artisan wrapper (allows running artisan from any directory)
 COPY docker-laravel/shared/scripts/pd /usr/local/bin/pd
 COPY docker-laravel/shared/scripts/pd /usr/local/bin/pocketdev
