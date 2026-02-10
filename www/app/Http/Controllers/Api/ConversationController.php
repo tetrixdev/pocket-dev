@@ -336,11 +336,8 @@ class ConversationController extends Controller
             'model' => $conversation->model,
             'provider' => $conversation->provider_type,
         ]);
-
-        // Clear any old stream events (but keep the status we just set)
-        $key = 'stream:' . $conversation->uuid;
-        \Illuminate\Support\Facades\Redis::del("{$key}:events");
-        RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized, old events cleared');
+        // Note: startStream() already clears old events inside its MULTI/EXEC transaction
+        RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized');
 
         // Dispatch background job - reasoning settings are now stored on conversation
         RequestFlowLogger::log('controller.stream.dispatching_job', 'Dispatching ProcessConversationStream job');
@@ -440,9 +437,22 @@ class ConversationController extends Controller
                 ]);
 
                 if ($status !== 'streaming') {
+                    // Re-fetch any tail events that arrived between getEvents() and getStatus()
+                    // This closes the race window where the job writes final events AND completes
+                    // between our two Redis calls.
+                    $tailEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
+                    foreach ($tailEvents as $event) {
+                        $sse->writeRaw(json_encode(array_merge($event, [
+                            'index' => $currentIndex,
+                            'conversation_uuid' => $conversation->uuid,
+                        ])));
+                        $currentIndex++;
+                    }
+
                     // Stream is done, send final status
                     RequestFlowLogger::log('controller.sse.stream_already_done', 'Stream already completed, sending final status', [
                         'status' => $status,
+                        'tail_events' => count($tailEvents),
                     ]);
                     $sse->writeRaw(json_encode([
                         'type' => 'stream_status',
@@ -504,10 +514,23 @@ class ConversationController extends Controller
                     // Check stream status
                     $status = $this->streamManager->getStatus($conversation->uuid);
                     if ($status !== 'streaming') {
+                        // Re-fetch any tail events that arrived between getEvents() and getStatus()
+                        // This closes the race window where the job writes final events AND completes
+                        // between our two Redis calls.
+                        $tailEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
+                        foreach ($tailEvents as $event) {
+                            $sse->writeRaw(json_encode(array_merge($event, [
+                                'index' => $currentIndex,
+                                'conversation_uuid' => $conversation->uuid,
+                            ])));
+                            $currentIndex++;
+                        }
+
                         RequestFlowLogger::log('controller.sse.stream_completed', 'Stream completed, sending final status', [
                             'status' => $status,
                             'final_index' => $currentIndex - 1,
                             'poll_count' => $pollCount,
+                            'tail_events' => count($tailEvents),
                         ]);
                         $sse->writeRaw(json_encode([
                             'type' => 'stream_status',

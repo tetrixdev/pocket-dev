@@ -2982,6 +2982,8 @@
                             for (const msg of data.conversation.messages) {
                                 this.inputTokens += msg.input_tokens || 0;
                                 this.outputTokens += msg.output_tokens || 0;
+                                this.cacheCreationTokens += msg.cache_creation_tokens || 0;
+                                this.cacheReadTokens += msg.cache_read_tokens || 0;
                                 if (msg.cost) this.sessionCost += msg.cost;
                             }
                         }
@@ -4153,6 +4155,13 @@
                                 this._resetStreamStateForReplay();
                                 this._isReplaying = true; // Prevent screen_created events from triggering refreshes during replay
                                 fromIndex = 0;
+
+                                // Strip DB-loaded messages from the current streaming run to prevent
+                                // duplication. The SSE replay from index 0 will reconstruct them.
+                                // Without this, completed turns saved to DB appear TWICE: once from
+                                // the DB load and again from the SSE replay.
+                                this._stripCurrentStreamMessages();
+
                                 console.log('[Stream] Page refresh reconnect - replaying all events from 0');
                             } else {
                                 // TIMEOUT RECONNECT: Same session, connection dropped
@@ -4340,6 +4349,52 @@
                     // Reset event tracking for fresh replay
                     this.lastEventIndex = 0;
                     this.lastEventId = null;
+                },
+
+                // Strip messages created by the current streaming job from DB-loaded messages.
+                // On page refresh, the DB may contain completed turns from the active stream
+                // (the job saves each turn's assistant message + tool results progressively).
+                // Since we replay ALL SSE events from index 0, these DB messages would be
+                // duplicated. We remove them so only the SSE replay populates them.
+                //
+                // Strategy: Find the last user message with plain string content (the user's
+                // typed prompt). Everything after it was created by the streaming job.
+                // This works because:
+                // - User typed prompts are saved as strings via saveUserMessage()
+                // - Tool result "user" messages have array content ([{type: 'tool_result', ...}])
+                // - convertDbMessageToUi preserves these content types
+                _stripCurrentStreamMessages() {
+                    let lastUserPromptIndex = -1;
+                    for (let i = this.messages.length - 1; i >= 0; i--) {
+                        const msg = this.messages[i];
+                        if (msg.role === 'user' && typeof msg.content === 'string') {
+                            lastUserPromptIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (lastUserPromptIndex >= 0 && lastUserPromptIndex < this.messages.length - 1) {
+                        // Collect messages to strip and subtract their token/cost contributions.
+                        // We subtract rather than recounting from this.messages because older messages
+                        // may still be asynchronously prepending (from loadMessagesProgressively).
+                        // The initial counters (set in loadConversation/loadConversationForScreen)
+                        // already include ALL DB messages, so subtracting the stripped ones is correct.
+                        const strippedMessages = this.messages.slice(lastUserPromptIndex + 1);
+                        const removedCount = strippedMessages.length;
+                        this.messages.splice(lastUserPromptIndex + 1);
+                        console.log('[Stream] Stripped', removedCount, 'DB messages after user prompt for SSE replay');
+
+                        // Subtract token/cost contributions of stripped messages to prevent
+                        // double-counting when SSE replay sends usage events for these turns.
+                        for (const msg of strippedMessages) {
+                            if (msg.inputTokens) this.inputTokens -= msg.inputTokens;
+                            if (msg.outputTokens) this.outputTokens -= msg.outputTokens;
+                            if (msg.cacheCreationTokens) this.cacheCreationTokens -= msg.cacheCreationTokens;
+                            if (msg.cacheReadTokens) this.cacheReadTokens -= msg.cacheReadTokens;
+                            if (msg.cost) this.sessionCost -= msg.cost;
+                        }
+                        this.totalTokens = this.inputTokens + this.outputTokens;
+                    }
                 },
 
                 /**
