@@ -1112,6 +1112,7 @@
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
                 _justCompletedStream: false,
+                _wasStreamingBeforeHidden: false, // True if we were streaming when tab went to background
                 _isReplaying: false, // True during page refresh stream replay (prevents duplicate screen refreshes)
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
@@ -1346,6 +1347,11 @@
                 streamAbortController: null,
                 _streamConnectNonce: 0,
                 _streamRetryTimeoutId: null,
+                // Connection health tracking (dead man's switch)
+                _lastKeepaliveAt: null,      // Timestamp of last keepalive received
+                _connectionHealthy: true,     // False if no keepalive for >45s
+                _keepaliveCheckInterval: null, // Interval ID for health check timer
+                _streamElapsed: 0,            // Elapsed seconds reported by server
                 _streamState: {
                     // Maps block_index -> message array index (for interleaved thinking support)
                     thinkingBlocks: {},        // { blockIndex: { msgIndex, content, complete } }
@@ -1515,17 +1521,29 @@
 
                     // Handle visibility changes (phone standby, tab switching)
                     // Refresh session screens when page becomes visible again
-                    document.addEventListener('visibilitychange', () => {
-                        if (!document.hidden) {
-                            // Refresh screens if we have a session (catches panels opened while away)
-                            if (this.currentSession?.id) {
+                    document.addEventListener('visibilitychange', async () => {
+                        if (document.hidden) {
+                            // Track whether we were streaming when tab went to background
+                            this._wasStreamingBeforeHidden = this.isStreaming;
+                        } else {
+                            // Reconnect stream FIRST if actively streaming.
+                            // IMPORTANT: Do this BEFORE refreshSessionScreens() to prevent
+                            // the screen refresh from killing a just-established stream connection
+                            // (Issue #163: refreshSessionScreens can change activeScreenId which
+                            // triggers disconnectFromStream via watchers).
+                            if (this.currentConversationUuid && this.isStreaming) {
+                                await this.checkAndReconnectStream(this.currentConversationUuid);
+                            }
+
+                            // Clear the flag after reconnection attempt
+                            this._wasStreamingBeforeHidden = false;
+
+                            // Only refresh screens if NOT actively streaming.
+                            // During streaming, screen changes could race with the stream connection.
+                            if (this.currentSession?.id && !this.isStreaming) {
                                 setTimeout(() => {
                                     this.refreshSessionScreens();
                                 }, 500);
-                            }
-                            // Reconnect stream if it might have died
-                            if (this.currentConversationUuid && this.isStreaming) {
-                                this.checkAndReconnectStream(this.currentConversationUuid);
                             }
                         }
                     });
@@ -4249,18 +4267,34 @@
                         return;
                     }
 
+                    // Don't reconnect if existing connection is healthy
+                    // (prevents nonce superseding a working connection -- Issue #163 root cause #1)
+                    if (this.isStreaming && this.streamAbortController && !this.streamAbortController.signal.aborted) {
+                        console.log('[Stream] Skipping reconnect - existing connection appears healthy');
+                        return;
+                    }
+
                     try {
                         const response = await fetch(`/api/conversations/${uuid}/stream-status`);
                         const data = await response.json();
 
                         if (data.is_streaming) {
-                            // Detect: page refresh vs timeout reconnect
+                            // Detect: page refresh vs timeout/tab-switch reconnect
                             // Page refresh: messages array has no streaming content (only DB messages)
-                            // Timeout reconnect: messages array still has streaming content in memory
+                            // Timeout/tab reconnect: messages array still has streaming content in memory
                             const isPageRefresh = !this._hasActiveStreamingContent();
 
+                            // Guard: distinguish actual page refresh from tab-switch return.
+                            // Tab-switch: we had streaming content before the tab went to background,
+                            // now _hasActiveStreamingContent() returns false because Alpine state
+                            // was preserved but we're checking it during the same session.
+                            // Key insight: on actual page refresh, sessionStorage will have stream state
+                            // but the in-memory messages array will NOT have streaming content IDs.
+                            // On tab return, the messages array still has the streaming content.
+                            const isTabReturn = this._wasStreamingBeforeHidden;
+
                             let fromIndex;
-                            if (isPageRefresh) {
+                            if (isPageRefresh && !isTabReturn) {
                                 // PAGE REFRESH: Fresh page load during active stream
                                 // Reset state and replay ALL events from 0 to rebuild UI
                                 this._resetStreamStateForReplay();
@@ -4275,12 +4309,12 @@
 
                                 console.log('[Stream] Page refresh reconnect - replaying all events from 0');
                             } else {
-                                // TIMEOUT RECONNECT: Same session, connection dropped
+                                // TIMEOUT RECONNECT or TAB RETURN: Same session, connection dropped or tab switched
                                 // Restore state and continue from last index
                                 this._restoreStreamState(uuid);
                                 const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
-                                fromIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
-                                console.log('[Stream] Timeout reconnect:', { uuid, fromIndex, eventCount: data.event_count });
+                                fromIndex = savedIndex ? parseInt(savedIndex, 10) : this.lastEventIndex;
+                                console.log('[Stream] Timeout/tab reconnect:', { uuid, fromIndex, isTabReturn, eventCount: data.event_count });
                             }
 
                             // Seed in-memory tracker so timeout retries use the correct index
@@ -5202,7 +5236,18 @@
                     this.isStreaming = true;
                     this.currentConversationStatus = 'processing'; // Update status badge
 
+                    // Start connection health check (dead man's switch)
+                    this._lastKeepaliveAt = Date.now();
+                    this._connectionHealthy = true;
+                    if (this._keepaliveCheckInterval) clearInterval(this._keepaliveCheckInterval);
+                    this._keepaliveCheckInterval = setInterval(() => {
+                        if (this._lastKeepaliveAt && Date.now() - this._lastKeepaliveAt > 45000) {
+                            this._connectionHealthy = false;
+                        }
+                    }, 5000);
+
                     this.streamAbortController = new AbortController();
+                    let pendingRetry = false;
 
                     try {
                         const url = `/api/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`;
@@ -5290,7 +5335,18 @@
                                         return;
                                     }
 
+                                    // Track keepalive for connection health (don't pass to handleStreamEvent)
+                                    if (event.type === 'keepalive') {
+                                        this._lastKeepaliveAt = Date.now();
+                                        this._connectionHealthy = true;
+                                        this._streamElapsed = event.elapsed || 0;
+                                        continue;
+                                    }
+
                                     // Handle regular stream events
+                                    // Also update keepalive timer on any data event
+                                    this._lastKeepaliveAt = Date.now();
+                                    this._connectionHealthy = true;
                                     this.handleStreamEvent(event);
 
                                 } catch (parseErr) {
@@ -5303,10 +5359,24 @@
                             console.log('Stream connection aborted');
                         } else {
                             console.error('Stream connection error:', err);
+                            // Network error retry with exponential backoff
+                            // Only retry if this connection hasn't been superseded
+                            const maxNetworkRetries = 5;
+                            if (retryCount < maxNetworkRetries && myNonce === this._streamConnectNonce) {
+                                const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
+                                console.log(`[Stream] Network error, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxNetworkRetries})`);
+                                this._streamRetryTimeoutId = setTimeout(
+                                    () => this.connectToStreamEvents(this.lastEventIndex, retryCount + 1),
+                                    delay
+                                );
+                                pendingRetry = true;
+                                return; // Don't set isStreaming = false -- we're retrying
+                            }
                         }
                     } finally {
                         // Only set isStreaming false if we weren't aborted for reconnection
-                        if (!this.streamAbortController?.signal.aborted) {
+                        // and there's no pending retry scheduled
+                        if (!pendingRetry && !this.streamAbortController?.signal.aborted) {
                             this.isStreaming = false;
                         }
                     }
@@ -5319,6 +5389,14 @@
                         clearTimeout(this._streamRetryTimeoutId);
                         this._streamRetryTimeoutId = null;
                     }
+
+                    // Stop keepalive health check
+                    if (this._keepaliveCheckInterval) {
+                        clearInterval(this._keepaliveCheckInterval);
+                        this._keepaliveCheckInterval = null;
+                    }
+                    this._connectionHealthy = true;
+                    this._lastKeepaliveAt = null;
 
                     if (this.streamAbortController) {
                         this.streamAbortController.abort();

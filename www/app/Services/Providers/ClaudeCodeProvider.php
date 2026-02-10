@@ -28,6 +28,11 @@ class ClaudeCodeProvider implements AIProviderInterface
     /** @var resource|null */
     private $activeProcess = null;
 
+    // Phase-aware timeout constants (seconds)
+    private const TIMEOUT_INITIAL = 60;         // Max wait for first output after process start
+    private const TIMEOUT_STREAMING = 60;       // Max silence during active text/thinking streaming
+    private const TIMEOUT_TOOL_EXECUTION = 300; // Max silence during tool execution (tools can be slow)
+
     public function __construct(ModelRepository $models)
     {
         $this->models = $models;
@@ -340,6 +345,15 @@ class ClaudeCodeProvider implements AIProviderInterface
             $env['MAX_THINKING_TOKENS'] = (string) $thinkingTokens;
         }
 
+        // Disable CLI internal retries - surface errors immediately instead of
+        // silently retrying for 55+ minutes with exponential backoff
+        $env['CLAUDE_CODE_MAX_RETRIES'] = '0';
+
+        // Enable tool_progress heartbeats during tool execution.
+        // These events reset the phase-aware timeout timer so long-running
+        // tools (builds, tests) don't trigger false timeouts.
+        $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
+
         $workingDirectory = $conversation->working_directory ?? base_path();
         $process = proc_open($command, $descriptors, $pipes, $workingDirectory, $env);
 
@@ -392,6 +406,10 @@ class ClaudeCodeProvider implements AIProviderInterface
         ];
 
         try {
+            // Phase-aware timeout tracking
+            $phase = 'initial'; // 'initial' | 'streaming' | 'tool_execution'
+            $lastOutputTime = microtime(true);
+
             while (true) {
                 $status = proc_get_status($process);
 
@@ -418,6 +436,36 @@ class ClaudeCodeProvider implements AIProviderInterface
                             }
                         }
 
+                        // Peek at line to update phase tracking BEFORE yielding
+                        $peekData = $parsedLine ?? json_decode($line, true);
+                        $peekType = $peekData['type'] ?? '';
+
+                        if ($peekType === 'tool_progress') {
+                            // tool_progress heartbeats reset timer but are NOT yielded to frontend
+                            $lastOutputTime = microtime(true);
+                            continue; // Skip to next line -- don't yield this event
+                        }
+
+                        // Update phase based on event type
+                        if ($peekType === 'stream_event') {
+                            $phase = 'streaming';
+                            $lastOutputTime = microtime(true);
+                        } elseif ($peekType === 'assistant') {
+                            $stopReason = $peekData['message']['stop_reason'] ?? null;
+                            if ($stopReason === 'tool_use') {
+                                $phase = 'tool_execution';
+                            } else {
+                                $phase = 'streaming';
+                            }
+                            $lastOutputTime = microtime(true);
+                        } elseif ($peekType === 'user') {
+                            // user messages after tool execution = tool results, back to streaming
+                            $phase = 'streaming';
+                            $lastOutputTime = microtime(true);
+                        } elseif ($peekType === 'result' || $peekType === 'system') {
+                            $lastOutputTime = microtime(true);
+                        }
+
                         yield from $this->parseJsonLine($line, $state);
 
                         // Save session ID immediately when captured (for abort sync support)
@@ -434,6 +482,35 @@ class ClaudeCodeProvider implements AIProviderInterface
 
                 // Check if process has ended
                 if (!$status['running']) {
+                    break;
+                }
+
+                // Phase-aware timeout check
+                $timeout = match ($phase) {
+                    'initial' => self::TIMEOUT_INITIAL,
+                    'streaming' => self::TIMEOUT_STREAMING,
+                    'tool_execution' => self::TIMEOUT_TOOL_EXECUTION,
+                };
+                $elapsed = microtime(true) - $lastOutputTime;
+
+                if ($elapsed > $timeout) {
+                    Log::channel('api')->warning('ClaudeCodeProvider: Phase-aware timeout', [
+                        'phase' => $phase,
+                        'timeout' => $timeout,
+                        'elapsed' => round($elapsed, 2),
+                        'conversation_uuid' => $uuid,
+                    ]);
+
+                    // Graceful shutdown: SIGINT -> 200ms -> SIGKILL
+                    proc_terminate($process, 2); // SIGINT
+                    usleep(200000); // 200ms
+
+                    $procStatus = proc_get_status($process);
+                    if ($procStatus['running']) {
+                        proc_terminate($process, 9); // SIGKILL
+                    }
+
+                    yield StreamEvent::error("Claude Code process timed out after {$timeout}s in {$phase} phase (no output received)");
                     break;
                 }
 
@@ -859,10 +936,33 @@ class ClaudeCodeProvider implements AIProviderInterface
                 }
                 Log::channel('api')->info('ClaudeCodeProvider: Result received', [
                     'subtype' => $data['subtype'] ?? 'unknown',
+                    'is_error' => $data['is_error'] ?? false,
                     'session_id' => $state['sessionId'],
                     'total_cost' => $state['totalCost'],
                     'num_turns' => $data['num_turns'] ?? null,
                 ]);
+
+                // Detect CLI error results and surface them to the user
+                if (!empty($data['is_error'])) {
+                    $errorMsg = $data['result'] ?? null;
+
+                    // Try 'errors' array if 'result' is empty
+                    if (empty($errorMsg) && !empty($data['errors']) && is_array($data['errors'])) {
+                        $errorMsg = $data['errors'][0] ?? null;
+                    }
+
+                    // Fall back to subtype description
+                    if (empty($errorMsg)) {
+                        $errorMsg = 'Claude Code error: ' . ($data['subtype'] ?? 'unknown error');
+                    }
+
+                    Log::channel('api')->error('ClaudeCodeProvider: CLI returned error result', [
+                        'error_message' => $errorMsg,
+                        'subtype' => $data['subtype'] ?? 'unknown',
+                    ]);
+
+                    yield StreamEvent::error($errorMsg);
+                }
                 break;
 
             case 'stream_event':

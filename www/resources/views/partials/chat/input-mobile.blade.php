@@ -81,6 +81,20 @@
             </div>
         </div>
 
+        {{-- Connection health indicator (only visible during streaming) --}}
+        <template x-if="isStreaming">
+            <div class="flex items-center gap-1 text-xs" :title="_connectionHealthy ? 'Connected' : 'Connection may be lost'">
+                <span class="relative flex h-2 w-2">
+                    <span class="absolute inline-flex h-full w-full rounded-full opacity-75"
+                          :class="_connectionHealthy ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'"
+                    ></span>
+                    <span class="relative inline-flex rounded-full h-2 w-2"
+                          :class="_connectionHealthy ? 'bg-emerald-500' : 'bg-amber-500'"
+                    ></span>
+                </span>
+            </div>
+        </template>
+
         {{-- Send/Stop Button --}}
         <template x-if="isStreaming && _streamState.abortPending">
             <button type="button"
