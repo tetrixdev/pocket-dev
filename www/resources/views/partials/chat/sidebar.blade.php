@@ -54,7 +54,7 @@
             <div @click="loadSession(session.id)"
                  :class="{'bg-gray-700': currentSession?.id === session.id}"
                  class="group relative p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors"
-                 x-data="{ get _status() { return getSessionStatus(session) } }">
+                 x-data="{ get _status() { return getSessionStatus(session) }, get _tabCount() { return getActiveTabCount(session) } }">
                 <div class="flex items-center gap-1.5">
                     <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm shrink-0"
                           :class="getStatusColorClass(_status)">
@@ -62,7 +62,7 @@
                     </span>
                     <span class="text-xs text-gray-300 truncate flex-1" x-text="session.name || 'New Session'"></span>
                     {{-- Screen count badge --}}
-                    <span class="text-[10px] text-gray-500" x-text="(session.screens?.length || 0) + ' tab' + ((session.screens?.length || 0) === 1 ? '' : 's')"></span>
+                    <span class="text-[10px] text-gray-500" x-show="_tabCount > 0" x-text="_tabCount + ' tab' + (_tabCount === 1 ? '' : 's')"></span>
                     {{-- Session menu button (always visible) --}}
                     <button @click.stop="openSessionMenu($event, session)"
                             class="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-600 rounded cursor-pointer shrink-0"
