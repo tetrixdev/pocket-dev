@@ -5148,10 +5148,7 @@
                     // Reset stream state
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
-                    // Initialize stream phase - waiting for first response
-                    this._streamPhase = 'waiting';
-                    this._phaseChangedAt = Date.now();
-                    this._pendingResponseWarning = false;
+                    // Stream phase is set in connectToStreamEvents() after disconnectFromStream()
                     this._streamState = {
                         // Maps block_index -> { msgIndex, content, complete }
                         thinkingBlocks: {},
@@ -5247,11 +5244,23 @@
                     this.isStreaming = true;
                     this.currentConversationStatus = 'processing'; // Update status badge
 
+                    // Restore stream phase after disconnectFromStream() reset it.
+                    // 'waiting' = waiting for first response (triggers amber dot after 15s)
+                    if (this._streamPhase === 'idle') {
+                        this._streamPhase = 'waiting';
+                        this._phaseChangedAt = Date.now();
+                        this._pendingResponseWarning = false;
+                    }
+
                     // Start connection health check (dead man's switch)
                     this._lastKeepaliveAt = Date.now();
                     this._connectionHealthy = true;
                     if (this._keepaliveCheckInterval) clearInterval(this._keepaliveCheckInterval);
                     this._keepaliveCheckInterval = setInterval(() => {
+                        // Skip health check when tab is hidden (browser throttles SSE
+                        // processing in background tabs, causing false amber indicators)
+                        if (document.hidden) return;
+
                         // Connection health: no keepalive for >45s
                         if (this._lastKeepaliveAt && Date.now() - this._lastKeepaliveAt > 45000) {
                             this._connectionHealthy = false;
@@ -5264,6 +5273,16 @@
                             this._pendingResponseWarning = false;
                         }
                     }, 5000);
+
+                    // Reset keepalive timer when tab becomes visible again to prevent
+                    // false amber indicator (browser doesn't process SSE while hidden)
+                    this._visibilityHandler = () => {
+                        if (!document.hidden && this._lastKeepaliveAt) {
+                            this._lastKeepaliveAt = Date.now();
+                            this._connectionHealthy = true;
+                        }
+                    };
+                    document.addEventListener('visibilitychange', this._visibilityHandler);
 
                     this.streamAbortController = new AbortController();
                     let pendingRetry = false;
@@ -5406,6 +5425,10 @@
                                 clearInterval(this._keepaliveCheckInterval);
                                 this._keepaliveCheckInterval = null;
                             }
+                            if (this._visibilityHandler) {
+                                document.removeEventListener('visibilitychange', this._visibilityHandler);
+                                this._visibilityHandler = null;
+                            }
                             this._connectionHealthy = true;
                             this._lastKeepaliveAt = null;
                         }
@@ -5424,6 +5447,10 @@
                     if (this._keepaliveCheckInterval) {
                         clearInterval(this._keepaliveCheckInterval);
                         this._keepaliveCheckInterval = null;
+                    }
+                    if (this._visibilityHandler) {
+                        document.removeEventListener('visibilitychange', this._visibilityHandler);
+                        this._visibilityHandler = null;
                     }
                     this._connectionHealthy = true;
                     this._lastKeepaliveAt = null;
