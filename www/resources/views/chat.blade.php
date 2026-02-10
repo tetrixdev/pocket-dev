@@ -1846,7 +1846,11 @@
                     const screen = this.getScreen(screenId);
                     if (!screen || screen.type !== 'chat') return 'idle';
                     // For active screen, prefer currentConversationStatus (most up-to-date via SSE)
-                    if (screenId === this.activeScreenId && this.currentConversationStatus) {
+                    if (
+                        screenId === this.activeScreenId &&
+                        this.currentConversationStatus &&
+                        screen.conversation?.uuid === this.currentConversationUuid
+                    ) {
                         return this.currentConversationStatus;
                     }
                     return screen.conversation?.status || 'idle';
