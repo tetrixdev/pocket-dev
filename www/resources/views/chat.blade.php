@@ -2300,7 +2300,7 @@
                         const params = new URLSearchParams({
                             workspace_id: this.currentWorkspaceId,
                             include_archived: this.showArchivedSessions ? '1' : '0',
-                            per_page: Math.max(20, this.sessionsPage * 20).toString(),
+                            per_page: Math.min(200, Math.max(20, this.sessionsPage * 20)).toString(),
                         });
                         const response = await fetch(`/api/sessions?${params}`);
                         if (!response.ok) {
