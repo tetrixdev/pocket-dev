@@ -60,18 +60,18 @@
                           }
                       "></textarea>
 
-            {{-- Connection health indicator - badge on textarea top-right corner (only during streaming) --}}
+            {{-- Connection health indicator - badge on textarea corner, matches template indicator pattern --}}
             <template x-if="isStreaming">
-                <div class="absolute top-0 right-0 -translate-y-1/2 translate-x-1/2 z-10 pointer-events-none">
-                    <span class="relative flex h-2.5 w-2.5">
+                <span class="absolute -top-1 -right-1 z-10 pointer-events-none">
+                    <span class="relative flex w-3 h-3">
                         <span class="absolute inline-flex h-full w-full rounded-full opacity-75"
                               :class="_connectionHealthy ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'"
                         ></span>
-                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 border border-gray-700"
+                        <span class="relative inline-flex w-3 h-3 rounded-full border border-gray-800"
                               :class="_connectionHealthy ? 'bg-emerald-500' : 'bg-amber-500'"
                         ></span>
                     </span>
-                </div>
+                </span>
             </template>
 
             {{-- Skill Suggestions Dropdown (Mobile) --}}
