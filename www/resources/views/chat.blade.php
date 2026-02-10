@@ -1433,9 +1433,14 @@
 
                         // (a) Sync to active screen's conversation (for tab icon)
                         const activeScreen = this.getScreen(this.activeScreenId);
-                        if (activeScreen?.type === 'chat' && activeScreen.conversation) {
-                            activeScreen.conversation.status = newStatus;
+                        if (
+                            !activeScreen ||
+                            activeScreen.type !== 'chat' ||
+                            activeScreen.conversation?.uuid !== this.currentConversationUuid
+                        ) {
+                            return;
                         }
+                        activeScreen.conversation.status = newStatus;
 
                         // (b) Sync to session in this.sessions (for sidebar icon)
                         if (this.currentSession?.id) {
