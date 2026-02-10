@@ -5301,6 +5301,7 @@
                                             if (retryCount < maxRetries) {
                                                 // Check nonce before scheduling retry
                                                 if (myNonce === this._streamConnectNonce) {
+                                                    pendingRetry = true;
                                                     this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(0, retryCount + 1), 200);
                                                 }
                                                 return;
@@ -5330,6 +5331,7 @@
                                         // Reconnect from last known position
                                         // Check nonce before scheduling retry
                                         if (myNonce === this._streamConnectNonce) {
+                                            pendingRetry = true;
                                             this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(this.lastEventIndex), 100);
                                         }
                                         return;
@@ -5374,9 +5376,11 @@
                             }
                         }
                     } finally {
-                        // Only set isStreaming false if we weren't aborted for reconnection
-                        // and there's no pending retry scheduled
-                        if (!pendingRetry && !this.streamAbortController?.signal.aborted) {
+                        // Only set isStreaming false if:
+                        // - no pending retry scheduled
+                        // - we weren't aborted for reconnection
+                        // - this connection hasn't been superseded by a newer one (nonce check)
+                        if (!pendingRetry && !this.streamAbortController?.signal.aborted && myNonce === this._streamConnectNonce) {
                             this.isStreaming = false;
 
                             // Clean up keepalive health check to prevent stale intervals
