@@ -5452,6 +5452,40 @@
                                 }
                                 // Remove from pending set - tool execution is complete
                                 state.waitingForToolResults.delete(toolResultId);
+
+                                // CLI PROVIDER PANEL DETECTION (Claude Code, Codex)
+                                // ================================================
+                                // CLI providers execute tools as subprocesses (php artisan tool:run),
+                                // which creates an ExecutionContext WITHOUT streamManager/conversationUuid.
+                                // This means ToolRunTool::openPanel() can never emit a screen_created
+                                // SSE event for CLI providers — the guard in openPanel() (line ~279)
+                                // requires both streamManager and conversationUuid to be set.
+                                //
+                                // This string-matching fallback is the ONLY mechanism that detects
+                                // new panels for CLI providers. Do NOT remove this without first
+                                // ensuring screen_created events work for CLI tool execution.
+                                //
+                                // For API providers (Anthropic API), the screen_created event handler
+                                // below handles panel detection — both may fire but refreshSessionScreens()
+                                // is idempotent so this is safe.
+                                if (!this._isReplaying) {
+                                    let panelOutput = event.content;
+                                    if (typeof panelOutput === 'string') {
+                                        try {
+                                            const parsed = JSON.parse(panelOutput);
+                                            if (parsed.output) {
+                                                panelOutput = parsed.output;
+                                            }
+                                        } catch (e) {
+                                            // Not JSON, use as-is
+                                        }
+                                    }
+                                    const outputStr = typeof panelOutput === 'string' ? panelOutput : '';
+                                    if (outputStr.startsWith("Opened panel '")) {
+                                        this.refreshSessionScreens();
+                                        this.$dispatch('screen-added');
+                                    }
+                                }
                             } else {
                                 console.warn('tool_result event missing tool_id in metadata');
                             }
@@ -5544,11 +5578,18 @@
                             break;
 
                         case 'screen_created':
-                            // A new screen (panel) was created - refresh screen tabs
-                            // Only process during live streaming, not replay
+                            // API PROVIDER PANEL DETECTION (Anthropic API)
+                            // =============================================
+                            // When API providers execute tools, ProcessConversationStream::executeTools()
+                            // creates an ExecutionContext WITH streamManager and conversationUuid.
+                            // ToolRunTool::openPanel() emits this screen_created event via SSE.
+                            //
+                            // NOTE: This event is NEVER emitted for CLI providers (Claude Code, Codex)
+                            // because CLI tools run as subprocesses without stream context.
+                            // CLI panel detection is handled by string-matching in the tool_result
+                            // handler above — do NOT remove that fallback.
                             if (!this._isReplaying) {
                                 this.refreshSessionScreens();
-                                // Dispatch event for tabs to scroll to new screen
                                 this.$dispatch('screen-added');
                             }
                             break;
