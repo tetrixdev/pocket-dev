@@ -1531,7 +1531,7 @@
                             // the screen refresh from killing a just-established stream connection
                             // (Issue #163: refreshSessionScreens can change activeScreenId which
                             // triggers disconnectFromStream via watchers).
-                            if (this.currentConversationUuid && this.isStreaming) {
+                            if (this.currentConversationUuid && (this.isStreaming || this._wasStreamingBeforeHidden)) {
                                 await this.checkAndReconnectStream(this.currentConversationUuid);
                             }
 
@@ -4269,7 +4269,7 @@
 
                     // Don't reconnect if existing connection is healthy
                     // (prevents nonce superseding a working connection -- Issue #163 root cause #1)
-                    if (this.isStreaming && this.streamAbortController && !this.streamAbortController.signal.aborted) {
+                    if (this.isStreaming && this.streamAbortController && !this.streamAbortController.signal.aborted && this._connectionHealthy) {
                         console.log('[Stream] Skipping reconnect - existing connection appears healthy');
                         return;
                     }
@@ -5378,6 +5378,14 @@
                         // and there's no pending retry scheduled
                         if (!pendingRetry && !this.streamAbortController?.signal.aborted) {
                             this.isStreaming = false;
+
+                            // Clean up keepalive health check to prevent stale intervals
+                            if (this._keepaliveCheckInterval) {
+                                clearInterval(this._keepaliveCheckInterval);
+                                this._keepaliveCheckInterval = null;
+                            }
+                            this._connectionHealthy = true;
+                            this._lastKeepaliveAt = null;
                         }
                     }
                 },
