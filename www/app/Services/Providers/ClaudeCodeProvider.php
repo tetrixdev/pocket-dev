@@ -410,6 +410,7 @@ class ClaudeCodeProvider implements AIProviderInterface
             // Phase-aware timeout tracking
             $phase = 'initial'; // 'initial' | 'streaming' | 'tool_execution' | 'pending_response'
             $lastOutputTime = microtime(true);
+            $timedOut = false;
 
             while (true) {
                 $status = proc_get_status($process);
@@ -505,7 +506,7 @@ class ClaudeCodeProvider implements AIProviderInterface
                             $lastOutputTime = microtime(true);
                         }
 
-                        yield from $this->parseJsonLine($line, $state);
+                        yield from $this->parseJsonLine($line, $state, $peekData);
 
                         // Save session ID immediately when captured (for abort sync support)
                         // This ensures the session ID is available even if stream is aborted
@@ -530,6 +531,7 @@ class ClaudeCodeProvider implements AIProviderInterface
                     'streaming' => self::TIMEOUT_STREAMING,
                     'tool_execution' => self::TIMEOUT_TOOL_EXECUTION,
                     'pending_response' => self::TIMEOUT_PENDING_RESPONSE,
+                    default => self::TIMEOUT_INITIAL, // Conservative fallback
                 };
                 $elapsed = microtime(true) - $lastOutputTime;
 
@@ -550,6 +552,7 @@ class ClaudeCodeProvider implements AIProviderInterface
                         proc_terminate($process, 9); // SIGKILL
                     }
 
+                    $timedOut = true;
                     yield StreamEvent::error("Claude Code process timed out after {$timeout}s in {$phase} phase (no output received)");
                     break;
                 }
@@ -632,7 +635,7 @@ class ClaudeCodeProvider implements AIProviderInterface
                 ]);
             }
 
-            yield StreamEvent::done('end_turn');
+            yield StreamEvent::done($timedOut ? 'timeout' : 'end_turn');
 
         } catch (\Throwable $e) {
             Log::channel('api')->error('ClaudeCodeProvider: Stream error', [
@@ -939,9 +942,9 @@ class ClaudeCodeProvider implements AIProviderInterface
      * {"type":"assistant","message":{"role":"assistant","content":[...]}}
      * {"type":"result","subtype":"success","total_cost_usd":0.003,"session_id":"abc"}
      */
-    private function parseJsonLine(string $line, array &$state): Generator
+    private function parseJsonLine(string $line, array &$state, ?array $preDecoded = null): Generator
     {
-        $data = json_decode($line, true);
+        $data = $preDecoded ?? json_decode($line, true);
 
         if (!is_array($data)) {
             Log::channel('api')->debug('ClaudeCodeProvider: Non-array JSON line', [
@@ -986,16 +989,23 @@ class ClaudeCodeProvider implements AIProviderInterface
                 // Detect CLI error results and surface them to the user
                 if (!empty($data['is_error'])) {
                     $errorMsg = $data['result'] ?? null;
+                    if (is_array($errorMsg)) {
+                        $errorMsg = json_encode($errorMsg);
+                    }
 
                     // Try 'errors' array if 'result' is empty
                     if (empty($errorMsg) && !empty($data['errors']) && is_array($data['errors'])) {
-                        $errorMsg = $data['errors'][0] ?? null;
+                        $firstError = $data['errors'][0] ?? null;
+                        $errorMsg = is_array($firstError) ? json_encode($firstError) : $firstError;
                     }
 
                     // Fall back to subtype description
                     if (empty($errorMsg)) {
                         $errorMsg = 'Claude Code error: ' . ($data['subtype'] ?? 'unknown error');
                     }
+
+                    // Ensure $errorMsg is always a string for StreamEvent::error()
+                    $errorMsg = is_string($errorMsg) ? $errorMsg : (string) $errorMsg;
 
                     Log::channel('api')->error('ClaudeCodeProvider: CLI returned error result', [
                         'error_message' => $errorMsg,
