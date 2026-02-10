@@ -5208,13 +5208,15 @@
                 },
 
                 // Connect to stream events and handle reconnection
-                async connectToStreamEvents(fromIndex = 0, retryCount = 0) {
+                async connectToStreamEvents(fromIndex = 0, startupRetryCount = 0, networkRetryCount = 0) {
                     if (!this.currentConversationUuid) {
                         return;
                     }
 
                     // Max retries for not_found status (job hasn't started yet)
-                    const maxRetries = 15; // 15 * 200ms = 3 seconds max wait
+                    const maxStartupRetries = 15; // 15 * 200ms = 3 seconds max wait
+                    // Max retries for network errors (exponential backoff)
+                    const maxNetworkRetries = 5;
 
                     // Abort any existing connection
                     this.disconnectFromStream();
@@ -5226,7 +5228,8 @@
                     console.log('[Stream] connectToStreamEvents:', {
                         uuid: this.currentConversationUuid,
                         fromIndex,
-                        retryCount,
+                        startupRetryCount,
+                        networkRetryCount,
                         nonce: myNonce,
                         previousNonce: myNonce - 1,
                         lastEventIndex: this.lastEventIndex,
@@ -5298,11 +5301,11 @@
                                     if (event.type === 'stream_status') {
                                         if (event.status === 'not_found') {
                                             // Race condition: job hasn't started yet, retry
-                                            if (retryCount < maxRetries) {
+                                            if (startupRetryCount < maxStartupRetries) {
                                                 // Check nonce before scheduling retry
                                                 if (myNonce === this._streamConnectNonce) {
                                                     pendingRetry = true;
-                                                    this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(0, retryCount + 1), 200);
+                                                    this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(0, startupRetryCount + 1, 0), 200);
                                                 }
                                                 return;
                                             } else {
@@ -5328,11 +5331,11 @@
                                     }
 
                                     if (event.type === 'timeout') {
-                                        // Reconnect from last known position
+                                        // Reconnect from last known position (fresh connection, reset counters)
                                         // Check nonce before scheduling retry
                                         if (myNonce === this._streamConnectNonce) {
                                             pendingRetry = true;
-                                            this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(this.lastEventIndex), 100);
+                                            this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(this.lastEventIndex, 0, 0), 100);
                                         }
                                         return;
                                     }
@@ -5363,12 +5366,11 @@
                             console.error('Stream connection error:', err);
                             // Network error retry with exponential backoff
                             // Only retry if this connection hasn't been superseded
-                            const maxNetworkRetries = 5;
-                            if (retryCount < maxNetworkRetries && myNonce === this._streamConnectNonce) {
-                                const delay = Math.min(1000 * Math.pow(2, retryCount), 8000);
-                                console.log(`[Stream] Network error, retrying in ${delay}ms (attempt ${retryCount + 1}/${maxNetworkRetries})`);
+                            if (networkRetryCount < maxNetworkRetries && myNonce === this._streamConnectNonce) {
+                                const delay = Math.min(1000 * Math.pow(2, networkRetryCount), 8000);
+                                console.log(`[Stream] Network error, retrying in ${delay}ms (attempt ${networkRetryCount + 1}/${maxNetworkRetries})`);
                                 this._streamRetryTimeoutId = setTimeout(
-                                    () => this.connectToStreamEvents(this.lastEventIndex, retryCount + 1),
+                                    () => this.connectToStreamEvents(this.lastEventIndex, 0, networkRetryCount + 1),
                                     delay
                                 );
                                 pendingRetry = true;
