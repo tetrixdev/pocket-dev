@@ -1131,6 +1131,7 @@
                 screens: [], // Flat array of screen objects in the current session
                 activeScreenId: null, // Currently active screen ID
                 availablePanels: [], // Available panel tools
+                _panelsFetchPending: false, // Guard against duplicate panel fetch retries
                 showArchivedSessions: false, // Filter toggle
                 sessionSearchQuery: '', // Filter by name
                 sidebarSearchMode: 'sessions', // 'sessions' or 'conversations'
@@ -1832,16 +1833,6 @@
                     return icons[status] || 'fa-solid fa-check';
                 },
 
-                getStatusTextColorClass(status) {
-                    const colors = {
-                        'idle': 'text-green-400',
-                        'processing': 'text-blue-400',
-                        'archived': 'text-gray-400',
-                        'failed': 'text-red-400'
-                    };
-                    return colors[status] || 'text-gray-400';
-                },
-
                 getConversationStatus(screenId) {
                     const screen = this.getScreen(screenId);
                     if (!screen || screen.type !== 'chat') return 'idle';
@@ -1870,9 +1861,9 @@
 
                     // Otherwise: status of the latest non-archived conversation by last_activity_at
                     const sorted = [...chatConversations].sort((a, b) => {
-                        const aTime = a.last_activity_at || '';
-                        const bTime = b.last_activity_at || '';
-                        return bTime.localeCompare(aTime);
+                        const aTime = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
+                        const bTime = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
+                        return bTime - aTime;
                     });
 
                     return sorted[0].status || 'idle';
@@ -2328,9 +2319,27 @@
                         const newIds = new Set(newSessions.map(s => s.id));
                         const extraSessions = this.sessions.filter(s => !newIds.has(s.id));
                         this.sessions = [...newSessions, ...extraSessions];
+
+                        // Re-sync live SSE status into freshly loaded sidebar data to prevent
+                        // flicker when the backend hasn't persisted the latest status yet
+                        if (this.currentConversationStatus && this.currentSession?.id) {
+                            const activeScreen = this.getScreen(this.activeScreenId);
+                            if (activeScreen?.type === 'chat' && activeScreen.conversation_id) {
+                                const sidebarSession = this.sessions.find(s => s.id === this.currentSession.id);
+                                const screenInSidebar = sidebarSession?.screens?.find(
+                                    sc => sc.conversation?.id === activeScreen.conversation_id
+                                );
+                                if (screenInSidebar?.conversation) {
+                                    screenInSidebar.conversation.status = this.currentConversationStatus;
+                                }
+                            }
+                        }
+
                         // Don't reset sessionsPage — keep it at the user's scroll depth so
-                        // fetchMoreSessions continues from the right position
-                        this.sessionsLastPage = data.last_page || 1;
+                        // fetchMoreSessions continues from the right position.
+                        // Compute last_page relative to the standard page size (20) that
+                        // fetchMoreSessions uses, not the inflated per_page we sent.
+                        this.sessionsLastPage = data.total ? Math.ceil(data.total / 20) : 1;
                     } catch (err) {
                         console.error('Failed to refresh sidebar:', err);
                     }
@@ -3331,6 +3340,11 @@
                         // Look up panel's custom icon from availablePanels (system panels have custom icons)
                         const panelSlug = screen.panel_slug || screen.panel?.slug;
                         const panelInfo = this.availablePanels?.find(p => p.slug === panelSlug);
+                        // If panels haven't loaded yet (API failure), trigger a background retry
+                        if (!panelInfo && this.availablePanels.length === 0 && !this._panelsFetchPending) {
+                            this._panelsFetchPending = true;
+                            this.fetchAvailablePanels().finally(() => { this._panelsFetchPending = false; });
+                        }
                         return panelInfo?.icon || 'fa-solid fa-table-columns';
                     }
                     // Chat screen: show status icon
@@ -4481,6 +4495,12 @@
                             if (msg.cacheReadTokens) this.cacheReadTokens -= msg.cacheReadTokens;
                             if (msg.cost) this.sessionCost -= msg.cost;
                         }
+                        // Floor at zero to prevent negative display values from timing mismatches
+                        this.inputTokens = Math.max(0, this.inputTokens);
+                        this.outputTokens = Math.max(0, this.outputTokens);
+                        this.cacheCreationTokens = Math.max(0, this.cacheCreationTokens);
+                        this.cacheReadTokens = Math.max(0, this.cacheReadTokens);
+                        this.sessionCost = Math.max(0, this.sessionCost);
                         this.totalTokens = this.inputTokens + this.outputTokens;
                     }
                 },
