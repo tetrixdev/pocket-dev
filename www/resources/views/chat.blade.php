@@ -3328,13 +3328,13 @@
                     return this.getStatusIconClass(this.getConversationStatus(screenId));
                 },
 
-                // Get screen type color class
+                // Get screen type color class (badge background color)
                 getScreenTypeColor(screenId) {
                     const screen = this.getScreen(screenId);
-                    if (!screen) return 'text-gray-400';
-                    if (screen.type === 'panel') return 'text-purple-400';
-                    // Chat screen: show status color
-                    return this.getStatusTextColorClass(this.getConversationStatus(screenId));
+                    if (!screen) return 'bg-gray-600';
+                    if (screen.type === 'panel') return 'bg-purple-600';
+                    // Chat screen: show status badge color
+                    return this.getStatusColorClass(this.getConversationStatus(screenId));
                 },
 
                 // Activate a screen (switch to it)

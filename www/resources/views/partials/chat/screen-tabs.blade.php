@@ -27,8 +27,9 @@
                     class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-t border border-b-0 transition-colors cursor-pointer max-w-[160px]"
                     :title="getScreenTitle(screenId)">
                 {{-- Screen Type Icon --}}
-                <span :class="getScreenTypeColor(screenId)">
-                    <i :class="getScreenIcon(screenId)"></i>
+                <span class="inline-flex items-center justify-center w-4 h-4 rounded-sm shrink-0"
+                      :class="getScreenTypeColor(screenId)">
+                    <i class="text-white text-[10px]" :class="getScreenIcon(screenId)"></i>
                 </span>
                 {{-- Screen Tab Label (short form) --}}
                 <span class="truncate" x-text="getScreenTabLabel(screenId)"></span>
