@@ -62,12 +62,13 @@
 
             {{-- Connection health indicator - overlaid on textarea top-right (only during streaming) --}}
             <template x-if="isStreaming">
-                <div class="absolute top-1.5 right-2 z-10">
-                    <span class="relative flex h-2.5 w-2.5">
+                <div class="absolute z-10 pointer-events-none"
+                     style="top: 8px; right: 10px;">
+                    <span class="relative flex h-2 w-2">
                         <span class="absolute inline-flex h-full w-full rounded-full opacity-75"
                               :class="_connectionHealthy ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'"
                         ></span>
-                        <span class="relative inline-flex rounded-full h-2.5 w-2.5"
+                        <span class="relative inline-flex rounded-full h-2 w-2"
                               :class="_connectionHealthy ? 'bg-emerald-500' : 'bg-amber-500'"
                         ></span>
                     </span>

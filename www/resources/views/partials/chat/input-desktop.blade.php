@@ -205,14 +205,16 @@
                       "></textarea>
 
             {{-- Connection health indicator - overlaid on textarea top-right (only during streaming) --}}
+            {{-- Uses inline styles for positioning to avoid Tailwind build dependency --}}
             <template x-if="isStreaming">
-                <div class="absolute top-1.5 right-2 z-10 group cursor-default"
+                <div class="absolute z-10 cursor-default pointer-events-none"
+                     style="top: 8px; right: 10px;"
                      :title="_connectionHealthy ? 'Connected to stream' : 'Connection may be lost'">
-                    <span class="relative flex h-2.5 w-2.5">
+                    <span class="relative flex h-2 w-2">
                         <span class="absolute inline-flex h-full w-full rounded-full opacity-75"
                               :class="_connectionHealthy ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'"
                         ></span>
-                        <span class="relative inline-flex rounded-full h-2.5 w-2.5"
+                        <span class="relative inline-flex rounded-full h-2 w-2"
                               :class="_connectionHealthy ? 'bg-emerald-500' : 'bg-amber-500'"
                         ></span>
                     </span>
