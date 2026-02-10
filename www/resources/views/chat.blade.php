@@ -1352,6 +1352,10 @@
                 _connectionHealthy: true,     // False if no keepalive for >45s
                 _keepaliveCheckInterval: null, // Interval ID for health check timer
                 _streamElapsed: 0,            // Elapsed seconds reported by server
+                // Stream phase tracking (for "processing context" indicator)
+                _streamPhase: 'idle',          // 'idle' | 'waiting' | 'tool_executing' | 'streaming'
+                _phaseChangedAt: null,         // Timestamp when phase last changed
+                _pendingResponseWarning: false, // True when waiting >15s without streaming
                 _streamState: {
                     // Maps block_index -> message array index (for interleaved thinking support)
                     thinkingBlocks: {},        // { blockIndex: { msgIndex, content, complete } }
@@ -5144,6 +5148,10 @@
                     // Reset stream state
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
+                    // Initialize stream phase - waiting for first response
+                    this._streamPhase = 'waiting';
+                    this._phaseChangedAt = Date.now();
+                    this._pendingResponseWarning = false;
                     this._streamState = {
                         // Maps block_index -> { msgIndex, content, complete }
                         thinkingBlocks: {},
@@ -5244,8 +5252,16 @@
                     this._connectionHealthy = true;
                     if (this._keepaliveCheckInterval) clearInterval(this._keepaliveCheckInterval);
                     this._keepaliveCheckInterval = setInterval(() => {
+                        // Connection health: no keepalive for >45s
                         if (this._lastKeepaliveAt && Date.now() - this._lastKeepaliveAt > 45000) {
                             this._connectionHealthy = false;
+                        }
+                        // Pending response warning: waiting >15s after tool results (likely compacting)
+                        if (this._streamPhase === 'waiting' && this._phaseChangedAt &&
+                            Date.now() - this._phaseChangedAt > 15000) {
+                            this._pendingResponseWarning = true;
+                        } else {
+                            this._pendingResponseWarning = false;
                         }
                     }, 5000);
 
@@ -5411,6 +5427,10 @@
                     }
                     this._connectionHealthy = true;
                     this._lastKeepaliveAt = null;
+                    // Reset stream phase tracking
+                    this._streamPhase = 'idle';
+                    this._phaseChangedAt = null;
+                    this._pendingResponseWarning = false;
 
                     if (this.streamAbortController) {
                         this.streamAbortController.abort();
@@ -5529,6 +5549,10 @@
 
                     switch (event.type) {
                         case 'thinking_start':
+                            // Phase: response content arriving
+                            this._streamPhase = 'streaming';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Support interleaved thinking - track by block_index
                             const thinkingBlockIndex = event.block_index ?? 0;
                             state.currentThinkingBlock = thinkingBlockIndex;
@@ -5590,6 +5614,10 @@
                             break;
 
                         case 'text_start':
+                            // Phase: response content arriving
+                            this._streamPhase = 'streaming';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Collapse all thinking blocks
                             for (const blockIdx in state.thinkingBlocks) {
                                 const block = state.thinkingBlocks[blockIdx];
@@ -5637,6 +5665,10 @@
                             break;
 
                         case 'tool_use_start':
+                            // Phase: tool executing (stays green)
+                            this._streamPhase = 'tool_executing';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Collapse all thinking blocks
                             for (const blockIdx in state.thinkingBlocks) {
                                 const block = state.thinkingBlocks[blockIdx];
@@ -5704,6 +5736,10 @@
                             break;
 
                         case 'tool_result':
+                            // Phase: tools done, waiting for next response (may compact)
+                            this._streamPhase = 'waiting';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Find the tool message with matching toolId and add the result
                             const toolResultId = event.metadata?.tool_id;
                             if (toolResultId) {
@@ -5819,6 +5855,10 @@
                             break;
 
                         case 'compaction_summary':
+                            // Phase: compaction just completed, waiting for post-compaction response
+                            this._streamPhase = 'waiting';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Claude Code auto-compacted the conversation context
                             // This event contains the full summary that Claude continues with
                             this.debugLog('Compaction summary received', {
@@ -5859,6 +5899,10 @@
                             break;
 
                         case 'done':
+                            // Phase: stream complete
+                            this._streamPhase = 'idle';
+                            this._phaseChangedAt = null;
+                            this._pendingResponseWarning = false;
                             if (state.textMsgIndex >= 0) {
                                 this.messages[state.textMsgIndex] = {
                                     ...this.messages[state.textMsgIndex],
@@ -5889,6 +5933,14 @@
                         default:
                             console.log('Unknown event type:', event.type, event);
                     }
+                },
+
+                // Connection indicator state: 'hidden' | 'connected' | 'processing' | 'disconnected'
+                getIndicatorState() {
+                    if (!this.isStreaming) return 'hidden';
+                    if (!this._connectionHealthy) return 'disconnected';
+                    if (this._pendingResponseWarning) return 'processing';
+                    return 'connected';
                 },
 
                 // Get current provider's reasoning config from loaded providers data

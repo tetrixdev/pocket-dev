@@ -29,9 +29,10 @@ class ClaudeCodeProvider implements AIProviderInterface
     private $activeProcess = null;
 
     // Phase-aware timeout constants (seconds)
-    private const TIMEOUT_INITIAL = 60;         // Max wait for first output after process start
-    private const TIMEOUT_STREAMING = 60;       // Max silence during active text/thinking streaming
-    private const TIMEOUT_TOOL_EXECUTION = 300; // Max silence during tool execution (tools can be slow)
+    private const TIMEOUT_INITIAL = 300;            // Max wait for first output (compaction can happen on resume)
+    private const TIMEOUT_STREAMING = 60;           // Max silence during active text/thinking streaming
+    private const TIMEOUT_TOOL_EXECUTION = 1800;    // Max silence during tool execution (sub-agents can take 10+ min)
+    private const TIMEOUT_PENDING_RESPONSE = 300;   // Max silence after tool results, before next response (covers compaction)
 
     public function __construct(ModelRepository $models)
     {
@@ -407,7 +408,7 @@ class ClaudeCodeProvider implements AIProviderInterface
 
         try {
             // Phase-aware timeout tracking
-            $phase = 'initial'; // 'initial' | 'streaming' | 'tool_execution'
+            $phase = 'initial'; // 'initial' | 'streaming' | 'tool_execution' | 'pending_response'
             $lastOutputTime = microtime(true);
 
             while (true) {
@@ -459,10 +460,19 @@ class ClaudeCodeProvider implements AIProviderInterface
                             }
                             $lastOutputTime = microtime(true);
                         } elseif ($peekType === 'user') {
-                            // user messages after tool execution = tool results, back to streaming
-                            $phase = 'streaming';
+                            // user messages after tool execution = tool results
+                            // Use pending_response phase (300s) to cover potential compaction
+                            // before the next stream_event arrives
+                            $phase = 'pending_response';
                             $lastOutputTime = microtime(true);
-                        } elseif ($peekType === 'result' || $peekType === 'system') {
+                        } elseif ($peekType === 'system') {
+                            // Check for compact_boundary - ensure long timeout during compaction
+                            $subtype = $peekData['subtype'] ?? '';
+                            if ($subtype === 'compact_boundary') {
+                                $phase = 'pending_response';
+                            }
+                            $lastOutputTime = microtime(true);
+                        } elseif ($peekType === 'result') {
                             $lastOutputTime = microtime(true);
                         }
 
@@ -490,6 +500,7 @@ class ClaudeCodeProvider implements AIProviderInterface
                     'initial' => self::TIMEOUT_INITIAL,
                     'streaming' => self::TIMEOUT_STREAMING,
                     'tool_execution' => self::TIMEOUT_TOOL_EXECUTION,
+                    'pending_response' => self::TIMEOUT_PENDING_RESPONSE,
                 };
                 $elapsed = microtime(true) - $lastOutputTime;
 
