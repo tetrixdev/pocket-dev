@@ -53,11 +53,12 @@
         <template x-for="session in filteredSessions" :key="session.id">
             <div @click="loadSession(session.id)"
                  :class="{'bg-gray-700': currentSession?.id === session.id}"
-                 class="group relative p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors">
+                 class="group relative p-2 mb-1 rounded hover:bg-gray-700 cursor-pointer transition-colors"
+                 x-data="{ get _status() { return getSessionStatus(session) } }">
                 <div class="flex items-center gap-1.5">
                     <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm shrink-0"
-                          :class="session.is_archived ? 'bg-gray-600' : 'bg-green-600'">
-                        <i class="text-white text-[8px]" :class="session.is_archived ? 'fa-solid fa-box-archive' : 'fa-solid fa-check'"></i>
+                          :class="getStatusColorClass(_status)">
+                        <i class="text-white text-[8px]" :class="getStatusIconClass(_status)"></i>
                     </span>
                     <span class="text-xs text-gray-300 truncate flex-1" x-text="session.name || 'New Session'"></span>
                     {{-- Screen count badge --}}

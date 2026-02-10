@@ -27,8 +27,9 @@
                     class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-t border border-b-0 transition-colors cursor-pointer max-w-[160px]"
                     :title="getScreenTitle(screenId)">
                 {{-- Screen Type Icon --}}
-                <span :class="getScreenTypeColor(screenId)">
-                    <i :class="getScreenIcon(screenId)"></i>
+                <span class="inline-flex items-center justify-center w-4 h-4 rounded-sm shrink-0"
+                      :class="getScreenTypeColor(screenId)">
+                    <i class="text-white text-[10px]" :class="getScreenIcon(screenId)"></i>
                 </span>
                 {{-- Screen Tab Label (short form) --}}
                 <span class="truncate" x-text="getScreenTabLabel(screenId)"></span>
@@ -79,7 +80,7 @@
             <template x-for="panel in availablePanels" :key="panel.slug">
                 <button @click="addPanelScreen(panel.slug); showAddMenu = false"
                         class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
-                    <i class="fa-solid fa-table-columns text-purple-400 w-4 text-center"></i>
+                    <i :class="panel.icon || 'fa-solid fa-table-columns'" class="text-purple-400 w-4 text-center"></i>
                     <span x-text="panel.name"></span>
                 </button>
             </template>

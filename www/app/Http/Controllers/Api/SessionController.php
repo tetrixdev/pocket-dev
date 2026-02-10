@@ -25,11 +25,12 @@ class SessionController extends Controller
         $validated = $request->validate([
             'workspace_id' => 'required|uuid|exists:workspaces,id',
             'include_archived' => 'nullable|boolean',
+            'per_page' => 'nullable|integer|min:1|max:200',
         ]);
 
         $query = Session::forWorkspace($validated['workspace_id'])
             ->with(['screens' => function ($q) {
-                $q->with(['conversation:id,title,status', 'panel:id,slug,name']);
+                $q->with(['conversation:id,title,status,last_activity_at', 'panel:id,slug,name']);
             }])
             ->orderByDesc('updated_at');
 
@@ -37,7 +38,7 @@ class SessionController extends Controller
             $query->active();
         }
 
-        $sessions = $query->paginate(20);
+        $sessions = $query->paginate($validated['per_page'] ?? 20);
 
         return response()->json($sessions);
     }

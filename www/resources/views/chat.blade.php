@@ -1131,6 +1131,7 @@
                 screens: [], // Flat array of screen objects in the current session
                 activeScreenId: null, // Currently active screen ID
                 availablePanels: [], // Available panel tools
+                _panelsFetchPending: false, // Guard against duplicate panel fetch retries
                 showArchivedSessions: false, // Filter toggle
                 sessionSearchQuery: '', // Filter by name
                 sidebarSearchMode: 'sessions', // 'sessions' or 'conversations'
@@ -1424,6 +1425,37 @@
                             sessionStorage.setItem('pocketdev_showArchivedConversations', 'true');
                         } else {
                             sessionStorage.removeItem('pocketdev_showArchivedConversations');
+                        }
+                    });
+
+                    // Sync active conversation status to screen data and sidebar session data
+                    this.$watch('currentConversationStatus', (newStatus) => {
+                        if (!newStatus) return;
+
+                        // (a) Sync to active screen's conversation (for tab icon)
+                        const activeScreen = this.getScreen(this.activeScreenId);
+                        if (
+                            !activeScreen ||
+                            activeScreen.type !== 'chat' ||
+                            activeScreen.conversation?.uuid !== this.currentConversationUuid
+                        ) {
+                            return;
+                        }
+                        activeScreen.conversation.status = newStatus;
+
+                        // (b) Sync to session in this.sessions (for sidebar icon)
+                        if (this.currentSession?.id) {
+                            const sessionIdx = this.sessions.findIndex(s => s.id === this.currentSession.id);
+                            if (sessionIdx !== -1) {
+                                const sidebarSession = this.sessions[sessionIdx];
+                                const screenInSidebar = sidebarSession.screens?.find(
+                                    sc => sc.conversation?.id === activeScreen?.conversation_id
+                                );
+                                if (screenInSidebar?.conversation) {
+                                    screenInSidebar.conversation.status = newStatus;
+                                    screenInSidebar.conversation.last_activity_at = new Date().toISOString();
+                                }
+                            }
                         }
                     });
 
@@ -1799,6 +1831,42 @@
                         'failed': 'fa-solid fa-triangle-exclamation'
                     };
                     return icons[status] || 'fa-solid fa-check';
+                },
+
+                getConversationStatus(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen || screen.type !== 'chat') return 'idle';
+                    // For active screen, prefer currentConversationStatus (most up-to-date via SSE)
+                    if (
+                        screenId === this.activeScreenId &&
+                        this.currentConversationStatus &&
+                        screen.conversation?.uuid === this.currentConversationUuid
+                    ) {
+                        return this.currentConversationStatus;
+                    }
+                    return screen.conversation?.status || 'idle';
+                },
+
+                getSessionStatus(session) {
+                    if (session.is_archived) return 'archived';
+
+                    const chatConversations = (session.screens || [])
+                        .filter(s => s.type === 'chat' && s.conversation && s.conversation.status !== 'archived')
+                        .map(s => s.conversation);
+
+                    if (chatConversations.length === 0) return 'idle';
+
+                    // Any conversation processing → processing takes priority
+                    if (chatConversations.some(c => c.status === 'processing')) return 'processing';
+
+                    // Otherwise: status of the latest non-archived conversation by last_activity_at
+                    const sorted = [...chatConversations].sort((a, b) => {
+                        const aTime = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
+                        const bTime = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
+                        return bTime - aTime;
+                    });
+
+                    return sorted[0].status || 'idle';
                 },
 
                 async selectAgent(agent, closeModal = true, { syncBackend = true } = {}) {
@@ -2232,6 +2300,7 @@
                         const params = new URLSearchParams({
                             workspace_id: this.currentWorkspaceId,
                             include_archived: this.showArchivedSessions ? '1' : '0',
+                            per_page: Math.min(200, Math.max(20, this.sessionsPage * 20)).toString(),
                         });
                         const response = await fetch(`/api/sessions?${params}`);
                         if (!response.ok) {
@@ -2250,8 +2319,27 @@
                         const newIds = new Set(newSessions.map(s => s.id));
                         const extraSessions = this.sessions.filter(s => !newIds.has(s.id));
                         this.sessions = [...newSessions, ...extraSessions];
-                        this.sessionsPage = data.current_page || 1;
-                        this.sessionsLastPage = data.last_page || 1;
+
+                        // Re-sync live SSE status into freshly loaded sidebar data to prevent
+                        // flicker when the backend hasn't persisted the latest status yet
+                        if (this.currentConversationStatus && this.currentSession?.id) {
+                            const activeScreen = this.getScreen(this.activeScreenId);
+                            if (activeScreen?.type === 'chat' && activeScreen.conversation_id) {
+                                const sidebarSession = this.sessions.find(s => s.id === this.currentSession.id);
+                                const screenInSidebar = sidebarSession?.screens?.find(
+                                    sc => sc.conversation?.id === activeScreen.conversation_id
+                                );
+                                if (screenInSidebar?.conversation) {
+                                    screenInSidebar.conversation.status = this.currentConversationStatus;
+                                }
+                            }
+                        }
+
+                        // Don't reset sessionsPage — keep it at the user's scroll depth so
+                        // fetchMoreSessions continues from the right position.
+                        // Compute last_page relative to the standard page size (20) that
+                        // fetchMoreSessions uses, not the inflated per_page we sent.
+                        this.sessionsLastPage = data.total ? Math.ceil(data.total / 20) : 1;
                     } catch (err) {
                         console.error('Failed to refresh sidebar:', err);
                     }
@@ -3248,14 +3336,28 @@
                 getScreenIcon(screenId) {
                     const screen = this.getScreen(screenId);
                     if (!screen) return 'fa-solid fa-square';
-                    return screen.type === 'chat' ? 'fa-solid fa-comment' : 'fa-solid fa-table-columns';
+                    if (screen.type === 'panel') {
+                        // Look up panel's custom icon from availablePanels (system panels have custom icons)
+                        const panelSlug = screen.panel_slug || screen.panel?.slug;
+                        const panelInfo = this.availablePanels?.find(p => p.slug === panelSlug);
+                        // If panels haven't loaded yet (API failure), trigger a background retry
+                        if (!panelInfo && this.availablePanels.length === 0 && !this._panelsFetchPending) {
+                            this._panelsFetchPending = true;
+                            this.fetchAvailablePanels().finally(() => { this._panelsFetchPending = false; });
+                        }
+                        return panelInfo?.icon || 'fa-solid fa-table-columns';
+                    }
+                    // Chat screen: show status icon
+                    return this.getStatusIconClass(this.getConversationStatus(screenId));
                 },
 
-                // Get screen type color class
+                // Get screen type color class (badge background color)
                 getScreenTypeColor(screenId) {
                     const screen = this.getScreen(screenId);
-                    if (!screen) return 'text-gray-400';
-                    return screen.type === 'chat' ? 'text-blue-400' : 'text-purple-400';
+                    if (!screen) return 'bg-gray-600';
+                    if (screen.type === 'panel') return 'bg-purple-600';
+                    // Chat screen: show status badge color
+                    return this.getStatusColorClass(this.getConversationStatus(screenId));
                 },
 
                 // Activate a screen (switch to it)
@@ -4393,6 +4495,12 @@
                             if (msg.cacheReadTokens) this.cacheReadTokens -= msg.cacheReadTokens;
                             if (msg.cost) this.sessionCost -= msg.cost;
                         }
+                        // Floor at zero to prevent negative display values from timing mismatches
+                        this.inputTokens = Math.max(0, this.inputTokens);
+                        this.outputTokens = Math.max(0, this.outputTokens);
+                        this.cacheCreationTokens = Math.max(0, this.cacheCreationTokens);
+                        this.cacheReadTokens = Math.max(0, this.cacheReadTokens);
+                        this.sessionCost = Math.max(0, this.sessionCost);
                         this.totalTokens = this.inputTokens + this.outputTokens;
                     }
                 },
