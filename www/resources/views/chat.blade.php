@@ -1427,6 +1427,32 @@
                         }
                     });
 
+                    // Sync active conversation status to screen data and sidebar session data
+                    this.$watch('currentConversationStatus', (newStatus) => {
+                        if (!newStatus) return;
+
+                        // (a) Sync to active screen's conversation (for tab icon)
+                        const activeScreen = this.getScreen(this.activeScreenId);
+                        if (activeScreen?.type === 'chat' && activeScreen.conversation) {
+                            activeScreen.conversation.status = newStatus;
+                        }
+
+                        // (b) Sync to session in this.sessions (for sidebar icon)
+                        if (this.currentSession?.id) {
+                            const sessionIdx = this.sessions.findIndex(s => s.id === this.currentSession.id);
+                            if (sessionIdx !== -1) {
+                                const sidebarSession = this.sessions[sessionIdx];
+                                const screenInSidebar = sidebarSession.screens?.find(
+                                    sc => sc.conversation?.id === activeScreen?.conversation_id
+                                );
+                                if (screenInSidebar?.conversation) {
+                                    screenInSidebar.conversation.status = newStatus;
+                                    screenInSidebar.conversation.last_activity_at = new Date().toISOString();
+                                }
+                            }
+                        }
+                    });
+
                     // Start polling for sidebar updates
                     this.startSidebarPolling();
 
@@ -1799,6 +1825,48 @@
                         'failed': 'fa-solid fa-triangle-exclamation'
                     };
                     return icons[status] || 'fa-solid fa-check';
+                },
+
+                getStatusTextColorClass(status) {
+                    const colors = {
+                        'idle': 'text-green-400',
+                        'processing': 'text-blue-400',
+                        'archived': 'text-gray-400',
+                        'failed': 'text-red-400'
+                    };
+                    return colors[status] || 'text-gray-400';
+                },
+
+                getConversationStatus(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen || screen.type !== 'chat') return 'idle';
+                    // For active screen, prefer currentConversationStatus (most up-to-date via SSE)
+                    if (screenId === this.activeScreenId && this.currentConversationStatus) {
+                        return this.currentConversationStatus;
+                    }
+                    return screen.conversation?.status || 'idle';
+                },
+
+                getSessionStatus(session) {
+                    if (session.is_archived) return 'archived';
+
+                    const chatConversations = (session.screens || [])
+                        .filter(s => s.type === 'chat' && s.conversation && s.conversation.status !== 'archived')
+                        .map(s => s.conversation);
+
+                    if (chatConversations.length === 0) return 'idle';
+
+                    // Any conversation processing → processing takes priority
+                    if (chatConversations.some(c => c.status === 'processing')) return 'processing';
+
+                    // Otherwise: status of the latest non-archived conversation by last_activity_at
+                    const sorted = [...chatConversations].sort((a, b) => {
+                        const aTime = a.last_activity_at || '';
+                        const bTime = b.last_activity_at || '';
+                        return bTime.localeCompare(aTime);
+                    });
+
+                    return sorted[0].status || 'idle';
                 },
 
                 async selectAgent(agent, closeModal = true, { syncBackend = true } = {}) {
@@ -2232,6 +2300,7 @@
                         const params = new URLSearchParams({
                             workspace_id: this.currentWorkspaceId,
                             include_archived: this.showArchivedSessions ? '1' : '0',
+                            per_page: Math.max(20, this.sessionsPage * 20).toString(),
                         });
                         const response = await fetch(`/api/sessions?${params}`);
                         if (!response.ok) {
@@ -2250,7 +2319,8 @@
                         const newIds = new Set(newSessions.map(s => s.id));
                         const extraSessions = this.sessions.filter(s => !newIds.has(s.id));
                         this.sessions = [...newSessions, ...extraSessions];
-                        this.sessionsPage = data.current_page || 1;
+                        // Don't reset sessionsPage — keep it at the user's scroll depth so
+                        // fetchMoreSessions continues from the right position
                         this.sessionsLastPage = data.last_page || 1;
                     } catch (err) {
                         console.error('Failed to refresh sidebar:', err);
@@ -3248,14 +3318,23 @@
                 getScreenIcon(screenId) {
                     const screen = this.getScreen(screenId);
                     if (!screen) return 'fa-solid fa-square';
-                    return screen.type === 'chat' ? 'fa-solid fa-comment' : 'fa-solid fa-table-columns';
+                    if (screen.type === 'panel') {
+                        // Look up panel's custom icon from availablePanels (system panels have custom icons)
+                        const panelSlug = screen.panel_slug || screen.panel?.slug;
+                        const panelInfo = this.availablePanels?.find(p => p.slug === panelSlug);
+                        return panelInfo?.icon || 'fa-solid fa-table-columns';
+                    }
+                    // Chat screen: show status icon
+                    return this.getStatusIconClass(this.getConversationStatus(screenId));
                 },
 
                 // Get screen type color class
                 getScreenTypeColor(screenId) {
                     const screen = this.getScreen(screenId);
                     if (!screen) return 'text-gray-400';
-                    return screen.type === 'chat' ? 'text-blue-400' : 'text-purple-400';
+                    if (screen.type === 'panel') return 'text-purple-400';
+                    // Chat screen: show status color
+                    return this.getStatusTextColorClass(this.getConversationStatus(screenId));
                 },
 
                 // Activate a screen (switch to it)
