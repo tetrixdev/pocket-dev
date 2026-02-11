@@ -79,9 +79,9 @@ fi
 
 # Ensure home directory exists and has correct permissions for TARGET_UID
 # Cross-group ownership: appuser:www-data (TARGET_UID:33) with group-writable permissions
-mkdir -p /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
+mkdir -p /home/appuser/.claude /home/appuser/.codex /home/appuser/.docker 2>/dev/null || true
 chown -R "${TARGET_UID}:33" /home/appuser 2>/dev/null || true
-chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
+chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex /home/appuser/.docker 2>/dev/null || true
 
 # Set up default Claude Code permissions.deny to protect .env files
 # This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
