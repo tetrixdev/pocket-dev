@@ -42,10 +42,24 @@ class SystemPromptBuilder
     ) {}
 
     /**
-     * Build the system prompt for a conversation (API providers).
+     * Build the system prompt for a conversation.
+     *
+     * Unified method that handles both API and CLI providers.
+     * The $promptType parameter determines the tool injection strategy:
+     * - 'api': uses ToolRegistry for API provider tool instructions
+     * - 'cli': uses ToolSelector for PocketDev CLI tool instructions
+     *
+     * @param Conversation $conversation The conversation context
+     * @param ToolRegistry $toolRegistry For API providers' tool instructions
+     * @param string $promptType 'api' or 'cli' (from provider->getSystemPromptType())
+     * @param string|null $providerType Provider type string (for CLI tool selection)
      */
-    public function build(Conversation $conversation, ToolRegistry $toolRegistry): string
-    {
+    public function build(
+        Conversation $conversation,
+        ToolRegistry $toolRegistry,
+        string $promptType = 'api',
+        ?string $providerType = null
+    ): string {
         $agent = $conversation->agent()->first();
         $workspace = $agent?->workspace;
         $allowedTools = null;
@@ -60,10 +74,17 @@ class SystemPromptBuilder
         $sections[] = $this->systemPromptService->getCore();
 
         // === MIDDLE ZONE (reference material) ===
-        // 2. Tool instructions
-        $toolInstructions = $toolRegistry->getInstructions($allowedTools);
-        if (!empty($toolInstructions)) {
-            $sections[] = $this->buildToolSection($toolInstructions);
+        // 2. Tool instructions (differs by prompt type)
+        if ($promptType === 'cli' && $providerType) {
+            $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($providerType, $allowedTools, $workspace);
+            if (!empty($pocketDevToolPrompt)) {
+                $sections[] = $pocketDevToolPrompt;
+            }
+        } else {
+            $toolInstructions = $toolRegistry->getInstructions($allowedTools);
+            if (!empty($toolInstructions)) {
+                $sections[] = $this->buildToolSection($toolInstructions);
+            }
         }
 
         // 3. Memory section (separate from tools)
@@ -122,82 +143,17 @@ class SystemPromptBuilder
 
     /**
      * Build the system prompt for CLI providers (Claude Code, Codex).
-     * Injects PocketDev-exclusive tools (memory, tool management, user tools).
+     *
+     * @deprecated Use build() with promptType='cli' instead.
      */
     public function buildForCliProvider(Conversation $conversation, string $provider): string
     {
-        $agent = $conversation->agent()->first();
-        $workspace = $agent?->workspace;
-        $allowedTools = null;
-        if ($agent && !$agent->inheritsWorkspaceTools()) {
-            $allowedTools = $agent->allowed_tools;
-        }
-
-        $sections = [];
-
-        // === PRIMACY ZONE ===
-        // 1. Core system prompt
-        $sections[] = $this->systemPromptService->getCore();
-
-        // === MIDDLE ZONE (reference material) ===
-        // 2. PocketDev tools
-        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, $workspace);
-        if (!empty($pocketDevToolPrompt)) {
-            $sections[] = $pocketDevToolPrompt;
-        }
-
-        // 3. Memory section (separate from tools)
-        if ($memorySection = $this->toolSelector->buildMemorySection($agent)) {
-            $sections[] = $memorySection;
-        }
-
-        // 4. Skills section (slash commands)
-        if ($skillsSection = $this->toolSelector->buildSkillsSection($agent)) {
-            $sections[] = $skillsSection;
-        }
-
-        // 5. Panel dependencies (for creating/updating panels)
-        if ($panelSection = $this->buildPanelDependenciesSection($allowedTools)) {
-            $sections[] = $panelSection;
-        }
-
-        // === RECENCY ZONE (task-relevant) ===
-        // 6. Additional system prompt (global)
-        $additionalPrompt = $this->systemPromptService->getAdditional();
-        if (!empty($additionalPrompt)) {
-            $sections[] = $additionalPrompt;
-        }
-
-        // 7. Workspace Prompt
-        if ($workspace?->claude_base_prompt) {
-            $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
-        }
-
-        // 8. Agent-specific instructions
-        $agentPrompt = $agent?->system_prompt;
-        if (!empty($agentPrompt)) {
-            $sections[] = $this->buildAgentSection($agentPrompt);
-        }
-
-        // 9. Working directory context
-        $sections[] = $this->buildContextSection($conversation);
-
-        // 10. Open panels (if any panels are open in the session)
-        if ($openPanelsSection = $this->buildOpenPanelsSection($conversation)) {
-            $sections[] = $openPanelsSection;
-        }
-
-        // 11. Environment (credentials and packages)
-        if ($envSection = $this->buildEnvironmentSection($workspace)) {
-            $sections[] = $envSection;
-        }
-
-        // 12. Context usage (dynamic)
-        if ($contextUsage = $this->buildContextUsageSection($conversation)) {
-            $sections[] = $contextUsage;
-        }
-
-        return implode("\n\n", array_filter($sections));
+        return $this->build(
+            $conversation,
+            app(ToolRegistry::class),
+            'cli',
+            $provider
+        );
     }
 
     /**

@@ -210,6 +210,7 @@ class ConversationController extends Controller
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
+            'codex_reasoning_effort' => 'nullable|string|in:minimal,low,medium,high,xhigh',
             'response_level' => 'nullable|integer|min:0|max:5',
             // Legacy support - will be converted to provider-specific
             'thinking_level' => 'nullable|integer|min:0|max:4',
@@ -234,41 +235,10 @@ class ConversationController extends Controller
             $updates['response_level'] = $validated['response_level'];
         }
 
-        // Handle provider-specific reasoning settings
-        if ($conversation->provider_type === 'anthropic') {
-            // Anthropic: use budget_tokens directly or convert from legacy thinking_level
-            if (isset($validated['anthropic_thinking_budget'])) {
-                $updates['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
-            } elseif (isset($validated['thinking_level'])) {
-                // Legacy support: convert thinking_level to budget_tokens
-                $reasoningLevels = config('ai.reasoning.anthropic.levels');
-                $thinkingConfig = $reasoningLevels[$validated['thinking_level']] ?? null;
-                if ($thinkingConfig) {
-                    $updates['anthropic_thinking_budget'] = $thinkingConfig['budget_tokens'] ?? 0;
-                }
-            }
-        } elseif ($conversation->provider_type === 'openai') {
-            // OpenAI: use native effort setting
-            if (isset($validated['openai_reasoning_effort'])) {
-                $updates['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
-            }
-        } elseif ($conversation->provider_type === 'openai_compatible') {
-            // OpenAI Compatible: use native effort setting (may be ignored by some servers)
-            if (isset($validated['openai_compatible_reasoning_effort'])) {
-                $updates['openai_compatible_reasoning_effort'] = $validated['openai_compatible_reasoning_effort'];
-            }
-        } elseif ($conversation->provider_type === 'claude_code') {
-            // Claude Code: use thinking_tokens (via MAX_THINKING_TOKENS env var)
-            if (isset($validated['claude_code_thinking_tokens'])) {
-                $updates['claude_code_thinking_tokens'] = $validated['claude_code_thinking_tokens'];
-            } elseif (isset($validated['thinking_level'])) {
-                // Legacy support: convert thinking_level to thinking_tokens
-                $reasoningLevels = config('ai.reasoning.claude_code.levels');
-                $thinkingConfig = $reasoningLevels[$validated['thinking_level']] ?? null;
-                if ($thinkingConfig) {
-                    $updates['claude_code_thinking_tokens'] = $thinkingConfig['thinking_tokens'] ?? 0;
-                }
-            }
+        // Handle reasoning config update (unified across all providers)
+        $reasoningUpdate = $this->extractReasoningConfig($request, $conversation->provider_type);
+        if ($reasoningUpdate !== null) {
+            $updates['reasoning_config'] = $reasoningUpdate;
         }
 
         // Apply updates to conversation
@@ -778,10 +748,7 @@ class ConversationController extends Controller
         if ($request->boolean('sync_settings', false)) {
             $updates['model'] = $newAgent->model;
             $updates['response_level'] = $newAgent->response_level;
-            $updates['anthropic_thinking_budget'] = $newAgent->anthropic_thinking_budget;
-            $updates['openai_reasoning_effort'] = $newAgent->openai_reasoning_effort;
-            $updates['openai_compatible_reasoning_effort'] = $newAgent->openai_compatible_reasoning_effort;
-            $updates['claude_code_thinking_tokens'] = $newAgent->claude_code_thinking_tokens;
+            $updates['reasoning_config'] = $newAgent->reasoning_config;
         }
 
         $conversation->update($updates);
@@ -873,5 +840,54 @@ class ConversationController extends Controller
             'exists' => $logger->exists($conversation->uuid),
             'size' => $logger->getSize($conversation->uuid),
         ]);
+    }
+
+    /**
+     * Extract reasoning config from request based on provider type.
+     *
+     * Returns the reasoning_config array to store on the conversation,
+     * or null if no reasoning parameters were provided in the request.
+     *
+     * Supports both native provider-specific params and legacy thinking_level
+     * conversion for Anthropic and Claude Code.
+     */
+    private function extractReasoningConfig(Request $request, string $providerType): ?array
+    {
+        return match ($providerType) {
+            'anthropic' => $request->has('anthropic_thinking_budget')
+                ? ['budget_tokens' => (int) $request->input('anthropic_thinking_budget', 0)]
+                : ($request->has('thinking_level')
+                    ? ['budget_tokens' => $this->convertThinkingLevel($request->input('thinking_level'), 'anthropic')]
+                    : null),
+            'openai' => $request->has('openai_reasoning_effort')
+                ? ['effort' => $request->input('openai_reasoning_effort')]
+                : null,
+            'openai_compatible' => $request->has('openai_compatible_reasoning_effort')
+                ? ['effort' => $request->input('openai_compatible_reasoning_effort')]
+                : null,
+            'claude_code' => $request->has('claude_code_thinking_tokens')
+                ? ['thinking_tokens' => (int) $request->input('claude_code_thinking_tokens', 0)]
+                : ($request->has('thinking_level')
+                    ? ['thinking_tokens' => $this->convertThinkingLevel($request->input('thinking_level'), 'claude_code')]
+                    : null),
+            'codex' => $request->has('codex_reasoning_effort')
+                ? ['effort' => $request->input('codex_reasoning_effort')]
+                : null,
+            default => null,
+        };
+    }
+
+    /**
+     * Convert a legacy thinking_level (0-4) to a provider-specific token value.
+     *
+     * Uses the config/ai.php reasoning level definitions to map
+     * integer levels to budget_tokens (Anthropic) or thinking_tokens (Claude Code).
+     */
+    private function convertThinkingLevel(int $level, string $providerType): int
+    {
+        $configKey = $providerType === 'anthropic' ? 'budget_tokens' : 'thinking_tokens';
+        $levels = config("ai.reasoning.{$providerType}.levels");
+        $config = $levels[$level] ?? null;
+        return $config[$configKey] ?? 0;
     }
 }

@@ -2,13 +2,9 @@
 
 namespace App\Services\Providers;
 
-use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
-use App\Models\Credential;
 use App\Models\Message;
-use App\Services\ConversationStreamLogger;
 use App\Services\ModelRepository;
-use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -20,28 +16,44 @@ use Illuminate\Support\Str;
  * Uses the `claude` CLI tool with streaming JSON output.
  * Claude Code manages its own conversation history via session IDs.
  */
-class ClaudeCodeProvider implements AIProviderInterface
+class ClaudeCodeProvider extends AbstractCliProvider
 {
-    use InjectsInterruptionReminder;
-
-    private ModelRepository $models;
-    /** @var resource|null */
-    private $activeProcess = null;
-
-    // Phase-aware timeout constants (seconds)
-    // All set to 30 min — heavy contexts (large system prompts, 50+ tool calls) can cause
-    // long prompt processing times on the API side before any tokens are generated.
-    // TODO: Consider lowering TIMEOUT_STREAMING (e.g. 300s) for faster stall detection
-    // once streaming is active. Currently 1800s to avoid false timeouts across all phases.
-    private const TIMEOUT_INITIAL = 1800;
-    private const TIMEOUT_STREAMING = 1800;
-    private const TIMEOUT_TOOL_EXECUTION = 1800;
-    private const TIMEOUT_PENDING_RESPONSE = 1800;
-
     public function __construct(ModelRepository $models)
     {
-        $this->models = $models;
+        parent::__construct($models);
     }
+
+    // ========================================================================
+    // Provider identity
+    // ========================================================================
+
+    public function getProviderType(): string
+    {
+        return 'claude_code';
+    }
+
+    // ========================================================================
+    // HasNativeSession implementation
+    // ========================================================================
+
+    public function getSessionIdKey(): string
+    {
+        return 'provider_session_id';
+    }
+
+    public function getSessionId(Conversation $conversation): ?string
+    {
+        return $conversation->provider_session_id ?? $conversation->claude_session_id;
+    }
+
+    public function setSessionId(Conversation $conversation, string $sessionId): void
+    {
+        $conversation->provider_session_id = $sessionId;
+    }
+
+    // ========================================================================
+    // Authentication
+    // ========================================================================
 
     /**
      * Check if OAuth credentials exist and are readable (from `claude login`).
@@ -55,163 +67,35 @@ class ClaudeCodeProvider implements AIProviderInterface
 
     /**
      * Check if OAuth authentication is configured (from `claude login`).
-     *
-     * Note: We intentionally don't fall back to API key here.
-     * Users must explicitly authenticate with `claude login` to use Claude Code.
-     * This prevents unknowing API key usage when OAuth isn't set up.
      */
     public function isAuthenticated(): bool
     {
         return $this->hasOAuthCredentials();
     }
 
-    public function getProviderType(): string
-    {
-        return 'claude_code';
-    }
+    // ========================================================================
+    // Template method implementations
+    // ========================================================================
 
-    public function isAvailable(): bool
+    protected function isCliBinaryAvailable(): bool
     {
-        // Check if claude CLI is available
         $output = [];
         $returnCode = 0;
         exec('which claude 2>/dev/null', $output, $returnCode);
-
         return $returnCode === 0 && !empty($output);
     }
 
-    public function getModels(): array
+    protected function hasAuthCredentials(): bool
     {
-        return $this->models->getModelsArray('claude_code');
+        return $this->isAuthenticated();
     }
 
-    public function getContextWindow(string $model): int
+    protected function getAuthRequiredError(): string
     {
-        return $this->models->getContextWindow($model);
+        return 'CLAUDE_CODE_AUTH_REQUIRED:Claude Code authentication required. Please run "claude login" in the container.';
     }
 
-    /**
-     * Stream a message using Claude Code CLI.
-     *
-     * Claude Code manages conversation history internally via session IDs.
-     * We only send the latest user message; previous context is restored automatically.
-     */
-    public function streamMessage(
-        Conversation $conversation,
-        array $options = []
-    ): Generator {
-        if (!$this->isAvailable()) {
-            yield StreamEvent::error('Claude Code CLI not available');
-
-            return;
-        }
-
-        // Check if authenticated via OAuth (claude login)
-        if (!$this->isAuthenticated()) {
-            yield StreamEvent::error('CLAUDE_CODE_AUTH_REQUIRED:Claude Code authentication required. Please run "claude login" in the container.');
-
-            return;
-        }
-
-        // Get the latest user message from the conversation
-        $latestMessage = $this->getLatestUserMessage($conversation);
-        if ($latestMessage === null) {
-            yield StreamEvent::error('No user message found in conversation');
-
-            return;
-        }
-
-        // Inject interruption reminder if previous response was interrupted
-        if (!empty($options['interruption_reminder'])) {
-            $latestMessage = $options['interruption_reminder'] . "\n\n" . $latestMessage;
-        }
-
-        // Build CLI command (user message is passed via stdin, not in command)
-        $command = $this->buildCommand($conversation, $options);
-
-        Log::channel('api')->info('ClaudeCodeProvider: Starting CLI stream', [
-            'conversation_id' => $conversation->id,
-            'session_id' => $conversation->claude_session_id ?? 'new',
-            'model' => $conversation->model,
-            'user_message' => substr($latestMessage, 0, 100),
-            'command_preview' => substr($command, 0, 300) . '...',
-        ]);
-
-        // Execute and stream (user message is written to stdin)
-        yield from $this->executeAndStream($command, $latestMessage, $conversation, $options);
-    }
-
-    /**
-     * Build messages array from conversation.
-     *
-     * For Claude Code, we only need the latest user message since
-     * the CLI maintains its own conversation history.
-     */
-    public function buildMessagesFromConversation(Conversation $conversation): array
-    {
-        // Claude Code manages history internally, but we return the full
-        // message history for compatibility with the interface
-        $messages = [];
-
-        foreach ($conversation->messages as $message) {
-            if ($message->role === 'system') {
-                continue;
-            }
-
-            $content = $message->content;
-
-            // Filter out 'interrupted' blocks (UI-only marker)
-            if (is_array($content)) {
-                $content = array_values(array_filter($content, fn($block) =>
-                    ($block['type'] ?? '') !== 'interrupted'
-                ));
-            }
-
-            $messages[] = [
-                'role' => $message->role,
-                'content' => $content,
-            ];
-        }
-
-        return $messages;
-    }
-
-    /**
-     * Get the latest user message content as a string.
-     */
-    private function getLatestUserMessage(Conversation $conversation): ?string
-    {
-        // Use fresh query to avoid cached relationship data
-        $messages = \App\Models\Message::where('conversation_id', $conversation->id)
-            ->where('role', 'user')
-            ->latest('id')
-            ->first();
-
-        if (!$messages) {
-            return null;
-        }
-
-        $content = $messages->content;
-
-        // Handle array content (multi-part messages)
-        if (is_array($content)) {
-            $textParts = [];
-            foreach ($content as $block) {
-                if (isset($block['type']) && $block['type'] === 'text' && isset($block['text'])) {
-                    $textParts[] = $block['text'];
-                }
-            }
-
-            return implode("\n", $textParts);
-        }
-
-        return is_string($content) ? $content : null;
-    }
-
-    /**
-     * Build the Claude CLI command.
-     */
-    private function buildCommand(
+    protected function buildCliCommand(
         Conversation $conversation,
         array $options
     ): string {
@@ -249,13 +133,6 @@ class ClaudeCodeProvider implements AIProviderInterface
             }));
         }
 
-        // Base command with streaming JSON output
-        // Note: --verbose is required when using --print with stream-json
-        // --include-partial-messages enables real streaming with content_block_delta events
-        // User message is provided via stdin (not as argument) because --tools breaks argument parsing
-        // --dangerously-skip-permissions allows all tool calls without approval prompts
-        // TODO: Consider making --dangerously-skip-permissions configurable via Setting::get()
-        //       for deployments requiring approval prompts before tool execution
         $parts = [
             'claude',
             '--print',
@@ -268,83 +145,66 @@ class ClaudeCodeProvider implements AIProviderInterface
             '--model', escapeshellarg($model),
         ];
 
-        // Use --resume for conversation continuity (not --session-id which is for new sessions)
-        if (!empty($conversation->claude_session_id)) {
+        // Use --resume for conversation continuity
+        $sessionId = $this->getSessionId($conversation);
+        if (!empty($sessionId)) {
             $parts[] = '--resume';
-            $parts[] = escapeshellarg($conversation->claude_session_id);
+            $parts[] = escapeshellarg($sessionId);
         }
 
-        // Add tools restriction if configured (empty array = all tools)
-        // --tools limits which tools are available to Claude
-        // --allowedTools would just auto-approve tools (not restrict them)
+        // Add tools restriction if configured
         if (!empty($allowedTools)) {
             $parts[] = '--tools';
             $parts[] = escapeshellarg(implode(',', $allowedTools));
         }
 
-        // Note: permissions.deny patterns in ~/.claude/settings.json are respected natively
-        // when loaded via --settings flag. No need to pass --disallowedTools explicitly.
-
         // Add system prompt if provided
-        // Using --system-prompt instead of --append-system-prompt because:
-        // 1. --append-system-prompt has a bug where it sends as user message (issue #4523)
-        // 2. --system-prompt correctly sets the system prompt, enabling agent switching
-        // Note: CLAUDE.md is still read separately by Claude Code
         if (!empty($options['system'])) {
             $parts[] = '--system-prompt';
             $parts[] = escapeshellarg($options['system']);
         }
 
-        // Note: Environment variables like MAX_THINKING_TOKENS are passed via
-        // the $env parameter to proc_open() in executeAndStream(), not as
-        // a command prefix. Shell-style "VAR=value cmd" doesn't work with proc_open().
-
-        return implode(' ', $parts) . ' 2>&1';
+        return implode(' ', $parts);
     }
 
-    /**
-     * Get thinking tokens from conversation reasoning config.
-     */
-    private function getThinkingTokens(Conversation $conversation): int
+    protected function getLatestUserMessage(Conversation $conversation): ?string
     {
-        $reasoningConfig = $conversation->getReasoningConfig();
+        $messages = \App\Models\Message::where('conversation_id', $conversation->id)
+            ->where('role', 'user')
+            ->latest('id')
+            ->first();
 
-        return $reasoningConfig['thinking_tokens'] ?? 0;
+        if (!$messages) {
+            return null;
+        }
+
+        $content = $messages->content;
+
+        if (is_array($content)) {
+            $textParts = [];
+            foreach ($content as $block) {
+                if (isset($block['type']) && $block['type'] === 'text' && isset($block['text'])) {
+                    $textParts[] = $block['text'];
+                }
+            }
+            return implode("\n", $textParts);
+        }
+
+        return is_string($content) ? $content : null;
     }
 
-    /**
-     * Execute the command and stream events.
-     */
-    private function executeAndStream(
-        string $command,
-        string $userMessage,
-        Conversation $conversation,
-        array $options
-    ): Generator {
-        $descriptors = [
-            0 => ['pipe', 'r'], // stdin
-            1 => ['pipe', 'w'], // stdout
-            2 => ['pipe', 'w'], // stderr
+    protected function prepareProcessInput(string $command, string $userMessage): array
+    {
+        // Claude Code takes user message via stdin
+        return [
+            'command' => $command,
+            'stdin' => $userMessage,
         ];
+    }
 
-        // Get workspace-specific credentials merged with global ones
-        $workspaceId = $conversation->workspace_id;
-        $credentials = Credential::getEnvArrayForWorkspace($workspaceId);
-
-        // Merge credentials with current environment
-        // Credentials override any existing env vars with the same name
-        $env = array_merge($_ENV, $_SERVER, $credentials);
-
-        // Filter to only string values (proc_open requires this)
-        $env = array_filter($env, fn($v) => is_string($v) || is_numeric($v));
-        $env = array_map(fn($v) => (string) $v, $env);
-
-        // Inject session ID for panel tool support
-        // This allows `php artisan tool:run` to automatically know the session context
-        $sessionId = $conversation->screen?->session?->id;
-        if ($sessionId) {
-            $env['POCKETDEV_SESSION_ID'] = $sessionId;
-        }
+    protected function buildEnvironment(Conversation $conversation, array $options): array
+    {
+        $env = parent::buildEnvironment($conversation, $options);
 
         // Set thinking tokens via environment variable (for extended thinking)
         $thinkingTokens = $this->getThinkingTokens($conversation);
@@ -352,372 +212,513 @@ class ClaudeCodeProvider implements AIProviderInterface
             $env['MAX_THINKING_TOKENS'] = (string) $thinkingTokens;
         }
 
-        // Disable CLI internal retries - surface errors immediately instead of
-        // silently retrying for 55+ minutes with exponential backoff
+        // Disable CLI internal retries
         $env['CLAUDE_CODE_MAX_RETRIES'] = '0';
 
-        // Enable tool_progress heartbeats during tool execution.
-        // These events reset the phase-aware timeout timer so long-running
-        // tools (builds, tests) don't trigger false timeouts.
+        // Enable tool_progress heartbeats during tool execution
         $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
 
-        $workingDirectory = $conversation->working_directory ?? base_path();
-        $process = proc_open($command, $descriptors, $pipes, $workingDirectory, $env);
+        return $env;
+    }
 
-        if (!is_resource($process)) {
-            yield StreamEvent::error('Failed to start Claude Code CLI process');
-
-            return;
-        }
-
-        $this->activeProcess = $process;
-
-        // Initialize per-conversation stream logger (only in debug mode)
-        $debugLogging = config('app.debug');
-        $streamLogger = $debugLogging ? app(ConversationStreamLogger::class) : null;
-        $verboseLogging = config('ai.providers.claude_code.verbose_logging', false);
-        $uuid = $conversation->uuid;
-        if ($streamLogger) {
-            $streamLogger->init($uuid);
-            $streamLogger->logCommand($uuid, $command);
-        }
-
-        // Write user message to stdin (required for --tools flag to work correctly)
-        fwrite($pipes[0], $userMessage);
-        fclose($pipes[0]); // Close stdin to signal EOF - CLI needs this to start processing
-
-        // Log stdin after writing
-        if ($streamLogger) {
-            $streamLogger->logStdin($uuid, $userMessage);
-        }
-
-        // Set stdout to non-blocking
-        stream_set_blocking($pipes[1], false);
-
-        $buffer = '';
-        $state = [
+    protected function initParseState(): array
+    {
+        return [
             'blockIndex' => 0,
             'textStarted' => false,
             'thinkingStarted' => false,
             'currentToolUse' => null,
             'sessionId' => null,
             'totalCost' => null,
-            'gotStreamEvents' => false, // Track if we got stream_events (to skip duplicate assistant message)
-            'awaitingCompactionSummary' => false, // Track if next user message is compaction summary
-            'compactionMetadata' => null, // Store compaction metadata to attach to summary
-            // Token tracking for context window calculation
+            'gotStreamEvents' => false,
+            'awaitingCompactionSummary' => false,
+            'compactionMetadata' => null,
             'inputTokens' => 0,
             'outputTokens' => 0,
             'cacheCreationTokens' => 0,
             'cacheReadTokens' => 0,
         ];
+    }
 
-        try {
-            // Phase-aware timeout tracking
-            $phase = 'initial'; // 'initial' | 'streaming' | 'tool_execution' | 'pending_response'
-            $lastOutputTime = microtime(true);
-            $timedOut = false;
+    protected function getSessionIdFromState(array $state): ?string
+    {
+        return $state['sessionId'];
+    }
 
-            while (true) {
-                $status = proc_get_status($process);
+    protected function classifyEventForTimeout(array $parsedData): array
+    {
+        $peekType = $parsedData['type'] ?? '';
 
-                // Read available data
-                $chunk = fread($pipes[1], 8192);
-                if ($chunk !== false && $chunk !== '') {
-                    $buffer .= $chunk;
+        if ($peekType === 'tool_progress') {
+            return ['phase' => null, 'resetsTimer' => true, 'shouldSkip' => true];
+        }
 
-                    // Process complete lines (JSONL format)
-                    while (($pos = strpos($buffer, "\n")) !== false) {
-                        $line = substr($buffer, 0, $pos);
-                        $buffer = substr($buffer, $pos + 1);
+        $phase = null;
+        $resetsTimer = true;
 
-                        if (empty(trim($line))) {
-                            continue;
-                        }
+        if ($peekType === 'stream_event') {
+            $event = $parsedData['event'] ?? [];
+            $streamEventType = is_array($event) ? ($event['type'] ?? '') : '';
+            if ($streamEventType === 'content_block_delta') {
+                $phase = 'streaming';
+            }
+        } elseif ($peekType === 'assistant') {
+            $message = is_array($parsedData['message'] ?? null) ? $parsedData['message'] : [];
+            $stopReason = $message['stop_reason'] ?? null;
+            if ($stopReason === 'tool_use') {
+                $phase = 'tool_execution';
+            }
+        } elseif ($peekType === 'user') {
+            $phase = 'pending_response';
+        } elseif ($peekType === 'system') {
+            $subtype = $parsedData['subtype'] ?? '';
+            $systemStatus = $parsedData['status'] ?? '';
+            if ($subtype === 'compact_boundary' || $systemStatus === 'compacting') {
+                $phase = 'pending_response';
+            }
+        }
 
-                        // Parse once, reuse for logging and phase tracking
-                        $parsedLine = json_decode($line, true);
+        return ['phase' => $phase, 'resetsTimer' => $resetsTimer, 'shouldSkip' => false];
+    }
 
-                        // Log JSONL lines for debugging (skip stream_event deltas unless verbose)
-                        if ($streamLogger) {
-                            $eventType = is_array($parsedLine) ? ($parsedLine['type'] ?? null) : null;
-                            if ($verboseLogging || $eventType !== 'stream_event') {
-                                $streamLogger->logStream($uuid, $line, $parsedLine);
-                            }
-                        }
+    protected function shouldLogEvent(array $parsedData): bool
+    {
+        $verboseLogging = config('ai.providers.claude_code.verbose_logging', false);
+        $eventType = $parsedData['type'] ?? null;
+        return $verboseLogging || $eventType !== 'stream_event';
+    }
 
-                        // Peek at line to update phase tracking BEFORE yielding
-                        $peekData = $parsedLine;
+    protected function closeOpenBlocks(array $state): Generator
+    {
+        if ($state['textStarted']) {
+            yield StreamEvent::textStop($state['blockIndex']);
+        }
+        if ($state['thinkingStarted']) {
+            yield StreamEvent::thinkingStop($state['blockIndex']);
+        }
+    }
 
-                        // Guard against non-array JSON (e.g. CLI outputs a bare JSON string)
-                        if (!is_array($peekData)) {
-                            Log::channel('api')->warning('ClaudeCodeProvider: Non-array JSONL line from CLI', [
-                                'line' => substr($line, 0, 500),
-                                'decoded_type' => gettype($peekData),
-                            ]);
-                            continue;
-                        }
+    protected function emitUsage(array $state): Generator
+    {
+        if ($state['totalCost'] !== null || $state['inputTokens'] > 0) {
+            yield StreamEvent::usage(
+                $state['inputTokens'],
+                $state['outputTokens'],
+                $state['cacheCreationTokens'] ?: null,
+                $state['cacheReadTokens'] ?: null,
+                $state['totalCost']
+            );
+        }
+    }
 
-                        $peekType = $peekData['type'] ?? '';
+    protected function getCompletionSummary(array $state, int $exitCode): array
+    {
+        return [
+            'exit_code' => $exitCode,
+            'session_id' => $state['sessionId'],
+            'total_cost' => $state['totalCost'],
+            'input_tokens' => $state['inputTokens'],
+            'output_tokens' => $state['outputTokens'],
+        ];
+    }
 
-                        if ($peekType === 'tool_progress') {
-                            // tool_progress heartbeats reset timer but are NOT yielded to frontend
-                            $lastOutputTime = microtime(true);
-                            continue; // Skip to next line -- don't yield this event
-                        }
+    protected function onProcessComplete(Conversation $conversation, array $state, int $exitCode): void
+    {
+        // Fix permissions on Claude config files so PHP-FPM (www-data) can read/write them
+        $home = getenv('HOME') ?: '/home/appuser';
+        @chmod($home . '/.claude.json', 0660);
+        @chmod($home . '/.claude.json.backup', 0660);
+        @chmod($home . '/.claude/settings.json', 0664);
+    }
 
-                        // Update phase based on event type
-                        if ($peekType === 'stream_event') {
-                            // Only switch to 'streaming' (60s timeout) when actual content
-                            // deltas are flowing. Other stream_events (message_start,
-                            // content_block_start) arrive at the START of a response turn
-                            // before any tokens flow - extended thinking or compaction can
-                            // cause 60+ seconds of silence after these events.
-                            $event = $peekData['event'] ?? [];
-                            $streamEventType = is_array($event) ? ($event['type'] ?? '') : '';
-                            if ($streamEventType === 'content_block_delta') {
-                                $phase = 'streaming';
-                            }
-                            // All stream_events reset the timer (the CLI is alive)
-                            $lastOutputTime = microtime(true);
-                        } elseif ($peekType === 'assistant') {
-                            $message = is_array($peekData['message'] ?? null) ? $peekData['message'] : [];
-                            $stopReason = $message['stop_reason'] ?? null;
-                            if ($stopReason === 'tool_use') {
-                                $phase = 'tool_execution';
-                            }
-                            // stop_reason end_turn/max_tokens: response is finishing,
-                            // keep current phase (no need to transition)
-                            // stop_reason === null means partial message from
-                            // --include-partial-messages; don't change phase
-                            $lastOutputTime = microtime(true);
-                        } elseif ($peekType === 'user') {
-                            // user messages after tool execution = tool results
-                            // Use pending_response phase (300s) to cover potential compaction
-                            // before the next stream_event arrives
-                            $phase = 'pending_response';
-                            $lastOutputTime = microtime(true);
-                        } elseif ($peekType === 'system') {
-                            // Ensure long timeout during compaction. The CLI emits:
-                            // - subtype=status with status=compacting (when compaction starts)
-                            // - subtype=compact_boundary (when compaction finishes)
-                            $subtype = $peekData['subtype'] ?? '';
-                            $systemStatus = $peekData['status'] ?? '';
-                            if ($subtype === 'compact_boundary' || $systemStatus === 'compacting') {
-                                $phase = 'pending_response';
-                            }
-                            $lastOutputTime = microtime(true);
-                        } elseif ($peekType === 'result') {
-                            $lastOutputTime = microtime(true);
-                        }
+    // ========================================================================
+    // JSONL Parsing (Claude Code specific)
+    // ========================================================================
 
-                        yield from $this->parseJsonLine($line, $state, $peekData);
+    protected function parseJsonLine(string $line, array &$state, ?array $preDecoded = null): Generator
+    {
+        $data = $preDecoded ?? json_decode($line, true);
 
-                        // Save session ID immediately when captured (for abort sync support)
-                        // This ensures the session ID is available even if stream is aborted
-                        if ($state['sessionId'] && !$conversation->claude_session_id) {
-                            $conversation->claude_session_id = $state['sessionId'];
-                            $conversation->save();
-                            Log::channel('api')->info('ClaudeCodeProvider: Session ID captured early', [
-                                'session_id' => $state['sessionId'],
-                            ]);
-                        }
-                    }
+        if (!is_array($data)) {
+            Log::channel('api')->debug('ClaudeCodeProvider: Non-array JSON line', [
+                'line' => substr($line, 0, 500),
+                'decoded_type' => gettype($data),
+            ]);
+            return;
+        }
+
+        $type = $data['type'] ?? '';
+
+        switch ($type) {
+            case 'user':
+                yield from $this->parseUserMessage($data, $state);
+                break;
+
+            case 'assistant':
+                if (!$state['gotStreamEvents']) {
+                    yield from $this->parseAssistantMessage($data, $state);
                 }
+                break;
 
-                // Check if process has ended
-                if (!$status['running']) {
-                    break;
+            case 'result':
+                if (isset($data['session_id'])) {
+                    $state['sessionId'] = $data['session_id'];
                 }
-
-                // Phase-aware timeout check
-                $timeout = match ($phase) {
-                    'initial' => self::TIMEOUT_INITIAL,
-                    'streaming' => self::TIMEOUT_STREAMING,
-                    'tool_execution' => self::TIMEOUT_TOOL_EXECUTION,
-                    'pending_response' => self::TIMEOUT_PENDING_RESPONSE,
-                    default => self::TIMEOUT_INITIAL, // Conservative fallback
-                };
-                $elapsed = microtime(true) - $lastOutputTime;
-
-                if ($elapsed > $timeout) {
-                    Log::channel('api')->warning('ClaudeCodeProvider: Phase-aware timeout', [
-                        'phase' => $phase,
-                        'timeout' => $timeout,
-                        'elapsed' => round($elapsed, 2),
-                        'conversation_uuid' => $uuid,
-                    ]);
-
-                    // Graceful shutdown: SIGINT -> 200ms -> SIGKILL
-                    proc_terminate($process, 2); // SIGINT
-                    usleep(200000); // 200ms
-
-                    $procStatus = proc_get_status($process);
-                    if ($procStatus['running']) {
-                        proc_terminate($process, 9); // SIGKILL
-                    }
-
-                    $timedOut = true;
-                    yield StreamEvent::error("Claude Code process timed out after {$timeout}s in {$phase} phase (no output received)");
-                    break;
+                if (isset($data['total_cost_usd'])) {
+                    $state['totalCost'] = (float) $data['total_cost_usd'];
                 }
-
-                // Small sleep to prevent CPU spinning
-                usleep(1000);
-            }
-
-            // Process any remaining buffer
-            if (!empty(trim($buffer))) {
-                $parsedLine = json_decode($buffer, true);
-                if ($streamLogger) {
-                    $eventType = is_array($parsedLine) ? ($parsedLine['type'] ?? null) : null;
-                    if ($verboseLogging || $eventType !== 'stream_event') {
-                        $streamLogger->logStream($uuid, $buffer, $parsedLine);
-                    }
-                }
-                yield from $this->parseJsonLine($buffer, $state, $parsedLine);
-            }
-
-            // Close open blocks
-            if ($state['textStarted']) {
-                yield StreamEvent::textStop($state['blockIndex']);
-            }
-            if ($state['thinkingStarted']) {
-                yield StreamEvent::thinkingStop($state['blockIndex']);
-            }
-
-            // Update conversation with session ID if we got one
-            if ($state['sessionId'] && !$conversation->claude_session_id) {
-                $conversation->claude_session_id = $state['sessionId'];
-                $conversation->save();
-            }
-
-            // Emit usage event with tokens and cost
-            // Only emit if we have either cost or token data
-            if ($state['totalCost'] !== null || $state['inputTokens'] > 0) {
-                yield StreamEvent::usage(
-                    $state['inputTokens'],
-                    $state['outputTokens'],
-                    $state['cacheCreationTokens'] ?: null,
-                    $state['cacheReadTokens'] ?: null,
-                    $state['totalCost']
-                );
-            }
-
-            // Close pipes before proc_close (required order)
-            if (is_resource($pipes[1])) {
-                fclose($pipes[1]);
-            }
-            if (is_resource($pipes[2])) {
-                fclose($pipes[2]);
-            }
-
-            // Check exit code
-            $exitCode = proc_close($process);
-            $this->activeProcess = null;
-
-            // Fix permissions on Claude config files so PHP-FPM (www-data) can read/write them
-            // Claude CLI creates these with 600, we need 660 for group (appgroup) write access
-            $home = getenv('HOME') ?: '/home/appuser';
-            @chmod($home . '/.claude.json', 0660);
-            @chmod($home . '/.claude.json.backup', 0660);
-            @chmod($home . '/.claude/settings.json', 0664);
-
-            if ($exitCode !== 0) {
-                Log::channel('api')->warning('ClaudeCodeProvider: CLI exited with non-zero code', [
-                    'exit_code' => $exitCode,
-                ]);
-            }
-
-            // Log completion with summary
-            if ($streamLogger) {
-                $streamLogger->logComplete($uuid, [
-                    'exit_code' => $exitCode,
+                Log::channel('api')->info('ClaudeCodeProvider: Result received', [
+                    'subtype' => $data['subtype'] ?? 'unknown',
+                    'is_error' => $data['is_error'] ?? false,
                     'session_id' => $state['sessionId'],
                     'total_cost' => $state['totalCost'],
-                    'input_tokens' => $state['inputTokens'],
-                    'output_tokens' => $state['outputTokens'],
+                    'num_turns' => $data['num_turns'] ?? null,
                 ]);
-            }
 
-            yield StreamEvent::done($timedOut ? 'timeout' : 'end_turn');
+                if (!empty($data['is_error'])) {
+                    $errorMsg = $data['result'] ?? null;
+                    if (is_array($errorMsg)) {
+                        $errorMsg = json_encode($errorMsg);
+                    }
+                    if (($errorMsg === null || $errorMsg === '') && !empty($data['errors']) && is_array($data['errors'])) {
+                        $firstError = $data['errors'][0] ?? null;
+                        $errorMsg = is_array($firstError) ? json_encode($firstError) : $firstError;
+                    }
+                    if ($errorMsg === null || $errorMsg === '') {
+                        $errorMsg = 'Claude Code error: ' . ($data['subtype'] ?? 'unknown error');
+                    }
+                    $errorMsg = is_string($errorMsg) ? $errorMsg : (string) $errorMsg;
 
-        } catch (\Throwable $e) {
-            Log::channel('api')->error('ClaudeCodeProvider: Stream error', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            // Log error to conversation stream log
-            if ($streamLogger) {
-                $streamLogger->logError($uuid, $e->getMessage());
-            }
-
-            yield StreamEvent::error($e->getMessage());
-
-            // Clean up safely
-            if (is_resource($pipes[1])) {
-                fclose($pipes[1]);
-            }
-            if (is_resource($pipes[2])) {
-                fclose($pipes[2]);
-            }
-            if (is_resource($process)) {
-                proc_terminate($process);
-            }
-            $this->activeProcess = null;
-        }
-    }
-
-    /**
-     * Abort the current streaming operation.
-     *
-     * Uses SIGINT (like Ctrl+C) first, then SIGKILL if needed.
-     */
-    public function abort(): void
-    {
-        if ($this->activeProcess !== null && is_resource($this->activeProcess)) {
-            // Step 1: Try SIGINT (like Ctrl+C) - signal 2
-            proc_terminate($this->activeProcess, 2);
-            usleep(200000); // 200ms for graceful shutdown
-
-            $status = proc_get_status($this->activeProcess);
-            if (!$status['running']) {
-                try {
-                    proc_close($this->activeProcess);
-                } catch (\Exception $e) {
-                    Log::warning('ClaudeCodeProvider: Error closing process after SIGINT', ['error' => $e->getMessage()]);
+                    Log::channel('api')->error('ClaudeCodeProvider: CLI returned error result', [
+                        'error_message' => $errorMsg,
+                        'subtype' => $data['subtype'] ?? 'unknown',
+                    ]);
+                    yield StreamEvent::error($errorMsg);
                 }
-                $this->activeProcess = null;
-                return;
-            }
+                break;
 
-            // Step 2: Force kill with SIGKILL (signal 9) as last resort
-            proc_terminate($this->activeProcess, 9);
+            case 'stream_event':
+                $state['gotStreamEvents'] = true;
+                yield from $this->parseStreamEvent($data, $state);
+                break;
 
-            try {
-                proc_close($this->activeProcess);
-            } catch (\Exception $e) {
-                Log::warning('ClaudeCodeProvider: Error closing process after SIGKILL', ['error' => $e->getMessage()]);
-            }
+            case 'system':
+                if (isset($data['session_id'])) {
+                    $state['sessionId'] = $data['session_id'];
+                }
+                if (($data['subtype'] ?? '') === 'compact_boundary') {
+                    $compactMetadata = $data['compact_metadata'] ?? [];
+                    $preTokens = is_array($compactMetadata) ? ($compactMetadata['pre_tokens'] ?? null) : null;
+                    $trigger = is_array($compactMetadata) ? ($compactMetadata['trigger'] ?? 'auto') : 'auto';
+                    Log::channel('api')->info('ClaudeCodeProvider: Context compaction detected', [
+                        'pre_tokens' => $preTokens,
+                        'trigger' => $trigger,
+                    ]);
+                    $state['awaitingCompactionSummary'] = true;
+                    $state['compactionMetadata'] = [
+                        'pre_tokens' => $preTokens,
+                        'trigger' => $trigger,
+                    ];
+                }
+                break;
 
-            $this->activeProcess = null;
+            default:
+                Log::channel('api')->debug('ClaudeCodeProvider: Unknown event type', [
+                    'type' => $type,
+                ]);
         }
     }
+
+    private function parseStreamEvent(array $data, array &$state): Generator
+    {
+        $event = $data['event'] ?? [];
+        if (!is_array($event)) {
+            Log::channel('api')->debug('ClaudeCodeProvider: Non-array event in stream_event', [
+                'event_type' => gettype($event),
+                'event_preview' => is_string($event) ? substr($event, 0, 200) : null,
+            ]);
+            return;
+        }
+        $eventType = $event['type'] ?? '';
+
+        switch ($eventType) {
+            case 'content_block_start':
+                $contentBlock = $event['content_block'] ?? [];
+                $blockType = $contentBlock['type'] ?? '';
+
+                if ($blockType === 'thinking') {
+                    if ($state['textStarted']) {
+                        yield StreamEvent::textStop($state['blockIndex']);
+                        $state['textStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+                    if (!$state['thinkingStarted']) {
+                        yield StreamEvent::thinkingStart($state['blockIndex']);
+                        $state['thinkingStarted'] = true;
+                    }
+                } elseif ($blockType === 'tool_use') {
+                    if ($state['textStarted']) {
+                        yield StreamEvent::textStop($state['blockIndex']);
+                        $state['textStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+                    if ($state['thinkingStarted']) {
+                        yield StreamEvent::thinkingStop($state['blockIndex']);
+                        $state['thinkingStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+                    $toolId = $contentBlock['id'] ?? 'tool_' . $state['blockIndex'];
+                    $toolName = $contentBlock['name'] ?? 'unknown';
+                    $state['currentToolUse'] = [
+                        'id' => $toolId,
+                        'name' => $toolName,
+                        'inputJson' => '',
+                    ];
+                    yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, $toolName);
+                } elseif ($blockType === 'text') {
+                    if ($state['thinkingStarted']) {
+                        yield StreamEvent::thinkingStop($state['blockIndex']);
+                        $state['thinkingStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+                    if (!$state['textStarted']) {
+                        yield StreamEvent::textStart($state['blockIndex']);
+                        $state['textStarted'] = true;
+                    }
+                }
+                break;
+
+            case 'content_block_delta':
+                $delta = $event['delta'] ?? [];
+                $deltaType = $delta['type'] ?? '';
+
+                if ($deltaType === 'thinking_delta') {
+                    $thinking = $delta['thinking'] ?? '';
+                    if ($thinking !== '') {
+                        if (!$state['thinkingStarted']) {
+                            yield StreamEvent::thinkingStart($state['blockIndex']);
+                            $state['thinkingStarted'] = true;
+                        }
+                        yield StreamEvent::thinkingDelta($state['blockIndex'], $thinking);
+                    }
+                } elseif ($deltaType === 'text_delta') {
+                    $text = $delta['text'] ?? '';
+                    if ($text !== '') {
+                        if (!$state['textStarted']) {
+                            yield StreamEvent::textStart($state['blockIndex']);
+                            $state['textStarted'] = true;
+                        }
+                        yield StreamEvent::textDelta($state['blockIndex'], $text);
+                    }
+                } elseif ($deltaType === 'input_json_delta') {
+                    $partialJson = $delta['partial_json'] ?? '';
+                    if ($partialJson !== '' && $state['currentToolUse'] !== null) {
+                        $state['currentToolUse']['inputJson'] .= $partialJson;
+                        yield StreamEvent::toolUseDelta($state['blockIndex'], $partialJson);
+                    }
+                } elseif ($deltaType === 'signature_delta') {
+                    $signature = $delta['signature'] ?? '';
+                    if ($signature !== '') {
+                        yield StreamEvent::thinkingSignature($state['blockIndex'], $signature);
+                    }
+                }
+                break;
+
+            case 'content_block_stop':
+                if ($state['thinkingStarted']) {
+                    yield StreamEvent::thinkingStop($state['blockIndex']);
+                    $state['thinkingStarted'] = false;
+                    $state['blockIndex']++;
+                } elseif ($state['textStarted']) {
+                    yield StreamEvent::textStop($state['blockIndex']);
+                    $state['textStarted'] = false;
+                    $state['blockIndex']++;
+                } elseif ($state['currentToolUse'] !== null) {
+                    yield StreamEvent::toolUseStop($state['blockIndex']);
+                    $state['currentToolUse'] = null;
+                    $state['blockIndex']++;
+                }
+                break;
+
+            case 'message_start':
+            case 'message_delta':
+                $message = $event['message'] ?? [];
+                $usage = $message['usage'] ?? [];
+                if (!empty($usage)) {
+                    $state['inputTokens'] = ($usage['input_tokens'] ?? 0)
+                        + ($usage['cache_creation_input_tokens'] ?? 0)
+                        + ($usage['cache_read_input_tokens'] ?? 0);
+                    $state['outputTokens'] = $usage['output_tokens'] ?? 0;
+                    $state['cacheCreationTokens'] = $usage['cache_creation_input_tokens'] ?? 0;
+                    $state['cacheReadTokens'] = $usage['cache_read_input_tokens'] ?? 0;
+                }
+                break;
+
+            case 'message_stop':
+                break;
+        }
+    }
+
+    private function parseAssistantMessage(array $data, array &$state): Generator
+    {
+        $message = $data['message'] ?? [];
+        if (!is_array($message)) {
+            return;
+        }
+        $content = $message['content'] ?? [];
+        if (!is_array($content)) {
+            return;
+        }
+
+        foreach ($content as $block) {
+            $blockType = $block['type'] ?? '';
+
+            switch ($blockType) {
+                case 'text':
+                    if (!$state['textStarted']) {
+                        yield StreamEvent::textStart($state['blockIndex']);
+                        $state['textStarted'] = true;
+                    }
+                    $text = $block['text'] ?? '';
+                    if ($text !== '') {
+                        yield StreamEvent::textDelta($state['blockIndex'], $text);
+                    }
+                    break;
+
+                case 'thinking':
+                    if (!$state['thinkingStarted']) {
+                        if ($state['textStarted']) {
+                            yield StreamEvent::textStop($state['blockIndex']);
+                            $state['textStarted'] = false;
+                            $state['blockIndex']++;
+                        }
+                        yield StreamEvent::thinkingStart($state['blockIndex']);
+                        $state['thinkingStarted'] = true;
+                    }
+                    $thinking = $block['thinking'] ?? '';
+                    if ($thinking !== '') {
+                        yield StreamEvent::thinkingDelta($state['blockIndex'], $thinking);
+                    }
+                    break;
+
+                case 'tool_use':
+                    if ($state['textStarted']) {
+                        yield StreamEvent::textStop($state['blockIndex']);
+                        $state['textStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+                    if ($state['thinkingStarted']) {
+                        yield StreamEvent::thinkingStop($state['blockIndex']);
+                        $state['thinkingStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+
+                    $toolId = $block['id'] ?? 'tool_' . $state['blockIndex'];
+                    $toolName = $block['name'] ?? 'unknown';
+                    $input = $block['input'] ?? [];
+
+                    yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, $toolName);
+                    $inputJson = is_array($input) ? json_encode($input) : (string) $input;
+                    yield StreamEvent::toolUseDelta($state['blockIndex'], $inputJson);
+                    yield StreamEvent::toolUseStop($state['blockIndex']);
+                    $state['blockIndex']++;
+                    break;
+
+                case 'tool_result':
+                    $toolId = $block['tool_use_id'] ?? 'unknown';
+                    $resultContent = $block['content'] ?? '';
+                    $isError = $block['is_error'] ?? false;
+                    yield StreamEvent::toolResult($toolId, $resultContent, $isError);
+                    break;
+            }
+        }
+    }
+
+    private function parseUserMessage(array $data, array &$state): Generator
+    {
+        $message = $data['message'] ?? [];
+        if (!is_array($message)) {
+            return;
+        }
+        $content = $message['content'] ?? [];
+
+        // Check if this is a compaction summary
+        if ($state['awaitingCompactionSummary']) {
+            $state['awaitingCompactionSummary'] = false;
+            $summaryParts = [];
+
+            if (is_string($content)) {
+                $summaryParts[] = $content;
+            } elseif (is_array($content)) {
+                foreach ($content as $block) {
+                    if (($block['type'] ?? '') === 'text') {
+                        $summaryParts[] = $block['text'] ?? '';
+                    }
+                }
+            }
+
+            $summaryText = trim(implode("\n", array_filter($summaryParts, fn($part) => $part !== '')));
+            $metadata = $state['compactionMetadata'] ?? [];
+            $state['compactionMetadata'] = null;
+
+            if ($summaryText !== '') {
+                Log::channel('api')->info('ClaudeCodeProvider: Compaction summary captured', [
+                    'summary_length' => strlen($summaryText),
+                    'pre_tokens' => $metadata['pre_tokens'] ?? null,
+                ]);
+                yield StreamEvent::compactionSummary($summaryText, $metadata);
+            }
+
+            return;
+        }
+
+        // Handle string content
+        if (is_string($content)) {
+            if (preg_match('/<local-command-stdout>(.*?)<\/local-command-stdout>/s', $content, $matches)) {
+                $output = trim($matches[1]);
+                $command = null;
+                if (preg_match('/<command-name>(.*?)<\/command-name>/', $content, $cmdMatch)) {
+                    $command = $cmdMatch[1];
+                }
+                yield StreamEvent::systemInfo($output, $command);
+            }
+            return;
+        }
+
+        if (!is_array($content)) {
+            return;
+        }
+
+        foreach ($content as $block) {
+            $blockType = $block['type'] ?? '';
+
+            if ($blockType === 'tool_result') {
+                $toolId = $block['tool_use_id'] ?? 'unknown';
+                $resultContent = $block['content'] ?? '';
+                $isError = $block['is_error'] ?? false;
+
+                if (is_string($resultContent)) {
+                    yield StreamEvent::toolResult($toolId, $resultContent, $isError);
+                } elseif (is_array($resultContent)) {
+                    yield StreamEvent::toolResult($toolId, json_encode($resultContent), $isError);
+                }
+            }
+        }
+    }
+
+    // ========================================================================
+    // Session file sync (Claude Code specific)
+    // ========================================================================
 
     /**
      * Sync aborted message to Claude Code's native JSONL session file.
-     *
-     * When a stream is aborted, Claude Code's internal session may not have
-     * the completed content blocks. This method writes the missing messages
-     * to the JSONL session file so the next --resume has full context.
      */
     public function syncAbortedMessage(
         Conversation $conversation,
         Message $userMessage,
         Message $assistantMessage
     ): bool {
-        $sessionId = $conversation->claude_session_id;
+        $sessionId = $this->getSessionId($conversation);
 
         if (empty($sessionId)) {
             Log::warning('ClaudeCodeProvider: No session ID for sync', [
@@ -743,13 +744,10 @@ class ClaudeCodeProvider implements AIProviderInterface
             'session_file' => $sessionFile,
         ]);
 
-        // Read existing file to find the last parentUuid
         $lastUuid = $this->getLastUuidFromFile($sessionFile);
 
-        // Build the JSONL entries
         $entries = [];
 
-        // 1. User message entry
         $userUuid = (string) Str::uuid();
         $entries[] = $this->buildUserSessionEntry(
             $userMessage,
@@ -759,7 +757,6 @@ class ClaudeCodeProvider implements AIProviderInterface
             $workingDir
         );
 
-        // 2. Assistant message entry (only completed blocks)
         $assistantUuid = (string) Str::uuid();
         $entries[] = $this->buildAssistantSessionEntry(
             $assistantMessage,
@@ -770,7 +767,6 @@ class ClaudeCodeProvider implements AIProviderInterface
             $conversation->model ?? 'claude-sonnet-4-20250514'
         );
 
-        // Append to session file
         try {
             $content = implode("\n", array_map('json_encode', $entries)) . "\n";
             file_put_contents($sessionFile, $content, FILE_APPEND | LOCK_EX);
@@ -790,21 +786,13 @@ class ClaudeCodeProvider implements AIProviderInterface
         }
     }
 
-    /**
-     * Get the session file path for a given working directory and session ID.
-     * Claude Code stores sessions in ~/.claude/projects/{encoded-path}/{session_id}.jsonl
-     */
     private function getSessionFilePath(string $workingDir, string $sessionId): ?string
     {
         $home = getenv('HOME') ?: '/home/appuser';
         $claudeDir = $home . '/.claude/projects';
-
-        // Claude Code encodes paths by replacing / with -
         $encodedPath = str_replace('/', '-', $workingDir);
-
         $sessionFile = "{$claudeDir}/{$encodedPath}/{$sessionId}.jsonl";
 
-        // Create directory if it doesn't exist (for early abort scenarios)
         $dir = dirname($sessionFile);
         if (!is_dir($dir)) {
             if (!mkdir($dir, 0755, true)) {
@@ -821,22 +809,16 @@ class ClaudeCodeProvider implements AIProviderInterface
         return $sessionFile;
     }
 
-    /**
-     * Get the last UUID from an existing session file.
-     */
     private function getLastUuidFromFile(string $sessionFile): ?string
     {
         if (!file_exists($sessionFile)) {
             return null;
         }
 
-        // Read last line efficiently
         $file = new \SplFileObject($sessionFile, 'r');
         $file->seek(PHP_INT_MAX);
         $lastLine = $file->key();
 
-        // Read backwards to find last entry with a uuid field
-        // (skip queue-operation and other metadata entries that don't have uuid)
         for ($i = $lastLine; $i >= 0; $i--) {
             $file->seek($i);
             $line = trim($file->current());
@@ -845,16 +827,12 @@ class ClaudeCodeProvider implements AIProviderInterface
                 if (isset($data['uuid'])) {
                     return $data['uuid'];
                 }
-                // Continue searching if this entry has no uuid (e.g., queue-operation)
             }
         }
 
         return null;
     }
 
-    /**
-     * Build a user message JSONL entry for Claude Code session file.
-     */
     private function buildUserSessionEntry(
         Message $message,
         string $sessionId,
@@ -868,7 +846,7 @@ class ClaudeCodeProvider implements AIProviderInterface
             'userType' => 'external',
             'cwd' => $cwd,
             'sessionId' => $sessionId,
-            'version' => '2.0.76', // Claude Code version
+            'version' => '2.0.76',
             'gitBranch' => '',
             'type' => 'user',
             'message' => [
@@ -880,9 +858,6 @@ class ClaudeCodeProvider implements AIProviderInterface
         ];
     }
 
-    /**
-     * Build an assistant message JSONL entry for Claude Code session file.
-     */
     private function buildAssistantSessionEntry(
         Message $message,
         string $sessionId,
@@ -891,17 +866,11 @@ class ClaudeCodeProvider implements AIProviderInterface
         string $cwd,
         string $model
     ): array {
-        // Use content blocks, filtering out UI-only markers
         $content = is_array($message->content) ? $message->content : [];
         $content = array_values(array_filter($content, fn($block) =>
             ($block['type'] ?? '') !== 'interrupted'
         ));
 
-        // Sanity check: we should never sync tool_use blocks
-        // With proper abort handling, abort either:
-        // - Happens during thinking/text (no tool_use yet)
-        // - Waits for tool_result then skips sync (skipSync=true)
-        // If we have tool_use blocks here, something is wrong with the abort flow
         foreach ($content as $block) {
             if (($block['type'] ?? '') === 'tool_use') {
                 throw new \RuntimeException(
@@ -925,7 +894,7 @@ class ClaudeCodeProvider implements AIProviderInterface
                 'type' => 'message',
                 'role' => 'assistant',
                 'content' => $content,
-                'stop_reason' => 'end_turn', // Mark as completed for Claude Code
+                'stop_reason' => 'end_turn',
                 'stop_sequence' => null,
                 'usage' => [
                     'input_tokens' => $message->input_tokens ?? 0,
@@ -939,447 +908,13 @@ class ClaudeCodeProvider implements AIProviderInterface
         ];
     }
 
-    /**
-     * Parse a JSONL line and yield StreamEvents.
-     *
-     * Claude Code outputs lines like:
-     * {"type":"user","message":{...}}
-     * {"type":"assistant","message":{"role":"assistant","content":[...]}}
-     * {"type":"result","subtype":"success","total_cost_usd":0.003,"session_id":"abc"}
-     */
-    private function parseJsonLine(string $line, array &$state, ?array $preDecoded = null): Generator
+    // ========================================================================
+    // Private helpers
+    // ========================================================================
+
+    private function getThinkingTokens(Conversation $conversation): int
     {
-        $data = $preDecoded ?? json_decode($line, true);
-
-        if (!is_array($data)) {
-            Log::channel('api')->debug('ClaudeCodeProvider: Non-array JSON line', [
-                'line' => substr($line, 0, 500),
-                'decoded_type' => gettype($data),
-            ]);
-
-            return;
-        }
-
-        $type = $data['type'] ?? '';
-
-        switch ($type) {
-            case 'user':
-                // User message - may contain tool results
-                yield from $this->parseUserMessage($data, $state);
-                break;
-
-            case 'assistant':
-                // Skip if we already got stream_events (which contain the same content)
-                if (!$state['gotStreamEvents']) {
-                    yield from $this->parseAssistantMessage($data, $state);
-                }
-                break;
-
-            case 'result':
-                // Final result with metadata
-                if (isset($data['session_id'])) {
-                    $state['sessionId'] = $data['session_id'];
-                }
-                if (isset($data['total_cost_usd'])) {
-                    $state['totalCost'] = (float) $data['total_cost_usd'];
-                }
-                Log::channel('api')->info('ClaudeCodeProvider: Result received', [
-                    'subtype' => $data['subtype'] ?? 'unknown',
-                    'is_error' => $data['is_error'] ?? false,
-                    'session_id' => $state['sessionId'],
-                    'total_cost' => $state['totalCost'],
-                    'num_turns' => $data['num_turns'] ?? null,
-                ]);
-
-                // Detect CLI error results and surface them to the user
-                if (!empty($data['is_error'])) {
-                    $errorMsg = $data['result'] ?? null;
-                    if (is_array($errorMsg)) {
-                        $errorMsg = json_encode($errorMsg);
-                    }
-
-                    // Try 'errors' array if 'result' is empty
-                    if (($errorMsg === null || $errorMsg === '') && !empty($data['errors']) && is_array($data['errors'])) {
-                        $firstError = $data['errors'][0] ?? null;
-                        $errorMsg = is_array($firstError) ? json_encode($firstError) : $firstError;
-                    }
-
-                    // Fall back to subtype description
-                    if ($errorMsg === null || $errorMsg === '') {
-                        $errorMsg = 'Claude Code error: ' . ($data['subtype'] ?? 'unknown error');
-                    }
-
-                    // Ensure $errorMsg is always a string for StreamEvent::error()
-                    $errorMsg = is_string($errorMsg) ? $errorMsg : (string) $errorMsg;
-
-                    Log::channel('api')->error('ClaudeCodeProvider: CLI returned error result', [
-                        'error_message' => $errorMsg,
-                        'subtype' => $data['subtype'] ?? 'unknown',
-                    ]);
-
-                    yield StreamEvent::error($errorMsg);
-                }
-                break;
-
-            case 'stream_event':
-                // Real-time streaming events from --include-partial-messages
-                $state['gotStreamEvents'] = true;
-                yield from $this->parseStreamEvent($data, $state);
-                break;
-
-            case 'system':
-                // System init message - capture session_id
-                if (isset($data['session_id'])) {
-                    $state['sessionId'] = $data['session_id'];
-                }
-                // Detect compaction event (type: system, subtype: compact_boundary)
-                if (($data['subtype'] ?? '') === 'compact_boundary') {
-                    $compactMetadata = $data['compact_metadata'] ?? [];
-                    $preTokens = is_array($compactMetadata) ? ($compactMetadata['pre_tokens'] ?? null) : null;
-                    $trigger = is_array($compactMetadata) ? ($compactMetadata['trigger'] ?? 'auto') : 'auto';
-                    Log::channel('api')->info('ClaudeCodeProvider: Context compaction detected', [
-                        'pre_tokens' => $preTokens,
-                        'trigger' => $trigger,
-                    ]);
-                    // Store metadata and flag to capture the summary in the next user message
-                    $state['awaitingCompactionSummary'] = true;
-                    $state['compactionMetadata'] = [
-                        'pre_tokens' => $preTokens,
-                        'trigger' => $trigger,
-                    ];
-                    // Don't yield contextCompacted here - we'll yield compactionSummary with full data
-                }
-                break;
-
-            default:
-                Log::channel('api')->debug('ClaudeCodeProvider: Unknown event type', [
-                    'type' => $type,
-                ]);
-        }
-    }
-
-    /**
-     * Parse a stream_event and yield StreamEvents.
-     * These come from --include-partial-messages flag.
-     */
-    private function parseStreamEvent(array $data, array &$state): Generator
-    {
-        $event = $data['event'] ?? [];
-        if (!is_array($event)) {
-            Log::channel('api')->debug('ClaudeCodeProvider: Non-array event in stream_event', [
-                'event_type' => gettype($event),
-                'event_preview' => is_string($event) ? substr($event, 0, 200) : null,
-            ]);
-
-            return;
-        }
-        $eventType = $event['type'] ?? '';
-
-        switch ($eventType) {
-            case 'content_block_start':
-                $contentBlock = $event['content_block'] ?? [];
-                $blockType = $contentBlock['type'] ?? '';
-
-                if ($blockType === 'thinking') {
-                    // Close text block if open
-                    if ($state['textStarted']) {
-                        yield StreamEvent::textStop($state['blockIndex']);
-                        $state['textStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-
-                    // Start thinking block
-                    if (!$state['thinkingStarted']) {
-                        yield StreamEvent::thinkingStart($state['blockIndex']);
-                        $state['thinkingStarted'] = true;
-                    }
-                } elseif ($blockType === 'tool_use') {
-                    // Close text/thinking blocks if open
-                    if ($state['textStarted']) {
-                        yield StreamEvent::textStop($state['blockIndex']);
-                        $state['textStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-                    if ($state['thinkingStarted']) {
-                        yield StreamEvent::thinkingStop($state['blockIndex']);
-                        $state['thinkingStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-
-                    // Start tool use block
-                    $toolId = $contentBlock['id'] ?? 'tool_' . $state['blockIndex'];
-                    $toolName = $contentBlock['name'] ?? 'unknown';
-                    $state['currentToolUse'] = [
-                        'id' => $toolId,
-                        'name' => $toolName,
-                        'inputJson' => '',
-                    ];
-                    yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, $toolName);
-                } elseif ($blockType === 'text') {
-                    // Close thinking block if open (text comes after thinking)
-                    if ($state['thinkingStarted']) {
-                        yield StreamEvent::thinkingStop($state['blockIndex']);
-                        $state['thinkingStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-
-                    // Start text block
-                    if (!$state['textStarted']) {
-                        yield StreamEvent::textStart($state['blockIndex']);
-                        $state['textStarted'] = true;
-                    }
-                }
-                break;
-
-            case 'content_block_delta':
-                $delta = $event['delta'] ?? [];
-                $deltaType = $delta['type'] ?? '';
-
-                if ($deltaType === 'thinking_delta') {
-                    // Thinking delta
-                    $thinking = $delta['thinking'] ?? '';
-                    if ($thinking !== '') {
-                        if (!$state['thinkingStarted']) {
-                            yield StreamEvent::thinkingStart($state['blockIndex']);
-                            $state['thinkingStarted'] = true;
-                        }
-                        yield StreamEvent::thinkingDelta($state['blockIndex'], $thinking);
-                    }
-                } elseif ($deltaType === 'text_delta') {
-                    // Text delta
-                    $text = $delta['text'] ?? '';
-                    if ($text !== '') {
-                        if (!$state['textStarted']) {
-                            yield StreamEvent::textStart($state['blockIndex']);
-                            $state['textStarted'] = true;
-                        }
-                        yield StreamEvent::textDelta($state['blockIndex'], $text);
-                    }
-                } elseif ($deltaType === 'input_json_delta') {
-                    // Tool input JSON delta
-                    $partialJson = $delta['partial_json'] ?? '';
-                    if ($partialJson !== '' && $state['currentToolUse'] !== null) {
-                        $state['currentToolUse']['inputJson'] .= $partialJson;
-                        yield StreamEvent::toolUseDelta($state['blockIndex'], $partialJson);
-                    }
-                } elseif ($deltaType === 'signature_delta') {
-                    // Thinking block signature (required for multi-turn conversations)
-                    $signature = $delta['signature'] ?? '';
-                    if ($signature !== '') {
-                        yield StreamEvent::thinkingSignature($state['blockIndex'], $signature);
-                    }
-                }
-                break;
-
-            case 'content_block_stop':
-                if ($state['thinkingStarted']) {
-                    // Thinking block ended
-                    yield StreamEvent::thinkingStop($state['blockIndex']);
-                    $state['thinkingStarted'] = false;
-                    $state['blockIndex']++;
-                } elseif ($state['textStarted']) {
-                    // Text block ended
-                    yield StreamEvent::textStop($state['blockIndex']);
-                    $state['textStarted'] = false;
-                    $state['blockIndex']++;
-                } elseif ($state['currentToolUse'] !== null) {
-                    // Tool use block ended
-                    yield StreamEvent::toolUseStop($state['blockIndex']);
-                    $state['currentToolUse'] = null;
-                    $state['blockIndex']++;
-                }
-                break;
-
-            case 'message_start':
-            case 'message_delta':
-                // Extract usage data from message events
-                // Claude Code reports: input_tokens (new) + cache_creation + cache_read = total context
-                $message = $event['message'] ?? [];
-                $usage = $message['usage'] ?? [];
-                if (!empty($usage)) {
-                    // Calculate total context tokens (all input types combined)
-                    // This includes: system prompt, CLAUDE.md, conversation history, tools
-                    $state['inputTokens'] = ($usage['input_tokens'] ?? 0)
-                        + ($usage['cache_creation_input_tokens'] ?? 0)
-                        + ($usage['cache_read_input_tokens'] ?? 0);
-                    $state['outputTokens'] = $usage['output_tokens'] ?? 0;
-                    $state['cacheCreationTokens'] = $usage['cache_creation_input_tokens'] ?? 0;
-                    $state['cacheReadTokens'] = $usage['cache_read_input_tokens'] ?? 0;
-                }
-                break;
-
-            case 'message_stop':
-                // Message complete - no action needed
-                break;
-        }
-    }
-
-    /**
-     * Parse an assistant message and yield StreamEvents.
-     */
-    private function parseAssistantMessage(array $data, array &$state): Generator
-    {
-        $message = $data['message'] ?? [];
-        if (!is_array($message)) {
-            return;
-        }
-        $content = $message['content'] ?? [];
-
-        if (!is_array($content)) {
-            return;
-        }
-
-        foreach ($content as $block) {
-            $blockType = $block['type'] ?? '';
-
-            switch ($blockType) {
-                case 'text':
-                    // Text content
-                    if (!$state['textStarted']) {
-                        yield StreamEvent::textStart($state['blockIndex']);
-                        $state['textStarted'] = true;
-                    }
-                    $text = $block['text'] ?? '';
-                    if ($text !== '') {
-                        yield StreamEvent::textDelta($state['blockIndex'], $text);
-                    }
-                    break;
-
-                case 'thinking':
-                    // Thinking/reasoning content
-                    if (!$state['thinkingStarted']) {
-                        // Close text block if open
-                        if ($state['textStarted']) {
-                            yield StreamEvent::textStop($state['blockIndex']);
-                            $state['textStarted'] = false;
-                            $state['blockIndex']++;
-                        }
-                        yield StreamEvent::thinkingStart($state['blockIndex']);
-                        $state['thinkingStarted'] = true;
-                    }
-                    $thinking = $block['thinking'] ?? '';
-                    if ($thinking !== '') {
-                        yield StreamEvent::thinkingDelta($state['blockIndex'], $thinking);
-                    }
-                    break;
-
-                case 'tool_use':
-                    // Tool invocation
-                    // Close any open blocks first
-                    if ($state['textStarted']) {
-                        yield StreamEvent::textStop($state['blockIndex']);
-                        $state['textStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-                    if ($state['thinkingStarted']) {
-                        yield StreamEvent::thinkingStop($state['blockIndex']);
-                        $state['thinkingStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-
-                    $toolId = $block['id'] ?? 'tool_' . $state['blockIndex'];
-                    $toolName = $block['name'] ?? 'unknown';
-                    $input = $block['input'] ?? [];
-
-                    yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, $toolName);
-
-                    // Emit the input as JSON
-                    $inputJson = is_array($input) ? json_encode($input) : (string) $input;
-                    yield StreamEvent::toolUseDelta($state['blockIndex'], $inputJson);
-
-                    yield StreamEvent::toolUseStop($state['blockIndex']);
-                    $state['blockIndex']++;
-                    break;
-
-                case 'tool_result':
-                    // Tool result (from Claude Code's internal tool execution)
-                    $toolId = $block['tool_use_id'] ?? 'unknown';
-                    $resultContent = $block['content'] ?? '';
-                    $isError = $block['is_error'] ?? false;
-
-                    yield StreamEvent::toolResult($toolId, $resultContent, $isError);
-                    break;
-            }
-        }
-    }
-
-    /**
-     * Parse a user message (which may contain tool results or command outputs).
-     */
-    private function parseUserMessage(array $data, array &$state): Generator
-    {
-        $message = $data['message'] ?? [];
-        if (!is_array($message)) {
-            return;
-        }
-        $content = $message['content'] ?? [];
-
-        // Check if this is a compaction summary (user message immediately after compact_boundary)
-        if ($state['awaitingCompactionSummary']) {
-            $state['awaitingCompactionSummary'] = false;
-            $summaryParts = [];
-
-            // Extract text content from the message (concatenate all text blocks)
-            if (is_string($content)) {
-                $summaryParts[] = $content;
-            } elseif (is_array($content)) {
-                foreach ($content as $block) {
-                    if (($block['type'] ?? '') === 'text') {
-                        $summaryParts[] = $block['text'] ?? '';
-                    }
-                }
-            }
-
-            $summaryText = trim(implode("\n", array_filter($summaryParts, fn($part) => $part !== '')));
-            $metadata = $state['compactionMetadata'] ?? [];
-            $state['compactionMetadata'] = null; // Always clear metadata
-
-            if ($summaryText !== '') {
-                Log::channel('api')->info('ClaudeCodeProvider: Compaction summary captured', [
-                    'summary_length' => strlen($summaryText),
-                    'pre_tokens' => $metadata['pre_tokens'] ?? null,
-                ]);
-                yield StreamEvent::compactionSummary($summaryText, $metadata);
-            }
-
-            return; // Don't process as regular user message
-        }
-
-        // Handle string content (e.g., local command outputs)
-        if (is_string($content)) {
-            // Check for local command stdout (from /context, /usage, etc.)
-            if (preg_match('/<local-command-stdout>(.*?)<\/local-command-stdout>/s', $content, $matches)) {
-                $output = trim($matches[1]);
-                // Try to extract command name from preceding message
-                $command = null;
-                if (preg_match('/<command-name>(.*?)<\/command-name>/', $content, $cmdMatch)) {
-                    $command = $cmdMatch[1];
-                }
-                yield StreamEvent::systemInfo($output, $command);
-            }
-            return;
-        }
-
-        if (!is_array($content)) {
-            return;
-        }
-
-        foreach ($content as $block) {
-            $blockType = $block['type'] ?? '';
-
-            if ($blockType === 'tool_result') {
-                $toolId = $block['tool_use_id'] ?? 'unknown';
-                $resultContent = $block['content'] ?? '';
-                $isError = $block['is_error'] ?? false;
-
-                // Handle string content
-                if (is_string($resultContent)) {
-                    yield StreamEvent::toolResult($toolId, $resultContent, $isError);
-                } elseif (is_array($resultContent)) {
-                    // Handle array content (e.g., images)
-                    yield StreamEvent::toolResult($toolId, json_encode($resultContent), $isError);
-                }
-            }
-        }
+        $reasoningConfig = $conversation->getReasoningConfig();
+        return $reasoningConfig['thinking_tokens'] ?? 0;
     }
 }

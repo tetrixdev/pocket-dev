@@ -31,6 +31,31 @@ interface AIProviderInterface
     public function getContextWindow(string $model): int;
 
     /**
+     * Whether this provider executes tools internally (CLI providers)
+     * or returns tool_use blocks for the job to execute (API providers).
+     *
+     * When true:
+     * - The provider streams TOOL_RESULT events directly
+     * - ProcessConversationStream collects them as streamedToolResults
+     * - The job does NOT call executeTools()
+     *
+     * When false:
+     * - The provider returns stop_reason='tool_use' with pending tool blocks
+     * - ProcessConversationStream calls executeTools() and recurses
+     */
+    public function executesToolsInternally(): bool;
+
+    /**
+     * Get the system prompt building strategy for this provider.
+     *
+     * Returns 'cli' for CLI providers (uses buildForCliProvider path)
+     * or 'api' for API providers (uses build() path with tool registry).
+     *
+     * This replaces the isCliProvider() check in ProcessConversationStream.
+     */
+    public function getSystemPromptType(): string;
+
+    /**
      * Stream a message and yield StreamEvent objects.
      *
      * The provider is responsible for:
@@ -70,10 +95,14 @@ interface AIProviderInterface
     /**
      * Sync an aborted message to the provider's native storage.
      *
-     * For CLI providers (Claude Code, Codex), this writes the completed
-     * message blocks to the session file so the next turn has full context.
+     * For CLI providers (Claude Code, Codex) that implement HasNativeSession,
+     * this writes the completed message blocks to the session file so the
+     * next turn has full context.
      *
      * For API providers, this is a no-op since they don't have local storage.
+     *
+     * Note: In a future sprint, this method should move exclusively to
+     * HasNativeSession. It remains on the interface for backward compatibility.
      *
      * @param Conversation $conversation The conversation with session info
      * @param Message $userMessage The user message that triggered the response

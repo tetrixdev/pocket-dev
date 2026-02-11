@@ -2,12 +2,10 @@
 
 namespace App\Services\Providers;
 
-use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
-use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -16,21 +14,18 @@ use Illuminate\Support\Facades\Log;
  * OpenAI API provider.
  * Uses the Responses API for all models.
  */
-class OpenAIProvider implements AIProviderInterface
+class OpenAIProvider extends AbstractApiProvider
 {
-    use InjectsInterruptionReminder;
-
     private string $apiKey;
     private string $baseUrl;
-    private ModelRepository $models;
     private ?\Psr\Http\Message\StreamInterface $activeStream = null;
 
     public function __construct(ModelRepository $models, AppSettingsService $settings)
     {
+        parent::__construct($models);
         // API key from database (set via UI)
         $this->apiKey = $settings->getOpenAiApiKey() ?? '';
         $this->baseUrl = config('ai.providers.openai.base_url') ?? 'https://api.openai.com';
-        $this->models = $models;
     }
 
     public function getProviderType(): string
@@ -41,16 +36,6 @@ class OpenAIProvider implements AIProviderInterface
     public function isAvailable(): bool
     {
         return !empty($this->apiKey);
-    }
-
-    public function getModels(): array
-    {
-        return $this->models->getModelsArray('openai');
-    }
-
-    public function getContextWindow(string $model): int
-    {
-        return $this->models->getContextWindow($model);
     }
 
     /**
@@ -556,15 +541,4 @@ class OpenAIProvider implements AIProviderInterface
         }
     }
 
-    /**
-     * Sync aborted message to native storage.
-     * No-op for API providers - they don't have local storage.
-     */
-    public function syncAbortedMessage(
-        Conversation $conversation,
-        Message $userMessage,
-        Message $assistantMessage
-    ): bool {
-        return true;
-    }
 }

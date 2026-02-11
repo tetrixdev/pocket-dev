@@ -2,12 +2,10 @@
 
 namespace App\Services\Providers;
 
-use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
-use App\Services\Providers\Traits\InjectsInterruptionReminder;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -16,23 +14,20 @@ use Illuminate\Support\Facades\Log;
  * Direct Anthropic API provider.
  * Makes streaming requests to the Messages API and converts events to StreamEvent.
  */
-class AnthropicProvider implements AIProviderInterface
+class AnthropicProvider extends AbstractApiProvider
 {
-    use InjectsInterruptionReminder;
-
     private string $apiKey;
     private string $baseUrl;
     private string $apiVersion;
-    private ModelRepository $models;
     private ?\Psr\Http\Message\StreamInterface $activeStream = null;
 
     public function __construct(ModelRepository $models, AppSettingsService $settings)
     {
+        parent::__construct($models);
         // API key from database (set via UI)
         $this->apiKey = $settings->getAnthropicApiKey() ?? '';
         $this->baseUrl = config('ai.providers.anthropic.base_url') ?? 'https://api.anthropic.com';
         $this->apiVersion = config('ai.providers.anthropic.api_version') ?? '2023-06-01';
-        $this->models = $models;
     }
 
     public function getProviderType(): string
@@ -43,16 +38,6 @@ class AnthropicProvider implements AIProviderInterface
     public function isAvailable(): bool
     {
         return !empty($this->apiKey);
-    }
-
-    public function getModels(): array
-    {
-        return $this->models->getModelsArray('anthropic');
-    }
-
-    public function getContextWindow(string $model): int
-    {
-        return $this->models->getContextWindow($model);
     }
 
     /**
@@ -444,15 +429,4 @@ class AnthropicProvider implements AIProviderInterface
         }
     }
 
-    /**
-     * Sync aborted message to native storage.
-     * No-op for API providers - they don't have local storage.
-     */
-    public function syncAbortedMessage(
-        Conversation $conversation,
-        Message $userMessage,
-        Message $assistantMessage
-    ): bool {
-        return true;
-    }
 }

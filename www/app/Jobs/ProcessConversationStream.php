@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Contracts\AIProviderInterface;
-use App\Enums\Provider;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ModelRepository;
@@ -261,14 +260,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $combinedReminder = !empty($contextReminders) ? implode("\n\n", $contextReminders) : null;
 
         // Build system prompt with tool instructions
-        // CLI providers (Claude Code, Codex) use artisan commands instead of native tools
-        $providerType = $provider->getProviderType();
-        $providerEnum = Provider::tryFrom($providerType);
-        if ($providerEnum?->isCliProvider()) {
-            $systemPrompt = $systemPromptBuilder->buildForCliProvider($conversation, $providerType);
-        } else {
-            $systemPrompt = $systemPromptBuilder->build($conversation, $toolRegistry);
-        }
+        // Uses provider->getSystemPromptType() to determine tool injection strategy
+        $systemPrompt = $systemPromptBuilder->build(
+            $conversation,
+            $toolRegistry,
+            $provider->getSystemPromptType(),
+            $provider->getProviderType()
+        );
 
         // Prepare provider options
         $providerOptions = array_merge($options, [
@@ -280,7 +278,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Track state for this turn
         $contentBlocks = [];
         $pendingToolUses = [];
-        $streamedToolResults = []; // Tool results from providers that execute tools internally (Claude Code, Codex)
+        $streamedToolResults = []; // Tool results from providers where executesToolsInternally() is true
         $pendingCompaction = null; // Compaction event to save after assistant message
         $inputTokens = 0;
         $outputTokens = 0;

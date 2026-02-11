@@ -1948,10 +1948,11 @@
                     // Fetch skills for autocomplete
                     this.fetchSkills();
 
-                    // Load agent's reasoning settings
-                    this.anthropicThinkingBudget = agent.anthropic_thinking_budget || 0;
-                    this.openaiReasoningEffort = agent.openai_reasoning_effort || 'none';
-                    this.claudeCodeThinkingTokens = agent.claude_code_thinking_tokens || 0;
+                    // Load agent's reasoning settings from reasoning_config JSON
+                    const rc = agent.reasoning_config || {};
+                    this.anthropicThinkingBudget = rc.budget_tokens || 0;
+                    this.openaiReasoningEffort = rc.effort || 'none';
+                    this.claudeCodeThinkingTokens = rc.thinking_tokens || 0;
                     this.responseLevel = agent.response_level || 1;
 
                     // Load allowed tools
@@ -2865,12 +2866,13 @@
                             }
                         }
 
-                        // Load provider-specific reasoning settings from conversation
+                        // Load provider-specific reasoning settings from conversation's reasoning_config JSON
                         this.responseLevel = data.conversation?.response_level ?? 1;
-                        this.anthropicThinkingBudget = data.conversation?.anthropic_thinking_budget ?? 0;
-                        this.openaiReasoningEffort = data.conversation?.openai_reasoning_effort ?? 'none';
-                        this.openaiCompatibleReasoningEffort = data.conversation?.openai_compatible_reasoning_effort ?? 'none';
-                        this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
+                        const convRc = data.conversation?.reasoning_config || {};
+                        this.anthropicThinkingBudget = convRc.budget_tokens ?? 0;
+                        this.openaiReasoningEffort = convRc.effort ?? 'none';
+                        this.openaiCompatibleReasoningEffort = convRc.effort ?? 'none';
+                        this.claudeCodeThinkingTokens = convRc.thinking_tokens ?? 0;
 
                         // Note: scrolling is handled inside loadMessagesProgressively
                         // Clear pendingScrollToTurn since it was passed to loadMessagesProgressively

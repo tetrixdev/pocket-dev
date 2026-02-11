@@ -403,7 +403,8 @@ class ConfigController extends Controller
                 'anthropic_thinking_budget' => 'nullable|integer|min:0',
                 'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'claude_code_thinking_tokens' => 'nullable|integer|min:0',
-                'codex_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+                'codex_reasoning_effort' => 'nullable|string|in:minimal,low,medium,high,xhigh',
+                'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'inherit_workspace_tools' => 'nullable|in:0,1',
                 'inherit_workspace_schemas' => 'nullable|in:0,1',
@@ -446,10 +447,7 @@ class ConfigController extends Controller
                     'workspace_id' => $validated['workspace_id'],
                     'provider' => $validated['provider'],
                     'model' => $validated['model'],
-                    'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
-                    'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
-                    'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
-                    'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
+                    'reasoning_config' => $this->buildReasoningConfig($validated),
                     'response_level' => $validated['response_level'] ?? 1,
                     'inherit_workspace_tools' => $inheritWorkspaceTools,
                     'inherit_workspace_schemas' => $inheritWorkspaceSchemas,
@@ -506,7 +504,8 @@ class ConfigController extends Controller
                 'anthropic_thinking_budget' => 'nullable|integer|min:0',
                 'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'claude_code_thinking_tokens' => 'nullable|integer|min:0',
-                'codex_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
+                'codex_reasoning_effort' => 'nullable|string|in:minimal,low,medium,high,xhigh',
+                'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'inherit_workspace_tools' => 'nullable|in:0,1',
                 'inherit_workspace_schemas' => 'nullable|in:0,1',
@@ -549,10 +548,7 @@ class ConfigController extends Controller
                     'description' => $validated['description'] ?? null,
                     'provider' => $validated['provider'],
                     'model' => $validated['model'],
-                    'anthropic_thinking_budget' => $validated['anthropic_thinking_budget'] ?? null,
-                    'openai_reasoning_effort' => $validated['openai_reasoning_effort'] ?? null,
-                    'claude_code_thinking_tokens' => $validated['claude_code_thinking_tokens'] ?? null,
-                    'codex_reasoning_effort' => $validated['codex_reasoning_effort'] ?? null,
+                    'reasoning_config' => $this->buildReasoningConfig($validated),
                     'response_level' => $validated['response_level'] ?? 1,
                     'inherit_workspace_tools' => $inheritWorkspaceTools,
                     'inherit_workspace_schemas' => $inheritWorkspaceSchemas,
@@ -635,6 +631,37 @@ class ConfigController extends Controller
             return redirect()->route('config.agents')
                 ->with('error', 'Failed to update agent: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Build reasoning_config JSON from form-submitted per-provider fields.
+     *
+     * The form sends separate fields (anthropic_thinking_budget, openai_reasoning_effort, etc.)
+     * and this method composes them into the unified reasoning_config array based on
+     * which provider is selected.
+     */
+    private function buildReasoningConfig(array $validated): ?array
+    {
+        $provider = $validated['provider'] ?? null;
+
+        return match ($provider) {
+            'anthropic' => isset($validated['anthropic_thinking_budget'])
+                ? ['budget_tokens' => (int) $validated['anthropic_thinking_budget']]
+                : null,
+            'openai' => isset($validated['openai_reasoning_effort'])
+                ? ['effort' => $validated['openai_reasoning_effort']]
+                : null,
+            'openai_compatible' => isset($validated['openai_compatible_reasoning_effort'])
+                ? ['effort' => $validated['openai_compatible_reasoning_effort']]
+                : null,
+            'claude_code' => isset($validated['claude_code_thinking_tokens'])
+                ? ['thinking_tokens' => (int) $validated['claude_code_thinking_tokens']]
+                : null,
+            'codex' => isset($validated['codex_reasoning_effort'])
+                ? ['effort' => $validated['codex_reasoning_effort']]
+                : null,
+            default => null,
+        };
     }
 
     // =========================================================================
