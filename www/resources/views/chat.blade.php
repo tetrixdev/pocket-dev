@@ -5589,7 +5589,7 @@
                                 complete: false
                             };
                             this.messages.push({
-                                id: 'msg-' + Date.now() + '-thinking-' + thinkingBlockIndex,
+                                id: 'msg-' + Date.now() + '-thinking-' + thinkingBlockIndex + '-' + Math.random(),
                                 role: 'thinking',
                                 content: '',
                                 timestamp: state.startedAt || new Date().toISOString(),
@@ -5663,7 +5663,7 @@
                             state.turnCacheCreationTokens = 0;
                             state.turnCacheReadTokens = 0;
                             this.messages.push({
-                                id: 'msg-' + Date.now() + '-text',
+                                id: 'msg-' + Date.now() + '-text-' + Math.random(),
                                 role: 'assistant',
                                 content: '',
                                 timestamp: state.startedAt || new Date().toISOString(),
@@ -5717,7 +5717,7 @@
                                 console.warn('tool_use_start event missing tool_id in metadata');
                             }
                             this.messages.push({
-                                id: 'msg-' + Date.now() + '-tool',
+                                id: 'msg-' + Date.now() + '-tool-' + Math.random(),
                                 role: 'tool',
                                 toolName: event.metadata?.tool_name || 'Tool',
                                 toolId: toolId,
