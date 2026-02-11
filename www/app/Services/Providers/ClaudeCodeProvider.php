@@ -29,10 +29,12 @@ class ClaudeCodeProvider implements AIProviderInterface
     private $activeProcess = null;
 
     // Phase-aware timeout constants (seconds)
-    private const TIMEOUT_INITIAL = 300;            // Max wait for first output (compaction can happen on resume)
-    private const TIMEOUT_STREAMING = 60;           // Max silence during active text/thinking streaming
-    private const TIMEOUT_TOOL_EXECUTION = 1800;    // Max silence during tool execution (sub-agents can take 10+ min)
-    private const TIMEOUT_PENDING_RESPONSE = 300;   // Max silence after tool results, before next response (covers compaction)
+    // All set to 30 min — heavy contexts (large system prompts, 50+ tool calls) can cause
+    // long prompt processing times on the API side before any tokens are generated
+    private const TIMEOUT_INITIAL = 1800;
+    private const TIMEOUT_STREAMING = 1800;
+    private const TIMEOUT_TOOL_EXECUTION = 1800;
+    private const TIMEOUT_PENDING_RESPONSE = 1800;
 
     public function __construct(ModelRepository $models)
     {

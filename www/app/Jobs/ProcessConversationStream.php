@@ -35,7 +35,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 1800; // 30 minutes max (agentic AI can take a while)
+    public int $timeout = 3600; // 60 minutes max (agentic AI with heavy context can take a while)
     public int $tries = 1;      // Don't retry failed streams
 
     // Note: Redis job reservation timeout is controlled by REDIS_QUEUE_RETRY_AFTER in .env
