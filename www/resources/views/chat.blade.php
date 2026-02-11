@@ -4272,7 +4272,9 @@
 
                     // Don't reconnect if existing connection is healthy
                     // (prevents nonce superseding a working connection -- Issue #163 root cause #1)
-                    if (this.isStreaming && this.streamAbortController && !this.streamAbortController.signal.aborted && this._connectionHealthy) {
+                    // Bypass guard on tab return: health checks skip while hidden, so
+                    // _connectionHealthy may be stale. Always probe the server after tab return.
+                    if (this.isStreaming && this.streamAbortController && !this.streamAbortController.signal.aborted && this._connectionHealthy && !this._wasStreamingBeforeHidden) {
                         console.log('[Stream] Skipping reconnect - existing connection appears healthy');
                         return;
                     }
