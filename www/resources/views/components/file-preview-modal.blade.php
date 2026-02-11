@@ -62,6 +62,14 @@
                             </template>
                         </button>
 
+                        {{-- Download button - show when file loaded --}}
+                        <button @click="$store.filePreview.downloadFile()"
+                                class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                title="Download file"
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error">
+                            <i class="fa-solid fa-download"></i>
+                        </button>
+
                         {{-- Edit button - show when file loaded (even if empty) --}}
                         <button @click="$store.filePreview.startEditing()"
                                 class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
