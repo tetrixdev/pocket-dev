@@ -317,7 +317,7 @@ class Conversation extends Model
                 'thinking_tokens' => $this->claude_code_thinking_tokens ?? 0,
             ],
             'codex' => [
-                'effort' => $this->codex_reasoning_effort ?? 'none',
+                'effort' => $this->codex_reasoning_effort ?? 'minimal',
             ],
             default => [],
         };

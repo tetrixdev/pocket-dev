@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Agent;
+use App\Services\ModelRepository;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -11,8 +13,9 @@ class CodexAuthController extends Controller
 {
     protected string $credentialsPath;
 
-    public function __construct()
-    {
+    public function __construct(
+        protected ModelRepository $models
+    ) {
         // Credentials path - use HOME environment variable from PHP-FPM process
         $home = getenv('HOME') ?: '/home/appuser';
         $this->credentialsPath = "{$home}/.codex/auth.json";
@@ -23,8 +26,16 @@ class CodexAuthController extends Controller
      */
     public function index()
     {
+        $status = $this->getAuthenticationStatus();
+
+        // When user arrives at this page already authenticated (e.g., after device-auth
+        // flow and page refresh), ensure a default Codex agent exists so they can use it.
+        if ($status["authenticated"]) {
+            $this->ensureDefaultAgentExists();
+        }
+
         return view("codex-auth", [
-            "status" => $this->getAuthenticationStatus(),
+            "status" => $status,
         ]);
     }
 
@@ -82,6 +93,9 @@ class CodexAuthController extends Controller
             chmod($this->credentialsPath, 0600);
 
             Log::info("[Codex Auth] Credentials saved from JSON input");
+
+            // Create a default Codex agent if one doesn't exist yet
+            $this->ensureDefaultAgentExists();
 
             return response()->json([
                 "success" => true,
@@ -217,5 +231,38 @@ class CodexAuthController extends Controller
         }
 
         return false;
+    }
+
+    /**
+     * Ensure a default Codex agent exists.
+     *
+     * When Codex is set up via Settings (not the initial wizard), no agent gets
+     * created automatically. This method fills that gap so the user can actually
+     * use Codex after authenticating.
+     */
+    protected function ensureDefaultAgentExists(): void
+    {
+        if (Agent::enabled()->defaultFor('codex')->exists()) {
+            return;
+        }
+
+        $defaultModel = $this->models->getDefaultModel('codex');
+        if (!$defaultModel) {
+            Log::warning('[Codex Auth] Cannot create default agent: no models configured');
+            return;
+        }
+
+        Agent::create([
+            'name' => 'Codex',
+            'description' => 'Codex agent with full tool access for development tasks.',
+            'provider' => 'codex',
+            'model' => $defaultModel['model_id'],
+            'is_default' => true,
+            'enabled' => true,
+            'response_level' => 1,
+            'allowed_tools' => null,
+        ]);
+
+        Log::info('[Codex Auth] Created default Codex agent');
     }
 }
