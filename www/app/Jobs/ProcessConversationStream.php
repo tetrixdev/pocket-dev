@@ -600,25 +600,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Reindex content blocks
         $contentBlocks = array_values($contentBlocks);
 
-        // Save assistant message
-        RequestFlowLogger::log('job.loop.saving_assistant_message', 'Saving assistant message', [
-            'block_count' => count($contentBlocks),
-            'input_tokens' => $inputTokens,
-            'output_tokens' => $outputTokens,
-            'stop_reason' => $stopReason,
-        ]);
-        $this->saveAssistantMessage(
-            $conversation,
-            $contentBlocks,
-            $inputTokens,
-            $outputTokens,
-            $cacheCreationTokens,
-            $cacheReadTokens,
-            $stopReason,
-            $turnCost > 0 ? $turnCost : null
-        );
-
-        // Save compaction message if one occurred during this turn
+        // Save compaction message FIRST if one occurred during this turn.
+        // This ensures correct sequence ordering: compaction appears before
+        // the post-compaction assistant response when messages are loaded
+        // from the database (ordered by sequence). Matches live streaming order.
         if ($pendingCompaction !== null) {
             RequestFlowLogger::log('job.loop.saving_compaction', 'Saving compaction message', [
                 'summary_length' => strlen($pendingCompaction['summary'] ?? ''),
@@ -638,6 +623,24 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 'pre_tokens' => $pendingCompaction['pre_tokens'],
             ]);
         }
+
+        // Save assistant message (gets sequence after compaction if present)
+        RequestFlowLogger::log('job.loop.saving_assistant_message', 'Saving assistant message', [
+            'block_count' => count($contentBlocks),
+            'input_tokens' => $inputTokens,
+            'output_tokens' => $outputTokens,
+            'stop_reason' => $stopReason,
+        ]);
+        $this->saveAssistantMessage(
+            $conversation,
+            $contentBlocks,
+            $inputTokens,
+            $outputTokens,
+            $cacheCreationTokens,
+            $cacheReadTokens,
+            $stopReason,
+            $turnCost > 0 ? $turnCost : null
+        );
 
         // Handle tool execution
         $shouldExecuteTools = $stopReason === 'tool_use' && !empty($pendingToolUses);

@@ -28,6 +28,12 @@ class ClaudeCodeProvider implements AIProviderInterface
     /** @var resource|null */
     private $activeProcess = null;
 
+    // Phase-aware timeout constants (seconds)
+    private const TIMEOUT_INITIAL = 300;            // Max wait for first output (compaction can happen on resume)
+    private const TIMEOUT_STREAMING = 60;           // Max silence during active text/thinking streaming
+    private const TIMEOUT_TOOL_EXECUTION = 1800;    // Max silence during tool execution (sub-agents can take 10+ min)
+    private const TIMEOUT_PENDING_RESPONSE = 300;   // Max silence after tool results, before next response (covers compaction)
+
     public function __construct(ModelRepository $models)
     {
         $this->models = $models;
@@ -340,6 +346,15 @@ class ClaudeCodeProvider implements AIProviderInterface
             $env['MAX_THINKING_TOKENS'] = (string) $thinkingTokens;
         }
 
+        // Disable CLI internal retries - surface errors immediately instead of
+        // silently retrying for 55+ minutes with exponential backoff
+        $env['CLAUDE_CODE_MAX_RETRIES'] = '0';
+
+        // Enable tool_progress heartbeats during tool execution.
+        // These events reset the phase-aware timeout timer so long-running
+        // tools (builds, tests) don't trigger false timeouts.
+        $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
+
         $workingDirectory = $conversation->working_directory ?? base_path();
         $process = proc_open($command, $descriptors, $pipes, $workingDirectory, $env);
 
@@ -392,6 +407,11 @@ class ClaudeCodeProvider implements AIProviderInterface
         ];
 
         try {
+            // Phase-aware timeout tracking
+            $phase = 'initial'; // 'initial' | 'streaming' | 'tool_execution' | 'pending_response'
+            $lastOutputTime = microtime(true);
+            $timedOut = false;
+
             while (true) {
                 $status = proc_get_status($process);
 
@@ -409,16 +429,83 @@ class ClaudeCodeProvider implements AIProviderInterface
                             continue;
                         }
 
+                        // Parse once, reuse for logging and phase tracking
+                        $parsedLine = json_decode($line, true);
+
                         // Log JSONL lines for debugging (skip stream_event deltas unless verbose)
                         if ($streamLogger) {
-                            $parsedLine = json_decode($line, true);
-                            $eventType = $parsedLine['type'] ?? null;
+                            $eventType = is_array($parsedLine) ? ($parsedLine['type'] ?? null) : null;
                             if ($verboseLogging || $eventType !== 'stream_event') {
                                 $streamLogger->logStream($uuid, $line, $parsedLine);
                             }
                         }
 
-                        yield from $this->parseJsonLine($line, $state);
+                        // Peek at line to update phase tracking BEFORE yielding
+                        $peekData = $parsedLine;
+
+                        // Guard against non-array JSON (e.g. CLI outputs a bare JSON string)
+                        if (!is_array($peekData)) {
+                            Log::channel('api')->warning('ClaudeCodeProvider: Non-array JSONL line from CLI', [
+                                'line' => substr($line, 0, 500),
+                                'decoded_type' => gettype($peekData),
+                            ]);
+                            continue;
+                        }
+
+                        $peekType = $peekData['type'] ?? '';
+
+                        if ($peekType === 'tool_progress') {
+                            // tool_progress heartbeats reset timer but are NOT yielded to frontend
+                            $lastOutputTime = microtime(true);
+                            continue; // Skip to next line -- don't yield this event
+                        }
+
+                        // Update phase based on event type
+                        if ($peekType === 'stream_event') {
+                            // Only switch to 'streaming' (60s timeout) when actual content
+                            // deltas are flowing. Other stream_events (message_start,
+                            // content_block_start) arrive at the START of a response turn
+                            // before any tokens flow - extended thinking or compaction can
+                            // cause 60+ seconds of silence after these events.
+                            $event = $peekData['event'] ?? [];
+                            $streamEventType = is_array($event) ? ($event['type'] ?? '') : '';
+                            if ($streamEventType === 'content_block_delta') {
+                                $phase = 'streaming';
+                            }
+                            // All stream_events reset the timer (the CLI is alive)
+                            $lastOutputTime = microtime(true);
+                        } elseif ($peekType === 'assistant') {
+                            $message = is_array($peekData['message'] ?? null) ? $peekData['message'] : [];
+                            $stopReason = $message['stop_reason'] ?? null;
+                            if ($stopReason === 'tool_use') {
+                                $phase = 'tool_execution';
+                            }
+                            // stop_reason end_turn/max_tokens: response is finishing,
+                            // keep current phase (no need to transition)
+                            // stop_reason === null means partial message from
+                            // --include-partial-messages; don't change phase
+                            $lastOutputTime = microtime(true);
+                        } elseif ($peekType === 'user') {
+                            // user messages after tool execution = tool results
+                            // Use pending_response phase (300s) to cover potential compaction
+                            // before the next stream_event arrives
+                            $phase = 'pending_response';
+                            $lastOutputTime = microtime(true);
+                        } elseif ($peekType === 'system') {
+                            // Ensure long timeout during compaction. The CLI emits:
+                            // - subtype=status with status=compacting (when compaction starts)
+                            // - subtype=compact_boundary (when compaction finishes)
+                            $subtype = $peekData['subtype'] ?? '';
+                            $systemStatus = $peekData['status'] ?? '';
+                            if ($subtype === 'compact_boundary' || $systemStatus === 'compacting') {
+                                $phase = 'pending_response';
+                            }
+                            $lastOutputTime = microtime(true);
+                        } elseif ($peekType === 'result') {
+                            $lastOutputTime = microtime(true);
+                        }
+
+                        yield from $this->parseJsonLine($line, $state, $peekData);
 
                         // Save session ID immediately when captured (for abort sync support)
                         // This ensures the session ID is available even if stream is aborted
@@ -437,20 +524,52 @@ class ClaudeCodeProvider implements AIProviderInterface
                     break;
                 }
 
+                // Phase-aware timeout check
+                $timeout = match ($phase) {
+                    'initial' => self::TIMEOUT_INITIAL,
+                    'streaming' => self::TIMEOUT_STREAMING,
+                    'tool_execution' => self::TIMEOUT_TOOL_EXECUTION,
+                    'pending_response' => self::TIMEOUT_PENDING_RESPONSE,
+                    default => self::TIMEOUT_INITIAL, // Conservative fallback
+                };
+                $elapsed = microtime(true) - $lastOutputTime;
+
+                if ($elapsed > $timeout) {
+                    Log::channel('api')->warning('ClaudeCodeProvider: Phase-aware timeout', [
+                        'phase' => $phase,
+                        'timeout' => $timeout,
+                        'elapsed' => round($elapsed, 2),
+                        'conversation_uuid' => $uuid,
+                    ]);
+
+                    // Graceful shutdown: SIGINT -> 200ms -> SIGKILL
+                    proc_terminate($process, 2); // SIGINT
+                    usleep(200000); // 200ms
+
+                    $procStatus = proc_get_status($process);
+                    if ($procStatus['running']) {
+                        proc_terminate($process, 9); // SIGKILL
+                    }
+
+                    $timedOut = true;
+                    yield StreamEvent::error("Claude Code process timed out after {$timeout}s in {$phase} phase (no output received)");
+                    break;
+                }
+
                 // Small sleep to prevent CPU spinning
                 usleep(1000);
             }
 
             // Process any remaining buffer
             if (!empty(trim($buffer))) {
+                $parsedLine = json_decode($buffer, true);
                 if ($streamLogger) {
-                    $parsedLine = json_decode($buffer, true);
-                    $eventType = $parsedLine['type'] ?? null;
+                    $eventType = is_array($parsedLine) ? ($parsedLine['type'] ?? null) : null;
                     if ($verboseLogging || $eventType !== 'stream_event') {
                         $streamLogger->logStream($uuid, $buffer, $parsedLine);
                     }
                 }
-                yield from $this->parseJsonLine($buffer, $state);
+                yield from $this->parseJsonLine($buffer, $state, $parsedLine);
             }
 
             // Close open blocks
@@ -515,7 +634,7 @@ class ClaudeCodeProvider implements AIProviderInterface
                 ]);
             }
 
-            yield StreamEvent::done('end_turn');
+            yield StreamEvent::done($timedOut ? 'timeout' : 'end_turn');
 
         } catch (\Throwable $e) {
             Log::channel('api')->error('ClaudeCodeProvider: Stream error', [
@@ -822,13 +941,14 @@ class ClaudeCodeProvider implements AIProviderInterface
      * {"type":"assistant","message":{"role":"assistant","content":[...]}}
      * {"type":"result","subtype":"success","total_cost_usd":0.003,"session_id":"abc"}
      */
-    private function parseJsonLine(string $line, array &$state): Generator
+    private function parseJsonLine(string $line, array &$state, ?array $preDecoded = null): Generator
     {
-        $data = json_decode($line, true);
+        $data = $preDecoded ?? json_decode($line, true);
 
-        if ($data === null) {
-            Log::channel('api')->debug('ClaudeCodeProvider: Failed to parse JSON line', [
-                'line' => substr($line, 0, 200),
+        if (!is_array($data)) {
+            Log::channel('api')->debug('ClaudeCodeProvider: Non-array JSON line', [
+                'line' => substr($line, 0, 500),
+                'decoded_type' => gettype($data),
             ]);
 
             return;
@@ -859,10 +979,40 @@ class ClaudeCodeProvider implements AIProviderInterface
                 }
                 Log::channel('api')->info('ClaudeCodeProvider: Result received', [
                     'subtype' => $data['subtype'] ?? 'unknown',
+                    'is_error' => $data['is_error'] ?? false,
                     'session_id' => $state['sessionId'],
                     'total_cost' => $state['totalCost'],
                     'num_turns' => $data['num_turns'] ?? null,
                 ]);
+
+                // Detect CLI error results and surface them to the user
+                if (!empty($data['is_error'])) {
+                    $errorMsg = $data['result'] ?? null;
+                    if (is_array($errorMsg)) {
+                        $errorMsg = json_encode($errorMsg);
+                    }
+
+                    // Try 'errors' array if 'result' is empty
+                    if (($errorMsg === null || $errorMsg === '') && !empty($data['errors']) && is_array($data['errors'])) {
+                        $firstError = $data['errors'][0] ?? null;
+                        $errorMsg = is_array($firstError) ? json_encode($firstError) : $firstError;
+                    }
+
+                    // Fall back to subtype description
+                    if ($errorMsg === null || $errorMsg === '') {
+                        $errorMsg = 'Claude Code error: ' . ($data['subtype'] ?? 'unknown error');
+                    }
+
+                    // Ensure $errorMsg is always a string for StreamEvent::error()
+                    $errorMsg = is_string($errorMsg) ? $errorMsg : (string) $errorMsg;
+
+                    Log::channel('api')->error('ClaudeCodeProvider: CLI returned error result', [
+                        'error_message' => $errorMsg,
+                        'subtype' => $data['subtype'] ?? 'unknown',
+                    ]);
+
+                    yield StreamEvent::error($errorMsg);
+                }
                 break;
 
             case 'stream_event':
@@ -909,6 +1059,14 @@ class ClaudeCodeProvider implements AIProviderInterface
     private function parseStreamEvent(array $data, array &$state): Generator
     {
         $event = $data['event'] ?? [];
+        if (!is_array($event)) {
+            Log::channel('api')->debug('ClaudeCodeProvider: Non-array event in stream_event', [
+                'event_type' => gettype($event),
+                'event_preview' => is_string($event) ? substr($event, 0, 200) : null,
+            ]);
+
+            return;
+        }
         $eventType = $event['type'] ?? '';
 
         switch ($eventType) {
@@ -1056,6 +1214,9 @@ class ClaudeCodeProvider implements AIProviderInterface
     private function parseAssistantMessage(array $data, array &$state): Generator
     {
         $message = $data['message'] ?? [];
+        if (!is_array($message)) {
+            return;
+        }
         $content = $message['content'] ?? [];
 
         if (!is_array($content)) {
@@ -1142,6 +1303,9 @@ class ClaudeCodeProvider implements AIProviderInterface
     private function parseUserMessage(array $data, array &$state): Generator
     {
         $message = $data['message'] ?? [];
+        if (!is_array($message)) {
+            return;
+        }
         $content = $message['content'] ?? [];
 
         // Check if this is a compaction summary (user message immediately after compact_boundary)

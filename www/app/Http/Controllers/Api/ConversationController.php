@@ -468,7 +468,7 @@ class ConversationController extends Controller
                 // Use polling instead of blocking pub/sub for better compatibility
                 $lastActivity = microtime(true);
                 $lastKeepalive = microtime(true);
-                $timeout = 300; // 5 minute timeout for SSE connection (tool calls can be slow)
+                $timeout = 600; // 10 minute timeout for SSE connection (backstop; keepalive events handle health tracking)
                 $keepaliveInterval = 30; // Send keepalive every 30 seconds to prevent proxy timeouts
                 $pollCount = 0;
 
@@ -545,7 +545,17 @@ class ConversationController extends Controller
                     // Send keepalive to prevent proxy/idle timeouts
                     $timeSinceKeepalive = microtime(true) - $lastKeepalive;
                     if ($timeSinceKeepalive > $keepaliveInterval) {
+                        // Keep the SSE comment for proxy keepalive (invisible to frontend)
                         $sse->writeKeepalive();
+
+                        // Also send a data event for frontend connection health tracking
+                        $sse->writeRaw(json_encode([
+                            'type' => 'keepalive',
+                            'timestamp' => time(),
+                            'elapsed' => round(microtime(true) - $lastActivity, 1),
+                            'conversation_uuid' => $conversation->uuid,
+                        ]));
+
                         $lastKeepalive = microtime(true);
                     }
 

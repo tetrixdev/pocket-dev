@@ -204,6 +204,25 @@
                           }
                       "></textarea>
 
+            {{-- Connection health indicator - badge on textarea corner, matches template indicator pattern --}}
+            {{-- Three states: connected (green pulsing), processing (amber, "Processing context..."), disconnected (amber, "Connection may be lost") --}}
+            <template x-if="isStreaming">
+                <span class="absolute -top-1 -right-1 z-10"
+                      :class="getIndicatorState() === 'connected' ? 'pointer-events-none' : 'cursor-help'"
+                      :title="getIndicatorState() === 'connected' ? 'Connected to stream' :
+                             (getIndicatorState() === 'processing' ? 'Processing context...' :
+                              'Connection may be lost')">
+                    <span class="relative flex w-3 h-3">
+                        <span class="absolute inline-flex h-full w-full rounded-full opacity-75"
+                              :class="getIndicatorState() === 'connected' ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'"
+                        ></span>
+                        <span class="relative inline-flex w-3 h-3 rounded-full border border-gray-800"
+                              :class="getIndicatorState() === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'"
+                        ></span>
+                    </span>
+                </span>
+            </template>
+
             {{-- Skill Suggestions Dropdown --}}
             <div x-show="showSkillSuggestions"
                  x-cloak

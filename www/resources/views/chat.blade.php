@@ -1112,6 +1112,7 @@
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
                 isStreaming: false,
                 _justCompletedStream: false,
+                _wasStreamingBeforeHidden: false, // True if we were streaming when tab went to background
                 _isReplaying: false, // True during page refresh stream replay (prevents duplicate screen refreshes)
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
@@ -1346,6 +1347,14 @@
                 streamAbortController: null,
                 _streamConnectNonce: 0,
                 _streamRetryTimeoutId: null,
+                // Connection health tracking (dead man's switch)
+                _lastKeepaliveAt: null,      // Timestamp of last keepalive received
+                _connectionHealthy: true,     // False if no keepalive for >45s
+                _keepaliveCheckInterval: null, // Interval ID for health check timer
+                // Stream phase tracking (for "processing context" indicator)
+                _streamPhase: 'idle',          // 'idle' | 'waiting' | 'tool_executing' | 'streaming'
+                _phaseChangedAt: null,         // Timestamp when phase last changed
+                _pendingResponseWarning: false, // True when waiting >15s without streaming
                 _streamState: {
                     // Maps block_index -> message array index (for interleaved thinking support)
                     thinkingBlocks: {},        // { blockIndex: { msgIndex, content, complete } }
@@ -1515,17 +1524,29 @@
 
                     // Handle visibility changes (phone standby, tab switching)
                     // Refresh session screens when page becomes visible again
-                    document.addEventListener('visibilitychange', () => {
-                        if (!document.hidden) {
-                            // Refresh screens if we have a session (catches panels opened while away)
-                            if (this.currentSession?.id) {
+                    document.addEventListener('visibilitychange', async () => {
+                        if (document.hidden) {
+                            // Track whether we were streaming when tab went to background
+                            this._wasStreamingBeforeHidden = this.isStreaming;
+                        } else {
+                            // Reconnect stream FIRST if actively streaming.
+                            // IMPORTANT: Do this BEFORE refreshSessionScreens() to prevent
+                            // the screen refresh from killing a just-established stream connection
+                            // (Issue #163: refreshSessionScreens can change activeScreenId which
+                            // triggers disconnectFromStream via watchers).
+                            if (this.currentConversationUuid && (this.isStreaming || this._wasStreamingBeforeHidden)) {
+                                await this.checkAndReconnectStream(this.currentConversationUuid);
+                            }
+
+                            // Clear the flag after reconnection attempt
+                            this._wasStreamingBeforeHidden = false;
+
+                            // Only refresh screens if NOT actively streaming.
+                            // During streaming, screen changes could race with the stream connection.
+                            if (this.currentSession?.id && !this.isStreaming) {
                                 setTimeout(() => {
                                     this.refreshSessionScreens();
                                 }, 500);
-                            }
-                            // Reconnect stream if it might have died
-                            if (this.currentConversationUuid && this.isStreaming) {
-                                this.checkAndReconnectStream(this.currentConversationUuid);
                             }
                         }
                     });
@@ -4249,18 +4270,36 @@
                         return;
                     }
 
+                    // Don't reconnect if existing connection is healthy
+                    // (prevents nonce superseding a working connection -- Issue #163 root cause #1)
+                    // Bypass guard on tab return: health checks skip while hidden, so
+                    // _connectionHealthy may be stale. Always probe the server after tab return.
+                    if (this.isStreaming && this.streamAbortController && !this.streamAbortController.signal.aborted && this._connectionHealthy && !this._wasStreamingBeforeHidden) {
+                        console.log('[Stream] Skipping reconnect - existing connection appears healthy');
+                        return;
+                    }
+
                     try {
                         const response = await fetch(`/api/conversations/${uuid}/stream-status`);
                         const data = await response.json();
 
                         if (data.is_streaming) {
-                            // Detect: page refresh vs timeout reconnect
+                            // Detect: page refresh vs timeout/tab-switch reconnect
                             // Page refresh: messages array has no streaming content (only DB messages)
-                            // Timeout reconnect: messages array still has streaming content in memory
+                            // Timeout/tab reconnect: messages array still has streaming content in memory
                             const isPageRefresh = !this._hasActiveStreamingContent();
 
+                            // Guard: distinguish actual page refresh from tab-switch return.
+                            // Tab-switch: we had streaming content before the tab went to background,
+                            // now _hasActiveStreamingContent() returns false because Alpine state
+                            // was preserved but we're checking it during the same session.
+                            // Key insight: on actual page refresh, sessionStorage will have stream state
+                            // but the in-memory messages array will NOT have streaming content IDs.
+                            // On tab return, the messages array still has the streaming content.
+                            const isTabReturn = this._wasStreamingBeforeHidden;
+
                             let fromIndex;
-                            if (isPageRefresh) {
+                            if (isPageRefresh && !isTabReturn) {
                                 // PAGE REFRESH: Fresh page load during active stream
                                 // Reset state and replay ALL events from 0 to rebuild UI
                                 this._resetStreamStateForReplay();
@@ -4275,12 +4314,12 @@
 
                                 console.log('[Stream] Page refresh reconnect - replaying all events from 0');
                             } else {
-                                // TIMEOUT RECONNECT: Same session, connection dropped
+                                // TIMEOUT RECONNECT or TAB RETURN: Same session, connection dropped or tab switched
                                 // Restore state and continue from last index
                                 this._restoreStreamState(uuid);
                                 const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
-                                fromIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
-                                console.log('[Stream] Timeout reconnect:', { uuid, fromIndex, eventCount: data.event_count });
+                                fromIndex = savedIndex ? parseInt(savedIndex, 10) : this.lastEventIndex;
+                                console.log('[Stream] Timeout/tab reconnect:', { uuid, fromIndex, isTabReturn, eventCount: data.event_count });
                             }
 
                             // Seed in-memory tracker so timeout retries use the correct index
@@ -5110,6 +5149,7 @@
                     // Reset stream state
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
+                    // Stream phase is set in connectToStreamEvents() after disconnectFromStream()
                     this._streamState = {
                         // Maps block_index -> { msgIndex, content, complete }
                         thinkingBlocks: {},
@@ -5174,13 +5214,15 @@
                 },
 
                 // Connect to stream events and handle reconnection
-                async connectToStreamEvents(fromIndex = 0, retryCount = 0) {
+                async connectToStreamEvents(fromIndex = 0, startupRetryCount = 0, networkRetryCount = 0) {
                     if (!this.currentConversationUuid) {
                         return;
                     }
 
                     // Max retries for not_found status (job hasn't started yet)
-                    const maxRetries = 15; // 15 * 200ms = 3 seconds max wait
+                    const maxStartupRetries = 15; // 15 * 200ms = 3 seconds max wait
+                    // Max retries for network errors (exponential backoff)
+                    const maxNetworkRetries = 5;
 
                     // Abort any existing connection
                     this.disconnectFromStream();
@@ -5192,7 +5234,8 @@
                     console.log('[Stream] connectToStreamEvents:', {
                         uuid: this.currentConversationUuid,
                         fromIndex,
-                        retryCount,
+                        startupRetryCount,
+                        networkRetryCount,
                         nonce: myNonce,
                         previousNonce: myNonce - 1,
                         lastEventIndex: this.lastEventIndex,
@@ -5202,7 +5245,48 @@
                     this.isStreaming = true;
                     this.currentConversationStatus = 'processing'; // Update status badge
 
+                    // Restore stream phase after disconnectFromStream() reset it.
+                    // 'waiting' = waiting for first response (triggers amber dot after 15s)
+                    if (this._streamPhase === 'idle') {
+                        this._streamPhase = 'waiting';
+                        this._phaseChangedAt = Date.now();
+                        this._pendingResponseWarning = false;
+                    }
+
+                    // Start connection health check (dead man's switch)
+                    this._lastKeepaliveAt = Date.now();
+                    this._connectionHealthy = true;
+                    if (this._keepaliveCheckInterval) clearInterval(this._keepaliveCheckInterval);
+                    this._keepaliveCheckInterval = setInterval(() => {
+                        // Skip health check when tab is hidden (browser throttles SSE
+                        // processing in background tabs, causing false amber indicators)
+                        if (document.hidden) return;
+
+                        // Connection health: no keepalive for >45s
+                        if (this._lastKeepaliveAt && Date.now() - this._lastKeepaliveAt > 45000) {
+                            this._connectionHealthy = false;
+                        }
+                        // Pending response warning: waiting >15s after tool results (likely compacting)
+                        if (this._streamPhase === 'waiting' && this._phaseChangedAt &&
+                            Date.now() - this._phaseChangedAt > 15000) {
+                            this._pendingResponseWarning = true;
+                        } else {
+                            this._pendingResponseWarning = false;
+                        }
+                    }, 5000);
+
+                    // Reset keepalive timer when tab becomes visible again to prevent
+                    // false amber indicator (browser doesn't process SSE while hidden)
+                    this._visibilityHandler = () => {
+                        if (!document.hidden && this._lastKeepaliveAt) {
+                            this._lastKeepaliveAt = Date.now();
+                            this._connectionHealthy = true;
+                        }
+                    };
+                    document.addEventListener('visibilitychange', this._visibilityHandler);
+
                     this.streamAbortController = new AbortController();
+                    let pendingRetry = false;
 
                     try {
                         const url = `/api/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`;
@@ -5253,10 +5337,11 @@
                                     if (event.type === 'stream_status') {
                                         if (event.status === 'not_found') {
                                             // Race condition: job hasn't started yet, retry
-                                            if (retryCount < maxRetries) {
+                                            if (startupRetryCount < maxStartupRetries) {
                                                 // Check nonce before scheduling retry
                                                 if (myNonce === this._streamConnectNonce) {
-                                                    this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(0, retryCount + 1), 200);
+                                                    pendingRetry = true;
+                                                    this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(0, startupRetryCount + 1, 0), 200);
                                                 }
                                                 return;
                                             } else {
@@ -5282,15 +5367,26 @@
                                     }
 
                                     if (event.type === 'timeout') {
-                                        // Reconnect from last known position
+                                        // Reconnect from last known position (fresh connection, reset counters)
                                         // Check nonce before scheduling retry
                                         if (myNonce === this._streamConnectNonce) {
-                                            this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(this.lastEventIndex), 100);
+                                            pendingRetry = true;
+                                            this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(this.lastEventIndex, 0, 0), 100);
                                         }
                                         return;
                                     }
 
+                                    // Track keepalive for connection health (don't pass to handleStreamEvent)
+                                    if (event.type === 'keepalive') {
+                                        this._lastKeepaliveAt = Date.now();
+                                        this._connectionHealthy = true;
+                                        continue;
+                                    }
+
                                     // Handle regular stream events
+                                    // Also update keepalive timer on any data event
+                                    this._lastKeepaliveAt = Date.now();
+                                    this._connectionHealthy = true;
                                     this.handleStreamEvent(event);
 
                                 } catch (parseErr) {
@@ -5303,11 +5399,38 @@
                             console.log('Stream connection aborted');
                         } else {
                             console.error('Stream connection error:', err);
+                            // Network error retry with exponential backoff
+                            // Only retry if this connection hasn't been superseded
+                            if (networkRetryCount < maxNetworkRetries && myNonce === this._streamConnectNonce) {
+                                const delay = Math.min(1000 * Math.pow(2, networkRetryCount), 8000);
+                                console.log(`[Stream] Network error, retrying in ${delay}ms (attempt ${networkRetryCount + 1}/${maxNetworkRetries})`);
+                                this._streamRetryTimeoutId = setTimeout(
+                                    () => this.connectToStreamEvents(this.lastEventIndex, 0, networkRetryCount + 1),
+                                    delay
+                                );
+                                pendingRetry = true;
+                                return; // Don't set isStreaming = false -- we're retrying
+                            }
                         }
                     } finally {
-                        // Only set isStreaming false if we weren't aborted for reconnection
-                        if (!this.streamAbortController?.signal.aborted) {
+                        // Only set isStreaming false if:
+                        // - no pending retry scheduled
+                        // - we weren't aborted for reconnection
+                        // - this connection hasn't been superseded by a newer one (nonce check)
+                        if (!pendingRetry && !this.streamAbortController?.signal.aborted && myNonce === this._streamConnectNonce) {
                             this.isStreaming = false;
+
+                            // Clean up keepalive health check to prevent stale intervals
+                            if (this._keepaliveCheckInterval) {
+                                clearInterval(this._keepaliveCheckInterval);
+                                this._keepaliveCheckInterval = null;
+                            }
+                            if (this._visibilityHandler) {
+                                document.removeEventListener('visibilitychange', this._visibilityHandler);
+                                this._visibilityHandler = null;
+                            }
+                            this._connectionHealthy = true;
+                            this._lastKeepaliveAt = null;
                         }
                     }
                 },
@@ -5319,6 +5442,22 @@
                         clearTimeout(this._streamRetryTimeoutId);
                         this._streamRetryTimeoutId = null;
                     }
+
+                    // Stop keepalive health check
+                    if (this._keepaliveCheckInterval) {
+                        clearInterval(this._keepaliveCheckInterval);
+                        this._keepaliveCheckInterval = null;
+                    }
+                    if (this._visibilityHandler) {
+                        document.removeEventListener('visibilitychange', this._visibilityHandler);
+                        this._visibilityHandler = null;
+                    }
+                    this._connectionHealthy = true;
+                    this._lastKeepaliveAt = null;
+                    // Reset stream phase tracking
+                    this._streamPhase = 'idle';
+                    this._phaseChangedAt = null;
+                    this._pendingResponseWarning = false;
 
                     if (this.streamAbortController) {
                         this.streamAbortController.abort();
@@ -5437,6 +5576,10 @@
 
                     switch (event.type) {
                         case 'thinking_start':
+                            // Phase: response content arriving
+                            this._streamPhase = 'streaming';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Support interleaved thinking - track by block_index
                             const thinkingBlockIndex = event.block_index ?? 0;
                             state.currentThinkingBlock = thinkingBlockIndex;
@@ -5498,6 +5641,10 @@
                             break;
 
                         case 'text_start':
+                            // Phase: response content arriving
+                            this._streamPhase = 'streaming';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Collapse all thinking blocks
                             for (const blockIdx in state.thinkingBlocks) {
                                 const block = state.thinkingBlocks[blockIdx];
@@ -5545,6 +5692,10 @@
                             break;
 
                         case 'tool_use_start':
+                            // Phase: tool executing (stays green)
+                            this._streamPhase = 'tool_executing';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Collapse all thinking blocks
                             for (const blockIdx in state.thinkingBlocks) {
                                 const block = state.thinkingBlocks[blockIdx];
@@ -5612,6 +5763,10 @@
                             break;
 
                         case 'tool_result':
+                            // Phase: tools done, waiting for next response (may compact)
+                            this._streamPhase = 'waiting';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Find the tool message with matching toolId and add the result
                             const toolResultId = event.metadata?.tool_id;
                             if (toolResultId) {
@@ -5727,6 +5882,10 @@
                             break;
 
                         case 'compaction_summary':
+                            // Phase: compaction just completed, waiting for post-compaction response
+                            this._streamPhase = 'waiting';
+                            this._phaseChangedAt = Date.now();
+                            this._pendingResponseWarning = false;
                             // Claude Code auto-compacted the conversation context
                             // This event contains the full summary that Claude continues with
                             this.debugLog('Compaction summary received', {
@@ -5767,6 +5926,10 @@
                             break;
 
                         case 'done':
+                            // Phase: stream complete
+                            this._streamPhase = 'idle';
+                            this._phaseChangedAt = null;
+                            this._pendingResponseWarning = false;
                             if (state.textMsgIndex >= 0) {
                                 this.messages[state.textMsgIndex] = {
                                     ...this.messages[state.textMsgIndex],
@@ -5797,6 +5960,14 @@
                         default:
                             console.log('Unknown event type:', event.type, event);
                     }
+                },
+
+                // Connection indicator state: 'hidden' | 'connected' | 'processing' | 'disconnected'
+                getIndicatorState() {
+                    if (!this.isStreaming) return 'hidden';
+                    if (!this._connectionHealthy) return 'disconnected';
+                    if (this._pendingResponseWarning) return 'processing';
+                    return 'connected';
                 },
 
                 // Get current provider's reasoning config from loaded providers data
