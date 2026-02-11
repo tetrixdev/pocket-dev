@@ -184,6 +184,7 @@
                         <input
                             type="text"
                             x-model="manualModel"
+                            x-bind:required="modelMode === 'manual'"
                             class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                             placeholder="e.g. claude-opus-4-5-20251101"
                         >
@@ -743,8 +744,8 @@
             },
 
             get effectiveModel() {
-                if (this.modelMode === 'manual' && this.manualModel) {
-                    return this.manualModel;
+                if (this.modelMode === 'manual') {
+                    return this.manualModel || '';
                 }
                 return this.model;
             },

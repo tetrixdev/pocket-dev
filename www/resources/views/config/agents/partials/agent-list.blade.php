@@ -19,7 +19,9 @@
 
     // Build a flat model_id => display_name lookup from config
     $modelDisplayNames = collect(config('ai.models', []))
-        ->flatMap(fn ($models) => collect($models)->mapWithKeys(fn ($m) => [$m['model_id'] => $m['display_name']]))
+        ->flatMap(fn ($models) => collect($models)
+            ->filter(fn ($m) => isset($m['model_id'], $m['display_name']))
+            ->mapWithKeys(fn ($m) => [$m['model_id'] => $m['display_name']]))
         ->toArray();
 @endphp
 

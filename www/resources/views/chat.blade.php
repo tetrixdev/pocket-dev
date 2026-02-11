@@ -1824,12 +1824,10 @@
                 },
 
                 getModelDisplayLabel(providerKey, modelId) {
-                    const providerData = this.providers[providerKey];
-                    if (providerData && providerData.models && providerData.models[modelId]) {
-                        const displayName = providerData.models[modelId].name;
-                        if (displayName && displayName !== modelId) {
-                            return displayName + ' [' + modelId + ']';
-                        }
+                    const modelEntry = this.providers?.[providerKey]?.models?.[modelId];
+                    const displayName = typeof modelEntry === 'string' ? modelEntry : modelEntry?.name;
+                    if (displayName && displayName !== modelId) {
+                        return displayName + ' [' + modelId + ']';
                     }
                     return modelId;
                 },

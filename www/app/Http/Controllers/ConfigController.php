@@ -322,12 +322,9 @@ class ConfigController extends Controller
 
         $viewData = [
             'providers' => Agent::getProviders(),
-            'modelsPerProvider' => [
-                Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
-                Agent::PROVIDER_OPENAI => $this->getModelsForProvider(Agent::PROVIDER_OPENAI),
-                Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
-                Agent::PROVIDER_CODEX => $this->getModelsForProvider(Agent::PROVIDER_CODEX),
-            ],
+            'modelsPerProvider' => collect(Agent::getProviders())
+                ->mapWithKeys(fn ($p) => [$p => $this->getModelsForProvider($p)])
+                ->toArray(),
             'workspaces' => Workspace::orderBy('name')->get(),
             'selectedWorkspaceId' => $request->query('workspace_id'),
             'sourceAgent' => null,
@@ -489,12 +486,9 @@ class ConfigController extends Controller
         return view('config.agents.form', [
             'agent' => $agent,
             'providers' => Agent::getProviders(),
-            'modelsPerProvider' => [
-                Agent::PROVIDER_ANTHROPIC => $this->getModelsForProvider(Agent::PROVIDER_ANTHROPIC),
-                Agent::PROVIDER_OPENAI => $this->getModelsForProvider(Agent::PROVIDER_OPENAI),
-                Agent::PROVIDER_CLAUDE_CODE => $this->getModelsForProvider(Agent::PROVIDER_CLAUDE_CODE),
-                Agent::PROVIDER_CODEX => $this->getModelsForProvider(Agent::PROVIDER_CODEX),
-            ],
+            'modelsPerProvider' => collect(Agent::getProviders())
+                ->mapWithKeys(fn ($p) => [$p => $this->getModelsForProvider($p)])
+                ->toArray(),
         ]);
     }
 
