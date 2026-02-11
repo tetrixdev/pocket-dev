@@ -49,9 +49,9 @@ if [ -z "$TARGET_USER" ]; then
 fi
 
 # Ensure CLI config directories exist and are owned by TARGET_UID:www-data
-mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
+mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
 chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
-chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
+chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
 
 # =============================================================================
 # DOCKER SOCKET ACCESS

@@ -65,9 +65,9 @@ fi
 
 # Set up home directory with correct ownership (cross-group: appuser:www-data)
 export HOME=/home/appuser
-mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.npm" "$HOME/.composer" 2>/dev/null || true
+mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" "$HOME/.npm" "$HOME/.composer" 2>/dev/null || true
 chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
-chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
+chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
 
 # Fix permissions for /pocketdev-source (dogfooding - AI edits PocketDev source)
 # PHP-FPM runs as www-data, so we need group ownership for git operations
