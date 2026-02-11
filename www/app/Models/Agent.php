@@ -232,7 +232,7 @@ class Agent extends Model
             Provider::OpenAI->value => $this->openai_reasoning_effort ?? 'none',
             Provider::OpenAICompatible->value => $this->openai_compatible_reasoning_effort ?? 'none',
             Provider::ClaudeCode->value => $this->claude_code_thinking_tokens ?? 0,
-            Provider::Codex->value => $this->codex_reasoning_effort ?? 'none',
+            Provider::Codex->value => $this->codex_reasoning_effort ?? 'minimal',
             default => null,
         };
     }
@@ -261,7 +261,7 @@ class Agent extends Model
             ],
             Provider::Codex->value => [
                 'type' => 'codex',
-                'effort' => $this->codex_reasoning_effort ?? 'none',
+                'effort' => $this->codex_reasoning_effort ?? 'minimal',
             ],
             default => ['type' => 'none'],
         };

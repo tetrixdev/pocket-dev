@@ -62,8 +62,7 @@ class ConversationFactory
             'openai_reasoning_effort' => $agent->openai_reasoning_effort,
             'openai_compatible_reasoning_effort' => $agent->openai_compatible_reasoning_effort ?? 'none',
             'claude_code_thinking_tokens' => $agent->claude_code_thinking_tokens,
-            // TODO: Add codex_reasoning_effort once the conversations table has this column
-            // Currently the column exists on agents but not on conversations (missing migration)
+            'codex_reasoning_effort' => $agent->codex_reasoning_effort,
         ]);
 
         // Initialize context window size from provider

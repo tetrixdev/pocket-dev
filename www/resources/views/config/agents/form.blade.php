@@ -218,6 +218,24 @@
                     <p class="text-xs text-gray-400 mt-1">Controls reasoning depth for o1/o3 models</p>
                 </div>
 
+                <!-- Codex Reasoning Effort -->
+                <div x-show="provider === 'codex'" x-cloak>
+                    <label for="codex_reasoning_effort" class="block text-sm font-medium mb-2">Reasoning Effort</label>
+                    <select
+                        id="codex_reasoning_effort"
+                        name="codex_reasoning_effort"
+                        class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                        @php $currentCodexEffort = old('codex_reasoning_effort', $agent->codex_reasoning_effort ?? ($sourceAgent->codex_reasoning_effort ?? 'minimal')); @endphp
+                        <option value="minimal" {{ $currentCodexEffort === 'minimal' ? 'selected' : '' }}>Off (fastest)</option>
+                        <option value="low" {{ $currentCodexEffort === 'low' ? 'selected' : '' }}>Low</option>
+                        <option value="medium" {{ $currentCodexEffort === 'medium' ? 'selected' : '' }}>Medium</option>
+                        <option value="high" {{ $currentCodexEffort === 'high' ? 'selected' : '' }}>High</option>
+                        <option value="xhigh" {{ $currentCodexEffort === 'xhigh' ? 'selected' : '' }}>Maximum</option>
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Controls reasoning depth for Codex models</p>
+                </div>
+
                 <!-- Claude Code Thinking Tokens -->
                 <div x-show="provider === 'claude_code'" x-cloak>
                     <label for="claude_code_thinking_tokens" class="block text-sm font-medium mb-2">

@@ -53,7 +53,7 @@ return [
 
         'codex' => [
             // No API key needed - uses Codex CLI authentication (setup via `codex login`)
-            'default_model' => 'gpt-5.2-codex',
+            'default_model' => 'gpt-5.3-codex',
         ],
 
         'openai_compatible' => [
@@ -121,13 +121,15 @@ return [
             ],
         ],
 
-        // Codex: uses OpenAI-style effort levels
+        // Codex: uses model_reasoning_effort config key
+        // Values match Codex CLI: minimal, low, medium, high, xhigh
         'codex' => [
             'effort_levels' => [
-                ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
+                ['value' => 'minimal', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
                 ['value' => 'low', 'name' => 'Light', 'description' => 'Quick reasoning'],
                 ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
                 ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
+                ['value' => 'xhigh', 'name' => 'Maximum', 'description' => 'Maximum reasoning depth'],
             ],
         ],
 
@@ -250,7 +252,17 @@ return [
         ],
 
         'openai' => [
-            // GPT-5.1 Codex models - ordered by capability (best first)
+            // GPT-5 Codex models - ordered by capability (best first)
+            [
+                'model_id' => 'gpt-5.2-codex',
+                'display_name' => 'Codex 5.2',
+                'context_window' => 400000,
+                'max_output_tokens' => 32768,
+                'input_price_per_million' => 1.25,
+                'output_price_per_million' => 10.00,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => 0.125,
+            ],
             [
                 'model_id' => 'gpt-5.1-codex-max',
                 'display_name' => 'Codex 5.1 Max',
@@ -312,6 +324,16 @@ return [
         // Pricing is null since Codex CLI uses subscription credits
         // Source: https://developers.openai.com/codex/models/
         'codex' => [
+            [
+                'model_id' => 'gpt-5.3-codex',
+                'display_name' => 'GPT-5.3 Codex',
+                'context_window' => 400000,
+                'max_output_tokens' => 32768,
+                'input_price_per_million' => null,
+                'output_price_per_million' => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => null,
+            ],
             [
                 'model_id' => 'gpt-5.2-codex',
                 'display_name' => 'GPT-5.2 Codex',

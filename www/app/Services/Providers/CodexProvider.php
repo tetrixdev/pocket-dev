@@ -195,7 +195,7 @@ class CodexProvider implements AIProviderInterface
         Conversation $conversation,
         array $options
     ): string {
-        $model = $conversation->model ?? config('ai.providers.codex.default_model', 'gpt-5.2-codex');
+        $model = $conversation->model ?? config('ai.providers.codex.default_model', 'gpt-5.3-codex');
 
         $parts = ['codex', 'exec'];
 
@@ -210,6 +210,15 @@ class CodexProvider implements AIProviderInterface
         $workingDir = $conversation->working_directory ?? base_path();
         $parts[] = '-C';
         $parts[] = escapeshellarg($workingDir);
+
+        // Reasoning effort (Codex CLI uses model_reasoning_effort config key)
+        // Values: minimal (off), low, medium, high, xhigh
+        $reasoningConfig = $conversation->getReasoningConfig();
+        $effort = $reasoningConfig['effort'] ?? 'minimal';
+        if ($effort !== 'minimal') {
+            $parts[] = '-c';
+            $parts[] = escapeshellarg("model_reasoning_effort={$effort}");
+        }
 
         // Add system prompt via POCKETDEV-SYSTEM.md in the working directory
         // Codex reads this file via project_doc_fallback_filenames and appends to context
