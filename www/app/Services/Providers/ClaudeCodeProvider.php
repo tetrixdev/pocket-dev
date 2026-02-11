@@ -30,7 +30,9 @@ class ClaudeCodeProvider implements AIProviderInterface
 
     // Phase-aware timeout constants (seconds)
     // All set to 30 min — heavy contexts (large system prompts, 50+ tool calls) can cause
-    // long prompt processing times on the API side before any tokens are generated
+    // long prompt processing times on the API side before any tokens are generated.
+    // TODO: Consider lowering TIMEOUT_STREAMING (e.g. 300s) for faster stall detection
+    // once streaming is active. Currently 1800s to avoid false timeouts across all phases.
     private const TIMEOUT_INITIAL = 1800;
     private const TIMEOUT_STREAMING = 1800;
     private const TIMEOUT_TOOL_EXECUTION = 1800;
