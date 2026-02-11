@@ -479,10 +479,9 @@ class ClaudeCodeProvider implements AIProviderInterface
                             $stopReason = $message['stop_reason'] ?? null;
                             if ($stopReason === 'tool_use') {
                                 $phase = 'tool_execution';
-                            } elseif ($stopReason !== null) {
-                                // end_turn, max_tokens, etc. - response is done
-                                $phase = 'streaming';
                             }
+                            // stop_reason end_turn/max_tokens: response is finishing,
+                            // keep current phase (no need to transition)
                             // stop_reason === null means partial message from
                             // --include-partial-messages; don't change phase
                             $lastOutputTime = microtime(true);
@@ -570,7 +569,7 @@ class ClaudeCodeProvider implements AIProviderInterface
                         $streamLogger->logStream($uuid, $buffer, $parsedLine);
                     }
                 }
-                yield from $this->parseJsonLine($buffer, $state);
+                yield from $this->parseJsonLine($buffer, $state, $parsedLine ?? null);
             }
 
             // Close open blocks
@@ -994,13 +993,13 @@ class ClaudeCodeProvider implements AIProviderInterface
                     }
 
                     // Try 'errors' array if 'result' is empty
-                    if (empty($errorMsg) && !empty($data['errors']) && is_array($data['errors'])) {
+                    if (($errorMsg === null || $errorMsg === '') && !empty($data['errors']) && is_array($data['errors'])) {
                         $firstError = $data['errors'][0] ?? null;
                         $errorMsg = is_array($firstError) ? json_encode($firstError) : $firstError;
                     }
 
                     // Fall back to subtype description
-                    if (empty($errorMsg)) {
+                    if ($errorMsg === null || $errorMsg === '') {
                         $errorMsg = 'Claude Code error: ' . ($data['subtype'] ?? 'unknown error');
                     }
 

@@ -1351,7 +1351,6 @@
                 _lastKeepaliveAt: null,      // Timestamp of last keepalive received
                 _connectionHealthy: true,     // False if no keepalive for >45s
                 _keepaliveCheckInterval: null, // Interval ID for health check timer
-                _streamElapsed: 0,            // Elapsed seconds reported by server
                 // Stream phase tracking (for "processing context" indicator)
                 _streamPhase: 'idle',          // 'idle' | 'waiting' | 'tool_executing' | 'streaming'
                 _phaseChangedAt: null,         // Timestamp when phase last changed
@@ -5379,7 +5378,6 @@
                                     if (event.type === 'keepalive') {
                                         this._lastKeepaliveAt = Date.now();
                                         this._connectionHealthy = true;
-                                        this._streamElapsed = event.elapsed || 0;
                                         continue;
                                     }
 
