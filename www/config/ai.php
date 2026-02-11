@@ -41,6 +41,8 @@ return [
         'claude_code' => [
             // No API key needed - uses Claude Code CLI authentication (setup via `claude setup-token`)
             'default_model' => 'opus',
+            // When set, overrides the per-conversation/agent model selection entirely
+            'override_model' => env('CLAUDE_CODE_OVERRIDE_MODEL'),
             // Available tools that can be enabled/disabled via UI
             // Empty array = all tools allowed (default behavior)
             'available_tools' => [

@@ -215,7 +215,9 @@ class ClaudeCodeProvider implements AIProviderInterface
         Conversation $conversation,
         array $options
     ): string {
-        $model = $conversation->model ?? config('ai.providers.claude_code.default_model', 'opus');
+        $model = config('ai.providers.claude_code.override_model')
+            ?: $conversation->model
+            ?: config('ai.providers.claude_code.default_model', 'opus');
 
         // Get global allowed tools setting (Setting::get already decodes JSON)
         $globalAllowedTools = \App\Models\Setting::get('chat.claude_code_allowed_tools', []);
