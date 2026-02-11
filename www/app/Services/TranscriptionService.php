@@ -59,7 +59,7 @@ class TranscriptionService
                             ],
                             'transcription' => [
                                 'model' => 'gpt-4o-transcribe',
-                                'language' => 'nl', // ISO-639-1 format
+                                'language' => 'en', // ISO-639-1 format
                             ],
                             'noise_reduction' => [
                                 'type' => 'near_field',
@@ -133,7 +133,7 @@ class TranscriptionService
             ->post($this->baseUrl . '/v1/audio/transcriptions', [
                 'model' => 'gpt-4o-transcribe',
                 'response_format' => 'text',
-                'language' => 'nl',
+                'language' => 'en',
                 'temperature' => 0.2,
                 // Anti-truncation prompt: gpt-4o-transcribe has a known tendency to truncate
                 // the final sentence. This aggressive prompt significantly reduces that behavior.
