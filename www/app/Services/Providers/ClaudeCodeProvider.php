@@ -562,14 +562,14 @@ class ClaudeCodeProvider implements AIProviderInterface
 
             // Process any remaining buffer
             if (!empty(trim($buffer))) {
+                $parsedLine = json_decode($buffer, true);
                 if ($streamLogger) {
-                    $parsedLine = json_decode($buffer, true);
                     $eventType = is_array($parsedLine) ? ($parsedLine['type'] ?? null) : null;
                     if ($verboseLogging || $eventType !== 'stream_event') {
                         $streamLogger->logStream($uuid, $buffer, $parsedLine);
                     }
                 }
-                yield from $this->parseJsonLine($buffer, $state, $parsedLine ?? null);
+                yield from $this->parseJsonLine($buffer, $state, $parsedLine);
             }
 
             // Close open blocks
