@@ -211,9 +211,8 @@ class ClaudeCodeProvider implements AIProviderInterface
         Conversation $conversation,
         array $options
     ): string {
-        // CLAUDE_CODE_DEFAULT_MODEL in .env always takes precedence over agent/UI selection
         $envModel = config('ai.providers.claude_code.default_model');
-        $model = $envModel ?: ($conversation->model ?? 'opus');
+        $model = $envModel ?? ($conversation->model ?? 'opus');
 
         // Get global allowed tools setting (Setting::get already decodes JSON)
         $globalAllowedTools = \App\Models\Setting::get('chat.claude_code_allowed_tools', []);
