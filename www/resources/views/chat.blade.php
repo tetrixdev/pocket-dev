@@ -1253,6 +1253,7 @@
 
                 // Session name (rename)
                 renameSessionName: '',
+                renameSessionTargetId: null,
                 renameSessionSaving: false,
                 _systemPromptPreviewNonce: 0,
                 systemPromptPreview: {
@@ -2566,9 +2567,15 @@
                     }
                 },
 
-                openRenameSessionModal() {
-                    if (!this.currentSession) return;
-                    this.renameSessionName = this.currentSession.name || '';
+                openRenameSessionModal(sessionId = null) {
+                    const targetId = sessionId || this.currentSession?.id;
+                    if (!targetId) return;
+
+                    const session = this.filteredSessions.find(s => s.id === targetId) || this.currentSession;
+                    if (!session) return;
+
+                    this.renameSessionTargetId = targetId;
+                    this.renameSessionName = session.name || '';
                     this.showRenameSessionModal = true;
                     // Focus input after modal opens
                     this.$nextTick(() => {
@@ -2578,7 +2585,8 @@
                 },
 
                 async saveSessionName() {
-                    if (!this.currentSession || !this.renameSessionName.trim()) return;
+                    const targetId = this.renameSessionTargetId || this.currentSession?.id;
+                    if (!targetId || !this.renameSessionName.trim()) return;
 
                     // Enforce max character limit
                     if (this.renameSessionName.trim().length > window.TITLE_MAX_LENGTH) {
@@ -2588,7 +2596,7 @@
 
                     this.renameSessionSaving = true;
                     try {
-                        const response = await fetch(`/api/sessions/${this.currentSession.id}`, {
+                        const response = await fetch(`/api/sessions/${targetId}`, {
                             method: 'PATCH',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -2600,15 +2608,20 @@
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                         const data = await response.json();
-                        this.currentSession.name = data.name;
 
-                        // Also update the session in the sessions list for sidebar
-                        const sessionInList = this.filteredSessions.find(s => s.id === this.currentSession.id);
+                        // Update the current session if it's the one being renamed
+                        if (this.currentSession?.id === targetId) {
+                            this.currentSession.name = data.name;
+                        }
+
+                        // Update the session in the sessions list for sidebar
+                        const sessionInList = this.filteredSessions.find(s => s.id === targetId);
                         if (sessionInList) {
                             sessionInList.name = data.name;
                         }
 
                         this.showRenameSessionModal = false;
+                        this.renameSessionTargetId = null;
                     } catch (err) {
                         console.error('Failed to rename session:', err);
                         this.showError('Failed to rename session');
