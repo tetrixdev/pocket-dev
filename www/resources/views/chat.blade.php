@@ -1823,6 +1823,15 @@
                     return names[providerKey] || providerKey;
                 },
 
+                getModelDisplayLabel(providerKey, modelId) {
+                    const modelEntry = this.providers?.[providerKey]?.models?.[modelId];
+                    const displayName = typeof modelEntry === 'string' ? modelEntry : modelEntry?.name;
+                    if (displayName && displayName !== modelId) {
+                        return displayName + ' [' + modelId + ']';
+                    }
+                    return modelId;
+                },
+
                 getProviderColorClass(providerKey) {
                     const colors = {
                         'anthropic': 'bg-orange-500',

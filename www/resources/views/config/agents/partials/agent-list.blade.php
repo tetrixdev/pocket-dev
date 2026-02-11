@@ -16,6 +16,13 @@
         'codex' => 'bg-teal-500',
         'openai_compatible' => 'bg-blue-500',
     ];
+
+    // Build a flat model_id => display_name lookup from config
+    $modelDisplayNames = collect(config('ai.models', []))
+        ->flatMap(fn ($models) => collect($models)
+            ->filter(fn ($m) => isset($m['model_id'], $m['display_name']))
+            ->mapWithKeys(fn ($m) => [$m['model_id'] => $m['display_name']]))
+        ->toArray();
 @endphp
 
 @if(($showCreateButton ?? true) && isset($workspace))
@@ -103,7 +110,11 @@
 
                     {{-- Row 2: Model + metadata --}}
                     <div class="mt-1.5 flex items-center gap-2 text-xs text-gray-400">
-                        <span class="font-mono bg-gray-700 px-1.5 py-0.5 rounded text-gray-300 truncate max-w-[140px]">{{ $agent->model }}</span>
+                        @if(isset($modelDisplayNames[$agent->model]) && $modelDisplayNames[$agent->model] !== $agent->model)
+                            <span class="bg-gray-700 px-1.5 py-0.5 rounded text-gray-300 truncate max-w-[200px]">{{ $modelDisplayNames[$agent->model] }} <span class="font-mono text-gray-500">[{{ $agent->model }}]</span></span>
+                        @else
+                            <span class="font-mono bg-gray-700 px-1.5 py-0.5 rounded text-gray-300 truncate max-w-[140px]">{{ $agent->model }}</span>
+                        @endif
                         <span class="text-gray-500">{{ $agent->allowed_tools === null ? 'All tools' : count($agent->allowed_tools) . ' tools' }}</span>
                         @php $reasoning = $agent->getReasoningValue(); @endphp
                         @if($reasoning && $reasoning !== 'none' && $reasoning !== 0)
@@ -152,7 +163,11 @@
                             <div class="flex items-center gap-2 flex-wrap">
                                 <span class="inline-block w-3 h-3 rounded-full {{ $providerColors[$agent->provider] ?? 'bg-gray-500' }}" title="{{ ucfirst(str_replace('_', ' ', $agent->provider)) }}"></span>
                                 <h3 class="text-lg font-semibold text-white">{{ $agent->name }}</h3>
-                                <span class="font-mono text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300">{{ $agent->model }}</span>
+                                @if(isset($modelDisplayNames[$agent->model]) && $modelDisplayNames[$agent->model] !== $agent->model)
+                                    <span class="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300">{{ $modelDisplayNames[$agent->model] }} <span class="font-mono text-gray-500">[{{ $agent->model }}]</span></span>
+                                @else
+                                    <span class="font-mono text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300">{{ $agent->model }}</span>
+                                @endif
                                 @if($agent->is_default)
                                     <span class="px-2 py-0.5 text-xs font-medium bg-blue-600 text-white rounded">Default</span>
                                 @endif

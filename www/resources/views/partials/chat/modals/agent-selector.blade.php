@@ -56,7 +56,7 @@
                                                     <span x-show="agent.is_default" class="px-1.5 py-0.5 text-xs bg-blue-600 text-white rounded">Default</span>
                                                 </div>
                                                 <div class="text-xs text-gray-400 mt-1">
-                                                    <span class="font-mono bg-gray-700/50 px-1 rounded" x-text="agent.model"></span>
+                                                    <span class="bg-gray-700/50 px-1 rounded" x-text="getModelDisplayLabel(agent.provider, agent.model)"></span>
                                                     <template x-if="agent.allowed_tools === null">
                                                         <span class="ml-2 text-gray-500">All tools</span>
                                                     </template>
