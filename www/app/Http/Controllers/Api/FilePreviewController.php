@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\PathValidator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class FilePreviewController extends Controller
 {
@@ -180,6 +181,35 @@ class FilePreviewController extends Controller
             'bytes_written' => $result,
             'size_formatted' => $this->formatBytes($result),
         ]);
+    }
+
+    /**
+     * Download a file.
+     */
+    public function download(Request $request): BinaryFileResponse|JsonResponse
+    {
+        $request->validate([
+            'path' => 'required|string',
+        ]);
+
+        $path = $request->input('path');
+
+        $validation = $this->validatePath($path);
+        if ($validation['error']) {
+            return response()->json($validation['response'], $validation['status']);
+        }
+
+        $realPath = $validation['realPath'];
+
+        if (is_dir($realPath)) {
+            return response()->json(['error' => 'Path is a directory, not a file'], 400);
+        }
+
+        if (!is_readable($realPath)) {
+            return response()->json(['error' => 'Permission denied: cannot read file'], 403);
+        }
+
+        return response()->download($realPath);
     }
 
     /**

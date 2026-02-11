@@ -269,6 +269,11 @@
                         }
                     },
 
+                    downloadFile() {
+                        if (!this.path) return;
+                        window.open('/api/file/download?path=' + encodeURIComponent(this.path), '_blank');
+                    },
+
                     async copyContent() {
                         if (!this.content) return;
                         try {
