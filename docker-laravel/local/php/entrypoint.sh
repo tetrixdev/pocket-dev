@@ -199,6 +199,10 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable)
     umask 002
 
+    # Increase PHP-FPM worker pool for concurrent SSE streaming connections
+    # Default max_children=5 causes exhaustion with just 5 open conversation tabs
+    sed -i 's/^pm.max_children = .*/pm.max_children = 10/' /usr/local/etc/php-fpm.d/www.conf
+
     # Start PHP-FPM as root - pool workers will be www-data per www.conf
     exec php-fpm
 else
