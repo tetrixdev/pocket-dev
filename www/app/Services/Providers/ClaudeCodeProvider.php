@@ -211,14 +211,9 @@ class ClaudeCodeProvider implements AIProviderInterface
         Conversation $conversation,
         array $options
     ): string {
-        $model = $conversation->model ?? 'opus';
-
-        // Allow .env to override the 'opus' alias to a specific model version
-        // e.g. CLAUDE_CODE_DEFAULT_MODEL=claude-opus-4-5-20251101 pins to Opus 4.5
-        $envModel = config('ai.providers.claude_code.default_model', 'opus');
-        if ($model === 'opus' && $envModel !== 'opus') {
-            $model = $envModel;
-        }
+        // CLAUDE_CODE_DEFAULT_MODEL in .env always takes precedence over agent/UI selection
+        $envModel = config('ai.providers.claude_code.default_model');
+        $model = $envModel ?: ($conversation->model ?? 'opus');
 
         // Get global allowed tools setting (Setting::get already decodes JSON)
         $globalAllowedTools = \App\Models\Setting::get('chat.claude_code_allowed_tools', []);
