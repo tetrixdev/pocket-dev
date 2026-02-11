@@ -94,6 +94,12 @@
              x-transition:leave-end="opacity-0 scale-95"
              class="fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50"
              :style="{ top: sessionMenuPos.top + 'px', left: sessionMenuPos.left + 'px' }">
+            {{-- Rename Session --}}
+            <button x-on:click="openRenameSessionModal(sessionMenuId); closeSessionMenu()"
+                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
+                <i class="fa-solid fa-pen w-4 text-center"></i>
+                Rename session
+            </button>
             {{-- Save as Default --}}
             <button @click="saveSessionAsDefault(filteredSessions.find(s => s.id === sessionMenuId))"
                     class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
