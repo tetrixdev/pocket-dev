@@ -139,18 +139,59 @@
 
                 <!-- Model (dynamic based on provider) -->
                 <div>
-                    <label for="model" class="block text-sm font-medium mb-2">Model <span class="text-red-400 font-bold">*</span></label>
-                    <select
-                        id="model"
-                        name="model"
-                        x-model="model"
-                        class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                    >
-                        <template x-for="m in availableModels" :key="m">
-                            <option :value="m" x-text="m" :selected="m === model"></option>
-                        </template>
-                    </select>
+                    <label class="block text-sm font-medium mb-2">Model <span class="text-red-400 font-bold">*</span></label>
+
+                    <!-- Mode toggle -->
+                    <div class="flex gap-4 mb-2">
+                        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+                            <input
+                                type="radio"
+                                :name="'model_mode_' + provider"
+                                value="select"
+                                x-model="modelMode"
+                                class="w-3.5 h-3.5 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                            >
+                            <span class="text-gray-300">Select from list</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer text-sm">
+                            <input
+                                type="radio"
+                                :name="'model_mode_' + provider"
+                                value="manual"
+                                x-model="modelMode"
+                                class="w-3.5 h-3.5 border-gray-600 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                            >
+                            <span class="text-gray-300">Manual override</span>
+                        </label>
+                    </div>
+
+                    <!-- Select mode: dropdown with display names -->
+                    <div x-show="modelMode === 'select'" x-cloak>
+                        <select
+                            id="model"
+                            x-model="model"
+                            @change="manualModel = ''"
+                            class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                            <template x-for="modelId in availableModelIds" :key="modelId">
+                                <option :value="modelId" x-text="getModelLabel(modelId)" :selected="modelId === model"></option>
+                            </template>
+                        </select>
+                    </div>
+
+                    <!-- Manual mode: free text input -->
+                    <div x-show="modelMode === 'manual'" x-cloak>
+                        <input
+                            type="text"
+                            x-model="manualModel"
+                            class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="e.g. claude-opus-4-5-20251101"
+                        >
+                        <p class="text-xs text-gray-400 mt-1">Enter any valid model identifier supported by the provider.</p>
+                    </div>
+
+                    <!-- Hidden input carries the actual value -->
+                    <input type="hidden" name="model" :value="effectiveModel" required>
                 </div>
 
                 <!-- Enabled & Default -->
@@ -654,6 +695,8 @@
         return {
             provider: @js($formProvider),
             model: @js($formModel),
+            manualModel: '',
+            modelMode: 'select', // 'select' or 'manual'
             modelsPerProvider: @js($modelsPerProvider),
             selectedTools: @js($formAllowedTools ?? []),
             allToolsSelected: @js($formAllowedTools === null),
@@ -684,15 +727,45 @@
             expandedSections: {}, // Track which sections are expanded by index
             rawViewSections: {}, // Track which sections show raw markdown vs rendered
 
-            get availableModels() {
-                return this.modelsPerProvider[this.provider] || [];
+            // modelsPerProvider is now { provider: { model_id: display_name, ... } }
+            get availableModelIds() {
+                const models = this.modelsPerProvider[this.provider] || {};
+                return Object.keys(models);
+            },
+
+            getModelLabel(modelId) {
+                const models = this.modelsPerProvider[this.provider] || {};
+                const displayName = models[modelId];
+                if (displayName && displayName !== modelId) {
+                    return displayName + ' [' + modelId + ']';
+                }
+                return modelId;
+            },
+
+            get effectiveModel() {
+                if (this.modelMode === 'manual' && this.manualModel) {
+                    return this.manualModel;
+                }
+                return this.model;
             },
 
             async init() {
-                // Set initial model if not set
-                if (!this.model && this.availableModels.length > 0) {
-                    this.model = this.availableModels[0];
+                const models = this.modelsPerProvider[this.provider] || {};
+                const modelIds = Object.keys(models);
+
+                // If current model is not in the list, switch to manual mode
+                if (this.model && modelIds.length > 0 && !modelIds.includes(this.model)) {
+                    this.modelMode = 'manual';
+                    this.manualModel = this.model;
+                    // Set dropdown to first available for when user switches back
+                    this.model = modelIds[0];
                 }
+
+                // Set initial model if not set
+                if (!this.model && modelIds.length > 0) {
+                    this.model = modelIds[0];
+                }
+
                 // Fetch tools and schemas
                 await Promise.all([
                     this.fetchTools(),
@@ -702,10 +775,14 @@
 
             async onProviderChange() {
                 // Reset model to first available for new provider
-                const models = this.modelsPerProvider[this.provider] || [];
-                if (models.length > 0 && !models.includes(this.model)) {
-                    this.model = models[0];
+                const models = this.modelsPerProvider[this.provider] || {};
+                const modelIds = Object.keys(models);
+                if (modelIds.length > 0 && !modelIds.includes(this.model)) {
+                    this.model = modelIds[0];
                 }
+                // Reset manual model on provider change
+                this.manualModel = '';
+                this.modelMode = 'select';
                 // Fetch tools for new provider
                 await this.fetchTools();
             },

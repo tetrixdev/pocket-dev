@@ -284,7 +284,7 @@ class ConfigController extends Controller
     protected function getModelsForProvider(string $provider): array
     {
         return collect(config("ai.models.{$provider}", []))
-            ->pluck('model_id')
+            ->mapWithKeys(fn ($m) => [$m['model_id'] => $m['display_name']])
             ->toArray();
     }
 
