@@ -36,14 +36,9 @@ class ClaudeCodeProvider extends AbstractCliProvider
     // HasNativeSession implementation
     // ========================================================================
 
-    public function getSessionIdKey(): string
-    {
-        return 'provider_session_id';
-    }
-
     public function getSessionId(Conversation $conversation): ?string
     {
-        return $conversation->provider_session_id ?? $conversation->claude_session_id;
+        return $conversation->provider_session_id;
     }
 
     public function setSessionId(Conversation $conversation, string $sessionId): void
@@ -165,32 +160,6 @@ class ClaudeCodeProvider extends AbstractCliProvider
         }
 
         return implode(' ', $parts);
-    }
-
-    protected function getLatestUserMessage(Conversation $conversation): ?string
-    {
-        $messages = \App\Models\Message::where('conversation_id', $conversation->id)
-            ->where('role', 'user')
-            ->latest('id')
-            ->first();
-
-        if (!$messages) {
-            return null;
-        }
-
-        $content = $messages->content;
-
-        if (is_array($content)) {
-            $textParts = [];
-            foreach ($content as $block) {
-                if (isset($block['type']) && $block['type'] === 'text' && isset($block['text'])) {
-                    $textParts[] = $block['text'];
-                }
-            }
-            return implode("\n", $textParts);
-        }
-
-        return is_string($content) ? $content : null;
     }
 
     protected function prepareProcessInput(string $command, string $userMessage): array

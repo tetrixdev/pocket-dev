@@ -14,14 +14,6 @@ use App\Models\Conversation;
 interface HasNativeSession
 {
     /**
-     * Get the session ID column name used for this provider.
-     *
-     * This is used by the abstract base class to persist session IDs
-     * to the correct location (provider_session_id after schema consolidation).
-     */
-    public function getSessionIdKey(): string;
-
-    /**
      * Get the session ID from the conversation.
      */
     public function getSessionId(Conversation $conversation): ?string;

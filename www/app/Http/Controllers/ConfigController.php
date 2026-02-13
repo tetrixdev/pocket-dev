@@ -417,12 +417,12 @@ class ConfigController extends Controller
                 'enabled' => 'nullable|boolean',
             ]);
 
-            // Check for duplicate slug
+            // Check for duplicate slug within workspace
             $slug = \Illuminate\Support\Str::slug($validated['name']);
-            if (Agent::where('slug', $slug)->exists()) {
+            if (Agent::where('slug', $slug)->where('workspace_id', $validated['workspace_id'])->exists()) {
                 return redirect()->back()
                     ->withInput()
-                    ->with('error', 'An agent with this name already exists');
+                    ->with('error', 'An agent with this name already exists in this workspace');
             }
 
             // Parse inherit settings
@@ -518,12 +518,12 @@ class ConfigController extends Controller
                 'enabled' => 'nullable|boolean',
             ]);
 
-            // Check for duplicate slug (excluding current agent)
+            // Check for duplicate slug within workspace (excluding current agent)
             $slug = \Illuminate\Support\Str::slug($validated['name']);
-            if (Agent::where('slug', $slug)->where('id', '!=', $agent->id)->exists()) {
+            if (Agent::where('slug', $slug)->where('workspace_id', $agent->workspace_id)->where('id', '!=', $agent->id)->exists()) {
                 return redirect()->back()
                     ->withInput()
-                    ->with('error', 'An agent with this name already exists');
+                    ->with('error', 'An agent with this name already exists in this workspace');
             }
 
             // Parse inherit settings

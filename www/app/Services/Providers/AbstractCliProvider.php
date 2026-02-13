@@ -101,7 +101,31 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
      * Get the user message to send to the CLI.
      * Returns null if no user message is available.
      */
-    abstract protected function getLatestUserMessage(Conversation $conversation): ?string;
+    protected function getLatestUserMessage(Conversation $conversation): ?string
+    {
+        $messages = \App\Models\Message::where('conversation_id', $conversation->id)
+            ->where('role', 'user')
+            ->latest('id')
+            ->first();
+
+        if (!$messages) {
+            return null;
+        }
+
+        $content = $messages->content;
+
+        if (is_array($content)) {
+            $textParts = [];
+            foreach ($content as $block) {
+                if (isset($block['type']) && $block['type'] === 'text' && isset($block['text'])) {
+                    $textParts[] = $block['text'];
+                }
+            }
+            return implode("\n", $textParts);
+        }
+
+        return is_string($content) ? $content : null;
+    }
 
     /**
      * Prepare the process input.
