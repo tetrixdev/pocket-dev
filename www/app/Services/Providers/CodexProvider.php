@@ -187,6 +187,9 @@ class CodexProvider extends AbstractCliProvider
             'inputTokens' => 0,
             'outputTokens' => 0,
             'cachedTokens' => 0,
+            // Track last turn's tokens for context percentage (not cumulative)
+            'lastTurnInputTokens' => 0,
+            'lastTurnOutputTokens' => 0,
         ];
     }
 
@@ -226,10 +229,17 @@ class CodexProvider extends AbstractCliProvider
     protected function emitUsage(array $state): Generator
     {
         if ($state['inputTokens'] > 0 || $state['outputTokens'] > 0) {
+            // Pass cumulative tokens for billing, and last turn tokens for context tracking
+            // The context window size will be added by ProcessConversationStream
             yield StreamEvent::usage(
                 $state['inputTokens'],
                 $state['outputTokens'],
-                $state['cachedTokens'] > 0 ? $state['cachedTokens'] : null
+                $state['cachedTokens'] > 0 ? $state['cachedTokens'] : null,
+                null,  // cacheRead (not tracked separately)
+                null,  // cost (calculated by ProcessConversationStream)
+                null,  // contextWindowSize (added by ProcessConversationStream)
+                $state['lastTurnInputTokens'] > 0 ? $state['lastTurnInputTokens'] : null,
+                $state['lastTurnOutputTokens'] > 0 ? $state['lastTurnOutputTokens'] : null
             );
         }
     }
@@ -361,15 +371,26 @@ class CodexProvider extends AbstractCliProvider
                 break;
 
             case 'turn.completed':
-                // Capture usage information - accumulate across multiple turns
+                // Capture usage information - accumulate across multiple turns for billing
                 $usage = $data['usage'] ?? [];
-                $state['inputTokens'] += $usage['input_tokens'] ?? 0;
-                $state['outputTokens'] += $usage['output_tokens'] ?? 0;
-                $state['cachedTokens'] += $usage['cached_input_tokens'] ?? 0;
+                $turnInputTokens = $usage['input_tokens'] ?? 0;
+                $turnOutputTokens = $usage['output_tokens'] ?? 0;
+                $turnCachedTokens = $usage['cached_input_tokens'] ?? 0;
+
+                $state['inputTokens'] += $turnInputTokens;
+                $state['outputTokens'] += $turnOutputTokens;
+                $state['cachedTokens'] += $turnCachedTokens;
+
+                // Track last turn's tokens for context percentage calculation
+                // The input_tokens from the last turn represents current context usage
+                $state['lastTurnInputTokens'] = $turnInputTokens;
+                $state['lastTurnOutputTokens'] = $turnOutputTokens;
 
                 Log::channel('api')->info('CodexProvider: Turn completed', [
-                    'input_tokens' => $state['inputTokens'],
-                    'output_tokens' => $state['outputTokens'],
+                    'turn_input_tokens' => $turnInputTokens,
+                    'turn_output_tokens' => $turnOutputTokens,
+                    'total_input_tokens' => $state['inputTokens'],
+                    'total_output_tokens' => $state['outputTokens'],
                     'cached_tokens' => $state['cachedTokens'],
                 ]);
                 break;

@@ -73,7 +73,10 @@ return new class extends Migration
         // The new reasoning_config column absorbs it going forward.
 
         // Conversations: session IDs
+        // Scope by provider_type to avoid overwriting wrong provider's session
+        // in case both columns are somehow populated (shouldn't happen, but safe)
         DB::table('conversations')
+            ->where('provider_type', 'claude_code')
             ->whereNotNull('claude_session_id')
             ->eachById(function ($row) {
                 DB::table('conversations')->where('id', $row->id)->update([
@@ -82,6 +85,7 @@ return new class extends Migration
             });
 
         DB::table('conversations')
+            ->where('provider_type', 'codex')
             ->whereNotNull('codex_session_id')
             ->eachById(function ($row) {
                 DB::table('conversations')->where('id', $row->id)->update([

@@ -287,6 +287,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $turnCost = 0.0;
         $stopReason = null;
         $currentToolInput = [];
+        // For CLI providers with multi-turn tool execution, track per-turn tokens for context tracking
+        // (cumulative tokens above are for billing, context tokens below are for context % calculation)
+        $contextInputTokens = null;
+        $contextOutputTokens = null;
 
         // Get the model for cost calculation
         $aiModel = $modelRepository->findByModelId($conversation->model);
@@ -364,7 +368,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                             $cacheCreationTokens,
                             $cacheReadTokens,
                             'aborted',
-                            $turnCost > 0 ? $turnCost : null
+                            $turnCost > 0 ? $turnCost : null,
+                            $contextInputTokens,
+                            $contextOutputTokens
                         );
 
                         // Sync aborted message to provider's native storage (if applicable)
@@ -420,6 +426,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $cacheCreationTokens = $event->metadata['cache_creation_tokens'] ?? $cacheCreationTokens;
                 $cacheReadTokens = $event->metadata['cache_read_tokens'] ?? $cacheReadTokens;
 
+                // Extract context-specific tokens if provided (for CLI providers with multi-turn)
+                // These represent the LAST turn's usage for context percentage calculation
+                $contextInputTokens = $event->metadata['context_input_tokens'] ?? null;
+                $contextOutputTokens = $event->metadata['context_output_tokens'] ?? null;
+
                 // Calculate cost using model pricing
                 $cost = null;
                 if ($aiModel) {
@@ -434,13 +445,16 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 }
 
                 // Emit enriched usage event with cost and context info
+                // Pass context-specific tokens if available for accurate percentage calculation
                 $enrichedEvent = StreamEvent::usage(
                     $inputTokens,
                     $outputTokens,
                     $cacheCreationTokens,
                     $cacheReadTokens,
                     $cost,
-                    $conversation->context_window_size
+                    $conversation->context_window_size,
+                    $contextInputTokens,
+                    $contextOutputTokens
                 );
                 $streamManager->appendEvent($this->conversationUuid, $enrichedEvent);
                 continue;
@@ -637,7 +651,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $cacheCreationTokens,
             $cacheReadTokens,
             $stopReason,
-            $turnCost > 0 ? $turnCost : null
+            $turnCost > 0 ? $turnCost : null,
+            $contextInputTokens,
+            $contextOutputTokens
         );
 
         // Handle tool execution
@@ -730,7 +746,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ?int $cacheCreationTokens,
         ?int $cacheReadTokens,
         ?string $stopReason,
-        ?float $cost = null
+        ?float $cost = null,
+        ?int $contextInputTokens = null,
+        ?int $contextOutputTokens = null
     ): Message {
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -749,11 +767,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $conversation->addTokenUsage($inputTokens, $outputTokens);
 
         // Update context window tracking
-        // Context estimate = input_tokens + output_tokens
-        // This slightly overestimates because thinking tokens (in output) are stripped
-        // from previous turns. But overestimating is safer than underestimating.
-        if ($inputTokens > 0) {
-            $conversation->updateContextUsage($inputTokens, $outputTokens);
+        // Use context-specific tokens if provided (for CLI providers with multi-turn),
+        // otherwise fall back to billing tokens (correct for API providers)
+        $ctxInput = $contextInputTokens ?? $inputTokens;
+        $ctxOutput = $contextOutputTokens ?? $outputTokens;
+        if ($ctxInput > 0) {
+            $conversation->updateContextUsage($ctxInput, $ctxOutput);
 
             // Ensure context_window_size is set (for existing conversations that don't have it)
             if (!$conversation->context_window_size) {

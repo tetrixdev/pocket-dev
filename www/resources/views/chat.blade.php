@@ -1944,6 +1944,7 @@
                     this.currentAgentId = agent.id;
                     this.provider = agent.provider;
                     this.model = agent.model;
+                    this.updateModels();
 
                     // Fetch skills for autocomplete
                     this.fetchSkills();

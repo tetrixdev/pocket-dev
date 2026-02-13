@@ -690,9 +690,12 @@ class ConversationController extends Controller
     }
 
     /**
-     * Switch the agent for a conversation mid-conversation.
+     * Switch the agent for a conversation.
      *
-     * Validates that the new agent uses the same provider as the current conversation.
+     * For conversations with messages: only same-provider switches are allowed.
+     * For empty conversations (no messages): cross-provider switches are allowed,
+     * updating provider_type and force-syncing all agent settings.
+     *
      * Optionally syncs agent settings (model, reasoning config) to the conversation.
      */
     public function switchAgent(Request $request, Conversation $conversation): JsonResponse
@@ -729,13 +732,24 @@ class ConversationController extends Controller
             ], 400);
         }
 
-        // Enforce same provider
-        if ($newAgent->provider !== $conversation->provider_type) {
-            return response()->json([
-                'error' => 'Cannot switch to agent with different provider',
-                'current_provider' => $conversation->provider_type,
-                'agent_provider' => $newAgent->provider,
-            ], 400);
+        // Enforce same provider for conversations that have started (have messages).
+        // Empty conversations (e.g. pre-created via addChatScreen on mobile/desktop tabs)
+        // are allowed to switch providers freely.
+        $changingProvider = $newAgent->provider !== $conversation->provider_type;
+        if ($changingProvider) {
+            if ($conversation->hasMessages()) {
+                return response()->json([
+                    'error' => 'Cannot switch to agent with different provider mid-conversation',
+                    'current_provider' => $conversation->provider_type,
+                    'agent_provider' => $newAgent->provider,
+                ], 400);
+            }
+
+            \Log::info('[switchAgent] Cross-provider switch allowed (no messages)', [
+                'conversation_uuid' => $conversation->uuid,
+                'old_provider' => $conversation->provider_type,
+                'new_provider' => $newAgent->provider,
+            ]);
         }
 
         $oldAgentId = $conversation->agent_id;
@@ -744,14 +758,34 @@ class ConversationController extends Controller
         // Update conversation
         $updates = ['agent_id' => $newAgent->id];
 
-        // Optionally sync settings from new agent
-        if ($request->boolean('sync_settings', false)) {
+        // When switching providers (allowed only for empty conversations),
+        // update provider_type and force-sync all agent settings.
+        if ($changingProvider) {
+            $updates['provider_type'] = $newAgent->provider;
+            $updates['model'] = $newAgent->model;
+            $updates['response_level'] = $newAgent->response_level;
+            $updates['reasoning_config'] = $newAgent->reasoning_config;
+        } elseif ($request->boolean('sync_settings', false)) {
+            // Same-provider switch: optionally sync settings from new agent
             $updates['model'] = $newAgent->model;
             $updates['response_level'] = $newAgent->response_level;
             $updates['reasoning_config'] = $newAgent->reasoning_config;
         }
 
         $conversation->update($updates);
+
+        // Recalculate context window when model or provider changed
+        if (isset($updates['model'])) {
+            try {
+                $provider = $this->providerFactory->make($updates['provider_type'] ?? $conversation->provider_type);
+                $contextWindow = $provider->getContextWindow($updates['model']);
+                $conversation->updateContextWindowSize($contextWindow);
+            } catch (\Exception $e) {
+                \Log::debug('[switchAgent] Failed to update context window', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         \Log::info('[switchAgent] Updated', [
             'conversation_uuid' => $conversation->uuid,
@@ -770,7 +804,8 @@ class ConversationController extends Controller
                 'id' => $newAgent->id,
                 'name' => $newAgent->name,
             ],
-            'settings_synced' => $request->boolean('sync_settings', false),
+            'settings_synced' => $changingProvider || $request->boolean('sync_settings', false),
+            'provider_changed' => $changingProvider,
         ]);
     }
 

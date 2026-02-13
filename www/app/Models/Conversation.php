@@ -76,6 +76,14 @@ class Conversation extends Model
         return $this->hasMany(Message::class)->orderBy('sequence');
     }
 
+    /**
+     * Check if the conversation has any messages (has "started").
+     */
+    public function hasMessages(): bool
+    {
+        return $this->messages()->exists();
+    }
+
     public function turnEmbeddings(): HasMany
     {
         return $this->hasMany(ConversationTurnEmbedding::class);
