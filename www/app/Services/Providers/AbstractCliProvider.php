@@ -9,6 +9,7 @@ use App\Models\Credential;
 use App\Models\Message;
 use App\Services\ConversationStreamLogger;
 use App\Services\ModelRepository;
+use App\Services\RequestFlowLogger;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -273,12 +274,20 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
         Conversation $conversation,
         array $options = []
     ): Generator {
+        $streamStartTime = microtime(true);
+        RequestFlowLogger::log('provider.stream.entry', 'Provider streamMessage() called', [
+            'provider' => $this->getProviderType(),
+            'conversation_id' => $conversation->id,
+        ]);
+
         if (!$this->isAvailable()) {
+            RequestFlowLogger::log('provider.stream.unavailable', 'CLI not available');
             yield StreamEvent::error($this->getProviderType() . ' CLI not available');
             return;
         }
 
         if (!$this->hasAuthCredentials()) {
+            RequestFlowLogger::log('provider.stream.no_auth', 'No auth credentials');
             yield StreamEvent::error($this->getAuthRequiredError());
             return;
         }
@@ -294,7 +303,14 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             $latestMessage = $options['interruption_reminder'] . "\n\n" . $latestMessage;
         }
 
+        RequestFlowLogger::log('provider.stream.building_command', 'Building CLI command');
+        $commandBuildStart = microtime(true);
         $command = $this->buildCliCommand($conversation, $options);
+        $commandBuildTime = (microtime(true) - $commandBuildStart) * 1000;
+        RequestFlowLogger::log('provider.stream.command_built', 'CLI command built', [
+            'duration_ms' => round($commandBuildTime, 2),
+            'command_length' => strlen($command),
+        ]);
 
         Log::channel('api')->info($this->getProviderType() . ': Starting CLI stream', [
             'conversation_id' => $conversation->id,
@@ -304,7 +320,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             'command_preview' => substr($command, 0, 300) . '...',
         ]);
 
-        yield from $this->executeAndStream($command, $latestMessage, $conversation, $options);
+        yield from $this->executeAndStream($command, $latestMessage, $conversation, $options, $streamStartTime);
     }
 
     /**
@@ -315,7 +331,8 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
         string $command,
         string $userMessage,
         Conversation $conversation,
-        array $options
+        array $options,
+        ?float $streamStartTime = null
     ): Generator {
         $processInput = $this->prepareProcessInput($command, $userMessage);
         $fullCommand = $processInput['command'] . ' 2>&1';
@@ -327,15 +344,35 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             2 => ['pipe', 'w'], // stderr
         ];
 
+        RequestFlowLogger::log('provider.stream.building_env', 'Building environment variables');
+        $envBuildStart = microtime(true);
         $env = $this->buildEnvironment($conversation, $options);
+        $envBuildTime = (microtime(true) - $envBuildStart) * 1000;
+        RequestFlowLogger::log('provider.stream.env_built', 'Environment built', [
+            'duration_ms' => round($envBuildTime, 2),
+            'env_var_count' => count($env),
+        ]);
+
         $workingDirectory = $conversation->working_directory ?? base_path();
 
+        RequestFlowLogger::log('provider.stream.proc_open', 'Calling proc_open()', [
+            'working_directory' => $workingDirectory,
+        ]);
+        $procOpenStart = microtime(true);
         $process = proc_open($fullCommand, $descriptors, $pipes, $workingDirectory, $env);
+        $procOpenTime = (microtime(true) - $procOpenStart) * 1000;
 
         if (!is_resource($process)) {
+            RequestFlowLogger::log('provider.stream.proc_open_failed', 'proc_open() failed');
             yield StreamEvent::error('Failed to start ' . $this->getProviderType() . ' CLI process');
             return;
         }
+
+        RequestFlowLogger::log('provider.stream.proc_open_success', 'Process started', [
+            'duration_ms' => round($procOpenTime, 2),
+            'pid' => proc_get_status($process)['pid'] ?? null,
+            'total_startup_ms' => $streamStartTime ? round((microtime(true) - $streamStartTime) * 1000, 2) : null,
+        ]);
 
         $this->activeProcess = $process;
 
@@ -362,6 +399,8 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
 
         $buffer = '';
         $state = $this->initParseState();
+        $firstDataReceived = false;
+        $waitingForDataStart = microtime(true);
 
         try {
             // Phase-aware timeout tracking
@@ -375,6 +414,17 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                 // Read available data
                 $chunk = fread($pipes[1], 8192);
                 if ($chunk !== false && $chunk !== '') {
+                    // Log first data received - this is the critical metric for slow starts
+                    if (!$firstDataReceived) {
+                        $firstDataReceived = true;
+                        $waitTime = (microtime(true) - $waitingForDataStart) * 1000;
+                        $totalTime = $streamStartTime ? (microtime(true) - $streamStartTime) * 1000 : null;
+                        RequestFlowLogger::log('provider.stream.first_data', 'First data received from CLI', [
+                            'wait_for_data_ms' => round($waitTime, 2),
+                            'total_time_ms' => $totalTime ? round($totalTime, 2) : null,
+                            'chunk_size' => strlen($chunk),
+                        ]);
+                    }
                     $buffer .= $chunk;
 
                     // Process complete lines (JSONL format)
@@ -435,6 +485,11 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
 
                 // Check if process has ended
                 if (!$status['running']) {
+                    $totalStreamTime = $streamStartTime ? (microtime(true) - $streamStartTime) * 1000 : null;
+                    RequestFlowLogger::log('provider.stream.process_exited', 'CLI process exited', [
+                        'exit_code' => $status['exitcode'] ?? null,
+                        'total_stream_ms' => $totalStreamTime ? round($totalStreamTime, 2) : null,
+                    ]);
                     break;
                 }
 
@@ -472,6 +527,22 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                 }
 
                 usleep(1000); // 1ms sleep to prevent CPU spinning
+            }
+
+            // Drain any remaining data from the pipe after process exit
+            // This prevents data loss if the process wrote >8KB before exiting
+            if (is_resource($pipes[1])) {
+                stream_set_blocking($pipes[1], false);
+                $drainedBytes = 0;
+                while (($chunk = fread($pipes[1], 8192)) !== false && $chunk !== '') {
+                    $drainedBytes += strlen($chunk);
+                    $buffer .= $chunk;
+                }
+                if ($drainedBytes > 0) {
+                    RequestFlowLogger::log('provider.stream.pipe_drained', 'Drained remaining pipe data', [
+                        'bytes' => $drainedBytes,
+                    ]);
+                }
             }
 
             // Process remaining buffer
@@ -519,6 +590,13 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                 $streamLogger->logComplete($uuid, $this->getCompletionSummary($state, $exitCode));
             }
 
+            $totalTime = $streamStartTime ? (microtime(true) - $streamStartTime) * 1000 : null;
+            RequestFlowLogger::log('provider.stream.complete', 'Provider streaming complete', [
+                'exit_code' => $exitCode,
+                'total_ms' => $totalTime ? round($totalTime, 2) : null,
+                'timed_out' => $timedOut,
+            ]);
+
             yield StreamEvent::done($timedOut ? 'timeout' : 'end_turn');
 
         } catch (\Throwable $e) {
@@ -527,16 +605,27 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            RequestFlowLogger::logError('provider.stream.exception', 'Stream threw exception', $e, [
+                'total_ms' => $streamStartTime ? round((microtime(true) - $streamStartTime) * 1000, 2) : null,
+            ]);
+
             if ($streamLogger) {
                 $streamLogger->logError($uuid, $e->getMessage());
             }
 
             yield StreamEvent::error($e->getMessage());
 
-            // Clean up safely
+            // Clean up safely - use consistent SIGINT→SIGKILL sequence
             if (is_resource($pipes[1])) fclose($pipes[1]);
             if (is_resource($pipes[2])) fclose($pipes[2]);
-            if (is_resource($process)) proc_terminate($process);
+            if (is_resource($process)) {
+                proc_terminate($process, 2); // SIGINT first
+                usleep(200000);
+                $procStatus = proc_get_status($process);
+                if ($procStatus['running']) {
+                    proc_terminate($process, 9); // SIGKILL if still running
+                }
+            }
             $this->activeProcess = null;
         }
     }

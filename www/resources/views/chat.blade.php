@@ -1953,6 +1953,7 @@
                     const rc = agent.reasoning_config || {};
                     this.anthropicThinkingBudget = rc.budget_tokens || 0;
                     this.openaiReasoningEffort = rc.effort || 'none';
+                    this.openaiCompatibleReasoningEffort = rc.effort || 'none';
                     this.claudeCodeThinkingTokens = rc.thinking_tokens || 0;
                     this.responseLevel = agent.response_level || 1;
 

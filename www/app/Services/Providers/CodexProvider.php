@@ -4,7 +4,6 @@ namespace App\Services\Providers;
 
 use App\Models\Conversation;
 use App\Models\Message;
-use App\Services\AppSettingsService;
 use App\Services\ModelRepository;
 use App\Streaming\StreamEvent;
 use Generator;
@@ -18,12 +17,9 @@ use Illuminate\Support\Facades\Log;
  */
 class CodexProvider extends AbstractCliProvider
 {
-    private AppSettingsService $appSettings;
-
-    public function __construct(ModelRepository $models, AppSettingsService $appSettings)
+    public function __construct(ModelRepository $models)
     {
         parent::__construct($models);
-        $this->appSettings = $appSettings;
     }
 
     // ========================================================================

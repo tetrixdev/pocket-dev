@@ -764,12 +764,15 @@ class ClaudeCodeProvider extends AbstractCliProvider
 
         $dir = dirname($sessionFile);
         if (!is_dir($dir)) {
-            if (!mkdir($dir, 0755, true)) {
+            if (!mkdir($dir, 0775, true)) {
                 Log::warning('ClaudeCodeProvider: Failed to create session directory', [
                     'dir' => $dir,
                 ]);
                 return null;
             }
+            // Set group ownership for cross-process access
+            @chmod($dir, 0775);
+            @chgrp($dir, 'appgroup');
             Log::info('ClaudeCodeProvider: Created session directory', [
                 'dir' => $dir,
             ]);
