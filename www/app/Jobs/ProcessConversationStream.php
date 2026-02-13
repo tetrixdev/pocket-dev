@@ -465,8 +465,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
                 // Extract context-specific tokens if provided (for CLI providers with multi-turn)
                 // These represent the LAST turn's usage for context percentage calculation
-                $contextInputTokens = $event->metadata['context_input_tokens'] ?? null;
-                $contextOutputTokens = $event->metadata['context_output_tokens'] ?? null;
+                // Use same preserve-previous pattern as billing tokens for consistency
+                $contextInputTokens = $event->metadata['context_input_tokens'] ?? $contextInputTokens;
+                $contextOutputTokens = $event->metadata['context_output_tokens'] ?? $contextOutputTokens;
 
                 // Calculate cost using model pricing
                 $cost = null;
