@@ -53,8 +53,26 @@ class StreamManager
      */
     public function appendEvent(string $conversationUuid, StreamEvent $event): void
     {
+        static $firstEventTime = null;
+        static $eventCount = 0;
+
         $key = $this->key($conversationUuid);
         $json = $event->toJson();
+        $eventCount++;
+
+        // Log first event and periodically after that
+        if ($firstEventTime === null) {
+            $firstEventTime = microtime(true);
+            RequestFlowLogger::log('stream.first_event_append', 'First event pushed to Redis', [
+                'event_type' => $event->type,
+            ]);
+        } elseif ($event->type === 'text_delta' && $eventCount <= 5) {
+            // Log first few text deltas to track when actual content arrives
+            RequestFlowLogger::log('stream.text_delta_append', 'Text delta pushed to Redis', [
+                'event_number' => $eventCount,
+                'ms_since_first' => round((microtime(true) - $firstEventTime) * 1000, 2),
+            ]);
+        }
 
         // Use transaction for list operations to ensure atomicity
         Redis::multi();

@@ -244,7 +244,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             throw new \RuntimeException('Maximum tool execution iterations reached (safety limit)');
         }
         // Reload messages
+        $loadMessagesStart = microtime(true);
         $conversation->load('messages');
+        $loadMessagesTime = (microtime(true) - $loadMessagesStart) * 1000;
+        RequestFlowLogger::log('job.loop.messages_loaded', 'Messages loaded from DB', [
+            'duration_ms' => round($loadMessagesTime, 2),
+            'message_count' => $conversation->messages->count(),
+        ]);
 
         // Check for context reminders (interruption, agent change) on first iteration only
         $contextReminders = [];
@@ -261,17 +267,31 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
         // Build system prompt with tool instructions
         // Uses provider->getSystemPromptType() to determine tool injection strategy
+        $buildPromptStart = microtime(true);
         $systemPrompt = $systemPromptBuilder->build(
             $conversation,
             $toolRegistry,
             $provider->getSystemPromptType(),
             $provider->getProviderType()
         );
+        $buildPromptTime = (microtime(true) - $buildPromptStart) * 1000;
+        RequestFlowLogger::log('job.loop.system_prompt_built', 'System prompt built', [
+            'duration_ms' => round($buildPromptTime, 2),
+            'prompt_length' => strlen($systemPrompt),
+        ]);
 
         // Prepare provider options
+        $getToolDefsStart = microtime(true);
+        $toolDefinitions = $toolRegistry->getDefinitions();
+        $getToolDefsTime = (microtime(true) - $getToolDefsStart) * 1000;
+        RequestFlowLogger::log('job.loop.tool_definitions', 'Tool definitions retrieved', [
+            'duration_ms' => round($getToolDefsTime, 2),
+            'tool_count' => count($toolDefinitions),
+        ]);
+
         $providerOptions = array_merge($options, [
             'system' => $systemPrompt,
-            'tools' => $toolRegistry->getDefinitions(),
+            'tools' => $toolDefinitions,
             'interruption_reminder' => $combinedReminder,
         ]);
 
@@ -304,8 +324,25 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Stream from provider
         RequestFlowLogger::log('job.loop.streaming_start', 'Starting provider stream');
         $eventCount = 0;
+        $firstEventTime = null;
+        $firstTextTime = null;
         foreach ($provider->streamMessage($conversation, $providerOptions) as $event) {
             $eventCount++;
+
+            // Log timing for first event and first text content
+            if ($firstEventTime === null) {
+                $firstEventTime = microtime(true);
+                RequestFlowLogger::log('job.loop.first_event', 'First event received from provider', [
+                    'event_type' => $event->type,
+                ]);
+            }
+            if ($firstTextTime === null && ($event->type === StreamEvent::TEXT_START || $event->type === StreamEvent::TEXT_DELTA)) {
+                $firstTextTime = microtime(true);
+                RequestFlowLogger::log('job.loop.first_text', 'First text content received', [
+                    'event_type' => $event->type,
+                    'ms_since_first_event' => round(($firstTextTime - $firstEventTime) * 1000, 2),
+                ]);
+            }
 
             // Check abort flag BEFORE processing each event
             $isAborted = $streamManager->checkAbortFlag($this->conversationUuid);
