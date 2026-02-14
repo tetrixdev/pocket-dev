@@ -2460,14 +2460,16 @@
                         }
 
                         // Find adjacent screen BEFORE updating status (visibleScreenOrder filters archived)
-                        const adjacentScreen = !isArchived ? this.findAdjacentScreenId(targetScreenId) : null;
+                        // Only switch screens when archiving the ACTIVE screen
+                        const isArchivingActiveScreen = !isArchived && targetScreenId === this.activeScreenId;
+                        const adjacentScreen = isArchivingActiveScreen ? this.findAdjacentScreenId(targetScreenId) : null;
 
                         // Also update the screen's conversation status in local data
                         if (screen?.conversation) {
                             screen.conversation.status = newStatus;
                         }
 
-                        // If archiving, switch to adjacent visible screen (prefer left)
+                        // If archiving the active screen, switch to adjacent visible screen (prefer left)
                         if (!isArchived) {
                             if (adjacentScreen) {
                                 this.activateScreen(adjacentScreen);

@@ -49,32 +49,30 @@ class CleanupStaleConversations extends Command
                 $redisStatus = $streamManager->getStatus($conversation->uuid);
                 $hasAbortFlag = $streamManager->checkAbortFlag($conversation->uuid);
                 $lastActivity = $conversation->last_activity_at;
-                $isOrphaned = false;
                 $reason = null;
 
                 // Case 1: Redis says "streaming" but no activity for too long = orphaned
                 if ($redisStatus === 'streaming') {
-                    if ($lastActivity && $lastActivity < $orphanThreshold) {
-                        $isOrphaned = true;
-                        $reason = 'orphaned_stream';
-                        $this->warn("Detected orphaned stream: {$conversation->uuid} (last activity: {$lastActivity})");
-                    } elseif ($hasAbortFlag && $lastActivity && $lastActivity < $orphanThreshold) {
-                        // Abort flag set but no job responding = orphaned abort
-                        $isOrphaned = true;
-                        $reason = 'orphaned_abort';
-                        $this->warn("Detected orphaned abort: {$conversation->uuid} (abort flag set, no activity)");
-                    } else {
+                    // Check if activity is stale (required for both orphan types)
+                    if (!$lastActivity || $lastActivity >= $orphanThreshold) {
                         // Stream appears active, skip
                         $this->line("Skipping {$conversation->uuid}: stream appears active in Redis");
                         continue;
                     }
+
+                    // Activity is stale - check abort flag first (more specific case)
+                    if ($hasAbortFlag) {
+                        $reason = 'orphaned_abort';
+                        $this->warn("Detected orphaned abort: {$conversation->uuid} (abort flag set, no activity)");
+                    } else {
+                        $reason = 'orphaned_stream';
+                        $this->warn("Detected orphaned stream: {$conversation->uuid} (last activity: {$lastActivity})");
+                    }
                 } elseif ($redisStatus === null) {
                     // Redis keys expired but DB still says processing = orphaned
-                    $isOrphaned = true;
                     $reason = 'redis_expired';
                 } else {
                     // Redis status is 'completed' or 'failed' but DB not updated = finalization failed
-                    $isOrphaned = true;
                     $reason = 'finalization_failed';
                 }
 
@@ -116,8 +114,8 @@ class CleanupStaleConversations extends Command
                 });
 
                 // Redis cleanup (outside transaction - not critical if these fail)
+                // Note: cleanup() already clears abort flags, so no need for separate clearAbortFlag()
                 $streamManager->failStream($conversation->uuid, 'Stream interrupted unexpectedly');
-                $streamManager->clearAbortFlag($conversation->uuid);
                 $streamManager->cleanup($conversation->uuid);
 
                 $this->info("Cleaned up: {$conversation->uuid}");

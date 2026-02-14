@@ -265,6 +265,9 @@ class ClaudeCodeProvider extends AbstractCliProvider
         if ($state['thinkingStarted']) {
             yield StreamEvent::thinkingStop($state['blockIndex']);
         }
+        if ($state['currentToolUse'] !== null) {
+            yield StreamEvent::toolUseStop($state['blockIndex']);
+        }
     }
 
     protected function emitUsage(array $state): Generator

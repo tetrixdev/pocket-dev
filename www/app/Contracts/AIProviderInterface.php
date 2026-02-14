@@ -48,8 +48,8 @@ interface AIProviderInterface
     /**
      * Get the system prompt building strategy for this provider.
      *
-     * Returns 'cli' for CLI providers (uses buildForCliProvider path)
-     * or 'api' for API providers (uses build() path with tool registry).
+     * Returns 'cli' for CLI providers (uses build() with promptType='cli')
+     * or 'api' for API providers (uses build() with promptType='api').
      *
      * This replaces the isCliProvider() check in ProcessConversationStream.
      */

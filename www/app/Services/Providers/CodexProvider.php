@@ -207,10 +207,12 @@ class CodexProvider extends AbstractCliProvider
         if ($state['inputTokens'] > 0 || $state['outputTokens'] > 0) {
             // Codex reports cumulative tokens which represent current context usage
             // (same approach as ClaudeCodeProvider)
+            // Note: cached_input_tokens represents cache READS (hits), not creation
             yield StreamEvent::usage(
                 $state['inputTokens'],
                 $state['outputTokens'],
-                $state['cachedTokens'] > 0 ? $state['cachedTokens'] : null
+                null,  // cacheCreation - Codex doesn't report this separately
+                $state['cachedTokens'] > 0 ? $state['cachedTokens'] : null  // cacheRead
             );
         }
     }

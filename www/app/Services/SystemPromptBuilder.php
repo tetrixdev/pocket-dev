@@ -75,7 +75,10 @@ class SystemPromptBuilder
 
         // === MIDDLE ZONE (reference material) ===
         // 2. Tool instructions (differs by prompt type)
-        if ($promptType === 'cli' && $providerType) {
+        if ($promptType === 'cli') {
+            if (!$providerType) {
+                throw new \InvalidArgumentException('providerType is required when promptType is "cli"');
+            }
             $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($providerType, $allowedTools, $workspace);
             if (!empty($pocketDevToolPrompt)) {
                 $sections[] = $pocketDevToolPrompt;
