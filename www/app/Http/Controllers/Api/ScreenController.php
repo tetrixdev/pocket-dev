@@ -183,11 +183,7 @@ class ScreenController extends Controller
                     $nextScreen->activate();
                 } else {
                     // Session timestamp: preserve (navigation only)
-                    // Note: updateQuietly() only skips events, NOT timestamps
-                    \DB::table('pocketdev_sessions')
-                        ->where('id', $session->id)
-                        ->update(['last_active_screen_id' => null]);
-                    $session->last_active_screen_id = null;
+                    $session->updatePreservingTimestamp(['last_active_screen_id' => null]);
                 }
             }
 
