@@ -7,7 +7,6 @@ use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ModelRepository;
 use App\Services\Providers\Traits\InjectsInterruptionReminder;
-use Illuminate\Support\Facades\Log;
 
 /**
  * Abstract base class for API-based providers (Anthropic, OpenAI, OpenAI Compatible).

@@ -625,6 +625,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                 if ($procStatus['running']) {
                     proc_terminate($process, 9); // SIGKILL if still running
                 }
+                proc_close($process); // Release process resource (prevents zombie)
             }
             $this->activeProcess = null;
         }

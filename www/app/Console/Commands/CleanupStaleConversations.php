@@ -12,20 +12,25 @@ use Illuminate\Support\Facades\Log;
 /**
  * Cleanup stale conversations that got stuck in "processing" state.
  *
- * This handles cases where the queue worker dies mid-job and the
- * failed() method never gets called (e.g., container restart).
+ * This handles cases where:
+ * 1. Queue worker dies mid-job and failed() never gets called
+ * 2. Orphaned streams: Redis shows "streaming" but job crashed/died
+ * 3. Abort flag set but no job running to process it
  */
 class CleanupStaleConversations extends Command
 {
     protected $signature = 'conversations:cleanup-stale
-                            {--threshold=5 : Minutes a conversation can be processing before considered stale}';
+                            {--threshold=5 : Minutes a conversation can be processing before considered stale}
+                            {--orphan-threshold=3 : Minutes to consider a "streaming" Redis status as orphaned}';
 
-    protected $description = 'Cleanup conversations stuck in processing state';
+    protected $description = 'Cleanup conversations stuck in processing state (including orphaned streams)';
 
     public function handle(StreamManager $streamManager): int
     {
         $thresholdMinutes = (int) $this->option('threshold');
+        $orphanThresholdMinutes = (int) $this->option('orphan-threshold');
         $threshold = now()->subMinutes($thresholdMinutes);
+        $orphanThreshold = now()->subMinutes($orphanThresholdMinutes);
 
         // Find conversations that have been "processing" for too long
         $staleConversations = Conversation::where('status', Conversation::STATUS_PROCESSING)
@@ -41,28 +46,67 @@ class CleanupStaleConversations extends Command
 
         foreach ($staleConversations as $conversation) {
             try {
-                // Double-check: is the stream actually still active in Redis?
-                if ($streamManager->isStreaming($conversation->uuid)) {
-                    $this->warn("Skipping {$conversation->uuid}: stream still active in Redis");
-                    continue;
+                $redisStatus = $streamManager->getStatus($conversation->uuid);
+                $hasAbortFlag = $streamManager->checkAbortFlag($conversation->uuid);
+                $lastActivity = $conversation->last_activity_at;
+                $isOrphaned = false;
+                $reason = null;
+
+                // Case 1: Redis says "streaming" but no activity for too long = orphaned
+                if ($redisStatus === 'streaming') {
+                    if ($lastActivity && $lastActivity < $orphanThreshold) {
+                        $isOrphaned = true;
+                        $reason = 'orphaned_stream';
+                        $this->warn("Detected orphaned stream: {$conversation->uuid} (last activity: {$lastActivity})");
+                    } elseif ($hasAbortFlag && $lastActivity && $lastActivity < $orphanThreshold) {
+                        // Abort flag set but no job responding = orphaned abort
+                        $isOrphaned = true;
+                        $reason = 'orphaned_abort';
+                        $this->warn("Detected orphaned abort: {$conversation->uuid} (abort flag set, no activity)");
+                    } else {
+                        // Stream appears active, skip
+                        $this->line("Skipping {$conversation->uuid}: stream appears active in Redis");
+                        continue;
+                    }
+                } elseif ($redisStatus === null) {
+                    // Redis keys expired but DB still says processing = orphaned
+                    $isOrphaned = true;
+                    $reason = 'redis_expired';
+                } else {
+                    // Redis status is 'completed' or 'failed' but DB not updated = finalization failed
+                    $isOrphaned = true;
+                    $reason = 'finalization_failed';
                 }
 
-                $this->info("Cleaning up stale conversation: {$conversation->uuid}");
+                $this->info("Cleaning up stale conversation: {$conversation->uuid} (reason: {$reason})");
 
                 Log::warning('CleanupStaleConversations: Marking conversation as failed', [
                     'conversation' => $conversation->uuid,
                     'stuck_since' => $conversation->updated_at,
+                    'last_activity' => $lastActivity,
+                    'redis_status' => $redisStatus,
+                    'has_abort_flag' => $hasAbortFlag,
+                    'reason' => $reason,
+                    'provider' => $conversation->provider_type,
                 ]);
 
                 // Wrap DB operations in transaction for consistency
-                DB::transaction(function () use ($conversation) {
+                DB::transaction(function () use ($conversation, $reason) {
                     // Add an error block - use ROLE_ERROR so it renders as expandable error block
+                    $errorMessage = match ($reason) {
+                        'orphaned_stream' => 'Stream interrupted unexpectedly. The AI worker may have crashed while processing.',
+                        'orphaned_abort' => 'Abort was requested but the stream was already interrupted. Recovery complete.',
+                        'redis_expired' => 'Stream interrupted unexpectedly. The AI worker may have restarted.',
+                        'finalization_failed' => 'Stream completed but cleanup was interrupted. Recovery complete.',
+                        default => 'Stream interrupted unexpectedly.',
+                    };
+
                     Message::create([
                         'conversation_id' => $conversation->id,
                         'role' => Message::ROLE_ERROR,
                         'content' => [[
                             'type' => 'error',
-                            'message' => 'Stream interrupted unexpectedly. The AI worker may have restarted.',
+                            'message' => $errorMessage,
                         ]],
                         'stop_reason' => 'error',
                     ]);
@@ -73,7 +117,10 @@ class CleanupStaleConversations extends Command
 
                 // Redis cleanup (outside transaction - not critical if these fail)
                 $streamManager->failStream($conversation->uuid, 'Stream interrupted unexpectedly');
+                $streamManager->clearAbortFlag($conversation->uuid);
                 $streamManager->cleanup($conversation->uuid);
+
+                $this->info("Cleaned up: {$conversation->uuid}");
             } catch (\Exception $e) {
                 Log::error('CleanupStaleConversations: Failed to cleanup conversation', [
                     'conversation' => $conversation->uuid,

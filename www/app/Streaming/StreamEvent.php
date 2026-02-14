@@ -146,7 +146,7 @@ class StreamEvent
         if ($contextWindowSize > 0) {
             $contextInput = $contextInputTokens ?? $inputTokens;
             $contextOutput = $contextOutputTokens ?? $outputTokens;
-            if ($contextInput > 0) {
+            if ($contextInput > 0 || $contextOutput > 0) {
                 $totalContext = $contextInput + $contextOutput;
                 $metadata['context_percentage'] = min(100, round(($totalContext / $contextWindowSize) * 100, 1));
             }

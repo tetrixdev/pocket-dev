@@ -17,6 +17,12 @@ use Illuminate\Support\Facades\Log;
  */
 class CodexProvider extends AbstractCliProvider
 {
+    /**
+     * Maximum bytes for system prompt file (Codex default is 32KB).
+     * Set high to accommodate PocketDev's large system prompt (~108KB currently).
+     */
+    private const PROJECT_DOC_MAX_BYTES = 500000; // ~488KB
+
     public function __construct(ModelRepository $models)
     {
         parent::__construct($models);
@@ -118,6 +124,9 @@ class CodexProvider extends AbstractCliProvider
             $this->writePocketDevInstructionsFile($workingDir, $options['system']);
             $parts[] = '-c';
             $parts[] = escapeshellarg('project_doc_fallback_filenames=["POCKETDEV-SYSTEM.md"]');
+            // Increase max bytes for system prompt (default is 32KB, PocketDev prompt is ~108KB)
+            $parts[] = '-c';
+            $parts[] = escapeshellarg('project_doc_max_bytes=' . self::PROJECT_DOC_MAX_BYTES);
         }
 
         // Resume existing session (must come AFTER options, BEFORE prompt)
@@ -148,13 +157,12 @@ class CodexProvider extends AbstractCliProvider
             'blockIndex' => 0,
             'textStarted' => false,
             'thinkingStarted' => false,
+            'toolUseStarted' => false,
             'threadId' => null,
+            // Codex reports cumulative tokens - these represent current context usage
             'inputTokens' => 0,
             'outputTokens' => 0,
             'cachedTokens' => 0,
-            // Track last turn's tokens for context percentage (not cumulative)
-            'lastTurnInputTokens' => 0,
-            'lastTurnOutputTokens' => 0,
         ];
     }
 
@@ -189,22 +197,20 @@ class CodexProvider extends AbstractCliProvider
         if ($state['thinkingStarted']) {
             yield StreamEvent::thinkingStop($state['blockIndex']);
         }
+        if ($state['toolUseStarted']) {
+            yield StreamEvent::toolUseStop($state['blockIndex']);
+        }
     }
 
     protected function emitUsage(array $state): Generator
     {
         if ($state['inputTokens'] > 0 || $state['outputTokens'] > 0) {
-            // Pass cumulative tokens for billing, and last turn tokens for context tracking
-            // The context window size will be added by ProcessConversationStream
+            // Codex reports cumulative tokens which represent current context usage
+            // (same approach as ClaudeCodeProvider)
             yield StreamEvent::usage(
                 $state['inputTokens'],
                 $state['outputTokens'],
-                $state['cachedTokens'] > 0 ? $state['cachedTokens'] : null,
-                null,  // cacheRead (not tracked separately)
-                null,  // cost (calculated by ProcessConversationStream)
-                null,  // contextWindowSize (added by ProcessConversationStream)
-                $state['lastTurnInputTokens'] > 0 ? $state['lastTurnInputTokens'] : null,
-                $state['lastTurnOutputTokens'] > 0 ? $state['lastTurnOutputTokens'] : null
+                $state['cachedTokens'] > 0 ? $state['cachedTokens'] : null
             );
         }
     }
@@ -278,6 +284,7 @@ class CodexProvider extends AbstractCliProvider
 
                     yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, 'Bash');
                     yield StreamEvent::toolUseDelta($state['blockIndex'], json_encode(['command' => $command]));
+                    $state['toolUseStarted'] = true;
                 }
                 break;
 
@@ -330,32 +337,23 @@ class CodexProvider extends AbstractCliProvider
                     $exitCode = $item['exit_code'] ?? 0;
 
                     yield StreamEvent::toolUseStop($state['blockIndex']);
+                    $state['toolUseStarted'] = false;
                     yield StreamEvent::toolResult($toolId, $output, $exitCode !== 0);
                     $state['blockIndex']++;
                 }
                 break;
 
             case 'turn.completed':
-                // Capture usage information - accumulate across multiple turns for billing
+                // Codex CLI reports token usage - just use values directly like ClaudeCodeProvider
+                // The input_tokens represents current context usage (what's in the context window)
                 $usage = $data['usage'] ?? [];
-                $turnInputTokens = $usage['input_tokens'] ?? 0;
-                $turnOutputTokens = $usage['output_tokens'] ?? 0;
-                $turnCachedTokens = $usage['cached_input_tokens'] ?? 0;
-
-                $state['inputTokens'] += $turnInputTokens;
-                $state['outputTokens'] += $turnOutputTokens;
-                $state['cachedTokens'] += $turnCachedTokens;
-
-                // Track last turn's tokens for context percentage calculation
-                // The input_tokens from the last turn represents current context usage
-                $state['lastTurnInputTokens'] = $turnInputTokens;
-                $state['lastTurnOutputTokens'] = $turnOutputTokens;
+                $state['inputTokens'] = $usage['input_tokens'] ?? 0;
+                $state['outputTokens'] = $usage['output_tokens'] ?? 0;
+                $state['cachedTokens'] = $usage['cached_input_tokens'] ?? 0;
 
                 Log::channel('api')->info('CodexProvider: Turn completed', [
-                    'turn_input_tokens' => $turnInputTokens,
-                    'turn_output_tokens' => $turnOutputTokens,
-                    'total_input_tokens' => $state['inputTokens'],
-                    'total_output_tokens' => $state['outputTokens'],
+                    'input_tokens' => $state['inputTokens'],
+                    'output_tokens' => $state['outputTokens'],
                     'cached_tokens' => $state['cachedTokens'],
                 ]);
                 break;
@@ -386,10 +384,40 @@ class CodexProvider extends AbstractCliProvider
      * Write system prompt to POCKETDEV-SYSTEM.md in the working directory.
      * Codex reads this via project_doc_fallback_filenames config.
      * Using a unique filename avoids overwriting user's AGENTS.md.
+     *
+     * @throws \RuntimeException if content exceeds PROJECT_DOC_MAX_BYTES
      */
     private function writePocketDevInstructionsFile(string $workingDir, string $content): void
     {
         $file = rtrim($workingDir, '/') . '/POCKETDEV-SYSTEM.md';
+        $contentBytes = strlen($content);
+
+        // Check if system prompt exceeds the configured limit
+        if ($contentBytes > self::PROJECT_DOC_MAX_BYTES) {
+            $contentKb = round($contentBytes / 1024, 1);
+            $limitKb = round(self::PROJECT_DOC_MAX_BYTES / 1024, 1);
+
+            Log::channel('api')->error('CodexProvider: System prompt exceeds size limit', [
+                'content_bytes' => $contentBytes,
+                'limit_bytes' => self::PROJECT_DOC_MAX_BYTES,
+                'file' => $file,
+            ]);
+
+            throw new \RuntimeException(
+                "System prompt too large for Codex ({$contentKb}KB exceeds {$limitKb}KB limit). " .
+                "Try reducing enabled tools, memory tables, or skills in PocketDev settings."
+            );
+        }
+
+        // Log size for monitoring (helps catch approaching limits)
+        if ($contentBytes > self::PROJECT_DOC_MAX_BYTES * 0.8) {
+            $usagePercent = round(($contentBytes / self::PROJECT_DOC_MAX_BYTES) * 100);
+            Log::channel('api')->warning('CodexProvider: System prompt approaching size limit', [
+                'content_bytes' => $contentBytes,
+                'limit_bytes' => self::PROJECT_DOC_MAX_BYTES,
+                'usage_percent' => $usagePercent,
+            ]);
+        }
 
         if (file_put_contents($file, $content) === false) {
             Log::channel('api')->warning('CodexProvider: Failed to write POCKETDEV-SYSTEM.md', [
