@@ -22,11 +22,13 @@ class Session extends Model
         'is_archived',
         'last_active_screen_id',
         'screen_order',
+        'next_chat_number',
     ];
 
     protected $casts = [
         'is_archived' => 'boolean',
         'screen_order' => 'array',
+        'next_chat_number' => 'integer',
     ];
 
     /**
@@ -152,6 +154,32 @@ class Session extends Model
     {
         // Session timestamp: preserve (navigation only)
         $this->updateQuietly(['screen_order' => $screenIds]);
+    }
+
+    /**
+     * Get the next chat number and increment the counter atomically.
+     *
+     * Uses a database transaction with row locking to prevent race conditions
+     * when multiple chats are created concurrently for the same session.
+     */
+    public function getNextChatNumber(): int
+    {
+        return \Illuminate\Support\Facades\DB::transaction(function () {
+            // Lock the session row to prevent concurrent assignment
+            $session = \Illuminate\Support\Facades\DB::table('pocketdev_sessions')
+                ->where('id', $this->id)
+                ->lockForUpdate()
+                ->first();
+
+            $chatNumber = $session->next_chat_number ?? 1;
+
+            // Increment the counter
+            \Illuminate\Support\Facades\DB::table('pocketdev_sessions')
+                ->where('id', $this->id)
+                ->update(['next_chat_number' => $chatNumber + 1]);
+
+            return $chatNumber;
+        });
     }
 
     /**

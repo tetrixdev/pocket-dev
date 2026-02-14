@@ -13,6 +13,7 @@
 @include('partials.chat.modals.conversation-search')
 @include('partials.chat.modals.rename-conversation')
 @include('partials.chat.modals.rename-session')
+@include('partials.chat.modals.session-edit')
 @include('partials.chat.modals.restore-chat')
 
 {{-- File Preview Modal --}}

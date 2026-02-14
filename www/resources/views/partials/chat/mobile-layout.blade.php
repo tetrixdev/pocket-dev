@@ -6,12 +6,13 @@
         </svg>
     </button>
     <div class="flex flex-col items-center">
-        <button @click="openRenameModal()"
-                :disabled="!currentConversationUuid"
-                class="text-base font-semibold leading-tight hover:text-blue-400 transition-colors max-w-[25ch] truncate disabled:cursor-default disabled:hover:text-white"
-                :class="{ 'cursor-pointer': currentConversationUuid }"
-                :title="currentConversationUuid ? 'Click to rename' : ''"
-                x-text="currentConversationTitle || 'New Conversation'">
+        <button @click="openSessionEditModal()"
+                :disabled="!currentSession"
+                class="flex items-center gap-1 text-base font-semibold leading-tight hover:text-blue-400 transition-colors max-w-[25ch] truncate disabled:cursor-default disabled:hover:text-white"
+                :class="{ 'cursor-pointer': currentSession }"
+                :title="currentSession ? 'Click to edit session' : ''">
+            <span x-text="currentSession?.name || 'New Session'"></span>
+            <i x-show="currentSession" class="fa-solid fa-pencil text-[10px] text-gray-400"></i>
         </button>
         <div class="flex items-center gap-2">
             <button @click="showAgentSelector = true"
@@ -84,15 +85,6 @@
             </a>
             {{-- Session Section Header --}}
             <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
-            {{-- Rename Session --}}
-            <button @click="openRenameSessionModal(); showConversationMenu = false"
-                    role="menuitem"
-                    :disabled="!currentSession"
-                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
-                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
-                <i class="fa-solid fa-pen w-4 text-center"></i>
-                Rename session
-            </button>
             {{-- Archive/Restore Session --}}
             <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
                     role="menuitem"
