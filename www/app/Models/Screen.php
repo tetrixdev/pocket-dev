@@ -100,12 +100,14 @@ class Screen extends Model
     public function activate(): void
     {
         // Deactivate all other screens in the session
+        // Use direct query to avoid triggering timestamps
         self::where('session_id', $this->session_id)
             ->where('id', '!=', $this->id)
             ->update(['is_active' => false]);
 
         // Activate this screen
-        $this->update(['is_active' => true]);
+        // Screen timestamp: preserve (navigation only)
+        $this->updateQuietly(['is_active' => true]);
 
         // Update session's last active screen
         $this->session->setActiveScreen($this);

@@ -41,7 +41,7 @@
 
                 <div class="space-y-2 max-h-48 overflow-y-auto">
                     <template x-for="chat in sessionEditChats" :key="chat.screenId">
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-3 w-full">
                             {{-- Chat number badge --}}
                             <span class="inline-flex items-center justify-center w-8 h-8 rounded bg-gray-700 text-sm font-medium text-gray-300 shrink-0"
                                   x-text="chat.chatNumber + '.'"></span>
@@ -52,10 +52,13 @@
                                    maxlength="6"
                                    placeholder="Label..."
                                    @keydown.enter.prevent="saveSessionEdit()"
-                                   class="w-20 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500">
+                                   class="w-20 h-8 px-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500">
+
+                            {{-- Spacer to push preview to the right --}}
+                            <span class="flex-1"></span>
 
                             {{-- Tab preview --}}
-                            <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-700 rounded text-xs font-medium text-gray-300 shrink-0">
+                            <span class="inline-flex items-center gap-1.5 h-8 px-2 bg-gray-700 rounded text-xs font-medium text-gray-300 shrink-0">
                                 <i class="fa-solid fa-comment text-[10px] text-gray-400"></i>
                                 <span x-text="chat.label.trim() || (chat.chatNumber + '.')"></span>
                             </span>
