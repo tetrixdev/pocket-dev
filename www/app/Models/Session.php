@@ -98,7 +98,8 @@ class Session extends Model
      */
     public function archive(): void
     {
-        $this->update(['is_archived' => true]);
+        // Session timestamp: preserve (metadata change)
+        $this->updateQuietly(['is_archived' => true]);
     }
 
     /**
@@ -107,7 +108,8 @@ class Session extends Model
     // TODO: Rename to unarchive() to avoid conflict with SoftDeletes::restore()
     public function restore(): void
     {
-        $this->update(['is_archived' => false]);
+        // Session timestamp: preserve (metadata change)
+        $this->updateQuietly(['is_archived' => false]);
     }
 
     /**
@@ -115,7 +117,8 @@ class Session extends Model
      */
     public function setActiveScreen(Screen $screen): void
     {
-        $this->update(['last_active_screen_id' => $screen->id]);
+        // Session timestamp: preserve (navigation only)
+        $this->updateQuietly(['last_active_screen_id' => $screen->id]);
     }
 
     /**
@@ -126,7 +129,8 @@ class Session extends Model
         $order = $this->screen_order ?? [];
         if (!in_array($screenId, $order)) {
             $order[] = $screenId;
-            $this->update(['screen_order' => $order]);
+            // Session timestamp: preserve (structural change)
+            $this->updateQuietly(['screen_order' => $order]);
         }
     }
 
@@ -137,7 +141,8 @@ class Session extends Model
     {
         $order = $this->screen_order ?? [];
         $order = array_values(array_filter($order, fn($id) => $id !== $screenId));
-        $this->update(['screen_order' => $order]);
+        // Session timestamp: preserve (structural change)
+        $this->updateQuietly(['screen_order' => $order]);
     }
 
     /**
@@ -145,7 +150,8 @@ class Session extends Model
      */
     public function reorderScreens(array $screenIds): void
     {
-        $this->update(['screen_order' => $screenIds]);
+        // Session timestamp: preserve (navigation only)
+        $this->updateQuietly(['screen_order' => $screenIds]);
     }
 
     /**

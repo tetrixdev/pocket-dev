@@ -180,7 +180,8 @@ class SessionController extends Controller
         }
 
         if (!empty($updates)) {
-            $session->update($updates);
+            // Session timestamp: preserve (metadata/navigation changes)
+            $session->updateQuietly($updates);
         }
 
         return response()->json($session);
