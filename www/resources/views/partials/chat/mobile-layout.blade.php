@@ -8,11 +8,10 @@
     <div class="flex flex-col items-center">
         <button @click="openSessionEditModal()"
                 :disabled="!currentSession"
-                class="flex items-center gap-1 text-base font-semibold leading-tight hover:text-blue-400 transition-colors max-w-[25ch] truncate disabled:cursor-default disabled:hover:text-white"
+                class="text-base font-semibold leading-tight hover:text-blue-400 transition-colors max-w-[25ch] truncate disabled:cursor-default disabled:hover:text-white"
                 :class="{ 'cursor-pointer': currentSession }"
-                :title="currentSession ? 'Click to edit session' : ''">
-            <span x-text="currentSession?.name || 'New Session'"></span>
-            <i x-show="currentSession" class="fa-solid fa-pencil text-[10px] text-gray-400"></i>
+                :title="currentSession ? 'Click to edit session' : ''"
+                x-text="currentSession?.name || 'New Session'">
         </button>
         <div class="flex items-center gap-2">
             <button @click="showAgentSelector = true"

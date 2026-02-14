@@ -52,7 +52,7 @@
                                    maxlength="6"
                                    placeholder="Label..."
                                    @keydown.enter.prevent="saveSessionEdit()"
-                                   class="flex-1 px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500">
+                                   class="w-20 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500">
 
                             {{-- Tab preview --}}
                             <span class="inline-flex items-center gap-1.5 px-2 py-1 bg-gray-700 rounded text-xs font-medium text-gray-300 shrink-0">

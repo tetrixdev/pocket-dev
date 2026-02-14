@@ -740,11 +740,10 @@
                 <div class="flex items-center gap-3 pl-2">
                     <button @click="openSessionEditModal()"
                             :disabled="!currentSession"
-                            class="flex items-center gap-1.5 text-base font-semibold hover:text-blue-400 transition-colors max-w-[50ch] truncate disabled:cursor-default disabled:hover:text-white"
+                            class="text-base font-semibold hover:text-blue-400 transition-colors max-w-[50ch] truncate disabled:cursor-default disabled:hover:text-white"
                             :class="{ 'cursor-pointer': currentSession }"
-                            :title="currentSession ? 'Click to edit session' : ''">
-                        <span x-text="currentSession?.name || 'New Session'"></span>
-                        <i x-show="currentSession" class="fa-solid fa-pencil text-xs text-gray-400"></i>
+                            :title="currentSession ? 'Click to edit session' : ''"
+                            x-text="currentSession?.name || 'New Session'">
                     </button>
                     <button @click="showAgentSelector = true"
                             class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer"
@@ -2645,10 +2644,6 @@
                     }
 
                     this.showSessionEditModal = true;
-                    this.$nextTick(() => {
-                        this.$refs.sessionEditNameInput?.focus();
-                        this.$refs.sessionEditNameInput?.select();
-                    });
                 },
 
                 async saveSessionEdit() {
