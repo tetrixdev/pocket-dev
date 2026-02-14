@@ -82,6 +82,11 @@ class SessionController extends Controller
                             $item['title'] ?? 'New Chat'
                         );
 
+                        // Set tab_label from template if provided
+                        if (!empty($item['tab_label'])) {
+                            $conversation->update(['tab_label' => $item['tab_label']]);
+                        }
+
                         $screen = Screen::createChatScreen($session, $conversation);
                     } else {
                         // Panel
@@ -222,10 +227,15 @@ class SessionController extends Controller
             if ($screen->isChat()) {
                 // Only include non-archived conversations
                 if ($screen->conversation && !$screen->conversation->isArchived()) {
-                    $template['screen_order'][] = [
+                    $item = [
                         'type' => 'chat',
                         'title' => $screen->conversation->title ?? 'Chat',
                     ];
+                    // Include tab_label if set
+                    if ($screen->conversation->tab_label) {
+                        $item['tab_label'] = $screen->conversation->tab_label;
+                    }
+                    $template['screen_order'][] = $item;
                 }
             } else {
                 $template['screen_order'][] = [
