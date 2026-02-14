@@ -57,13 +57,8 @@ class ConversationFactory
             // Response level
             'response_level' => $agent->response_level,
 
-            // ALL reasoning/thinking settings from agent
-            'anthropic_thinking_budget' => $agent->anthropic_thinking_budget,
-            'openai_reasoning_effort' => $agent->openai_reasoning_effort,
-            'openai_compatible_reasoning_effort' => $agent->openai_compatible_reasoning_effort ?? 'none',
-            'claude_code_thinking_tokens' => $agent->claude_code_thinking_tokens,
-            // TODO: Add codex_reasoning_effort once the conversations table has this column
-            // Currently the column exists on agents but not on conversations (missing migration)
+            // Unified reasoning config from agent (JSON)
+            'reasoning_config' => $agent->reasoning_config,
         ]);
 
         // Initialize context window size from provider

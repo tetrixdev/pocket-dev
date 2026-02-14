@@ -35,17 +35,11 @@ class Conversation extends Model
         'context_window_size',
         'status',
         'last_activity_at',
-        // Provider-specific reasoning settings
-        'anthropic_thinking_budget',
-        'openai_reasoning_effort',
-        'openai_compatible_reasoning_effort',
-        'claude_code_thinking_tokens',
-        'codex_reasoning_effort',
+        // Unified reasoning config (JSON)
+        'reasoning_config',
+        // Unified session ID for CLI providers
+        'provider_session_id',
         'response_level',
-        // Claude Code session management
-        'claude_session_id',
-        // Codex session management
-        'codex_session_id',
         // Embedding tracking
         'last_embedded_turn_number',
     ];
@@ -56,8 +50,7 @@ class Conversation extends Model
         'total_output_tokens' => 'integer',
         'last_context_tokens' => 'integer',
         'context_window_size' => 'integer',
-        'anthropic_thinking_budget' => 'integer',
-        'claude_code_thinking_tokens' => 'integer',
+        'reasoning_config' => 'array',
         'response_level' => 'integer',
         'last_embedded_turn_number' => 'integer',
     ];
@@ -81,6 +74,14 @@ class Conversation extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class)->orderBy('sequence');
+    }
+
+    /**
+     * Check if the conversation has any messages (has "started").
+     */
+    public function hasMessages(): bool
+    {
+        return $this->messages()->exists();
     }
 
     public function turnEmbeddings(): HasMany
@@ -286,7 +287,7 @@ class Conversation extends Model
     /**
      * Get provider-specific reasoning configuration.
      *
-     * Returns reasoning settings stored directly on this conversation instance.
+     * Returns reasoning settings stored in the unified reasoning_config JSON column.
      * These settings are copied from the agent at conversation creation time
      * (see ConversationController::store) and remain fixed for the conversation's lifetime.
      *
@@ -294,32 +295,37 @@ class Conversation extends Model
      * own fields. This is intentional as conversations can exist without agents (legacy mode)
      * and conversation settings should not change if the agent is modified later.
      *
-     * Provider-specific settings:
+     * Provider-specific defaults:
      * - Anthropic: budget_tokens (explicit token allocation)
      * - OpenAI: effort (none/low/medium/high)
      * - OpenAI Compatible: effort (none/low/medium/high) - may be ignored by some servers
      * - Claude Code: thinking_tokens (via MAX_THINKING_TOKENS env var)
-     * - Codex: effort (none/low/medium/high) - for o-series model reasoning
+     * - Codex: effort (minimal/low/medium/high/xhigh) - for reasoning model depth
      */
     public function getReasoningConfig(): array
     {
+        $config = $this->reasoning_config ?? [];
+
+        // Apply provider-specific defaults
         return match ($this->provider_type) {
-            'anthropic' => [
-                'budget_tokens' => $this->anthropic_thinking_budget ?? 0,
-            ],
-            'openai' => [
-                'effort' => $this->openai_reasoning_effort ?? 'none',
-            ],
-            'openai_compatible' => [
-                'effort' => $this->openai_compatible_reasoning_effort ?? 'none',
-            ],
-            'claude_code' => [
-                'thinking_tokens' => $this->claude_code_thinking_tokens ?? 0,
-            ],
-            'codex' => [
-                'effort' => $this->codex_reasoning_effort ?? 'none',
-            ],
-            default => [],
+            'anthropic' => array_merge(['budget_tokens' => 0], $config),
+            'openai' => array_merge(['effort' => 'none'], $config),
+            'openai_compatible' => array_merge(['effort' => 'none'], $config),
+            'claude_code' => array_merge(['thinking_tokens' => 0], $config),
+            'codex' => array_merge(['effort' => 'minimal'], $config),
+            default => $config,
         };
+    }
+
+    /**
+     * Update the reasoning config JSON column.
+     * Merges with existing config (does not replace entirely).
+     */
+    public function updateReasoningConfig(array $config): void
+    {
+        $existing = $this->reasoning_config ?? [];
+        $this->update([
+            'reasoning_config' => array_merge($existing, $config),
+        ]);
     }
 }

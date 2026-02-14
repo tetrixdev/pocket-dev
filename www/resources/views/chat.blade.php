@@ -1944,14 +1944,17 @@
                     this.currentAgentId = agent.id;
                     this.provider = agent.provider;
                     this.model = agent.model;
+                    this.updateModels();
 
                     // Fetch skills for autocomplete
                     this.fetchSkills();
 
-                    // Load agent's reasoning settings
-                    this.anthropicThinkingBudget = agent.anthropic_thinking_budget || 0;
-                    this.openaiReasoningEffort = agent.openai_reasoning_effort || 'none';
-                    this.claudeCodeThinkingTokens = agent.claude_code_thinking_tokens || 0;
+                    // Load agent's reasoning settings from reasoning_config JSON
+                    const rc = agent.reasoning_config || {};
+                    this.anthropicThinkingBudget = rc.budget_tokens || 0;
+                    this.openaiReasoningEffort = rc.effort || 'none';
+                    this.openaiCompatibleReasoningEffort = rc.effort || 'none';
+                    this.claudeCodeThinkingTokens = rc.thinking_tokens || 0;
                     this.responseLevel = agent.response_level || 1;
 
                     // Load allowed tools
@@ -2456,17 +2459,20 @@
                             this.currentConversationStatus = newStatus;
                         }
 
+                        // Find adjacent screen BEFORE updating status (visibleScreenOrder filters archived)
+                        // Only switch screens when archiving the ACTIVE screen
+                        const isArchivingActiveScreen = !isArchived && targetScreenId === this.activeScreenId;
+                        const adjacentScreen = isArchivingActiveScreen ? this.findAdjacentScreenId(targetScreenId) : null;
+
                         // Also update the screen's conversation status in local data
                         if (screen?.conversation) {
                             screen.conversation.status = newStatus;
                         }
 
-                        // If archiving, switch to another visible screen
+                        // If archiving the active screen, switch to adjacent visible screen (prefer left)
                         if (!isArchived) {
-                            // Find another visible screen to switch to
-                            const otherVisibleScreen = this.visibleScreenOrder.find(id => id !== targetScreenId);
-                            if (otherVisibleScreen) {
-                                this.activateScreen(otherVisibleScreen);
+                            if (adjacentScreen) {
+                                this.activateScreen(adjacentScreen);
                             }
                             this.showToast('Chat archived');
                         } else {
@@ -2865,12 +2871,13 @@
                             }
                         }
 
-                        // Load provider-specific reasoning settings from conversation
+                        // Load provider-specific reasoning settings from conversation's reasoning_config JSON
                         this.responseLevel = data.conversation?.response_level ?? 1;
-                        this.anthropicThinkingBudget = data.conversation?.anthropic_thinking_budget ?? 0;
-                        this.openaiReasoningEffort = data.conversation?.openai_reasoning_effort ?? 'none';
-                        this.openaiCompatibleReasoningEffort = data.conversation?.openai_compatible_reasoning_effort ?? 'none';
-                        this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
+                        const convRc = data.conversation?.reasoning_config || {};
+                        this.anthropicThinkingBudget = convRc.budget_tokens ?? 0;
+                        this.openaiReasoningEffort = convRc.effort ?? 'none';
+                        this.openaiCompatibleReasoningEffort = convRc.effort ?? 'none';
+                        this.claudeCodeThinkingTokens = convRc.thinking_tokens ?? 0;
 
                         // Note: scrolling is handled inside loadMessagesProgressively
                         // Clear pendingScrollToTurn since it was passed to loadMessagesProgressively
@@ -3399,6 +3406,21 @@
                     return this.getStatusColorClass(this.getConversationStatus(screenId));
                 },
 
+                // Find the adjacent screen (prefer left, fallback to right)
+                // Used when closing/archiving a screen to focus the nearest neighbor
+                findAdjacentScreenId(screenId) {
+                    const order = this.visibleScreenOrder;
+                    const index = order.indexOf(screenId);
+                    if (index === -1) return order[0] || null;
+
+                    // Prefer the screen to the left
+                    if (index > 0) return order[index - 1];
+                    // Fallback to the screen to the right
+                    if (index < order.length - 1) return order[index + 1];
+                    // No other screens
+                    return null;
+                },
+
                 // Activate a screen (switch to it)
                 async activateScreen(screenId) {
                     const screen = this.getScreen(screenId);
@@ -3617,6 +3639,11 @@
                     const screen = this.getScreen(screenId);
                     if (!screen) return;
 
+                    // Find adjacent screen BEFORE removing from order
+                    const adjacentScreenId = (this.activeScreenId === screenId)
+                        ? this.findAdjacentScreenId(screenId)
+                        : null;
+
                     try {
                         await fetch(`/api/screens/${screenId}`, { method: 'DELETE' });
 
@@ -3633,12 +3660,9 @@
                         }
                         delete this._screenMap[screenId];
 
-                        // If we closed the active screen, switch to another
-                        if (this.activeScreenId === screenId) {
-                            const nextScreen = this.screens[0];
-                            if (nextScreen) {
-                                await this.activateScreen(nextScreen.id);
-                            }
+                        // If we closed the active screen, switch to adjacent (prefer left)
+                        if (adjacentScreenId) {
+                            await this.activateScreen(adjacentScreenId);
                         }
                     } catch (err) {
                         console.error('Failed to close screen:', err);

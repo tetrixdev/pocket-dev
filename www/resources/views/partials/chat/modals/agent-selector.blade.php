@@ -14,8 +14,8 @@
         {{-- Agent List (grouped by provider) --}}
         <template x-if="agents.length > 0">
             <div>
-                {{-- Filter info when in conversation --}}
-                <template x-if="currentConversationUuid">
+                {{-- Filter info when in conversation with messages (provider is locked) --}}
+                <template x-if="currentConversationUuid && conversationProvider">
                     <div class="text-xs text-gray-400 mb-3 pb-2 border-b border-gray-700">
                         <span x-text="'Showing agents for ' + getProviderDisplayName(conversationProvider)"></span>
                         <span class="text-gray-500">(mid-conversation switch)</span>

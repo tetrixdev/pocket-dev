@@ -235,7 +235,7 @@
                         type="number"
                         id="anthropic_thinking_budget"
                         name="anthropic_thinking_budget"
-                        value="{{ old('anthropic_thinking_budget', $agent->anthropic_thinking_budget ?? ($sourceAgent->anthropic_thinking_budget ?? 0)) }}"
+                        value="{{ old('anthropic_thinking_budget', ($agent->reasoning_config['budget_tokens'] ?? null) ?? ($sourceAgent->reasoning_config['budget_tokens'] ?? 0)) }}"
                         min="0"
                         step="1000"
                         class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -251,7 +251,7 @@
                         name="openai_reasoning_effort"
                         class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                        @php $currentEffort = old('openai_reasoning_effort', $agent->openai_reasoning_effort ?? ($sourceAgent->openai_reasoning_effort ?? 'none')); @endphp
+                        @php $currentEffort = old('openai_reasoning_effort', ($agent->reasoning_config['effort'] ?? null) ?? ($sourceAgent->reasoning_config['effort'] ?? 'none')); @endphp
                         <option value="none" {{ $currentEffort === 'none' ? 'selected' : '' }}>None</option>
                         <option value="low" {{ $currentEffort === 'low' ? 'selected' : '' }}>Low</option>
                         <option value="medium" {{ $currentEffort === 'medium' ? 'selected' : '' }}>Medium</option>
@@ -270,12 +270,30 @@
                         type="number"
                         id="claude_code_thinking_tokens"
                         name="claude_code_thinking_tokens"
-                        value="{{ old('claude_code_thinking_tokens', $agent->claude_code_thinking_tokens ?? ($sourceAgent->claude_code_thinking_tokens ?? 0)) }}"
+                        value="{{ old('claude_code_thinking_tokens', ($agent->reasoning_config['thinking_tokens'] ?? null) ?? ($sourceAgent->reasoning_config['thinking_tokens'] ?? 0)) }}"
                         min="0"
                         step="1000"
                         class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                     <p class="text-xs text-gray-400 mt-1">Extended thinking budget for Claude Code CLI</p>
+                </div>
+
+                <!-- Codex Reasoning Effort -->
+                <div x-show="provider === 'codex'" x-cloak>
+                    <label for="codex_reasoning_effort" class="block text-sm font-medium mb-2">Reasoning Effort</label>
+                    <select
+                        id="codex_reasoning_effort"
+                        name="codex_reasoning_effort"
+                        class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                        @php $currentCodexEffort = old('codex_reasoning_effort', ($agent->reasoning_config['effort'] ?? null) ?? ($sourceAgent->reasoning_config['effort'] ?? 'minimal')); @endphp
+                        <option value="minimal" {{ $currentCodexEffort === 'minimal' ? 'selected' : '' }}>Minimal</option>
+                        <option value="low" {{ $currentCodexEffort === 'low' ? 'selected' : '' }}>Low</option>
+                        <option value="medium" {{ $currentCodexEffort === 'medium' ? 'selected' : '' }}>Medium</option>
+                        <option value="high" {{ $currentCodexEffort === 'high' ? 'selected' : '' }}>High</option>
+                        <option value="xhigh" {{ $currentCodexEffort === 'xhigh' ? 'selected' : '' }}>Extra High</option>
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Controls reasoning depth for Codex models</p>
                 </div>
 
                 <!-- Response Level -->

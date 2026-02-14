@@ -55,7 +55,7 @@ return [
 
         'codex' => [
             // No API key needed - uses Codex CLI authentication (setup via `codex login`)
-            'default_model' => 'gpt-5.2-codex',
+            'default_model' => 'gpt-5.3-codex',
         ],
 
         'openai_compatible' => [
@@ -123,13 +123,14 @@ return [
             ],
         ],
 
-        // Codex: uses OpenAI-style effort levels
+        // Codex: uses OpenAI-style effort levels (Codex-specific values)
         'codex' => [
             'effort_levels' => [
-                ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
-                ['value' => 'low', 'name' => 'Light', 'description' => 'Quick reasoning'],
-                ['value' => 'medium', 'name' => 'Standard', 'description' => 'Balanced reasoning'],
-                ['value' => 'high', 'name' => 'Deep', 'description' => 'Thorough reasoning'],
+                ['value' => 'minimal', 'name' => 'Minimal', 'description' => 'Minimal reasoning (fastest)'],
+                ['value' => 'low', 'name' => 'Low', 'description' => 'Quick reasoning'],
+                ['value' => 'medium', 'name' => 'Medium', 'description' => 'Balanced reasoning'],
+                ['value' => 'high', 'name' => 'High', 'description' => 'Thorough reasoning'],
+                ['value' => 'xhigh', 'name' => 'Extra High', 'description' => 'Maximum reasoning depth'],
             ],
         ],
 
@@ -273,6 +274,16 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million' => 0.025,
             ],
+            [
+                'model_id' => 'gpt-5.2-codex',
+                'display_name' => 'GPT-5.2 Codex',
+                'context_window' => 400000,
+                'max_output_tokens' => 128000,
+                'input_price_per_million' => 1.75,
+                'output_price_per_million' => 14.00,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => 0.175,
+            ],
         ],
 
         // Claude Code models (aliases supported by CLI)
@@ -315,10 +326,20 @@ return [
         // Source: https://developers.openai.com/codex/models/
         'codex' => [
             [
+                'model_id' => 'gpt-5.3-codex',
+                'display_name' => 'GPT-5.3 Codex',
+                'context_window' => 400000,
+                'max_output_tokens' => 128000,
+                'input_price_per_million' => 1.75,
+                'output_price_per_million' => 14.00,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => 0.175,
+            ],
+            [
                 'model_id' => 'gpt-5.2-codex',
                 'display_name' => 'GPT-5.2 Codex',
                 'context_window' => 400000,
-                'max_output_tokens' => 32768,
+                'max_output_tokens' => 128000,
                 'input_price_per_million' => null,
                 'output_price_per_million' => null,
                 'cache_write_price_per_million' => null,

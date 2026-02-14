@@ -36,11 +36,7 @@ class Agent extends Model
         'description',
         'provider',
         'model',
-        'anthropic_thinking_budget',
-        'openai_reasoning_effort',
-        'openai_compatible_reasoning_effort',
-        'claude_code_thinking_tokens',
-        'codex_reasoning_effort',
+        'reasoning_config',
         'response_level',
         'allowed_tools',
         'inherit_workspace_tools',
@@ -56,8 +52,7 @@ class Agent extends Model
         'inherit_workspace_schemas' => 'boolean',
         'is_default' => 'boolean',
         'enabled' => 'boolean',
-        'anthropic_thinking_budget' => 'integer',
-        'claude_code_thinking_tokens' => 'integer',
+        'reasoning_config' => 'array',
         'response_level' => 'integer',
     ];
 
@@ -227,12 +222,13 @@ class Agent extends Model
      */
     public function getReasoningValue(): mixed
     {
+        $config = $this->reasoning_config ?? [];
         return match ($this->provider) {
-            Provider::Anthropic->value => $this->anthropic_thinking_budget ?? 0,
-            Provider::OpenAI->value => $this->openai_reasoning_effort ?? 'none',
-            Provider::OpenAICompatible->value => $this->openai_compatible_reasoning_effort ?? 'none',
-            Provider::ClaudeCode->value => $this->claude_code_thinking_tokens ?? 0,
-            Provider::Codex->value => $this->codex_reasoning_effort ?? 'none',
+            Provider::Anthropic->value => $config['budget_tokens'] ?? 0,
+            Provider::OpenAI->value => $config['effort'] ?? 'none',
+            Provider::OpenAICompatible->value => $config['effort'] ?? 'none',
+            Provider::ClaudeCode->value => $config['thinking_tokens'] ?? 0,
+            Provider::Codex->value => $config['effort'] ?? 'minimal',
             default => null,
         };
     }
@@ -242,27 +238,28 @@ class Agent extends Model
      */
     public function getReasoningConfig(): array
     {
+        $config = $this->reasoning_config ?? [];
         return match ($this->provider) {
-            Provider::Anthropic->value => [
-                'type' => 'anthropic',
-                'budget_tokens' => $this->anthropic_thinking_budget ?? 0,
-            ],
-            Provider::OpenAI->value => [
-                'type' => 'openai',
-                'effort' => $this->openai_reasoning_effort ?? 'none',
-            ],
-            Provider::OpenAICompatible->value => [
-                'type' => 'openai_compatible',
-                'effort' => $this->openai_compatible_reasoning_effort ?? 'none',
-            ],
-            Provider::ClaudeCode->value => [
-                'type' => 'claude_code',
-                'thinking_tokens' => $this->claude_code_thinking_tokens ?? 0,
-            ],
-            Provider::Codex->value => [
-                'type' => 'codex',
-                'effort' => $this->codex_reasoning_effort ?? 'none',
-            ],
+            Provider::Anthropic->value => array_merge(
+                ['type' => 'anthropic', 'budget_tokens' => 0],
+                $config
+            ),
+            Provider::OpenAI->value => array_merge(
+                ['type' => 'openai', 'effort' => 'none'],
+                $config
+            ),
+            Provider::OpenAICompatible->value => array_merge(
+                ['type' => 'openai_compatible', 'effort' => 'none'],
+                $config
+            ),
+            Provider::ClaudeCode->value => array_merge(
+                ['type' => 'claude_code', 'thinking_tokens' => 0],
+                $config
+            ),
+            Provider::Codex->value => array_merge(
+                ['type' => 'codex', 'effort' => 'minimal'],
+                $config
+            ),
             default => ['type' => 'none'],
         };
     }
