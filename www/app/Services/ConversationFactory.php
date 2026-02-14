@@ -176,8 +176,8 @@ class ConversationFactory
             // Create screen (Screen::createChatScreen already calls addScreenToOrder)
             $screen = Screen::createChatScreen($session, $conversation);
 
-            // Update session with last active screen
-            $session->update([
+            // Session timestamp: preserve (navigation only)
+            $session->updateQuietly([
                 'last_active_screen_id' => $screen->id,
             ]);
 

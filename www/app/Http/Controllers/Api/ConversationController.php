@@ -107,8 +107,8 @@ class ConversationController extends Controller
 
                     $screen = Screen::createChatScreen($session, $conversation);
 
-                    // screen_order already set by createChatScreen, just set active screen
-                    $session->update([
+                    // Session timestamp: preserve (navigation only)
+                    $session->updateQuietly([
                         'last_active_screen_id' => $screen->id,
                     ]);
 

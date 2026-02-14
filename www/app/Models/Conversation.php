@@ -130,7 +130,7 @@ class Conversation extends Model
             'last_activity_at' => now(),
         ]);
 
-        // Touch parent session so sidebar polling detects the activity
+        // Session timestamp: update (conversation activity)
         $this->screen?->session?->touch();
     }
 
@@ -141,7 +141,7 @@ class Conversation extends Model
             'last_activity_at' => now(),
         ]);
 
-        // Touch parent session so sidebar polling detects the activity
+        // Session timestamp: update (conversation activity)
         $this->screen?->session?->touch();
     }
 
