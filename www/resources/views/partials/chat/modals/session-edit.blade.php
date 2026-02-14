@@ -46,22 +46,13 @@
                             <span class="inline-flex items-center justify-center w-8 h-8 rounded bg-gray-700 text-sm font-medium text-gray-300 shrink-0"
                                   x-text="chat.chatNumber + '.'"></span>
 
-                            {{-- Label input --}}
+                            {{-- Label input (full width) --}}
                             <input type="text"
                                    x-model="chat.label"
                                    maxlength="6"
                                    placeholder="Label..."
                                    @keydown.enter.prevent="saveSessionEdit()"
-                                   class="w-20 h-8 px-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500">
-
-                            {{-- Spacer to push preview to the right --}}
-                            <span class="flex-1"></span>
-
-                            {{-- Tab preview --}}
-                            <span class="inline-flex items-center gap-1.5 h-8 px-2 bg-gray-700 rounded text-xs font-medium text-gray-300 shrink-0">
-                                <i class="fa-solid fa-comment text-[10px] text-gray-400"></i>
-                                <span x-text="chat.label.trim() || (chat.chatNumber + '.')"></span>
-                            </span>
+                                   class="flex-1 h-8 px-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500">
                         </div>
                     </template>
                 </div>
