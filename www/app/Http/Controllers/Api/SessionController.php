@@ -168,7 +168,14 @@ class SessionController extends Controller
 
         if (!empty($updates)) {
             // Session timestamp: preserve (metadata/navigation changes)
-            $session->updateQuietly($updates);
+            // Note: updateQuietly() only skips events, NOT timestamps - use raw query
+            \DB::table('pocketdev_sessions')
+                ->where('id', $session->id)
+                ->update($updates);
+            // Sync in-memory model
+            foreach ($updates as $key => $value) {
+                $session->$key = $value;
+            }
         }
 
         return response()->json($session);

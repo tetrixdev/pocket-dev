@@ -177,9 +177,7 @@ class ConversationFactory
             $screen = Screen::createChatScreen($session, $conversation);
 
             // Session timestamp: preserve (navigation only)
-            $session->updateQuietly([
-                'last_active_screen_id' => $screen->id,
-            ]);
+            $session->setActiveScreen($screen);
 
             // Load relationships for response
             $conversation->load('screen.session.screens.conversation');

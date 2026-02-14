@@ -102,7 +102,11 @@ class Session extends Model
     public function archive(): void
     {
         // Session timestamp: preserve (metadata change)
-        $this->updateQuietly(['is_archived' => true]);
+        // Note: updateQuietly() only skips events, NOT timestamps
+        DB::table('pocketdev_sessions')
+            ->where('id', $this->id)
+            ->update(['is_archived' => true]);
+        $this->is_archived = true;
     }
 
     /**
@@ -112,7 +116,11 @@ class Session extends Model
     public function restore(): void
     {
         // Session timestamp: preserve (metadata change)
-        $this->updateQuietly(['is_archived' => false]);
+        // Note: updateQuietly() only skips events, NOT timestamps
+        DB::table('pocketdev_sessions')
+            ->where('id', $this->id)
+            ->update(['is_archived' => false]);
+        $this->is_archived = false;
     }
 
     /**
@@ -121,7 +129,14 @@ class Session extends Model
     public function setActiveScreen(Screen $screen): void
     {
         // Session timestamp: preserve (navigation only)
-        $this->updateQuietly(['last_active_screen_id' => $screen->id]);
+        // Note: updateQuietly() only skips events, NOT timestamps
+        // Must use raw query to truly preserve updated_at
+        DB::table('pocketdev_sessions')
+            ->where('id', $this->id)
+            ->update(['last_active_screen_id' => $screen->id]);
+
+        // Sync the in-memory model
+        $this->last_active_screen_id = $screen->id;
     }
 
     /**
@@ -133,7 +148,11 @@ class Session extends Model
         if (!in_array($screenId, $order)) {
             $order[] = $screenId;
             // Session timestamp: preserve (structural change)
-            $this->updateQuietly(['screen_order' => $order]);
+            // Note: updateQuietly() only skips events, NOT timestamps
+            DB::table('pocketdev_sessions')
+                ->where('id', $this->id)
+                ->update(['screen_order' => json_encode($order)]);
+            $this->screen_order = $order;
         }
     }
 
@@ -145,7 +164,11 @@ class Session extends Model
         $order = $this->screen_order ?? [];
         $order = array_values(array_filter($order, fn($id) => $id !== $screenId));
         // Session timestamp: preserve (structural change)
-        $this->updateQuietly(['screen_order' => $order]);
+        // Note: updateQuietly() only skips events, NOT timestamps
+        DB::table('pocketdev_sessions')
+            ->where('id', $this->id)
+            ->update(['screen_order' => json_encode($order)]);
+        $this->screen_order = $order;
     }
 
     /**
@@ -154,7 +177,11 @@ class Session extends Model
     public function reorderScreens(array $screenIds): void
     {
         // Session timestamp: preserve (navigation only)
-        $this->updateQuietly(['screen_order' => $screenIds]);
+        // Note: updateQuietly() only skips events, NOT timestamps
+        DB::table('pocketdev_sessions')
+            ->where('id', $this->id)
+            ->update(['screen_order' => json_encode($screenIds)]);
+        $this->screen_order = $screenIds;
     }
 
     /**
