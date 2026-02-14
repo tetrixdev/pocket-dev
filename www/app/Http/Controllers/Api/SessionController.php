@@ -168,7 +168,7 @@ class SessionController extends Controller
 
         if (!empty($updates)) {
             // Session timestamp: preserve (metadata/navigation changes)
-            $session->updateQuietly($updates);
+            $session->updatePreservingTimestamp($updates);
         }
 
         return response()->json($session);

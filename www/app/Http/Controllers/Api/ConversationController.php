@@ -108,9 +108,7 @@ class ConversationController extends Controller
                     $screen = Screen::createChatScreen($session, $conversation);
 
                     // Session timestamp: preserve (navigation only)
-                    $session->updateQuietly([
-                        'last_active_screen_id' => $screen->id,
-                    ]);
+                    $session->setActiveScreen($screen);
 
                     // Load the screen relationship for the response
                     $conversation->load('screen.session.screens.conversation');

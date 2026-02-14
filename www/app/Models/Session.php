@@ -9,6 +9,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Session model for PocketDev chat sessions.
+ *
+ * IMPORTANT: DO NOT use updateQuietly() on this model!
+ * Laravel's updateQuietly() only suppresses model events (observers),
+ * but still updates the updated_at timestamp. For session updates that
+ * should preserve timestamps (navigation, metadata changes), use the
+ * updatePreservingTimestamp() method instead.
+ *
+ * Only Conversation::completeProcessing() and Conversation::markFailed()
+ * should touch the session timestamp (via explicit $session->touch()).
+ */
 class Session extends Model
 {
     use HasUuids;
@@ -97,12 +109,42 @@ class Session extends Model
     }
 
     /**
+     * Update session columns WITHOUT touching updated_at.
+     *
+     * Use this instead of updateQuietly() which only skips events but still
+     * updates timestamps. This method uses a raw query to truly preserve
+     * the updated_at column.
+     *
+     * @param array<string, mixed> $attributes Key-value pairs to update
+     */
+    public function updatePreservingTimestamp(array $attributes): void
+    {
+        // Handle JSON columns (screen_order needs json_encode for raw query)
+        $dbAttributes = [];
+        foreach ($attributes as $key => $value) {
+            if ($key === 'screen_order' && is_array($value)) {
+                $dbAttributes[$key] = json_encode($value);
+            } else {
+                $dbAttributes[$key] = $value;
+            }
+        }
+
+        DB::table('pocketdev_sessions')
+            ->where('id', $this->id)
+            ->update($dbAttributes);
+
+        // Sync in-memory model
+        foreach ($attributes as $key => $value) {
+            $this->$key = $value;
+        }
+    }
+
+    /**
      * Archive the session.
      */
     public function archive(): void
     {
-        // Session timestamp: preserve (metadata change)
-        $this->updateQuietly(['is_archived' => true]);
+        $this->updatePreservingTimestamp(['is_archived' => true]);
     }
 
     /**
@@ -111,8 +153,7 @@ class Session extends Model
     // TODO: Rename to unarchive() to avoid conflict with SoftDeletes::restore()
     public function restore(): void
     {
-        // Session timestamp: preserve (metadata change)
-        $this->updateQuietly(['is_archived' => false]);
+        $this->updatePreservingTimestamp(['is_archived' => false]);
     }
 
     /**
@@ -120,8 +161,7 @@ class Session extends Model
      */
     public function setActiveScreen(Screen $screen): void
     {
-        // Session timestamp: preserve (navigation only)
-        $this->updateQuietly(['last_active_screen_id' => $screen->id]);
+        $this->updatePreservingTimestamp(['last_active_screen_id' => $screen->id]);
     }
 
     /**
@@ -132,8 +172,7 @@ class Session extends Model
         $order = $this->screen_order ?? [];
         if (!in_array($screenId, $order)) {
             $order[] = $screenId;
-            // Session timestamp: preserve (structural change)
-            $this->updateQuietly(['screen_order' => $order]);
+            $this->updatePreservingTimestamp(['screen_order' => $order]);
         }
     }
 
@@ -144,8 +183,7 @@ class Session extends Model
     {
         $order = $this->screen_order ?? [];
         $order = array_values(array_filter($order, fn($id) => $id !== $screenId));
-        // Session timestamp: preserve (structural change)
-        $this->updateQuietly(['screen_order' => $order]);
+        $this->updatePreservingTimestamp(['screen_order' => $order]);
     }
 
     /**
@@ -153,8 +191,7 @@ class Session extends Model
      */
     public function reorderScreens(array $screenIds): void
     {
-        // Session timestamp: preserve (navigation only)
-        $this->updateQuietly(['screen_order' => $screenIds]);
+        $this->updatePreservingTimestamp(['screen_order' => $screenIds]);
     }
 
     /**

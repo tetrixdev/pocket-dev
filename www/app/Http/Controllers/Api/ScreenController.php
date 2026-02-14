@@ -183,7 +183,7 @@ class ScreenController extends Controller
                     $nextScreen->activate();
                 } else {
                     // Session timestamp: preserve (navigation only)
-                    $session->updateQuietly(['last_active_screen_id' => null]);
+                    $session->updatePreservingTimestamp(['last_active_screen_id' => null]);
                 }
             }
 
