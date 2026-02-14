@@ -1234,7 +1234,6 @@
                 showErrorModal: false,
                 showSearchModal: false,
                 showRenameModal: false,
-                showRenameSessionModal: false,
                 showSystemPromptPreview: false,
 
                 // Conversation title (rename)
@@ -1242,10 +1241,6 @@
                 renameTitle: '',
                 renameTabLabel: '',
                 renameSaving: false,
-
-                // Session name (rename - legacy, kept for backward compat)
-                renameSessionName: '',
-                renameSessionSaving: false,
 
                 // Session edit modal (combined session name + chat labels)
                 showSessionEditModal: false,
@@ -2571,57 +2566,6 @@
                     }
                 },
 
-                openRenameSessionModal() {
-                    if (!this.currentSession) return;
-                    this.renameSessionName = this.currentSession.name || '';
-                    this.showRenameSessionModal = true;
-                    // Focus input after modal opens
-                    this.$nextTick(() => {
-                        this.$refs.renameSessionInput?.focus();
-                        this.$refs.renameSessionInput?.select();
-                    });
-                },
-
-                async saveSessionName() {
-                    if (!this.currentSession || !this.renameSessionName.trim()) return;
-
-                    // Enforce max character limit
-                    if (this.renameSessionName.trim().length > window.TITLE_MAX_LENGTH) {
-                        this.showError(`Session name cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
-                        return;
-                    }
-
-                    this.renameSessionSaving = true;
-                    try {
-                        const response = await fetch(`/api/sessions/${this.currentSession.id}`, {
-                            method: 'PATCH',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                            },
-                            body: JSON.stringify({ name: this.renameSessionName.trim() })
-                        });
-
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-                        const data = await response.json();
-                        this.currentSession.name = data.name;
-
-                        // Also update the session in the sessions list for sidebar
-                        const sessionInList = this.filteredSessions.find(s => s.id === this.currentSession.id);
-                        if (sessionInList) {
-                            sessionInList.name = data.name;
-                        }
-
-                        this.showRenameSessionModal = false;
-                    } catch (err) {
-                        console.error('Failed to rename session:', err);
-                        this.showError('Failed to rename session');
-                    } finally {
-                        this.renameSessionSaving = false;
-                    }
-                },
-
                 // Open the combined session edit modal (session name + chat labels)
                 openSessionEditModal() {
                     if (!this.currentSession) return;
@@ -2649,10 +2593,18 @@
                 async saveSessionEdit() {
                     if (!this.currentSession || !this.sessionEditName.trim()) return;
 
-                    // Enforce max character limit
+                    // Enforce max character limit for session name
                     if (this.sessionEditName.trim().length > window.TITLE_MAX_LENGTH) {
                         this.showError(`Session name cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
                         return;
+                    }
+
+                    // Enforce tab label max length (6 chars)
+                    for (const chat of this.sessionEditChats) {
+                        if (chat.label.trim().length > 6) {
+                            this.showError('Tab label cannot exceed 6 characters');
+                            return;
+                        }
                     }
 
                     this.sessionEditSaving = true;
@@ -2679,6 +2631,7 @@
                         }
 
                         // Save chat labels (update each conversation's tab_label)
+                        const failedLabels = [];
                         for (const chat of this.sessionEditChats) {
                             const screen = this.getScreen(chat.screenId);
                             if (!screen?.conversation?.uuid) continue;
@@ -2703,8 +2656,15 @@
                                 if (convResponse.ok) {
                                     // Update local state
                                     screen.conversation.tab_label = newLabel || null;
+                                } else {
+                                    failedLabels.push(chat.chatNumber);
                                 }
                             }
+                        }
+
+                        if (failedLabels.length > 0) {
+                            this.showError(`Failed to save label(s) for chat ${failedLabels.join(', ')}`);
+                            return;
                         }
 
                         this.showSessionEditModal = false;

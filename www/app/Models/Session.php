@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
 class Session extends Model
 {
@@ -164,9 +165,9 @@ class Session extends Model
      */
     public function getNextChatNumber(): int
     {
-        return \Illuminate\Support\Facades\DB::transaction(function () {
+        return DB::transaction(function () {
             // Lock the session row to prevent concurrent assignment
-            $session = \Illuminate\Support\Facades\DB::table('pocketdev_sessions')
+            $session = DB::table('pocketdev_sessions')
                 ->where('id', $this->id)
                 ->lockForUpdate()
                 ->first();
@@ -174,7 +175,7 @@ class Session extends Model
             $chatNumber = $session->next_chat_number ?? 1;
 
             // Increment the counter
-            \Illuminate\Support\Facades\DB::table('pocketdev_sessions')
+            DB::table('pocketdev_sessions')
                 ->where('id', $this->id)
                 ->update(['next_chat_number' => $chatNumber + 1]);
 
