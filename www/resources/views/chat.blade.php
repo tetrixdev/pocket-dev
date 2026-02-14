@@ -2624,8 +2624,8 @@
                         const sessionData = await sessionResponse.json();
                         this.currentSession.name = sessionData.name;
 
-                        // Update in sidebar
-                        const sessionInList = this.filteredSessions.find(s => s.id === this.currentSession.id);
+                        // Update in sidebar (use this.sessions as source of truth, not filteredSessions)
+                        const sessionInList = this.sessions.find(s => s.id === this.currentSession.id);
                         if (sessionInList) {
                             sessionInList.name = sessionData.name;
                         }
