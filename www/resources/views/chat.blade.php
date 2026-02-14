@@ -2459,17 +2459,18 @@
                             this.currentConversationStatus = newStatus;
                         }
 
+                        // Find adjacent screen BEFORE updating status (visibleScreenOrder filters archived)
+                        const adjacentScreen = !isArchived ? this.findAdjacentScreenId(targetScreenId) : null;
+
                         // Also update the screen's conversation status in local data
                         if (screen?.conversation) {
                             screen.conversation.status = newStatus;
                         }
 
-                        // If archiving, switch to another visible screen
+                        // If archiving, switch to adjacent visible screen (prefer left)
                         if (!isArchived) {
-                            // Find another visible screen to switch to
-                            const otherVisibleScreen = this.visibleScreenOrder.find(id => id !== targetScreenId);
-                            if (otherVisibleScreen) {
-                                this.activateScreen(otherVisibleScreen);
+                            if (adjacentScreen) {
+                                this.activateScreen(adjacentScreen);
                             }
                             this.showToast('Chat archived');
                         } else {
@@ -3403,6 +3404,21 @@
                     return this.getStatusColorClass(this.getConversationStatus(screenId));
                 },
 
+                // Find the adjacent screen (prefer left, fallback to right)
+                // Used when closing/archiving a screen to focus the nearest neighbor
+                findAdjacentScreenId(screenId) {
+                    const order = this.visibleScreenOrder;
+                    const index = order.indexOf(screenId);
+                    if (index === -1) return order[0] || null;
+
+                    // Prefer the screen to the left
+                    if (index > 0) return order[index - 1];
+                    // Fallback to the screen to the right
+                    if (index < order.length - 1) return order[index + 1];
+                    // No other screens
+                    return null;
+                },
+
                 // Activate a screen (switch to it)
                 async activateScreen(screenId) {
                     const screen = this.getScreen(screenId);
@@ -3621,6 +3637,11 @@
                     const screen = this.getScreen(screenId);
                     if (!screen) return;
 
+                    // Find adjacent screen BEFORE removing from order
+                    const adjacentScreenId = (this.activeScreenId === screenId)
+                        ? this.findAdjacentScreenId(screenId)
+                        : null;
+
                     try {
                         await fetch(`/api/screens/${screenId}`, { method: 'DELETE' });
 
@@ -3637,12 +3658,9 @@
                         }
                         delete this._screenMap[screenId];
 
-                        // If we closed the active screen, switch to another
-                        if (this.activeScreenId === screenId) {
-                            const nextScreen = this.screens[0];
-                            if (nextScreen) {
-                                await this.activateScreen(nextScreen.id);
-                            }
+                        // If we closed the active screen, switch to adjacent (prefer left)
+                        if (adjacentScreenId) {
+                            await this.activateScreen(adjacentScreenId);
                         }
                     } catch (err) {
                         console.error('Failed to close screen:', err);
