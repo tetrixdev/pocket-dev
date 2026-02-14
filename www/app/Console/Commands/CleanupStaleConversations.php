@@ -53,8 +53,9 @@ class CleanupStaleConversations extends Command
 
                 // Case 1: Redis says "streaming" but no activity for too long = orphaned
                 if ($redisStatus === 'streaming') {
-                    // Check if activity is stale (required for both orphan types)
-                    if (!$lastActivity || $lastActivity >= $orphanThreshold) {
+                    // Only skip if we have KNOWN recent activity
+                    // Null activity is suspicious (stream started but no progress recorded)
+                    if ($lastActivity && $lastActivity >= $orphanThreshold) {
                         // Stream appears active, skip
                         $this->line("Skipping {$conversation->uuid}: stream appears active in Redis");
                         continue;

@@ -762,7 +762,8 @@ class ClaudeCodeProvider extends AbstractCliProvider
     {
         $home = getenv('HOME') ?: '/home/appuser';
         $claudeDir = $home . '/.claude/projects';
-        $encodedPath = str_replace('/', '-', $workingDir);
+        // Claude CLI encodes paths by replacing both '/' and '_' with '-'
+        $encodedPath = str_replace(['/', '_'], '-', $workingDir);
         $sessionFile = "{$claudeDir}/{$encodedPath}/{$sessionId}.jsonl";
 
         $dir = dirname($sessionFile);
