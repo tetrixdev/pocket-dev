@@ -738,12 +738,12 @@
             {{-- Desktop Header (hidden on mobile) - fixed at top to match fixed #messages --}}
             <div class="hidden md:flex md:fixed md:top-0 md:left-64 md:right-0 md:z-10 bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
                 <div class="flex items-center gap-3 pl-2">
-                    <button @click="openRenameModal()"
-                            :disabled="!currentConversationUuid"
+                    <button @click="openSessionEditModal()"
+                            :disabled="!currentSession"
                             class="text-base font-semibold hover:text-blue-400 transition-colors max-w-[50ch] truncate disabled:cursor-default disabled:hover:text-white"
-                            :class="{ 'cursor-pointer': currentConversationUuid }"
-                            :title="currentConversationUuid ? 'Click to rename' : ''"
-                            x-text="currentConversationTitle || 'New Conversation'">
+                            :class="{ 'cursor-pointer': currentSession }"
+                            :title="currentSession ? 'Click to edit session' : ''"
+                            x-text="currentSession?.name || 'New Session'">
                     </button>
                     <button @click="showAgentSelector = true"
                             class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer"
@@ -806,14 +806,6 @@
                             </a>
                             {{-- Session Section Header --}}
                             <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
-                            {{-- Rename Session --}}
-                            <button @click="openRenameSessionModal(); showConversationMenu = false"
-                                    :disabled="!currentSession"
-                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
-                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
-                                <i class="fa-solid fa-pen w-4 text-center"></i>
-                                Rename session
-                            </button>
                             {{-- Archive/Restore Session --}}
                             <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
                                     :disabled="!currentSession"
@@ -1242,7 +1234,6 @@
                 showErrorModal: false,
                 showSearchModal: false,
                 showRenameModal: false,
-                showRenameSessionModal: false,
                 showSystemPromptPreview: false,
 
                 // Conversation title (rename)
@@ -1251,9 +1242,12 @@
                 renameTabLabel: '',
                 renameSaving: false,
 
-                // Session name (rename)
-                renameSessionName: '',
-                renameSessionSaving: false,
+                // Session edit modal (combined session name + chat labels)
+                showSessionEditModal: false,
+                sessionEditName: '',
+                sessionEditChats: [],  // Array of {screenId, chatNumber, label}
+                sessionEditSaving: false,
+
                 _systemPromptPreviewNonce: 0,
                 systemPromptPreview: {
                     loading: false,
@@ -2572,54 +2566,113 @@
                     }
                 },
 
-                openRenameSessionModal() {
+                // Open the combined session edit modal (session name + chat labels)
+                openSessionEditModal() {
                     if (!this.currentSession) return;
-                    this.renameSessionName = this.currentSession.name || '';
-                    this.showRenameSessionModal = true;
-                    // Focus input after modal opens
-                    this.$nextTick(() => {
-                        this.$refs.renameSessionInput?.focus();
-                        this.$refs.renameSessionInput?.select();
-                    });
+
+                    this.sessionEditName = this.currentSession.name || '';
+
+                    // Build list of chat screens with their numbers and labels
+                    this.sessionEditChats = [];
+                    if (this.screens && this.visibleScreenOrder) {
+                        for (const screenId of this.visibleScreenOrder) {
+                            const screen = this.getScreen(screenId);
+                            if (screen?.type === 'chat') {
+                                this.sessionEditChats.push({
+                                    screenId: screenId,
+                                    chatNumber: screen.chat_number || '?',
+                                    label: screen.conversation?.tab_label || ''
+                                });
+                            }
+                        }
+                    }
+
+                    this.showSessionEditModal = true;
                 },
 
-                async saveSessionName() {
-                    if (!this.currentSession || !this.renameSessionName.trim()) return;
+                async saveSessionEdit() {
+                    if (!this.currentSession || !this.sessionEditName.trim()) return;
 
-                    // Enforce max character limit
-                    if (this.renameSessionName.trim().length > window.TITLE_MAX_LENGTH) {
+                    // Enforce max character limit for session name
+                    if (this.sessionEditName.trim().length > window.TITLE_MAX_LENGTH) {
                         this.showError(`Session name cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
                         return;
                     }
 
-                    this.renameSessionSaving = true;
+                    // Enforce tab label max length (6 chars)
+                    for (const chat of this.sessionEditChats) {
+                        if (chat.label.trim().length > 6) {
+                            this.showError('Tab label cannot exceed 6 characters');
+                            return;
+                        }
+                    }
+
+                    this.sessionEditSaving = true;
                     try {
-                        const response = await fetch(`/api/sessions/${this.currentSession.id}`, {
+                        // Save session name
+                        const sessionResponse = await fetch(`/api/sessions/${this.currentSession.id}`, {
                             method: 'PATCH',
                             headers: {
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                             },
-                            body: JSON.stringify({ name: this.renameSessionName.trim() })
+                            body: JSON.stringify({ name: this.sessionEditName.trim() })
                         });
 
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        if (!sessionResponse.ok) throw new Error(`HTTP ${sessionResponse.status}`);
 
-                        const data = await response.json();
-                        this.currentSession.name = data.name;
+                        const sessionData = await sessionResponse.json();
+                        this.currentSession.name = sessionData.name;
 
-                        // Also update the session in the sessions list for sidebar
-                        const sessionInList = this.filteredSessions.find(s => s.id === this.currentSession.id);
+                        // Update in sidebar (use this.sessions as source of truth, not filteredSessions)
+                        const sessionInList = this.sessions.find(s => s.id === this.currentSession.id);
                         if (sessionInList) {
-                            sessionInList.name = data.name;
+                            sessionInList.name = sessionData.name;
                         }
 
-                        this.showRenameSessionModal = false;
+                        // Save chat labels (update each conversation's tab_label)
+                        const failedLabels = [];
+                        for (const chat of this.sessionEditChats) {
+                            const screen = this.getScreen(chat.screenId);
+                            if (!screen?.conversation?.uuid) continue;
+
+                            const currentLabel = screen.conversation.tab_label || '';
+                            const newLabel = chat.label.trim();
+
+                            // Only update if changed
+                            if (currentLabel !== newLabel) {
+                                const convResponse = await fetch(`/api/conversations/${screen.conversation.uuid}/title`, {
+                                    method: 'PATCH',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                                    },
+                                    body: JSON.stringify({
+                                        title: screen.conversation.title || 'Chat',
+                                        tab_label: newLabel || null
+                                    })
+                                });
+
+                                if (convResponse.ok) {
+                                    // Update local state
+                                    screen.conversation.tab_label = newLabel || null;
+                                } else {
+                                    failedLabels.push(chat.chatNumber);
+                                }
+                            }
+                        }
+
+                        if (failedLabels.length > 0) {
+                            this.showError(`Failed to save label(s) for chat ${failedLabels.join(', ')}`);
+                            return;
+                        }
+
+                        this.showSessionEditModal = false;
                     } catch (err) {
-                        console.error('Failed to rename session:', err);
-                        this.showError('Failed to rename session');
+                        console.error('Failed to save session:', err);
+                        this.showError('Failed to save session');
                     } finally {
-                        this.renameSessionSaving = false;
+                        this.sessionEditSaving = false;
                     }
                 },
 
@@ -3366,13 +3419,13 @@
                     const screen = this.getScreen(screenId);
                     if (!screen) return 'Screen';
                     if (screen.type === 'chat') {
-                        // Use tab_label if set, otherwise derive from title
+                        // Use tab_label if set, otherwise show chat number
                         const tabLabel = screen.conversation?.tab_label;
                         if (tabLabel && tabLabel.trim()) {
                             return tabLabel;
                         }
-                        const title = screen.conversation?.title || 'Chat';
-                        return title.length > 5 ? title.slice(0, 5) + '...' : title;
+                        // Default: show chat number with dot (e.g., "1." or "3.")
+                        return (screen.chat_number || '?') + '.';
                     }
                     // For panels, use the full name (they're typically short already)
                     return screen.panel?.name || screen.panel_slug || 'Panel';
