@@ -69,25 +69,20 @@ class SessionController extends Controller
             // Set workspace relation for factory to access
             $session->setRelation('workspace', $workspace);
 
-            $screenOrder = [];
             $firstScreen = null;
 
             if ($template && !empty($template['screen_order'])) {
-                // Create screens from template
+                // Create screens from template using factory methods
+                // Factory methods handle screen_order management automatically
                 foreach ($template['screen_order'] as $item) {
                     if ($item['type'] === 'chat') {
-                        // Use factory to create conversation with proper agent settings
                         $conversation = $this->conversationFactory->createForScreen(
                             $session,
-                            null, // No specific agent from template, factory will use workspace default
+                            null, // Factory will use workspace default agent
                             $item['title'] ?? 'New Chat'
                         );
 
-                        $screen = Screen::create([
-                            'session_id' => $session->id,
-                            'type' => Screen::TYPE_CHAT,
-                            'conversation_id' => $conversation->id,
-                        ]);
+                        $screen = Screen::createChatScreen($session, $conversation);
                     } else {
                         // Panel
                         $panelState = PanelState::create([
@@ -96,42 +91,29 @@ class SessionController extends Controller
                             'state' => [],
                         ]);
 
-                        $screen = Screen::create([
-                            'session_id' => $session->id,
-                            'type' => Screen::TYPE_PANEL,
-                            'panel_slug' => $item['slug'],
-                            'panel_id' => $panelState->id,
-                            'parameters' => $item['params'] ?? [],
-                        ]);
+                        $screen = Screen::createPanelScreen(
+                            $session,
+                            $item['slug'],
+                            $panelState,
+                            $item['params'] ?? []
+                        );
                     }
 
-                    $screenOrder[] = $screen->id;
                     $firstScreen = $firstScreen ?? $screen;
                 }
             } elseif ($request->boolean('create_initial_chat', true)) {
                 // No template: create a single initial chat using factory
-                // Factory will use workspace default agent for proper settings
                 $conversation = $this->conversationFactory->createForScreen(
                     $session,
                     null, // Factory will find workspace default agent
                     'New Chat'
                 );
 
-                $screen = Screen::create([
-                    'session_id' => $session->id,
-                    'type' => Screen::TYPE_CHAT,
-                    'conversation_id' => $conversation->id,
-                    'is_active' => true,
-                ]);
-
-                $screenOrder[] = $screen->id;
-                $firstScreen = $screen;
+                $firstScreen = Screen::createChatScreen($session, $conversation);
             }
 
-            $session->update([
-                'screen_order' => $screenOrder,
-                'last_active_screen_id' => $firstScreen?->id,
-            ]);
+            // Activate the first screen (sets is_active flag and last_active_screen_id)
+            $firstScreen?->activate();
 
             $session->load(['screens.conversation', 'screens.panelState']);
 
