@@ -558,7 +558,7 @@
         <div class="flex-1 overflow-auto">
             {{-- Loading --}}
             <div x-show="diffLoading" class="flex items-center justify-center h-full">
-                <i class="fa-solid fa-spinner fa-spin text-gray-500 text-2xl"></i>
+                <x-spinner class="text-gray-500 text-2xl" />
             </div>
 
             {{-- Error --}}

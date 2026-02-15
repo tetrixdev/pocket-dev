@@ -105,7 +105,12 @@ CSS,
 <i class="fa-solid fa-folder text-yellow-500"></i>
 <i class="fa-solid fa-file text-gray-400"></i>
 <i class="fa-solid fa-chevron-right"></i>
-<i class="fa-solid fa-spinner fa-spin"></i>
+
+<!-- Spinner (use SVG for smooth animation without wobble) -->
+<svg class="animate-spin" style="width: 1em; height: 1em;" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+</svg>
 
 <!-- Brand icons -->
 <i class="fa-brands fa-github"></i>

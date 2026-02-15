@@ -45,8 +45,8 @@
         {{-- Loading state --}}
         <template x-if="systemPromptPreview.loading">
             <div class="flex items-center justify-center h-full">
-                <div class="text-gray-400">
-                    <i class="fa-solid fa-spinner fa-spin mr-2"></i>
+                <div class="text-gray-400 flex items-center">
+                    <x-spinner class="mr-2" />
                     Loading system prompt...
                 </div>
             </div>

@@ -9,7 +9,9 @@
                 :disabled="isProcessing || waitingForFinalTranscript"
                 class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-pointer disabled:cursor-not-allowed"
                 title="Voice input">
-            <i :class="isProcessing || waitingForFinalTranscript ? 'fa-solid fa-spinner fa-spin' : (isRecording ? 'fa-solid fa-stop' : 'fa-solid fa-microphone')"></i>
+            <x-spinner x-show="isProcessing || waitingForFinalTranscript" x-cloak />
+            <i x-show="!isProcessing && !waitingForFinalTranscript && isRecording" class="fa-solid fa-stop" x-cloak></i>
+            <i x-show="!isProcessing && !waitingForFinalTranscript && !isRecording" class="fa-solid fa-microphone"></i>
         </button>
 
         {{-- Textarea with Skill Autocomplete --}}
@@ -108,7 +110,7 @@
                     disabled
                     class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-not-allowed bg-gray-600 text-gray-300"
                     title="Aborting...">
-                <i class="fa-solid fa-spinner fa-spin"></i>
+                <x-spinner />
             </button>
         </template>
         <template x-if="isStreaming && !_streamState.abortPending">

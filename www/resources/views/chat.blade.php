@@ -377,60 +377,49 @@
             // Note: Alpine only auto-calls init() for components (x-data), not stores
             Alpine.store('filePreview').init();
 
-            // Modal history store for browser back button support on simple modals
-            // Each modal that opens pushes to history, back button closes topmost modal
-            Alpine.store('modalHistory', {
-                stack: [],  // Array of { id: string, close: Function }
+            // Simple modal back button support
+            // Pushes ONE history entry when first modal opens, closes ALL modals on back
+            Alpine.store('modalBackButton', {
+                count: 0,
                 _initialized: false,
+                _handledBackNavigation: false,  // Flag to prevent chatApp from also handling
 
                 init() {
                     if (this._initialized) return;
                     this._initialized = true;
 
                     window.addEventListener('popstate', (event) => {
-                        // Ignore if no modals are open
-                        if (this.stack.length === 0) return;
-
-                        if (event.state?.modalHistory) {
-                            const top = this.stack[this.stack.length - 1];
-                            // If history cleanup navigated back to the current top, do nothing
-                            // This happens when remove() calls history.back() to clean up
-                            if (top?.id === event.state.modalId) return;
-
-                            // Close modals above the target modal (nested case)
-                            while (this.stack.length && this.stack[this.stack.length - 1].id !== event.state.modalId) {
-                                this.stack.pop()?.close?.();
-                            }
-                            return;
+                        // Only handle if we have modals open and this isn't another store's state
+                        if (this.count > 0 && !event.state?.filePreview) {
+                            // Set flag so chatApp popstate handler knows we handled this
+                            this._handledBackNavigation = true;
+                            // Back button pressed - close all modals
+                            window.dispatchEvent(new CustomEvent('close-all-modals'));
+                            this.count = 0;
                         }
-
-                        // Navigated to non-modal state → close remaining top modal
-                        this.stack.pop()?.close?.();
                     });
                 },
 
-                push(id, closeFn) {
-                    // Prevent duplicates
-                    if (this.stack.some(m => m.id === id)) return;
-
-                    this.stack.push({ id, close: closeFn });
-                    history.pushState({ modalHistory: true, modalId: id }, '');
+                opened() {
+                    const wasZero = this.count === 0;
+                    this.count++;
+                    if (wasZero) {
+                        // First modal - push one history entry as buffer
+                        history.pushState({ modalOpen: true }, '');
+                    }
                 },
 
-                remove(id) {
-                    const idx = this.stack.findIndex(m => m.id === id);
-                    if (idx >= 0) {
-                        this.stack.splice(idx, 1);
-                        // If the current history state is for this modal, go back to clean it up
-                        // This prevents orphaned history entries when closing via Escape/X/backdrop
-                        if (history.state?.modalHistory && history.state?.modalId === id) {
+                closed() {
+                    if (this.count > 0) {
+                        this.count--;
+                        if (this.count === 0 && history.state?.modalOpen) {
+                            // Last modal closed via UI - clean up history entry
                             history.back();
                         }
                     }
                 }
             });
-
-            Alpine.store('modalHistory').init();
+            Alpine.store('modalBackButton').init();
 
             // File attachments store for managing uploaded files in chat
             Alpine.store('attachments', {
@@ -732,26 +721,21 @@
         }
 
         /* Custom horizontal scrollbar for screen tabs - dark theme */
-        #screen-tabs::-webkit-scrollbar,
-        #screen-tabs-mobile::-webkit-scrollbar {
+        #screen-tabs::-webkit-scrollbar {
             height: 6px;
         }
-        #screen-tabs::-webkit-scrollbar-track,
-        #screen-tabs-mobile::-webkit-scrollbar-track {
+        #screen-tabs::-webkit-scrollbar-track {
             background: transparent;
         }
-        #screen-tabs::-webkit-scrollbar-thumb,
-        #screen-tabs-mobile::-webkit-scrollbar-thumb {
+        #screen-tabs::-webkit-scrollbar-thumb {
             background: #4b5563;
             border-radius: 3px;
         }
-        #screen-tabs::-webkit-scrollbar-thumb:hover,
-        #screen-tabs-mobile::-webkit-scrollbar-thumb:hover {
+        #screen-tabs::-webkit-scrollbar-thumb:hover {
             background: #6b7280;
         }
         /* Firefox */
-        #screen-tabs,
-        #screen-tabs-mobile {
+        #screen-tabs {
             scrollbar-width: thin;
             scrollbar-color: #4b5563 transparent;
         }
@@ -787,11 +771,6 @@
             @include('partials.chat.mobile-layout')
         </div>
 
-        {{-- Mobile Screen Tabs (hidden on desktop) --}}
-        <div class="md:hidden">
-            @include('partials.chat.screen-tabs-mobile')
-        </div>
-
         {{-- Main Content Area --}}
         <div class="flex-1 flex flex-col min-h-0">
 
@@ -822,7 +801,15 @@
                           class="inline-flex items-center justify-center w-4 h-4 rounded-sm cursor-help"
                           :class="getStatusColorClass(currentConversationStatus)"
                           :title="'Status: ' + currentConversationStatus">
-                        <i class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
+                        {{-- Processing: SVG spinner --}}
+                        <svg x-show="currentConversationStatus === 'processing'" x-cloak
+                             class="animate-spin text-white" style="width: 10px; height: 10px;"
+                             viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                        </svg>
+                        {{-- Other statuses: FA icons --}}
+                        <i x-show="currentConversationStatus !== 'processing'" class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
                     </span>
                     {{-- Context window progress bar --}}
                     <x-chat.context-progress />
@@ -912,8 +899,8 @@
                 </div>
             </div>
 
-            {{-- Screen Tabs (Desktop only) - fixed below header --}}
-            <div class="hidden md:block md:fixed md:top-[57px] md:left-64 md:right-0 md:z-10">
+            {{-- Screen Tabs - Unified responsive tabs, fixed below header --}}
+            <div class="fixed top-[57px] left-0 right-0 md:left-64 z-10">
                 @include('partials.chat.screen-tabs')
             </div>
 
@@ -933,11 +920,12 @@
                  class="relative md:flex-1 md:flex md:flex-col md:min-h-0">
 
                 {{-- Drop Overlay (Desktop only) - fixed position matching #messages --}}
-                {{-- Top offset: header (57px) + tabs (38px when visible) --}}
+                {{-- TODO: Extract magic numbers (108px, 110px, 57px) to computed properties.
+                     These are: header (57px) + tabs height (51px desktop / 53px mobile) --}}
                 <div x-cloak
                      class="fixed left-64 right-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg hidden"
                      :class="isDragging ? 'md:flex' : 'md:hidden'"
-                     :style="{ top: currentSession ? '95px' : '57px', bottom: desktopInputHeight + 'px' }">
+                     :style="{ top: currentSession ? '108px' : '57px', bottom: desktopInputHeight + 'px' }">
                     <div class="bg-gray-800 rounded-lg p-6 text-center shadow-xl border-2 border-dashed border-blue-400">
                         <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-400 mb-2"></i>
                         <p class="text-gray-200 font-medium">Drop files to attach</p>
@@ -955,7 +943,7 @@
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
                          class="fixed left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         :style="{ top: (currentSession ? '105px' : '57px'), bottom: mobileInputHeight + 'px' }">
+                         :style="{ top: (currentSession ? '110px' : '57px'), bottom: mobileInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -978,7 +966,7 @@
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
                          class="fixed left-64 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         :style="{ top: currentSession ? '95px' : '57px', bottom: desktopInputHeight + 'px' }">
+                         :style="{ top: currentSession ? '108px' : '57px', bottom: desktopInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -997,7 +985,7 @@
                             md:left-64 md:pt-4 md:pb-4"
                      :class="[isDragging ? 'ring-2 ring-blue-500 ring-inset' : '', isSwiping ? 'swipe-active' : '']"
                      :style="{
-                         top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'),
+                         top: (currentSession ? (windowWidth >= 768 ? '108px' : '110px') : '57px'),
                          bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px',
                          transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
                          transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
@@ -1043,7 +1031,7 @@
                         md:left-64"
                  :class="isSwiping ? 'swipe-active' : ''"
                  :style="{
-                     top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'),
+                     top: (currentSession ? (windowWidth >= 768 ? '108px' : '110px') : '57px'),
                      bottom: '0px',
                      transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
                      transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
@@ -1228,6 +1216,26 @@
                     return this.sessions.filter(s =>
                         (s.name || '').toLowerCase().includes(query)
                     );
+                },
+
+                // Computed: panels grouped by category for dropdown display
+                // Categories are sorted alphabetically, with 'other' always last
+                get panelsByCategory() {
+                    const groups = {};
+
+                    this.availablePanels.forEach(panel => {
+                        const cat = panel.category || 'other';
+                        if (!groups[cat]) groups[cat] = { category: cat, panels: [] };
+                        groups[cat].panels.push(panel);
+                    });
+
+                    return Object.values(groups).sort((a, b) => {
+                        // 'other' always goes last
+                        if (a.category === 'other' && b.category !== 'other') return 1;
+                        if (b.category === 'other' && a.category !== 'other') return -1;
+                        // Otherwise alphabetical
+                        return a.category.localeCompare(b.category);
+                    });
                 },
 
                 // Computed: visible screen order (excludes screens with archived conversations)
@@ -1540,11 +1548,22 @@
                     // Check URL for session ID and load if present
                     const urlSessionId = this.getSessionIdFromUrl();
                     if (urlSessionId) {
+                        // Ensure history state is set on page load/refresh
+                        // (browsers don't persist history.state across refreshes)
+                        if (!history.state?.sessionId) {
+                            history.replaceState({ sessionId: urlSessionId }, '', location.href);
+                        }
+
                         await this.loadSession(urlSessionId);
 
                         // Scroll to bottom if returning from settings
                         if (returningFromSettings) {
                             this.$nextTick(() => this.scrollToBottom());
+                        }
+                    } else {
+                        // On home page, ensure we have a known state (not null)
+                        if (!history.state) {
+                            history.replaceState({ home: true }, '', location.href);
                         }
                     }
 
@@ -1555,8 +1574,11 @@
                             return;
                         }
 
-                        // Ignore modalHistory states (handled by modalHistory store)
-                        if (event.state?.modalHistory) {
+                        // If modals are open OR were just closed by back button, don't navigate
+                        const modalStore = Alpine.store('modalBackButton');
+                        if (modalStore && (modalStore.count > 0 || modalStore._handledBackNavigation)) {
+                            // Reset the flag for next time
+                            modalStore._handledBackNavigation = false;
                             return;
                         }
 
@@ -1580,6 +1602,9 @@
                     window.addEventListener('resize', () => {
                         this.windowWidth = window.innerWidth;
                     });
+
+                    // Initialize panel iframe swipe listener for mobile tab switching
+                    this.initPanelSwipeListener();
 
                     // Handle visibility changes (phone standby, tab switching)
                     // Refresh session screens when page becomes visible again
@@ -1913,9 +1938,9 @@
                 },
 
                 getStatusIconClass(status) {
+                    // Note: 'processing' status uses SVG spinner in templates, not this function
                     const icons = {
                         'idle': 'fa-solid fa-check',
-                        'processing': 'fa-solid fa-spinner fa-spin',
                         'archived': 'fa-solid fa-box-archive',
                         'failed': 'fa-solid fa-triangle-exclamation'
                     };
@@ -3704,7 +3729,7 @@
                     // Prevent vertical scrolling while swiping
                     e.preventDefault();
 
-                    const screenOrder = this.currentSession?.screen_order || [];
+                    const screenOrder = this.visibleScreenOrder;
                     const currentIndex = screenOrder.indexOf(this.activeScreenId);
                     const isAtStart = currentIndex === 0;
                     const isAtEnd = currentIndex === screenOrder.length - 1;
@@ -3725,7 +3750,7 @@
                         return;
                     }
 
-                    const screenOrder = this.currentSession?.screen_order || [];
+                    const screenOrder = this.visibleScreenOrder;
                     const currentIndex = screenOrder.indexOf(this.activeScreenId);
 
                     // Check if swipe exceeded threshold
@@ -3748,6 +3773,118 @@
                     this.swipeCurrentX = 0;
                     this.swipeDeltaX = 0;
                     this.isSwiping = false;
+                },
+
+                // Panel iframe swipe message handler
+                // Panels render in iframes, so touch events don't bubble to parent.
+                // The panel wrapper injects a script that posts messages to parent.
+                initPanelSwipeListener() {
+                    window.addEventListener('message', (event) => {
+                        // Validate message source
+                        if (!event.data || event.data.source !== 'pocketdev-panel-swipe') {
+                            return;
+                        }
+
+                        // Only process if we're viewing a panel AND on mobile
+                        if (!this.isActiveScreenPanel || this.windowWidth >= 768) {
+                            return;
+                        }
+
+                        // Need multiple screens to swipe between
+                        if (this.screens.length <= 1) {
+                            return;
+                        }
+
+                        const { type, ...data } = event.data;
+
+                        switch (type) {
+                            case 'touchstart':
+                                this.handlePanelSwipeStart(data);
+                                break;
+                            case 'touchmove':
+                                this.handlePanelSwipeMove(data);
+                                break;
+                            case 'touchend':
+                                this.handlePanelSwipeEnd(data);
+                                break;
+                            case 'touchcancel':
+                                this.resetSwipeState();
+                                break;
+                        }
+                    });
+                },
+
+                handlePanelSwipeStart(data) {
+                    // If touch started in horizontal scroll area (code block, table), don't capture
+                    if (data.isInScrollArea) {
+                        return;
+                    }
+
+                    this.swipeStartX = data.clientX;
+                    this.swipeStartY = data.clientY;
+                    this.swipeCurrentX = data.clientX;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
+                },
+
+                handlePanelSwipeMove(data) {
+                    // If in scroll area, let the panel handle the scroll
+                    if (data.isInScrollArea) {
+                        return;
+                    }
+
+                    if (this.swipeStartX === 0) return;
+
+                    // Wait until direction is determined
+                    if (!data.determinedDirection) return;
+
+                    // If vertical scroll, abort swipe
+                    if (!data.isHorizontal) {
+                        this.swipeStartX = 0;
+                        return;
+                    }
+
+                    // Start swiping
+                    if (!this.isSwiping) {
+                        this.isSwiping = true;
+                    }
+
+                    const screenOrder = this.visibleScreenOrder;
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+                    const isAtStart = currentIndex === 0;
+                    const isAtEnd = currentIndex === screenOrder.length - 1;
+
+                    // Apply edge resistance at boundaries
+                    let adjustedDelta = data.deltaX;
+                    if ((data.deltaX > 0 && isAtStart) || (data.deltaX < 0 && isAtEnd)) {
+                        adjustedDelta = data.deltaX * this.swipeEdgeResistance;
+                    }
+
+                    this.swipeDeltaX = adjustedDelta;
+                    this.swipeCurrentX = data.clientX;
+                },
+
+                handlePanelSwipeEnd(data) {
+                    if (!this.isSwiping) {
+                        this.resetSwipeState();
+                        return;
+                    }
+
+                    const screenOrder = this.visibleScreenOrder;
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+
+                    // Check if swipe exceeded threshold
+                    if (Math.abs(this.swipeDeltaX) > this.swipeThreshold) {
+                        if (this.swipeDeltaX > 0 && currentIndex > 0) {
+                            // Swipe right → previous screen
+                            this.activateScreen(screenOrder[currentIndex - 1]);
+                        } else if (this.swipeDeltaX < 0 && currentIndex < screenOrder.length - 1) {
+                            // Swipe left → next screen
+                            this.activateScreen(screenOrder[currentIndex + 1]);
+                        }
+                    }
+
+                    this.resetSwipeState();
                 },
 
                 // Close/remove a screen
@@ -7112,8 +7249,9 @@
                 },
 
                 get voiceButtonText() {
-                    if (this.isProcessing) return '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
-                    if (this.waitingForFinalTranscript) return '<i class="fa-solid fa-spinner fa-spin"></i> Finishing...';
+                    const spinnerSvg = '<svg class="animate-spin" style="width: 1em; height: 1em;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+                    if (this.isProcessing) return spinnerSvg + ' Connecting...';
+                    if (this.waitingForFinalTranscript) return spinnerSvg + ' Finishing...';
                     if (this.isRecording) return '<i class="fa-solid fa-stop"></i> Stop';
                     return '<i class="fa-solid fa-microphone"></i> Record';
                 },

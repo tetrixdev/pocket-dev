@@ -31,7 +31,15 @@
                   class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm"
                   :class="getStatusColorClass(currentConversationStatus)"
                   :title="'Status: ' + currentConversationStatus">
-                <i class="text-white text-[8px]" :class="getStatusIconClass(currentConversationStatus)"></i>
+                {{-- Processing: SVG spinner --}}
+                <svg x-show="currentConversationStatus === 'processing'" x-cloak
+                     class="animate-spin text-white" style="width: 8px; height: 8px;"
+                     viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
+                {{-- Other statuses: FA icons --}}
+                <i x-show="currentConversationStatus !== 'processing'" class="text-white text-[8px]" :class="getStatusIconClass(currentConversationStatus)"></i>
             </span>
             {{-- Context progress bar (compact) --}}
             <x-chat.context-progress :compact="true" />
@@ -224,7 +232,15 @@
                 <div class="flex items-center gap-1.5">
                     <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm shrink-0"
                           :class="getStatusColorClass(_status)">
-                        <i class="text-white text-[8px]" :class="getStatusIconClass(_status)"></i>
+                        {{-- Processing: SVG spinner --}}
+                        <svg x-show="_status === 'processing'" x-cloak
+                             class="animate-spin text-white" style="width: 8px; height: 8px;"
+                             viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                        </svg>
+                        {{-- Other statuses: FA icons --}}
+                        <i x-show="_status !== 'processing'" class="text-white text-[8px]" :class="getStatusIconClass(_status)"></i>
                     </span>
                     <span class="text-xs text-gray-300 truncate flex-1" x-text="session.name || 'New Session'"></span>
                     {{-- Screen count badge --}}

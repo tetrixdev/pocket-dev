@@ -56,7 +56,7 @@
                     :class="hasAnyFiles ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-600 hover:bg-gray-500 text-gray-200'"
                     class="relative px-4 py-[10px] min-w-[106px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     title="Attach files">
-                <i x-show="isUploading" class="fa-solid fa-spinner fa-spin"></i>
+                <x-spinner x-show="isUploading" x-cloak />
                 <i x-show="!isUploading" class="fa-solid fa-paperclip"></i>
                 <span x-show="!hasAnyFiles">Attach</span>
                 <span x-show="hasAnyFiles"
@@ -106,7 +106,7 @@
                                 </div>
                                 <div class="flex items-center gap-3">
                                     <template x-if="file.uploading">
-                                        <i class="fa-solid fa-spinner fa-spin text-blue-400"></i>
+                                        <x-spinner class="text-blue-400" />
                                     </template>
                                     <template x-if="!file.uploading && !file.error">
                                         <i class="fa-solid fa-check text-green-400"></i>
@@ -267,7 +267,7 @@
             <button type="button"
                     disabled
                     class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-not-allowed bg-gray-600 text-gray-300">
-                <i class="fa-solid fa-spinner fa-spin"></i> Aborting...
+                <x-spinner /> Aborting...
             </button>
         </template>
         <template x-if="isStreaming && !_streamState.abortPending">

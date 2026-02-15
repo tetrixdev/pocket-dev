@@ -11,6 +11,7 @@ class FileExplorerPanel extends Panel
     public string $name = 'File Explorer';
     public string $description = 'Browse files and directories interactively';
     public string $icon = 'fa-solid fa-folder-tree';
+    public string $category = 'files';
 
     public array $parameters = [
         'path' => [

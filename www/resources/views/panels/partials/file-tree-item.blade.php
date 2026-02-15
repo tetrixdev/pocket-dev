@@ -21,8 +21,8 @@
             <i class="fa-solid text-xs w-3 transition-transform"
                :class="isExpanded({{ $jsPath }}) ? 'fa-chevron-down' : 'fa-chevron-right text-gray-500'"
                x-show="!isLoading({{ $jsPath }})"></i>
-            <i class="fa-solid fa-spinner fa-spin text-xs w-3 text-gray-500"
-               x-show="isLoading({{ $jsPath }})" x-cloak></i>
+            <x-spinner class="text-xs w-3 text-gray-500"
+               x-show="isLoading({{ $jsPath }})" x-cloak />
             <i class="fa-solid fa-folder text-yellow-500"></i>
             <span class="text-sm truncate">{{ $item['name'] }}</span>
         @else
