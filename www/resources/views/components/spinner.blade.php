@@ -10,7 +10,7 @@
     The SVG rotates pixel-perfectly because it's mathematically defined, not a font glyph.
 --}}
 <svg
-    {{ $attributes->merge(['class' => 'animate-spin w-[1em] h-[1em]']) }}
+    {{ $attributes->merge(['class' => 'animate-spin w-[1em] h-[1em]', 'aria-hidden' => 'true']) }}
     viewBox="0 0 24 24"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"

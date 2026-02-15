@@ -251,7 +251,7 @@ class DockerContainersPanel extends Panel
         $project = $params['project'] ?? '';
         $container = $params['container'] ?? null;
         $workingDir = $params['working_dir'] ?? '';
-        $tail = min((int) ($params['tail'] ?? 100), 1000); // Default 100, max 1000 per request
+        $tail = max(1, min((int) ($params['tail'] ?? 100), 1000)); // Default 100, min 1, max 1000 per request
 
         // For specific container, use docker logs directly
         if ($container) {
