@@ -54,7 +54,8 @@ class DockerContainersPanel extends Panel
         $lines = array_filter(explode("\n", trim($result->output())));
 
         foreach ($lines as $line) {
-            $parts = explode('~', $line);
+            // Limit to 11 parts so ~ in mount paths doesn't break parsing
+            $parts = explode('~', $line, 11);
             if (count($parts) < 11) {
                 continue;
             }
@@ -178,6 +179,16 @@ class DockerContainersPanel extends Panel
             ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
             ->run('/usr/libexec/docker/cli-plugins/docker-compose stop 2>&1');
 
+        if ($result->failed()) {
+            $error = trim($result->output());
+            $lastLines = implode(' ', array_slice(explode("\n", $error), -3));
+
+            return [
+                'data' => ['success' => false, 'message' => "Stop failed: {$lastLines}"],
+                'error' => null,
+            ];
+        }
+
         return [
             'data' => ['success' => true, 'message' => 'Stopped successfully'],
             'error' => null,
@@ -201,13 +212,20 @@ class DockerContainersPanel extends Panel
         }
 
         // Stop first
-        Process::timeout(60)
+        $stopResult = Process::timeout(60)
             ->path($workingDir)
             ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
             ->run('/usr/libexec/docker/cli-plugins/docker-compose stop 2>&1');
 
         // Then start with force-recreate
-        return $this->startProject($params);
+        $startResult = $this->startProject($params);
+
+        // If stop failed but start succeeded, warn the user
+        if ($stopResult->failed() && ($startResult['data']['success'] ?? false)) {
+            $startResult['data']['message'] = 'Warning: Stop failed, but start succeeded';
+        }
+
+        return $startResult;
     }
 
     /**
@@ -262,8 +280,9 @@ class DockerContainersPanel extends Panel
         if (empty($workingDir) || !is_dir($workingDir)) {
             // Fallback: get all containers for this project and combine logs
             $format = '{{.Names}}';
+            $filter = escapeshellarg("label=com.docker.compose.project={$project}");
             $psResult = Process::timeout(10)->run(
-                "docker ps -a --filter 'label=com.docker.compose.project={$project}' --format '{$format}' 2>/dev/null"
+                "docker ps -a --filter {$filter} --format " . escapeshellarg($format) . " 2>/dev/null"
             );
 
             if ($psResult->failed() || empty(trim($psResult->output()))) {

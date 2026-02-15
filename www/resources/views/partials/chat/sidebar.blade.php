@@ -59,12 +59,7 @@
                     <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm shrink-0"
                           :class="getStatusColorClass(_status)">
                         {{-- Processing: SVG spinner --}}
-                        <svg x-show="_status === 'processing'" x-cloak
-                             class="animate-spin text-white" style="width: 8px; height: 8px;"
-                             viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
-                            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                        </svg>
+                        <x-spinner x-show="_status === 'processing'" x-cloak class="w-2 h-2 text-white" />
                         {{-- Other statuses: FA icons --}}
                         <i x-show="_status !== 'processing'" class="text-white text-[8px]" :class="getStatusIconClass(_status)"></i>
                     </span>

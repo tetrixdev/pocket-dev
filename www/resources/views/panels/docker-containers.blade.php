@@ -21,9 +21,17 @@
     logsError: null,
     logsTail: 100,
     logsParams: {},
+    copyMessage: null,
 
     init() {
         this.fetchContainers();
+    },
+
+    destroy() {
+        if (this.autoRefreshInterval) {
+            clearInterval(this.autoRefreshInterval);
+            this.autoRefreshInterval = null;
+        }
     },
 
     getShortName(container, group) {
@@ -102,6 +110,9 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'refresh', params: {} })
             });
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
             const result = await response.json();
 
             if (result.ok && result.data) {
@@ -166,6 +177,9 @@
                     }
                 })
             });
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
             const result = await response.json();
 
             if (result.ok && result.data) {
@@ -243,6 +257,9 @@
                     params: { ...this.logsParams, tail: this.logsTail }
                 })
             });
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status}`);
+            }
             const result = await response.json();
 
             if (result.ok && result.data) {
@@ -294,8 +311,14 @@
         await this.fetchLogs();
     },
 
-    copyLogs() {
-        navigator.clipboard.writeText(this.logsContent);
+    async copyLogs() {
+        try {
+            await navigator.clipboard.writeText(this.logsContent);
+            this.copyMessage = 'Copied!';
+        } catch (e) {
+            this.copyMessage = 'Copy failed';
+        }
+        setTimeout(() => { this.copyMessage = null; }, 2000);
     },
 
     closeLogs() {
@@ -633,7 +656,8 @@
                         class="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
                         title="Copy to clipboard"
                     >
-                        <i class="fa-solid fa-copy"></i>
+                        <span x-show="!copyMessage"><i class="fa-solid fa-copy"></i></span>
+                        <span x-show="copyMessage" x-text="copyMessage" x-cloak></span>
                     </button>
                 </div>
             </div>
@@ -660,7 +684,8 @@
                         @click="copyLogs()"
                         class="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded"
                     >
-                        <i class="fa-solid fa-copy"></i>
+                        <span x-show="!copyMessage"><i class="fa-solid fa-copy"></i></span>
+                        <span x-show="copyMessage" x-text="copyMessage" x-cloak></span>
                     </button>
                 </div>
             </div>
