@@ -70,19 +70,19 @@
                         // Listen for browser back button
                         const store = this;
                         this._popstateHandler = (event) => {
-                            // Only handle our own history states (ignore modalHistory and other states)
-                            if (!event.state?.filePreview) return;
+                            // Ignore if no previews are open
+                            if (!store.isOpen) return;
 
                             if (window.debugLog) debugLog('popstate event (filePreview)', {
                                 state: event.state,
                                 isOpen: store.isOpen,
                                 stackDepth: store.stack.length
                             });
-                            // Close one preview level
-                            if (store.isOpen) {
-                                if (window.debugLog) debugLog('popstate: closing preview via back button');
-                                store._closeStack();
-                            }
+
+                            // Close preview when navigating back (regardless of state content)
+                            // The popstate event itself signals "go back"
+                            if (window.debugLog) debugLog('popstate: closing preview via back button');
+                            store._closeStack();
                         };
                         window.addEventListener('popstate', this._popstateHandler);
                     },
@@ -388,12 +388,14 @@
                     this._initialized = true;
 
                     window.addEventListener('popstate', (event) => {
-                        // Only handle our own history states
-                        if (event.state?.modalHistory && this.stack.length > 0) {
-                            const top = this.stack.pop();
-                            if (top && top.close) {
-                                top.close();
-                            }
+                        // Ignore if no modals are open
+                        if (this.stack.length === 0) return;
+
+                        // Close topmost modal when navigating back
+                        // The popstate event itself signals "go back"
+                        const top = this.stack.pop();
+                        if (top && top.close) {
+                            top.close();
                         }
                     });
                 },
