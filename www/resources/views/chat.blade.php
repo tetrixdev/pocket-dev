@@ -70,12 +70,15 @@
                         // Listen for browser back button
                         const store = this;
                         this._popstateHandler = (event) => {
-                            if (window.debugLog) debugLog('popstate event', {
+                            // Only handle our own history states (ignore modalHistory and other states)
+                            if (!event.state?.filePreview) return;
+
+                            if (window.debugLog) debugLog('popstate event (filePreview)', {
                                 state: event.state,
                                 isOpen: store.isOpen,
                                 stackDepth: store.stack.length
                             });
-                            // Close preview if open (any back navigation while modal is open should close it)
+                            // Close one preview level
                             if (store.isOpen) {
                                 if (window.debugLog) debugLog('popstate: closing preview via back button');
                                 store._closeStack();
@@ -370,7 +373,53 @@
             // Global helper for opening file preview
             window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
 
-            // Note: filePreview.init() is auto-called by Alpine when the store is registered
+            // Initialize filePreview store (sets up popstate listener for back button support)
+            // Note: Alpine only auto-calls init() for components (x-data), not stores
+            Alpine.store('filePreview').init();
+
+            // Modal history store for browser back button support on simple modals
+            // Each modal that opens pushes to history, back button closes topmost modal
+            Alpine.store('modalHistory', {
+                stack: [],  // Array of { id: string, close: Function }
+                _initialized: false,
+
+                init() {
+                    if (this._initialized) return;
+                    this._initialized = true;
+
+                    window.addEventListener('popstate', (event) => {
+                        // Only handle our own history states
+                        if (event.state?.modalHistory && this.stack.length > 0) {
+                            const top = this.stack.pop();
+                            if (top && top.close) {
+                                top.close();
+                            }
+                        }
+                    });
+                },
+
+                push(id, closeFn) {
+                    // Prevent duplicates
+                    if (this.stack.some(m => m.id === id)) return;
+
+                    this.stack.push({ id, close: closeFn });
+                    history.pushState({ modalHistory: true, modalId: id }, '');
+                },
+
+                remove(id) {
+                    const idx = this.stack.findIndex(m => m.id === id);
+                    if (idx >= 0) {
+                        this.stack.splice(idx, 1);
+                        // If the current history state is for this modal, go back to clean it up
+                        // This prevents orphaned history entries when closing via Escape/X/backdrop
+                        if (history.state?.modalHistory && history.state?.modalId === id) {
+                            history.back();
+                        }
+                    }
+                }
+            });
+
+            Alpine.store('modalHistory').init();
 
             // File attachments store for managing uploaded files in chat
             Alpine.store('attachments', {
@@ -1492,6 +1541,11 @@
                     window.addEventListener('popstate', (event) => {
                         // Ignore filePreview history states (handled by filePreview store)
                         if (event.state?.filePreview) {
+                            return;
+                        }
+
+                        // Ignore modalHistory states (handled by modalHistory store)
+                        if (event.state?.modalHistory) {
                             return;
                         }
 

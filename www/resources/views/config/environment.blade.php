@@ -239,7 +239,7 @@
     </section>
 
     {{-- Add Credential Modal --}}
-    <x-modal show="showAddCredentialModal" title="Add Credential" max-width="lg">
+    <x-modal show="showAddCredentialModal" title="Add Credential" max-width="lg" :history="false">
         <form method="POST" action="{{ route('config.environment.credentials.store') }}">
             @csrf
             <div class="space-y-4">
@@ -305,7 +305,7 @@
     </x-modal>
 
     {{-- Edit Credential Modal --}}
-    <x-modal show="showEditCredentialModal" title="Edit Credential" max-width="lg">
+    <x-modal show="showEditCredentialModal" title="Edit Credential" max-width="lg" :history="false">
         <form method="POST" x-bind:action="'{{ route('config.environment.credentials.update', ':id') }}'.replace(':id', editingCredential?.id || '')">
             @csrf
             @method('PUT')
