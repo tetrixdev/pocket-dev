@@ -391,12 +391,21 @@
                         // Ignore if no modals are open
                         if (this.stack.length === 0) return;
 
-                        // Close topmost modal when navigating back
-                        // The popstate event itself signals "go back"
-                        const top = this.stack.pop();
-                        if (top && top.close) {
-                            top.close();
+                        if (event.state?.modalHistory) {
+                            const top = this.stack[this.stack.length - 1];
+                            // If history cleanup navigated back to the current top, do nothing
+                            // This happens when remove() calls history.back() to clean up
+                            if (top?.id === event.state.modalId) return;
+
+                            // Close modals above the target modal (nested case)
+                            while (this.stack.length && this.stack[this.stack.length - 1].id !== event.state.modalId) {
+                                this.stack.pop()?.close?.();
+                            }
+                            return;
                         }
+
+                        // Navigated to non-modal state → close remaining top modal
+                        this.stack.pop()?.close?.();
                     });
                 },
 
