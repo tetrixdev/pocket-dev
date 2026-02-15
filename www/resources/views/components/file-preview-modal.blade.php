@@ -1,6 +1,8 @@
 {{-- File Preview Modal - Responsive fullscreen on mobile, large modal on desktop --}}
 {{-- Supports stacked file previews - clicking a file path inside opens on top --}}
-<div x-data
+{{-- Note: This is intentionally standalone (not using x-modal) because it has stack-based navigation --}}
+{{-- with different close behaviors (escape pops one, backdrop closes all) and its own history management --}}
+<div x-data="{ mousedownOnBackdrop: false }"
      x-show="$store.filePreview.isOpen"
      x-transition:enter="transition ease-out duration-200"
      x-transition:enter-start="opacity-0"
@@ -9,12 +11,14 @@
      x-transition:leave-start="opacity-100"
      x-transition:leave-end="opacity-0"
      @keydown.escape.window="$store.filePreview.close()"
+     @mouseup.window="mousedownOnBackdrop = false"
      class="fixed inset-0 z-50 flex items-center justify-center"
      style="display: none;">
 
-    {{-- Backdrop - closes all on click --}}
+    {{-- Backdrop - only close if mousedown AND mouseup both on backdrop (prevents drag-select closing) --}}
     <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"
-         @click="$store.filePreview.closeAll()"></div>
+         @mousedown="mousedownOnBackdrop = true"
+         @mouseup="if (mousedownOnBackdrop) $store.filePreview.closeAll()"></div>
 
     {{-- Modal Content --}}
     <div class="relative w-full h-full md:h-[85vh] md:max-h-[85vh] md:max-w-4xl md:mx-4 md:rounded-lg bg-gray-900 flex flex-col overflow-hidden shadow-2xl"

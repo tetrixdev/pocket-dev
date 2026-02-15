@@ -224,7 +224,7 @@
     </div>
 
     {{-- Core Edit Warning Modal --}}
-    <x-modal show="showCoreEditWarning" title="Warning: Advanced Setting" max-width="lg">
+    <x-modal show="showCoreEditWarning" title="Warning: Advanced Setting" max-width="lg" :history="false">
         <div class="space-y-4">
             <div class="flex items-start gap-3 p-4 bg-yellow-900/30 border border-yellow-700 rounded-lg">
                 <svg class="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -251,7 +251,7 @@
     </x-modal>
 
     {{-- Core Reset Warning Modal --}}
-    <x-modal show="showCoreResetWarning" title="Reset Core Prompt?" max-width="lg">
+    <x-modal show="showCoreResetWarning" title="Reset Core Prompt?" max-width="lg" :history="false">
         <div class="space-y-4">
             <div class="flex items-start gap-3 p-4 bg-red-900/30 border border-red-700 rounded-lg">
                 <svg class="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -276,7 +276,7 @@
     </x-modal>
 
     {{-- Additional Reset Warning Modal --}}
-    <x-modal show="showAdditionalResetWarning" title="Reset Additional Instructions?" max-width="lg">
+    <x-modal show="showAdditionalResetWarning" title="Reset Additional Instructions?" max-width="lg" :history="false">
         <div class="space-y-4">
             <div class="flex items-start gap-3 p-4 bg-red-900/30 border border-red-700 rounded-lg">
                 <svg class="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

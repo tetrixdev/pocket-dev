@@ -74,7 +74,7 @@
     </p>
 
     {{-- Save Warning Modal --}}
-    <x-modal show="showSaveWarning" title="Save Core System Prompt?" max-width="lg">
+    <x-modal show="showSaveWarning" title="Save Core System Prompt?" max-width="lg" :history="false">
         <div class="space-y-4">
             <div class="flex items-start gap-3 p-4 bg-yellow-900/30 border border-yellow-700 rounded-lg">
                 <svg class="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
