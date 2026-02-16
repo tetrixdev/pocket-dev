@@ -1162,6 +1162,8 @@
                 set _wasStreamingBeforeHidden(val) { if (this._streamStore) this._streamStore._wasStreamingBeforeHidden = val; },
                 get _justCompletedStream() { return this._streamStore?._justCompletedStream ?? false; },
                 set _justCompletedStream(val) { if (this._streamStore) this._streamStore._justCompletedStream = val; },
+                get lastEventIndex() { return this._streamStore?.lastEventIndex ?? 0; },
+                set lastEventIndex(val) { if (this._streamStore) this._streamStore.lastEventIndex = val; },
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
                 ignoreScrollEvents: false, // Ignore scroll events during conversation loading
@@ -1674,7 +1676,7 @@
                             this.currentSession = null;
                             this.screens = [];
                             this.activeScreenId = null;
-                            this.messages = [];
+                            if (this._messageStore) this._messageStore.clearMessages();
                             this.currentConversationUuid = null;
                         }
                     });
@@ -2325,7 +2327,7 @@
 
                             // Clear ALL old workspace state before loading new data
                             // IMPORTANT: Include messages to prevent stale conversation content
-                            this.messages = [];
+                            this._messageStore.clearMessages();
                             this.agents = [];
                             this.currentAgentId = null;
                             this.currentConversationUuid = null;
@@ -2577,7 +2579,7 @@
                     this.currentConversationStatus = null; // Reset status for new conversation
                     this.currentConversationTitle = null; // Reset title for new conversation
                     this.conversationProvider = null; // Reset for new conversation
-                    this.messages = [];
+                    this._messageStore.clearMessages();
 
                     // Clear session/screen state for new conversation
                     this.currentSession = null;
@@ -2954,7 +2956,7 @@
 
                         // Note: URL is session-based, so we don't update it when loading a conversation
                         // The session URL is set when loadSession() is called
-                        this.messages = [];
+                        this._messageStore.clearMessages();
                         this.isAtBottom = true; // Hide scroll button during load
                         // Only enable auto-scroll if not coming from search result
                         if (this.pendingScrollToTurn === null) {
@@ -3139,7 +3141,7 @@
                         this.showError('Failed to load conversation');
                         // Reset local state and clear URL without creating a back-button loop
                         this.currentConversationUuid = null;
-                        this.messages = [];
+                        this._messageStore.clearMessages();
                         this.updateSessionUrl(null, { replace: true });
                     }
                 },
@@ -3347,7 +3349,7 @@
 
                         this.currentConversationUuid = uuid;
                         // Note: Don't update URL here - URLs are session-based, not conversation-based
-                        this.messages = [];
+                        this._messageStore.clearMessages();
                         this.isAtBottom = true;
                         // Disable auto-scroll when targeting a specific turn (like loadConversation does)
                         this.autoScrollEnabled = targetTurn === null;

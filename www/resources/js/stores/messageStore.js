@@ -64,17 +64,18 @@ export function createMessageStore(options = {}) {
         },
 
         /**
-         * Clear all messages
+         * Clear all messages (mutates in-place to preserve shared reference)
          */
         clearMessages() {
-            this.messages = [];
+            this.messages.length = 0;
         },
 
         /**
-         * Set messages array (replaces all)
+         * Set messages array (mutates in-place to preserve shared reference)
          */
         setMessages(msgs) {
-            this.messages = msgs;
+            this.messages.length = 0;
+            this.messages.push(...msgs);
         },
 
         /**
@@ -367,7 +368,8 @@ export function createMessageStore(options = {}) {
                 }
             }
 
-            this.messages = allUiMessages;
+            this.messages.length = 0;
+            this.messages.push(...allUiMessages);
             return allUiMessages;
         },
 
@@ -443,8 +445,9 @@ export function createMessageStore(options = {}) {
                 return;
             }
 
-            // Phase 1: Render priority messages immediately
-            this.messages = priorityMessages;
+            // Phase 1: Render priority messages immediately (mutate in-place to preserve shared reference)
+            this.messages.length = 0;
+            this.messages.push(...priorityMessages);
 
             // Wait for initial render and scroll
             await new Promise(resolve => {
