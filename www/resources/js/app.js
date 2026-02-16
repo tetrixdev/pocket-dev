@@ -17,14 +17,20 @@ import markdown from 'highlight.js/lib/languages/markdown';
 import json from 'highlight.js/lib/languages/json';
 import 'highlight.js/styles/atom-one-dark.css';
 
+// Import store factories (Sprint 3: Frontend Extraction)
+import { createMessageStore } from './stores/messageStore.js';
+import { createStreamStore } from './stores/streamStore.js';
+
 // Register languages for syntax highlighting
 hljs.registerLanguage('nginx', nginx);
 hljs.registerLanguage('markdown', markdown);
 hljs.registerLanguage('json', json);
 
-// Make Alpine and hljs available globally BEFORE Alpine starts
+// Make Alpine, hljs, and store factories available globally BEFORE Alpine starts
 window.Alpine = Alpine;
 window.hljs = hljs;
+window.createMessageStore = createMessageStore;
+window.createStreamStore = createStreamStore;
 
 // Global Debug Logger Store
 Alpine.store('debug', {
