@@ -11,6 +11,7 @@ abstract class Panel
     public string $name;
     public string $description = '';
     public string $icon = 'fa-solid fa-table-columns';  // FontAwesome icon
+    public string $category = 'other';  // Category for grouping in UI (default catch-all, always sorted last)
 
     // Parameter schema for validation/documentation
     public array $parameters = [];
@@ -88,6 +89,7 @@ abstract class Panel
             'description' => $this->description,
             'icon' => $this->icon,
             'parameters' => $this->parameters,
+            'category' => $this->category,
             'is_system' => true,
         ];
     }

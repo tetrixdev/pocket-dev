@@ -58,7 +58,10 @@
                 <div class="flex items-center gap-1.5">
                     <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm shrink-0"
                           :class="getStatusColorClass(_status)">
-                        <i class="text-white text-[8px]" :class="getStatusIconClass(_status)"></i>
+                        {{-- Processing: SVG spinner --}}
+                        <x-spinner x-show="_status === 'processing'" x-cloak class="w-2 h-2 text-white" />
+                        {{-- Other statuses: FA icons --}}
+                        <i x-show="_status !== 'processing'" class="text-white text-[8px]" :class="getStatusIconClass(_status)"></i>
                     </span>
                     <span class="text-xs text-gray-300 truncate flex-1" x-text="session.name || 'New Session'"></span>
                     {{-- Screen count badge --}}

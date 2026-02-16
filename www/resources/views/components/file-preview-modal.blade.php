@@ -99,7 +99,7 @@
                                 :disabled="$store.filePreview.saving"
                                 :class="{ 'opacity-50 cursor-not-allowed': $store.filePreview.saving }">
                             <template x-if="$store.filePreview.saving">
-                                <i class="fa-solid fa-spinner fa-spin"></i>
+                                <x-spinner />
                             </template>
                             <span x-text="$store.filePreview.saving ? 'Saving...' : 'Save'"></span>
                         </button>
@@ -133,8 +133,8 @@
             {{-- Loading state --}}
             <template x-if="$store.filePreview.loading">
                 <div class="flex items-center justify-center h-full">
-                    <div class="text-gray-400">
-                        <i class="fa-solid fa-spinner fa-spin mr-2"></i>
+                    <div class="text-gray-400 flex items-center">
+                        <x-spinner class="mr-2" />
                         Loading file...
                     </div>
                 </div>

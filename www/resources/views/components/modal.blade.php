@@ -5,7 +5,7 @@
     'variant' => 'default', // 'default' or 'fullscreen'
     'closeOnEscape' => true,
     'onClose' => null, // Custom close handler (e.g., 'closeMyModal()')
-    'history' => true, // Enable browser back button support (auto-registers with modalHistory store)
+    'backButton' => true, // Enable browser back button to close modal
 ])
 
 @php
@@ -23,22 +23,21 @@
 
     // Close action - use custom handler if provided, otherwise set show variable to false
     $closeAction = $onClose ?? "{$show} = false";
-
-    // Generate a unique history ID from the show prop
-    // e.g., "showAgentSelector" -> "show-agent-selector"
-    $historyId = $history ? Str::slug(Str::snake($show)) : null;
 @endphp
 
 <div x-show="{{ $show }}"
-     x-data="{ mousedownOnBackdrop: false }"
-     @if($historyId)
+     x-data="{ mousedownOnBackdrop: false, _wasOpen: false }"
+     @if($backButton)
      x-effect="
-         if ({{ $show }}) {
-             $store.modalHistory?.push('{{ $historyId }}', () => { {{ $closeAction }} });
-         } else {
-             $store.modalHistory?.remove('{{ $historyId }}');
+         const isOpen = {{ $show }};
+         if (isOpen && !_wasOpen) {
+             $store.modalBackButton?.opened();
+         } else if (!isOpen && _wasOpen) {
+             $store.modalBackButton?.closed();
          }
+         _wasOpen = isOpen;
      "
+     @close-all-modals.window="{{ $closeAction }}"
      @endif
      @if($closeOnEscape)
      @keydown.escape.window="if ({{ $show }}) {{ $closeAction }}"

@@ -31,6 +31,118 @@ class PanelController extends Controller
         $tailwindTheme = $config['tailwind_theme'];
         $baseCss = $config['base_css'];
 
+        // Swipe detection script for cross-iframe communication
+        // This enables swipe-to-switch-tabs when swiping inside panel iframes
+        $swipeScript = <<<'SWIPE'
+<script>
+(function() {
+    // Panel swipe detection - communicates with parent window for tab switching
+    // Replicates the isInHorizontalScrollArea() logic from the parent
+
+    let swipeState = {
+        active: false,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        isInScrollArea: false,
+        determinedDirection: false,
+        isHorizontal: false
+    };
+
+    function isInHorizontalScrollArea(element) {
+        let el = element;
+        while (el && el !== document.body) {
+            if (el.scrollWidth > el.clientWidth) {
+                const style = window.getComputedStyle(el);
+                if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
+                    return true;
+                }
+            }
+            el = el.parentElement;
+        }
+        return false;
+    }
+
+    function postSwipeMessage(type, data) {
+        if (window.parent !== window) {
+            window.parent.postMessage({
+                source: 'pocketdev-panel-swipe',
+                type: type,
+                ...data
+            }, window.location.origin);
+        }
+    }
+
+    document.addEventListener('touchstart', function(e) {
+        if (e.touches.length !== 1) return;
+
+        const touch = e.touches[0];
+        swipeState = {
+            active: true,
+            startX: touch.clientX,
+            startY: touch.clientY,
+            currentX: touch.clientX,
+            isInScrollArea: isInHorizontalScrollArea(e.target),
+            determinedDirection: false,
+            isHorizontal: false
+        };
+
+        postSwipeMessage('touchstart', {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            isInScrollArea: swipeState.isInScrollArea
+        });
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function(e) {
+        if (!swipeState.active || e.touches.length !== 1) return;
+
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - swipeState.startX;
+        const deltaY = touch.clientY - swipeState.startY;
+
+        swipeState.currentX = touch.clientX;
+
+        // Determine direction once we have enough movement
+        if (!swipeState.determinedDirection && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+            swipeState.determinedDirection = true;
+            swipeState.isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+        }
+
+        postSwipeMessage('touchmove', {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            deltaX: deltaX,
+            deltaY: deltaY,
+            isHorizontal: swipeState.isHorizontal,
+            determinedDirection: swipeState.determinedDirection,
+            isInScrollArea: swipeState.isInScrollArea
+        });
+    }, { passive: true });
+
+    document.addEventListener('touchend', function(e) {
+        if (!swipeState.active) return;
+
+        const deltaX = swipeState.currentX - swipeState.startX;
+
+        postSwipeMessage('touchend', {
+            deltaX: deltaX,
+            isInScrollArea: swipeState.isInScrollArea,
+            isHorizontal: swipeState.isHorizontal
+        });
+
+        swipeState.active = false;
+    }, { passive: true });
+
+    document.addEventListener('touchcancel', function(e) {
+        if (!swipeState.active) return;
+        postSwipeMessage('touchcancel', {});
+        swipeState.active = false;
+    }, { passive: true });
+})();
+</script>
+SWIPE;
+
         return <<<HTML
 <!DOCTYPE html>
 <html lang="en">
@@ -47,6 +159,7 @@ class PanelController extends Controller
 </head>
 <body>
 {$html}
+{$swipeScript}
 </body>
 </html>
 HTML;

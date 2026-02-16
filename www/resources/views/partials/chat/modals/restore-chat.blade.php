@@ -3,7 +3,7 @@
     <div class="space-y-4">
         {{-- Loading state --}}
         <div x-show="loadingArchivedConversations" class="text-center py-4">
-            <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            <x-spinner class="text-gray-400" />
             <p class="text-gray-400 text-sm mt-2">Loading archived chats...</p>
         </div>
 
