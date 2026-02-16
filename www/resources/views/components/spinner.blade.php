@@ -9,8 +9,12 @@
     This replaces Font Awesome's fa-spin which has a known wobble issue with web fonts.
     The SVG rotates pixel-perfectly because it's mathematically defined, not a font glyph.
 --}}
+@php
+    $hasCustomSize = preg_match('/\b[wh]-/', $attributes->get('class', ''));
+@endphp
 <svg
-    {{ $attributes->merge(['class' => 'animate-spin w-[1em] h-[1em]', 'aria-hidden' => 'true']) }}
+    {{ $attributes->merge(['class' => 'animate-spin', 'aria-hidden' => 'true']) }}
+    @if(!$hasCustomSize) style="width: 1em; height: 1em;" @endif
     viewBox="0 0 24 24"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
