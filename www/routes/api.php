@@ -189,6 +189,7 @@ Route::prefix('sessions')->group(function () {
     Route::delete('{session}', [\App\Http\Controllers\Api\SessionController::class, 'destroy']);
     Route::post('{session}/archive', [\App\Http\Controllers\Api\SessionController::class, 'archive']);
     Route::post('{session}/restore', [\App\Http\Controllers\Api\SessionController::class, 'restore']);
+    Route::post('{session}/active', [\App\Http\Controllers\Api\SessionController::class, 'setActive']);
     Route::post('{session}/save-as-default', [\App\Http\Controllers\Api\SessionController::class, 'saveAsDefault']);
     Route::post('{session}/clear-default', [\App\Http\Controllers\Api\SessionController::class, 'clearDefault']);
     Route::get('{session}/archived-conversations', [\App\Http\Controllers\Api\SessionController::class, 'archivedConversations']);

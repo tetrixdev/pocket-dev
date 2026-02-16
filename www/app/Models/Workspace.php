@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -26,12 +27,15 @@ class Workspace extends Model
         'default_session_template',
         'selected_packages',
         'claude_base_prompt',
+        'last_accessed_at',
+        'last_active_session_id',
     ];
 
     protected $casts = [
         'settings' => 'array',
         'default_session_template' => 'array',
         'selected_packages' => 'array',
+        'last_accessed_at' => 'datetime',
     ];
 
     protected static function boot(): void
@@ -90,6 +94,14 @@ class Workspace extends Model
     public function sessions(): HasMany
     {
         return $this->hasMany(Session::class);
+    }
+
+    /**
+     * Get the last active session for this workspace.
+     */
+    public function lastActiveSession(): BelongsTo
+    {
+        return $this->belongsTo(Session::class, 'last_active_session_id');
     }
 
     /**
