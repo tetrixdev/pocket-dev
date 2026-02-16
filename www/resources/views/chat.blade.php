@@ -1335,6 +1335,8 @@
                 workspacesLoading: false,
                 currentWorkspace: null,
                 currentWorkspaceId: null,
+                _workspaceSwitchVersion: 0,        // Guards against stale async operations on rapid switch
+                _lastSessionIdFromWorkspace: null, // Last session ID returned from workspace API (for init)
 
                 // Conversation search
                 showSearchInput: false,
@@ -1559,6 +1561,29 @@
                         // Scroll to bottom if returning from settings
                         if (returningFromSettings) {
                             this.$nextTick(() => this.scrollToBottom());
+                        }
+                    } else if (this._lastSessionIdFromWorkspace) {
+                        // No URL session, but workspace has a last active session - restore it
+                        // Note: Session may not be in first page if it has old updated_at but is still "last active"
+                        let lastSession = this.sessions.find(s => s.id === this._lastSessionIdFromWorkspace);
+                        if (!lastSession) {
+                            // Fallback: fetch by ID (session may be past page 1 due to old updated_at)
+                            try {
+                                const resp = await fetch(`/api/sessions/${this._lastSessionIdFromWorkspace}`);
+                                if (resp.ok) {
+                                    lastSession = await resp.json();
+                                    this.sessions.unshift(lastSession); // Keep sidebar consistent
+                                }
+                            } catch (_) {}
+                        }
+                        if (lastSession && !lastSession.is_archived) {
+                            this.debugLog('Restoring last session from workspace', { sessionId: this._lastSessionIdFromWorkspace });
+                            await this.loadSession(this._lastSessionIdFromWorkspace);
+                        } else {
+                            // Session was deleted or archived - stay on home page
+                            if (!history.state) {
+                                history.replaceState({ home: true }, '', location.href);
+                            }
                         }
                     } else {
                         // On home page, ensure we have a known state (not null)
@@ -2188,9 +2213,11 @@
                             if (data.workspace) {
                                 this.currentWorkspace = data.workspace;
                                 this.currentWorkspaceId = data.workspace.id;
+                                // Store last session ID for init() to use when no URL session
+                                this._lastSessionIdFromWorkspace = data.last_session_id || null;
                                 // Check if workspace has a default session template
                                 this.workspaceHasDefaultTemplate = !!(data.workspace.default_session_template?.screen_order?.length);
-                                this.debugLog('Active workspace loaded', { workspace: data.workspace.name });
+                                this.debugLog('Active workspace loaded', { workspace: data.workspace.name, lastSessionId: data.last_session_id });
                             }
                         }
                     } catch (err) {
@@ -2213,6 +2240,9 @@
                         return;
                     }
 
+                    // Increment version to guard against stale async operations on rapid switch
+                    const switchVersion = ++this._workspaceSwitchVersion;
+
                     try {
                         const response = await fetch(`/api/workspaces/active/${workspace.id}`, {
                             method: 'POST',
@@ -2221,6 +2251,12 @@
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                             }
                         });
+
+                        // Abort if user switched to another workspace while we were fetching
+                        if (this._workspaceSwitchVersion !== switchVersion) {
+                            this.debugLog('Workspace switch aborted (stale)', { attempted: workspace.name, version: switchVersion });
+                            return;
+                        }
 
                         if (response.ok) {
                             const data = await response.json();
@@ -2231,7 +2267,9 @@
                             this.showWorkspaceSelector = false;
                             this.debugLog('Workspace switched', { workspace: workspace.name, lastSession: data.last_session_id });
 
-                            // Clear old workspace state before loading new data
+                            // Clear ALL old workspace state before loading new data
+                            // IMPORTANT: Include messages to prevent stale conversation content
+                            this.messages = [];
                             this.agents = [];
                             this.currentAgentId = null;
                             this.currentConversationUuid = null;
@@ -2241,15 +2279,19 @@
 
                             // Reload sessions and agents for the new workspace
                             await this.fetchSessions();
+                            if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
+
                             await this.fetchAgents();
+                            if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
 
                             // Restore last session for this workspace, or start new
                             if (data.last_session_id) {
-                                // Check if session still exists in the loaded list
-                                const lastSession = this.sessions.find(s => s.id === data.last_session_id);
-                                if (lastSession) {
+                                if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
+                                // Try to load directly by ID - loadSession handles 404 gracefully
+                                try {
                                     await this.loadSession(data.last_session_id);
-                                } else {
+                                } catch {
+                                    // Session was deleted - create new
                                     await this.newSession();
                                 }
                             } else {
@@ -3141,8 +3183,16 @@
                             this.updateSessionUrl(session.id);
                         }
 
-                        // Save as last session for this workspace (for returning from settings)
+                        // Save as last session for this workspace (for returning from settings - PHP session)
                         fetch(`/session/${sessionId}/last`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        }).catch(() => {}); // Fire and forget
+
+                        // Persist as last active session in database (survives PHP session expiry)
+                        fetch(`/api/sessions/${sessionId}/active`, {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''

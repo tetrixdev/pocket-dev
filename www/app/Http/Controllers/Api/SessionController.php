@@ -201,6 +201,26 @@ class SessionController extends Controller
     }
 
     /**
+     * Mark a session as the last active session for its workspace.
+     *
+     * This persists the session selection to the database so it survives
+     * PHP session expiry. Called when a user loads or creates a session.
+     */
+    public function setActive(Session $session): JsonResponse
+    {
+        // Guard against soft-deleted workspace (would NPE on ->update())
+        if (!$session->workspace) {
+            return response()->json(['ok' => false, 'error' => 'Workspace not found'], 404);
+        }
+
+        $session->workspace->update([
+            'last_active_session_id' => $session->id,
+        ]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
      * Delete a session and all its screens.
      */
     public function destroy(Session $session): JsonResponse

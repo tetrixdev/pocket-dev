@@ -109,13 +109,21 @@ class WorkspaceController extends Controller
 
     /**
      * Set the active workspace in the session
+     *
+     * Updates last_accessed_at in the database for persistence across sessions.
+     * Also stores in PHP session for backwards compatibility.
      */
     public function setActive(Request $request, Workspace $workspace): JsonResponse
     {
+        // Persist to database (survives PHP session expiry)
+        $workspace->update(['last_accessed_at' => now()]);
+
+        // Also store in PHP session for backwards compatibility
         $request->session()->put('active_workspace_id', $workspace->id);
 
-        // Get the last session for this workspace (if any)
-        $lastSessionId = $request->session()->get("last_session_{$workspace->id}");
+        // Get the last session from database (primary) or PHP session (fallback)
+        $lastSessionId = $workspace->last_active_session_id
+            ?? $request->session()->get("last_session_{$workspace->id}");
 
         return response()->json([
             'success' => true,
@@ -133,28 +141,42 @@ class WorkspaceController extends Controller
 
     /**
      * Get the currently active workspace
+     *
+     * Returns the most recently accessed workspace (by last_accessed_at).
+     * Falls back to PHP session for backwards compatibility, then to first workspace.
+     *
+     * Note: Queries are intentionally global (not scoped by owner_id) because
+     * PocketDev is a single-user system. If multi-user support is added,
+     * these queries would need owner scoping via Workspace::forOwner().
      */
     public function getActive(Request $request): JsonResponse
     {
-        $workspaceId = $request->session()->get('active_workspace_id');
+        // Primary: Get workspace with most recent last_accessed_at
+        // Note: Global query is intentional for single-user deployment
+        $workspace = Workspace::whereNotNull('last_accessed_at')
+            ->orderByDesc('last_accessed_at')
+            ->first();
 
-        if (!$workspaceId) {
-            // Return first workspace as default
-            $workspace = Workspace::first();
-        } else {
-            $workspace = Workspace::find($workspaceId);
-            if (!$workspace) {
-                // Fallback to first workspace if stored one doesn't exist
-                $workspace = Workspace::first();
+        // Fallback: Check PHP session (backwards compatibility)
+        if (!$workspace) {
+            $workspaceId = $request->session()->get('active_workspace_id');
+            if ($workspaceId) {
+                $workspace = Workspace::find($workspaceId);
             }
+        }
+
+        // Final fallback: First workspace by creation date
+        if (!$workspace) {
+            $workspace = Workspace::orderBy('created_at')->first();
         }
 
         if (!$workspace) {
             return response()->json(['workspace' => null]);
         }
 
-        // Get the last session for this workspace (if any)
-        $lastSessionId = $request->session()->get("last_session_{$workspace->id}");
+        // Get the last session from database (primary) or PHP session (fallback)
+        $lastSessionId = $workspace->last_active_session_id
+            ?? $request->session()->get("last_session_{$workspace->id}");
 
         return response()->json([
             'workspace' => [
