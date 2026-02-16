@@ -69,7 +69,7 @@ class PanelController extends Controller
                 source: 'pocketdev-panel-swipe',
                 type: type,
                 ...data
-            }, window.location.origin);
+            }, '*');
         }
     }
 

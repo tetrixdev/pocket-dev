@@ -3780,11 +3780,19 @@
                 // The panel wrapper injects a script that posts messages to parent.
                 initPanelSwipeListener() {
                     window.addEventListener('message', (event) => {
-                        // Validate origin and message source
-                        if (event.origin !== window.location.origin) {
+                        // Validate message source identifier
+                        if (!event.data || event.data.source !== 'pocketdev-panel-swipe') {
                             return;
                         }
-                        if (!event.data || event.data.source !== 'pocketdev-panel-swipe') {
+
+                        // Validate event.source is from our panel iframes (defense-in-depth)
+                        // Note: We cannot validate event.origin because srcdoc iframes with
+                        // sandbox="allow-same-origin" send event.origin="null", not the parent origin
+                        const panelIframes = [
+                            this.$refs.iframeA?.contentWindow,
+                            this.$refs.iframeB?.contentWindow
+                        ].filter(Boolean);
+                        if (!panelIframes.includes(event.source)) {
                             return;
                         }
 
