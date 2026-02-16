@@ -208,6 +208,11 @@ class SessionController extends Controller
      */
     public function setActive(Session $session): JsonResponse
     {
+        // Guard against soft-deleted workspace (would NPE on ->update())
+        if (!$session->workspace) {
+            return response()->json(['ok' => false, 'error' => 'Workspace not found'], 404);
+        }
+
         $session->workspace->update([
             'last_active_session_id' => $session->id,
         ]);

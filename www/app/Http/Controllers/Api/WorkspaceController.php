@@ -144,10 +144,15 @@ class WorkspaceController extends Controller
      *
      * Returns the most recently accessed workspace (by last_accessed_at).
      * Falls back to PHP session for backwards compatibility, then to first workspace.
+     *
+     * Note: Queries are intentionally global (not scoped by owner_id) because
+     * PocketDev is a single-user system. If multi-user support is added,
+     * these queries would need owner scoping via Workspace::forOwner().
      */
     public function getActive(Request $request): JsonResponse
     {
         // Primary: Get workspace with most recent last_accessed_at
+        // Note: Global query is intentional for single-user deployment
         $workspace = Workspace::whereNotNull('last_accessed_at')
             ->orderByDesc('last_accessed_at')
             ->first();
