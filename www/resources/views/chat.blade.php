@@ -1564,7 +1564,18 @@
                         }
                     } else if (this._lastSessionIdFromWorkspace) {
                         // No URL session, but workspace has a last active session - restore it
-                        const lastSession = this.sessions.find(s => s.id === this._lastSessionIdFromWorkspace);
+                        // Note: Session may not be in first page if it has old updated_at but is still "last active"
+                        let lastSession = this.sessions.find(s => s.id === this._lastSessionIdFromWorkspace);
+                        if (!lastSession) {
+                            // Fallback: fetch by ID (session may be past page 1 due to old updated_at)
+                            try {
+                                const resp = await fetch(`/api/sessions/${this._lastSessionIdFromWorkspace}`);
+                                if (resp.ok) {
+                                    lastSession = await resp.json();
+                                    this.sessions.unshift(lastSession); // Keep sidebar consistent
+                                }
+                            } catch (_) {}
+                        }
                         if (lastSession && !lastSession.is_archived) {
                             this.debugLog('Restoring last session from workspace', { sessionId: this._lastSessionIdFromWorkspace });
                             await this.loadSession(this._lastSessionIdFromWorkspace);
@@ -2275,12 +2286,12 @@
 
                             // Restore last session for this workspace, or start new
                             if (data.last_session_id) {
-                                // Check if session still exists in the loaded list
-                                const lastSession = this.sessions.find(s => s.id === data.last_session_id);
                                 if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
-                                if (lastSession) {
+                                // Try to load directly by ID - loadSession handles 404 gracefully
+                                try {
                                     await this.loadSession(data.last_session_id);
-                                } else {
+                                } catch {
+                                    // Session was deleted - create new
                                     await this.newSession();
                                 }
                             } else {
