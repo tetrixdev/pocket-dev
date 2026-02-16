@@ -3780,10 +3780,7 @@
                 // The panel wrapper injects a script that posts messages to parent.
                 initPanelSwipeListener() {
                     window.addEventListener('message', (event) => {
-                        // Validate origin and message source
-                        if (event.origin !== window.location.origin) {
-                            return;
-                        }
+                        // Validate message source
                         if (!event.data || event.data.source !== 'pocketdev-panel-swipe') {
                             return;
                         }
