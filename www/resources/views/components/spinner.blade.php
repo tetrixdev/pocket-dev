@@ -2,9 +2,12 @@
     Spinner Component - A smooth, wobble-free loading spinner
 
     Usage:
-        <x-spinner />                    - Default size (inherits font-size via 1em)
-        <x-spinner class="w-4 h-4" />    - Explicit size (overrides default)
+        <x-spinner />                       - Default size (inherits font-size via 1em)
+        <x-spinner class="!w-4 !h-4" />     - Explicit size (use ! to override default)
         <x-spinner class="text-blue-400" /> - Custom color
+
+    Note: To override the default 1em size, use Tailwind's important modifier (!)
+    because $attributes->merge concatenates classes rather than replacing them.
 
     This replaces Font Awesome's fa-spin which has a known wobble issue with web fonts.
     The SVG rotates pixel-perfectly because it's mathematically defined, not a font glyph.

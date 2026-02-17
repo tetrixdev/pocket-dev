@@ -541,7 +541,7 @@
                                             <i class="fa-solid fa-ellipsis-vertical w-4 text-center"></i>
                                         </template>
                                         <template x-if="actionLoading[group.name]">
-                                            <x-spinner class="w-4 text-center text-blue-400" />
+                                            <x-spinner class="!w-4 !h-4 text-center text-blue-400" />
                                         </template>
                                     </button>
                                 </div>
