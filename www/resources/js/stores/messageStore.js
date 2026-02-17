@@ -172,7 +172,7 @@ export function createMessageStore(options = {}) {
             const msgCacheCreation = dbMsg.cache_creation_tokens || 0;
             const msgCacheRead = dbMsg.cache_read_tokens || 0;
             const msgModel = dbMsg.model || (getCurrentModel ? getCurrentModel() : null);
-            const msgCost = dbMsg.cost || null;
+            const msgCost = dbMsg.cost ?? null;
 
             // Handle compaction messages specially
             if (dbMsg.role === 'compaction') {

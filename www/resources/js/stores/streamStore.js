@@ -394,6 +394,11 @@ export function createStreamStore(callbacks) {
                     return;
                 }
 
+                // Check for HTTP errors before reading stream
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
@@ -841,6 +846,8 @@ export function createStreamStore(callbacks) {
                 }
 
                 case 'usage': {
+                    // Skip during replay to avoid double-counting tokens
+                    if (this._isReplaying) break;
                     if (event.metadata) {
                         const input = event.metadata.input_tokens || 0;
                         const output = event.metadata.output_tokens || 0;
