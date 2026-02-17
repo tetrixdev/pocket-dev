@@ -32,7 +32,6 @@ use App\Models\Workspace;
  * 9. Working directory - current context
  * 10. Open panels - currently visible panels in session
  * 11. Environment - available resources
- * 12. Context usage - current state
  */
 class SystemPromptBuilder
 {
@@ -136,10 +135,9 @@ class SystemPromptBuilder
             $sections[] = $envSection;
         }
 
-        // 12. Context usage (dynamic)
-        if ($contextUsage = $this->buildContextUsageSection($conversation)) {
-            $sections[] = $contextUsage;
-        }
+        // Note: Context usage section removed to improve prompt caching.
+        // The percentage changed every message, invalidating cache.
+        // Users can see context usage in the UI progress bar instead.
 
         return implode("\n\n", array_filter($sections));
     }
@@ -353,19 +351,6 @@ Current project: {$workingDir}
 
 All file operations should be relative to or within this directory.
 PROMPT;
-    }
-
-    private function buildContextUsageSection(Conversation $conversation): ?string
-    {
-        $percentage = $conversation->getContextUsagePercentage();
-
-        if ($percentage === null) {
-            return null;
-        }
-
-        $formatted = number_format($percentage, 0);
-
-        return "Context window usage: {$formatted}% (estimate includes thinking tokens from current turn)";
     }
 
     /**
