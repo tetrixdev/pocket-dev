@@ -23,6 +23,7 @@ export function createStreamStore(callbacks) {
         _justCompletedStream: false,
         _wasStreamingBeforeHidden: false,
         _isReplaying: false,
+        _replayHighWaterMark: 0,  // Event count at replay start; events >= this are live
 
         // Connection health (dead man's switch)
         _lastKeepaliveAt: null,
@@ -279,23 +280,20 @@ export function createStreamStore(callbacks) {
 
                     let fromIndex;
                     if (isPageRefresh && !isTabReturn) {
-                        // PAGE REFRESH: Reset and resume from saved index
-                        // With event deduplication, we can resume from the saved index
-                        // instead of replaying from 0 and stripping messages
-                        this._restoreStreamState(uuid);
-                        const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
-
-                        if (savedIndex) {
-                            // Have saved state - resume from there
-                            fromIndex = parseInt(savedIndex, 10);
-                            console.log('[Stream] Page refresh - resuming from saved index:', fromIndex);
-                        } else {
-                            // No saved state - replay from 0 with dedup protection
-                            this._resetStreamStateForReplay();
-                            this._isReplaying = true;
-                            fromIndex = 0;
-                            console.log('[Stream] Page refresh - no saved state, replaying from 0');
-                        }
+                        // PAGE REFRESH: Always replay from 0 to rebuild lost content
+                        // On page refresh, the messages array is reloaded from DB which
+                        // doesn't include in-flight streaming content. We must replay
+                        // all SSE events to rebuild the assistant response.
+                        // Note: savedIndex tracks SSE events received in-memory, but those
+                        // events built content that's now lost (page reload cleared JS state
+                        // and DB doesn't have in-flight content). Resuming from savedIndex
+                        // would skip events needed to rebuild.
+                        this._resetStreamStateForReplay();
+                        this._isReplaying = true;
+                        // Store event_count as high-water mark: events with index >= this are live
+                        this._replayHighWaterMark = data.event_count ?? 0;
+                        fromIndex = 0;
+                        console.log('[Stream] Page refresh - replaying from 0 to rebuild content, highWaterMark:', this._replayHighWaterMark);
                     } else {
                         // TIMEOUT RECONNECT or TAB RETURN
                         this._restoreStreamState(uuid);
@@ -423,6 +421,14 @@ export function createStreamStore(callbacks) {
                                 try {
                                     sessionStorage.setItem(`stream_index_${uuid}`, this.lastEventIndex);
                                 } catch (e) {}
+
+                                // Transition out of replay mode once we've caught up to live events
+                                // Events with index >= _replayHighWaterMark are new (not replayed history)
+                                // Note: No > 0 guard - when event_count is 0, first event should exit replay mode
+                                if (this._isReplaying && event.index >= this._replayHighWaterMark) {
+                                    this._isReplaying = false;
+                                    console.log('[Stream] Replay complete - now processing live events at index:', event.index);
+                                }
                             }
                             if (event.event_id) {
                                 this.lastEventId = event.event_id;
@@ -455,6 +461,7 @@ export function createStreamStore(callbacks) {
                                 if (event.status === 'completed' || event.status === 'failed') {
                                     this.isStreaming = false;
                                     this._isReplaying = false;
+                                    this._replayHighWaterMark = 0;
                                     callbacks.onStreamEnd(event.status);
                                     this._justCompletedStream = true;
                                     this._clearStreamStorage(uuid);
