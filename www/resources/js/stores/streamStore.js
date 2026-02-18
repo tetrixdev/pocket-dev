@@ -424,8 +424,8 @@ export function createStreamStore(callbacks) {
 
                                 // Transition out of replay mode once we've caught up to live events
                                 // Events with index >= _replayHighWaterMark are new (not replayed history)
-                                if (this._isReplaying && this._replayHighWaterMark > 0 &&
-                                    event.index >= this._replayHighWaterMark) {
+                                // Note: No > 0 guard - when event_count is 0, first event should exit replay mode
+                                if (this._isReplaying && event.index >= this._replayHighWaterMark) {
                                     this._isReplaying = false;
                                     console.log('[Stream] Replay complete - now processing live events at index:', event.index);
                                 }
