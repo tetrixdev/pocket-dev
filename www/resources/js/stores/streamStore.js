@@ -23,6 +23,7 @@ export function createStreamStore(callbacks) {
         _justCompletedStream: false,
         _wasStreamingBeforeHidden: false,
         _isReplaying: false,
+        _replayHighWaterMark: 0,  // Event count at replay start; events >= this are live
 
         // Connection health (dead man's switch)
         _lastKeepaliveAt: null,
@@ -289,8 +290,10 @@ export function createStreamStore(callbacks) {
                         // would skip events needed to rebuild.
                         this._resetStreamStateForReplay();
                         this._isReplaying = true;
+                        // Store event_count as high-water mark: events with index >= this are live
+                        this._replayHighWaterMark = data.event_count ?? 0;
                         fromIndex = 0;
-                        console.log('[Stream] Page refresh - replaying from 0 to rebuild content');
+                        console.log('[Stream] Page refresh - replaying from 0 to rebuild content, highWaterMark:', this._replayHighWaterMark);
                     } else {
                         // TIMEOUT RECONNECT or TAB RETURN
                         this._restoreStreamState(uuid);
@@ -418,6 +421,14 @@ export function createStreamStore(callbacks) {
                                 try {
                                     sessionStorage.setItem(`stream_index_${uuid}`, this.lastEventIndex);
                                 } catch (e) {}
+
+                                // Transition out of replay mode once we've caught up to live events
+                                // Events with index >= _replayHighWaterMark are new (not replayed history)
+                                if (this._isReplaying && this._replayHighWaterMark > 0 &&
+                                    event.index >= this._replayHighWaterMark) {
+                                    this._isReplaying = false;
+                                    console.log('[Stream] Replay complete - now processing live events at index:', event.index);
+                                }
                             }
                             if (event.event_id) {
                                 this.lastEventId = event.event_id;
@@ -450,6 +461,7 @@ export function createStreamStore(callbacks) {
                                 if (event.status === 'completed' || event.status === 'failed') {
                                     this.isStreaming = false;
                                     this._isReplaying = false;
+                                    this._replayHighWaterMark = 0;
                                     callbacks.onStreamEnd(event.status);
                                     this._justCompletedStream = true;
                                     this._clearStreamStorage(uuid);
