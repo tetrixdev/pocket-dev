@@ -376,9 +376,8 @@ export function createMessageStore(options = {}) {
         // === Progressive Loading ===
 
         /**
-         * Progressive message loading - renders priority messages first, then fills in the rest.
-         * For normal load: shows last N messages immediately, then prepends older ones.
-         * For search: shows messages around target turn first, then fills in.
+         * Loads all messages at once behind the loading overlay, scrolls to position, then reveals.
+         * For normal load: scrolls to bottom. For search: scrolls to targetTurn.
          *
          * @param {Array} dbMessages - Array of DB messages to load
          * @param {number|null} targetTurn - Target turn number for search (null for normal load)
@@ -443,34 +442,6 @@ export function createMessageStore(options = {}) {
                     });
                 });
             });
-        },
-
-        /**
-         * Prepends messages in batches. Browser's scroll anchoring maintains scroll position.
-         * @param {Array} messages - Messages to prepend
-         * @param {number} batchSize - Size of each batch
-         * @param {string|null} loadUuid - UUID for guard check
-         * @param {Function} getCurrentUuid - Function to get current UUID
-         */
-        async prependMessagesInBatches(messages, batchSize, loadUuid, getCurrentUuid) {
-            let remaining = [...messages];
-
-            while (remaining.length > 0) {
-                // Guard: abort if user switched to different conversation
-                if (loadUuid && getCurrentUuid() !== loadUuid) {
-                    return;
-                }
-
-                // Take a batch from the END (newest of the old messages)
-                const batch = remaining.slice(-batchSize);
-                remaining = remaining.slice(0, -batchSize);
-
-                // Prepend batch to beginning of messages array
-                this.messages.unshift(...batch);
-
-                // Yield to main thread between batches
-                await new Promise(resolve => requestAnimationFrame(resolve));
-            }
         },
 
         // === Stream Message Helpers ===
