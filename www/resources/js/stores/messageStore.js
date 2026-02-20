@@ -343,12 +343,11 @@ export function createMessageStore(options = {}) {
         },
 
         /**
-         * Load messages from DB format into the store
-         * Handles conversion and tool result linking
+         * Convert DB messages to UI format and link pending tool results.
          * @param {Array} dbMessages - Array of DB messages
-         * @returns {Array} Array of UI messages (also stored in this.messages)
+         * @returns {Array} Array of UI-formatted messages
          */
-        loadFromDb(dbMessages) {
+        _convertAllDbMessages(dbMessages) {
             const allUiMessages = [];
             const pendingToolResults = [];
 
@@ -368,6 +367,17 @@ export function createMessageStore(options = {}) {
                 }
             }
 
+            return allUiMessages;
+        },
+
+        /**
+         * Load messages from DB format into the store
+         * Handles conversion and tool result linking
+         * @param {Array} dbMessages - Array of DB messages
+         * @returns {Array} Array of UI messages (also stored in this.messages)
+         */
+        loadFromDb(dbMessages) {
+            const allUiMessages = this._convertAllDbMessages(dbMessages);
             this.messages.length = 0;
             this.messages.push(...allUiMessages);
             return allUiMessages;
@@ -390,25 +400,7 @@ export function createMessageStore(options = {}) {
          * @param {Function} callbacks.setLoadingConversation - Set loading state
          */
         async loadMessagesProgressively(dbMessages, targetTurn, loadUuid, callbacks) {
-            // Convert all messages to UI format
-            const allUiMessages = [];
-            const pendingToolResults = [];
-
-            for (const msg of dbMessages) {
-                const converted = this.convertDbMessageToUi(msg, pendingToolResults);
-                allUiMessages.push(...converted);
-            }
-
-            // Post-process: link any pending tool_results to their tool_use messages
-            for (const pending of pendingToolResults) {
-                const toolMsgIndex = allUiMessages.findIndex(m => m.role === 'tool' && m.toolId === pending.tool_use_id);
-                if (toolMsgIndex >= 0) {
-                    allUiMessages[toolMsgIndex] = {
-                        ...allUiMessages[toolMsgIndex],
-                        toolResult: pending.content
-                    };
-                }
-            }
+            const allUiMessages = this._convertAllDbMessages(dbMessages);
 
             if (allUiMessages.length === 0) {
                 callbacks.setLoadingConversation(false);
