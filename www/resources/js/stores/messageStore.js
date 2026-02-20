@@ -391,10 +391,7 @@ export function createMessageStore(options = {}) {
          * @param {Function} callbacks.setLoadingConversation - Set loading state
          */
         async loadMessagesProgressively(dbMessages, targetTurn, loadUuid, callbacks) {
-            const INITIAL_BATCH = 100;  // Messages to show immediately
-            const PREPEND_BATCH = 50;   // Messages per prepend batch
-
-            // Convert all messages to UI format first
+            // Convert all messages to UI format
             const allUiMessages = [];
             const pendingToolResults = [];
 
@@ -419,37 +416,16 @@ export function createMessageStore(options = {}) {
                 return;
             }
 
-            // Determine which messages to render first based on context
-            let priorityStartIndex;
-            if (targetTurn !== null) {
-                // Search case: find messages around the target turn
-                const targetIndex = allUiMessages.findIndex(m => m.turn_number === targetTurn);
-                if (targetIndex !== -1) {
-                    // Center the initial batch around the target
-                    priorityStartIndex = Math.max(0, targetIndex - Math.floor(INITIAL_BATCH / 2));
-                } else {
-                    // Target not found, fall back to end
-                    priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
-                }
-            } else {
-                // Normal load: show last N messages first
-                priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
-            }
-
-            // Split messages into priority (render first) and before (prepend later)
-            const messagesBefore = allUiMessages.slice(0, priorityStartIndex);
-            const priorityMessages = allUiMessages.slice(priorityStartIndex);
-
             // Guard: abort if user switched to different conversation during processing
             if (loadUuid && callbacks.getCurrentUuid() !== loadUuid) {
                 return;
             }
 
-            // Phase 1: Render priority messages immediately (mutate in-place to preserve shared reference)
+            // Render all messages at once behind the loading overlay
             this.messages.length = 0;
-            this.messages.push(...priorityMessages);
+            this.messages.push(...allUiMessages);
 
-            // Wait for initial render and scroll
+            // Wait for DOM render, scroll to position, then reveal
             await new Promise(resolve => {
                 callbacks.nextTick(() => {
                     if (targetTurn !== null) {
@@ -461,18 +437,12 @@ export function createMessageStore(options = {}) {
 
                     // Hide loading overlay AFTER scroll has painted
                     requestAnimationFrame(() => {
-                        // Guard: only clear if still on same conversation
                         if (!loadUuid || callbacks.getCurrentUuid() === loadUuid) {
                             callbacks.setLoadingConversation(false);
                         }
                     });
                 });
             });
-
-            // Phase 2: Prepend older messages in batches (if any) - runs in background
-            if (messagesBefore.length > 0) {
-                this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH, loadUuid, callbacks.getCurrentUuid);
-            }
         },
 
         /**
