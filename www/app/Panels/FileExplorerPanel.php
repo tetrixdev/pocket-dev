@@ -21,7 +21,7 @@ class FileExplorerPanel extends Panel
         ],
     ];
 
-    protected array $panelDependencies = [
+    public array $panelDependencies = [
         [
             'type' => 'stylesheet',
             'url' => 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css',
