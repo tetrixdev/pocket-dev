@@ -492,14 +492,21 @@ PROMPT;
         $tailwindTheme = $config['tailwind_theme'] ?? '';
 
         $doc = "# Panel Dependencies\n\n";
-        $doc .= "When creating or updating panels, these libraries are pre-loaded in the iframe:\n\n";
 
+        $doc .= "## Base Dependencies (always loaded)\n\n";
+        $doc .= "These libraries are loaded for ALL panels automatically:\n\n";
         foreach ($deps as $name => $dep) {
             $displayName = ucwords(str_replace('-', ' ', $name));
-            $doc .= "## {$displayName}\n";
+            $doc .= "### {$displayName}\n";
             $doc .= "- **URL:** `" . ($dep['url'] ?? 'N/A') . "`\n";
             $doc .= "- " . ($dep['description'] ?? '') . "\n\n";
         }
+
+        $doc .= "## Additional Dependencies\n\n";
+        $doc .= "Panels can load extra CDN libraries via `panel_dependencies` in `tool:create` or `tool:update`.\n";
+        $doc .= "Each entry is an object with `type` (\"script\" or \"stylesheet\") and `url`.\n";
+        $doc .= "Optional keys: `defer` (boolean), `crossorigin` (string).\n\n";
+        $doc .= "Example:\n```json\n[{\"type\": \"script\", \"url\": \"https://cdn.jsdelivr.net/npm/chart.js@4.4.0\", \"defer\": true}]\n```\n\n";
 
         $doc .= "## Base CSS (Always Present)\n\n";
         $doc .= "```css\n" . trim($baseCss) . "\n```\n\n";

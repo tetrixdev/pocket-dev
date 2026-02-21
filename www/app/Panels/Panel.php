@@ -16,6 +16,11 @@ abstract class Panel
     // Parameter schema for validation/documentation
     public array $parameters = [];
 
+    // Additional CDN dependencies to load for this panel (full dep objects).
+    // Base dependencies (Tailwind, Alpine, Font Awesome) are always loaded from config.
+    // Example: [['type' => 'script', 'url' => 'https://cdn.example.com/lib.js', 'defer' => true]]
+    protected array $panelDependencies = [];
+
     /**
      * Render the panel HTML.
      *
@@ -56,6 +61,17 @@ abstract class Panel
             'data' => null,
             'error' => "Action '{$action}' is not supported by this panel",
         ];
+    }
+
+    /**
+     * Get additional CDN dependencies this panel needs beyond the base set.
+     * Each entry is a full dependency object: ['type' => 'script'|'stylesheet', 'url' => '...', ...]
+     *
+     * @return array<array> Dependency definitions
+     */
+    public function getPanelDependencies(): array
+    {
+        return $this->panelDependencies;
     }
 
     /**

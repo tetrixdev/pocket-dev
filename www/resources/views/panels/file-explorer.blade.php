@@ -301,10 +301,17 @@
          // --- Download Method ---
 
          base64ToBlob(b64, mime) {
-             const byteChars = atob(b64);
-             const byteArr = new Uint8Array(byteChars.length);
-             for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-             return new Blob([byteArr], { type: mime || 'application/octet-stream' });
+             // Decode in chunks to avoid freezing the browser on large files.
+             // Slice at multiples of 4 characters to maintain valid base64 boundaries.
+             const CHUNK = 524288; // 512 KB of base64 chars (produces ~384 KB decoded)
+             const parts = [];
+             for (let off = 0; off < b64.length; off += CHUNK) {
+                 const chunk = atob(b64.slice(off, off + CHUNK));
+                 const bytes = new Uint8Array(chunk.length);
+                 for (let i = 0; i < chunk.length; i++) bytes[i] = chunk.charCodeAt(i);
+                 parts.push(bytes);
+             }
+             return new Blob(parts, { type: mime || 'application/octet-stream' });
          },
 
          async downloadFile() {
@@ -333,7 +340,7 @@
                      }
                      const result = await response.json();
                      if (!result.ok || !result.data?.base64) {
-                         console.error('Download failed:', result.error || 'Unknown error');
+                         this.fileError = result.error || 'Download failed';
                          this.downloading = false;
                          return;
                      }
@@ -360,7 +367,7 @@
                      setTimeout(() => URL.revokeObjectURL(url), 30000);
                  }
              } catch (e) {
-                 console.error('Download error:', e);
+                 this.fileError = 'Download error: ' + e.message;
              }
 
              this.downloading = false;

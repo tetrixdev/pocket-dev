@@ -15,10 +15,16 @@ use Illuminate\Support\Facades\Process;
 class PanelController extends Controller
 {
     /**
-     * Wrap panel HTML in a full document with all configured dependencies.
-     * Uses config/panels.php as the single source of truth for CDN libraries.
+     * Wrap panel HTML in a full document with configured dependencies.
+     *
+     * Base dependencies (Tailwind, Alpine, Font Awesome) from config/panels.php
+     * are always loaded. Panels can declare additional dependencies as full
+     * dependency objects (e.g., CDN scripts/stylesheets for Chart.js, Highlight.js, etc.).
+     *
+     * @param string $html The panel's rendered HTML content
+     * @param array $panelDeps Additional dependency objects from the panel itself
      */
-    private function wrapPanelHtml(string $html): string
+    private function wrapPanelHtml(string $html, array $panelDeps = []): string
     {
         $config = config('panels');
 
@@ -27,7 +33,10 @@ class PanelController extends Controller
             return "<!DOCTYPE html><html><head></head><body>{$html}</body></html>";
         }
 
-        $headTags = $this->buildPanelHeadTags($config['dependencies']);
+        // Merge base deps (from config) with panel-specific deps (full objects)
+        $baseDeps = array_values($config['dependencies'] ?? []);
+        $allDeps = array_merge($baseDeps, $panelDeps);
+        $headTags = $this->buildPanelHeadTags($allDeps);
         $tailwindTheme = $config['tailwind_theme'];
         $baseCss = $config['base_css'];
 
@@ -173,12 +182,13 @@ HTML;
         $tags = [];
 
         foreach ($dependencies as $dep) {
+            $crossorigin = isset($dep['crossorigin']) ? " crossorigin=\"{$dep['crossorigin']}\"" : '';
+
             if ($dep['type'] === 'script') {
                 $defer = ($dep['defer'] ?? false) ? ' defer' : '';
-                $tags[] = "    <script{$defer} src=\"{$dep['url']}\"></script>";
+                $tags[] = "    <script{$defer} src=\"{$dep['url']}\"{$crossorigin}></script>";
             } elseif ($dep['type'] === 'stylesheet') {
                 $integrity = isset($dep['integrity']) ? " integrity=\"{$dep['integrity']}\"" : '';
-                $crossorigin = isset($dep['crossorigin']) ? " crossorigin=\"{$dep['crossorigin']}\"" : '';
                 $tags[] = "    <link rel=\"stylesheet\" href=\"{$dep['url']}\"{$integrity}{$crossorigin} referrerpolicy=\"no-referrer\">";
             }
         }
@@ -202,7 +212,8 @@ HTML;
         if ($systemPanel) {
             try {
                 $html = $systemPanel->render($params, $state, $panelState->id);
-                return response($this->wrapPanelHtml($html))->header('Content-Type', 'text/html');
+                $deps = $systemPanel->getPanelDependencies();
+                return response($this->wrapPanelHtml($html, $deps))->header('Content-Type', 'text/html');
             } catch (\Throwable $e) {
                 \Log::error('System panel render error', [
                     'panel_slug' => $slug,
@@ -239,7 +250,8 @@ HTML;
                 'panel' => $panel,
             ]);
 
-            return response($this->wrapPanelHtml($html))
+            $deps = $panel->panel_dependencies ?? [];
+            return response($this->wrapPanelHtml($html, $deps))
                 ->header('Content-Type', 'text/html');
         } catch (\Throwable $e) {
             \Log::error('Panel render error', [

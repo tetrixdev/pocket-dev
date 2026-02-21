@@ -21,6 +21,20 @@ class FileExplorerPanel extends Panel
         ],
     ];
 
+    protected array $panelDependencies = [
+        [
+            'type' => 'stylesheet',
+            'url' => 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css',
+            'crossorigin' => 'anonymous',
+        ],
+        [
+            'type' => 'script',
+            'url' => 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js',
+            'crossorigin' => 'anonymous',
+            'defer' => true,
+        ],
+    ];
+
     /**
      * Image file extensions (displayed as inline preview).
      */
@@ -399,6 +413,9 @@ class FileExplorerPanel extends Panel
         }
 
         $size = filesize($realPath);
+        if ($size === false) {
+            return ['error' => 'Unable to read file size'];
+        }
         if ($size > self::MAX_DOWNLOAD_SIZE) {
             return ['error' => 'File too large to download (>' . self::formatSizeStatic(self::MAX_DOWNLOAD_SIZE) . ')'];
         }
@@ -842,8 +859,9 @@ class FileExplorerPanel extends Panel
         }
 
         $escaped = array_map('escapeshellarg', $dirPaths);
+        // timeout: kill du after 5s if filesystem is unresponsive
         // -x: stay on same filesystem (avoid cross-mount traversal)
-        $cmd = 'du -sbx ' . implode(' ', $escaped) . ' 2>/dev/null';
+        $cmd = 'timeout 5 du -sbx ' . implode(' ', $escaped) . ' 2>/dev/null';
         $output = @shell_exec($cmd);
 
         $sizes = [];
