@@ -199,14 +199,14 @@ API;
 
         if (isset($input['panel_dependencies'])) {
             if (!is_array($input['panel_dependencies'])) {
-                return ToolResult::error('panel_dependencies must be an array of dependency key strings');
+                return ToolResult::error('panel_dependencies must be an array of dependency objects');
             }
             $tool->panel_dependencies = $input['panel_dependencies'];
             $changes[] = 'panel_dependencies';
         }
 
         if (empty($changes)) {
-            return ToolResult::error('No changes specified. Use name, description, system_prompt, script, blade_template, category, or input_schema.');
+            return ToolResult::error('No changes specified. Use name, description, system_prompt, script, blade_template, panel_dependencies, category, or input_schema.');
         }
 
         try {

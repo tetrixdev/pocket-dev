@@ -399,6 +399,11 @@ API;
             return ToolResult::error('input_schema must be an object');
         }
 
+        // Validate panel_dependencies if provided
+        if ($panelDependencies !== null && !is_array($panelDependencies)) {
+            return ToolResult::error('panel_dependencies must be an array of dependency objects');
+        }
+
         try {
             $tool = PocketTool::create([
                 'slug' => $slug,

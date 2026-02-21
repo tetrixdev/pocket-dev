@@ -506,7 +506,7 @@ PROMPT;
         $doc .= "Panels can load extra CDN libraries via `panel_dependencies` in `tool:create` or `tool:update`.\n";
         $doc .= "Each entry is an object with `type` (\"script\" or \"stylesheet\") and `url`.\n";
         $doc .= "Optional keys: `defer` (boolean), `crossorigin` (string).\n\n";
-        $doc .= "Example:\n```json\n[{\"type\": \"script\", \"url\": \"https://cdn.jsdelivr.net/npm/chart.js@4.4.0\", \"defer\": true}]\n```\n\n";
+        $doc .= "Example:\n```json\n[{\"type\": \"script\", \"url\": \"https://cdn.jsdelivr.net/npm/chart.js\", \"defer\": true}]\n```\n\n";
 
         $doc .= "## Base CSS (Always Present)\n\n";
         $doc .= "```css\n" . trim($baseCss) . "\n```\n\n";

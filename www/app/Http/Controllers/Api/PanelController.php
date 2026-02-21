@@ -182,14 +182,15 @@ HTML;
         $tags = [];
 
         foreach ($dependencies as $dep) {
-            $crossorigin = isset($dep['crossorigin']) ? " crossorigin=\"{$dep['crossorigin']}\"" : '';
+            $url = e($dep['url'] ?? '');
+            $crossorigin = isset($dep['crossorigin']) ? ' crossorigin="' . e($dep['crossorigin']) . '"' : '';
 
             if ($dep['type'] === 'script') {
-                $defer = ($dep['defer'] ?? false) ? ' defer' : '';
-                $tags[] = "    <script{$defer} src=\"{$dep['url']}\"{$crossorigin}></script>";
+                $defer = !empty($dep['defer']) ? ' defer' : '';
+                $tags[] = '    <script' . $defer . ' src="' . $url . '"' . $crossorigin . '></script>';
             } elseif ($dep['type'] === 'stylesheet') {
-                $integrity = isset($dep['integrity']) ? " integrity=\"{$dep['integrity']}\"" : '';
-                $tags[] = "    <link rel=\"stylesheet\" href=\"{$dep['url']}\"{$integrity}{$crossorigin} referrerpolicy=\"no-referrer\">";
+                $integrity = isset($dep['integrity']) ? ' integrity="' . e($dep['integrity']) . '"' : '';
+                $tags[] = '    <link rel="stylesheet" href="' . $url . '"' . $integrity . $crossorigin . ' referrerpolicy="no-referrer">';
             }
         }
 
@@ -212,7 +213,7 @@ HTML;
         if ($systemPanel) {
             try {
                 $html = $systemPanel->render($params, $state, $panelState->id);
-                $deps = $systemPanel->getPanelDependencies();
+                $deps = $systemPanel->panelDependencies;
                 return response($this->wrapPanelHtml($html, $deps))->header('Content-Type', 'text/html');
             } catch (\Throwable $e) {
                 \Log::error('System panel render error', [

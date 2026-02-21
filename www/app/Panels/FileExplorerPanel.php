@@ -161,7 +161,7 @@ class FileExplorerPanel extends Panel
         $depth = $params['depth'] ?? 1;
 
         // Get root path from panel parameters or state
-        $rootPath = $panelParams['path'] ?? $state['rootPath'] ?? '/workspace/default';
+        $rootPath = $panelParams['path'] ?? '/workspace/default';
 
         // Validate path is within allowed directories
         $realPath = $this->validatePath($path);
@@ -213,7 +213,7 @@ class FileExplorerPanel extends Panel
     protected function handleReadFile(array $params, array $state, array $panelParams): array
     {
         $filePath = $params['path'] ?? '';
-        $rootPath = $panelParams['path'] ?? $state['rootPath'] ?? '/workspace/default';
+        $rootPath = $panelParams['path'] ?? '/workspace/default';
 
         // Validate file path
         $realPath = $this->validatePath($filePath);
@@ -237,6 +237,9 @@ class FileExplorerPanel extends Panel
         }
 
         $size = filesize($realPath);
+        if ($size === false) {
+            return ['error' => 'Unable to read file size'];
+        }
         $extension = strtolower(pathinfo($realPath, PATHINFO_EXTENSION));
         $name = basename($realPath);
 
@@ -328,7 +331,7 @@ class FileExplorerPanel extends Panel
     {
         $filePath = $params['path'] ?? '';
         $content = $params['content'] ?? null;
-        $rootPath = $panelParams['path'] ?? $state['rootPath'] ?? '/workspace/default';
+        $rootPath = $panelParams['path'] ?? '/workspace/default';
 
         if ($content === null) {
             return ['error' => 'No content provided'];
@@ -389,7 +392,7 @@ class FileExplorerPanel extends Panel
     protected function handleDownloadFile(array $params, array $state, array $panelParams): array
     {
         $filePath = $params['path'] ?? '';
-        $rootPath = $panelParams['path'] ?? $state['rootPath'] ?? '/workspace/default';
+        $rootPath = $panelParams['path'] ?? '/workspace/default';
 
         // Validate file path
         $realPath = $this->validatePath($filePath);
