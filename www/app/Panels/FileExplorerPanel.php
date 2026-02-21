@@ -369,7 +369,7 @@ class FileExplorerPanel extends Panel
         }
 
         try {
-            $bytesWritten = file_put_contents($realPath, $content);
+            $bytesWritten = file_put_contents($realPath, $content, LOCK_EX);
             if ($bytesWritten === false) {
                 return ['error' => 'Failed to write file'];
             }

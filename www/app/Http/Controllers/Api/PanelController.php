@@ -34,8 +34,14 @@ class PanelController extends Controller
         }
 
         // Merge base deps (from config) with panel-specific deps (full objects)
+        // Deduplicate by URL so panels can't accidentally double-load base deps
         $baseDeps = array_values($config['dependencies'] ?? []);
-        $allDeps = array_merge($baseDeps, $panelDeps);
+        $baseUrls = array_column($baseDeps, 'url');
+        $filteredPanelDeps = array_values(array_filter(
+            $panelDeps,
+            fn($d) => !in_array($d['url'] ?? '', $baseUrls, true)
+        ));
+        $allDeps = array_merge($baseDeps, $filteredPanelDeps);
         $headTags = $this->buildPanelHeadTags($allDeps);
         $tailwindTheme = $config['tailwind_theme'];
         $baseCss = $config['base_css'];
@@ -185,10 +191,10 @@ HTML;
             $url = e($dep['url'] ?? '');
             $crossorigin = isset($dep['crossorigin']) ? ' crossorigin="' . e($dep['crossorigin']) . '"' : '';
 
-            if ($dep['type'] === 'script') {
+            if (($dep['type'] ?? '') === 'script') {
                 $defer = !empty($dep['defer']) ? ' defer' : '';
                 $tags[] = '    <script' . $defer . ' src="' . $url . '"' . $crossorigin . '></script>';
-            } elseif ($dep['type'] === 'stylesheet') {
+            } elseif (($dep['type'] ?? '') === 'stylesheet') {
                 $integrity = isset($dep['integrity']) ? ' integrity="' . e($dep['integrity']) . '"' : '';
                 $tags[] = '    <link rel="stylesheet" href="' . $url . '"' . $integrity . $crossorigin . ' referrerpolicy="no-referrer">';
             }

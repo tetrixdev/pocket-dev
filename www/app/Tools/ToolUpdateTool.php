@@ -55,10 +55,11 @@ class ToolUpdateTool extends Tool
                 'items' => [
                     'type' => 'object',
                     'properties' => [
-                        'type' => ['type' => 'string', 'description' => 'script or stylesheet'],
+                        'type' => ['type' => 'string', 'enum' => ['script', 'stylesheet'], 'description' => 'script or stylesheet'],
                         'url' => ['type' => 'string', 'description' => 'CDN URL'],
                         'defer' => ['type' => 'boolean', 'description' => 'Defer loading (scripts only)'],
                         'crossorigin' => ['type' => 'string', 'description' => 'Crossorigin attribute (e.g., "anonymous")'],
+                        'integrity' => ['type' => 'string', 'description' => 'SRI hash for integrity verification (e.g., "sha384-...")'],
                     ],
                     'required' => ['type', 'url'],
                 ],
