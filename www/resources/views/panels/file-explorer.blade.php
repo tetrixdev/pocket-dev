@@ -9,6 +9,7 @@
          loadedPaths: @js($loadedPaths),
          loadingPaths: [],
          treeLoading: false,
+         treeError: null,
          panelStateId: @js($panelStateId),
          syncTimeout: null,
 
@@ -120,6 +121,7 @@
 
          async refresh() {
              this.treeLoading = true;
+             this.treeError = null;
 
              // Reset to root-only state (collapsed everything)
              this.expanded = [];
@@ -147,6 +149,8 @@
                  }
              } catch (err) {
                  console.error('Refresh failed:', err);
+                 this.treeError = 'Refresh failed — please try again';
+                 setTimeout(() => { if (this.treeError === 'Refresh failed — please try again') this.treeError = null; }, 4000);
              }
 
              this.treeLoading = false;
@@ -542,6 +546,19 @@
                     <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
                     <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
                 </svg>
+            </div>
+
+            {{-- Transient tree error (e.g. refresh failure) --}}
+            <div x-show="treeError" x-cloak
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 -translate-y-1"
+                 class="mb-2 flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300">
+                <i class="fa-solid fa-circle-exclamation text-red-400"></i>
+                <span x-text="treeError"></span>
             </div>
 
             @if(!empty($error ?? null))

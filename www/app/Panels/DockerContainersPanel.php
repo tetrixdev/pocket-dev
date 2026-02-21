@@ -245,6 +245,12 @@ class DockerContainersPanel extends Panel
                 return ['error' => 'Working directory not specified'];
             }
 
+            // Check remote directory exists
+            $testDir = $ssh->exec("test -d " . escapeshellarg($workingDir) . " && echo yes", 10);
+            if (!$testDir || !str_contains($testDir, 'yes')) {
+                return ['error' => "Remote directory not found: '{$workingDir}'"];
+            }
+
             $result = $ssh->run(
                 'docker compose stop 2>&1',
                 60,
@@ -295,6 +301,12 @@ class DockerContainersPanel extends Panel
             // Remote mode
             if (empty($workingDir)) {
                 return ['error' => 'Working directory not specified'];
+            }
+
+            // Check remote directory exists
+            $testDir = $ssh->exec("test -d " . escapeshellarg($workingDir) . " && echo yes", 10);
+            if (!$testDir || !str_contains($testDir, 'yes')) {
+                return ['error' => "Remote directory not found: '{$workingDir}'"];
             }
 
             $stopResult = $ssh->run('docker compose stop 2>&1', 60, $workingDir);

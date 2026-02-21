@@ -1427,7 +1427,14 @@ class FileExplorerPanel extends Panel
             }
 
             $output = "## File Explorer (SSH: {$ssh->getLabel()}): {$rootPath}\n\n";
-            $output .= $this->buildPeekTreeRemote($ssh, $rootPath, $expanded, 0);
+            $tree = $this->buildPeekTreeRemote($ssh, $rootPath, $expanded, 0);
+            $output .= $tree;
+
+            // Count visible items from peek tree output
+            $dirs = substr_count($tree, '[DIR]');
+            $files = substr_count($tree, '[FILE]');
+            $total = $dirs + $files;
+            $output .= "\n*{$total} items visible ({$dirs} directories, {$files} files)*";
 
             return $output;
         }

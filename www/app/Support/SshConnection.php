@@ -31,6 +31,11 @@ class SshConnection
         $this->port = (int) ($config['ssh_port'] ?? 22);
         $this->password = !empty($config['ssh_password']) ? $config['ssh_password'] : null;
         $this->keyPath = !empty($config['ssh_key_path']) ? $config['ssh_key_path'] : null;
+
+        if ($this->keyPath !== null && !is_file($this->keyPath)) {
+            throw new \InvalidArgumentException("SSH key file not found: {$this->keyPath}");
+        }
+
         $this->serverName = !empty($config['server_name']) ? $config['server_name'] : null;
     }
 
