@@ -1069,14 +1069,14 @@
                         x-ref="iframeA"
                         x-show="activeIframeBuffer === 'A'"
                         class="w-full h-full border-0 bg-transparent"
-                        sandbox="allow-scripts allow-same-origin allow-forms"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
                         referrerpolicy="no-referrer"
                         title="Panel content"></iframe>
                 <iframe id="panel-content-container-b"
                         x-ref="iframeB"
                         x-show="activeIframeBuffer === 'B'"
                         class="w-full h-full border-0 bg-transparent"
-                        sandbox="allow-scripts allow-same-origin allow-forms"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
                         referrerpolicy="no-referrer"
                         title="Panel content"></iframe>
             </div>
@@ -4146,10 +4146,23 @@
                     }
 
                     try {
+                        // Pass workspace path for panels that use it (no fallback — let backend decide)
+                        const panelParams = {};
+                        if (['file-explorer', 'git-status'].includes(panelSlug)) {
+                            const workspacePath = this.currentWorkspace?.working_directory_path;
+                            if (workspacePath) {
+                                panelParams.path = workspacePath;
+                            }
+                        }
+
                         const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/panel`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ panel_slug: panelSlug, activate: true })
+                            body: JSON.stringify({
+                                panel_slug: panelSlug,
+                                parameters: Object.keys(panelParams).length > 0 ? panelParams : undefined,
+                                activate: true,
+                            })
                         });
 
                         if (!response.ok) {

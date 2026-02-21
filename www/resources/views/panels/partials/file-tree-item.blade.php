@@ -2,8 +2,16 @@
     $isDir = $item['type'] === 'directory';
     $paddingLeft = ($depth * 16) + 8;
     $isLoaded = $item['loaded'] ?? false;
+    $isHidden = $item['isHidden'] ?? false;
     // Use Js::from() to safely escape path for JS contexts
     $jsPath = \Illuminate\Support\Js::from($item['path']);
+    $jsName = \Illuminate\Support\Js::from($item['name']);
+
+    // Pre-compute metadata values as JS literals for the x-text expression
+    $jsPerms = \Illuminate\Support\Js::from($item['permissions'] ?? '');
+    $jsOwner = \Illuminate\Support\Js::from(($item['owner'] ?? '') . ':' . ($item['group'] ?? ''));
+    $jsMtime = \Illuminate\Support\Js::from($item['mtimeFormatted'] ?? '');
+    $jsSize = \Illuminate\Support\Js::from(\App\Panels\FileExplorerPanel::formatSizeStatic($item['size'] ?? 0));
 @endphp
 
 <div class="group" data-path="{{ $item['path'] }}">
@@ -12,22 +20,26 @@
          @if($isDir)
          @click="toggle({{ $jsPath }}, {{ $depth + 1 }})"
          @else
-         @click="select({{ $jsPath }})"
+         @click="openFile({{ $jsPath }}, {{ $jsName }})"
          @endif
          :class="{ 'bg-gray-800': selected === {{ $jsPath }} }">
 
         @if($isDir)
             {{-- Directory --}}
-            <i class="fa-solid text-xs w-3 transition-transform"
+            <i class="fa-solid text-xs w-3 transition-transform shrink-0"
                :class="isExpanded({{ $jsPath }}) ? 'fa-chevron-down' : 'fa-chevron-right text-gray-500'"
                x-show="!isLoading({{ $jsPath }})"></i>
-            <x-spinner class="!w-3 !h-3 text-gray-500"
+            <x-spinner class="!w-3 !h-3 text-gray-500 shrink-0"
                x-show="isLoading({{ $jsPath }})" x-cloak />
-            <i class="fa-solid fa-folder text-yellow-500"></i>
-            <span class="text-sm truncate">{{ $item['name'] }}</span>
+            <i class="fa-solid fa-folder shrink-0 {{ $isHidden ? 'text-yellow-500/40' : 'text-yellow-500' }}"></i>
+            <span class="text-sm whitespace-nowrap {{ $isHidden ? 'text-gray-500' : '' }}">{{ $item['name'] }}</span>
+
+            {{-- Metadata (pipe-separated, only visible columns) --}}
+            <span class="shrink-0 text-[11px] whitespace-nowrap {{ $isHidden ? 'text-gray-700' : 'text-gray-600' }}"
+                  x-text="[settings.showPermissions ? {{ $jsPerms }} : '', settings.showOwner ? {{ $jsOwner }} : '', settings.showModified ? {{ $jsMtime }} : '', settings.showSize ? {{ $jsSize }} : ''].filter(Boolean).join(' | ')"></span>
         @else
             {{-- File --}}
-            <span class="w-3"></span>
+            <span class="w-3 shrink-0"></span>
             @php
                 $ext = $item['extension'] ?? '';
                 $name = $item['name'] ?? '';
@@ -47,12 +59,22 @@
                     $ext === 'env' => 'fa-solid fa-gear text-gray-400',
                     in_array($ext, ['yml', 'yaml']) => 'fa-solid fa-file-code text-pink-400',
                     in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp']) => 'fa-solid fa-image text-pink-300',
+                    $ext === 'lock' => 'fa-solid fa-lock text-gray-500',
+                    str_starts_with($name, '.') && $ext === '' => 'fa-solid fa-gear text-gray-400',
                     default => 'fa-solid fa-file text-gray-400',
                 };
+
+                // Dim icons for hidden files
+                if ($isHidden) {
+                    $iconClass = preg_replace('/text-(\w+)-(\d+)/', 'text-$1-$2/50', $iconClass);
+                }
             @endphp
-            <i class="{{ $iconClass }}"></i>
-            <span class="text-sm truncate">{{ $item['name'] }}</span>
-            <span class="text-xs text-gray-500 ml-auto">{{ \App\Panels\FileExplorerPanel::formatSizeStatic($item['size'] ?? 0) }}</span>
+            <i class="{{ $iconClass }} shrink-0"></i>
+            <span class="text-sm whitespace-nowrap {{ $isHidden ? 'text-gray-500' : '' }}">{{ $item['name'] }}</span>
+
+            {{-- Metadata (pipe-separated, only visible columns) --}}
+            <span class="shrink-0 text-[11px] whitespace-nowrap {{ $isHidden ? 'text-gray-700' : 'text-gray-600' }}"
+                  x-text="[settings.showPermissions ? {{ $jsPerms }} : '', settings.showOwner ? {{ $jsOwner }} : '', settings.showModified ? {{ $jsMtime }} : '', settings.showSize ? {{ $jsSize }} : ''].filter(Boolean).join(' | ')"></span>
         @endif
     </div>
 

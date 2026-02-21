@@ -27,6 +27,9 @@ return [
     |
     */
     'dependencies' => [
+        // Base dependencies — loaded for ALL panels automatically.
+        // Panels can declare additional dependencies via panelDependencies (system panels)
+        // or panel_dependencies (tool-created panels).
         'tailwind' => [
             'type' => 'script',
             'url' => 'https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.1.18',

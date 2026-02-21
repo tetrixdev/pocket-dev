@@ -16,6 +16,11 @@ abstract class Panel
     // Parameter schema for validation/documentation
     public array $parameters = [];
 
+    // Additional CDN dependencies to load for this panel (full dep objects).
+    // Base dependencies (Tailwind, Alpine, Font Awesome) are always loaded from config.
+    // Example: [['type' => 'script', 'url' => 'https://cdn.example.com/lib.js', 'defer' => true]]
+    public array $panelDependencies = [];
+
     /**
      * Render the panel HTML.
      *

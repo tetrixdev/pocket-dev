@@ -41,11 +41,13 @@ class PocketTool extends Model
         'input_schema',
         'script',
         'blade_template',
+        'panel_dependencies',
         'enabled',
     ];
 
     protected $casts = [
         'input_schema' => 'array',
+        'panel_dependencies' => 'array',
         'enabled' => 'boolean',
     ];
 
