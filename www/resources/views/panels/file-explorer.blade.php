@@ -8,6 +8,8 @@
          selected: @js($selected),
          loadedPaths: @js($loadedPaths),
          loadingPaths: [],
+         treeLoading: false,
+         treeError: null,
          panelStateId: @js($panelStateId),
          syncTimeout: null,
 
@@ -117,8 +119,42 @@
              return this.loadingPaths.includes(path);
          },
 
-         refresh() {
-             window.location.reload();
+         async refresh() {
+             this.treeLoading = true;
+             this.treeError = null;
+
+             // Reset to root-only state (collapsed everything)
+             this.expanded = [];
+             this.loadedPaths = [this.rootPath];
+
+             try {
+                 const response = await fetch(`/api/panel/${this.panelStateId}/action`, {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                     body: JSON.stringify({
+                         action: 'loadChildren',
+                         params: { path: this.rootPath, depth: 0 }
+                     })
+                 });
+
+                 if (!response.ok) throw new Error('Refresh failed');
+                 const result = await response.json();
+
+                 if (result.ok && result.html) {
+                     const container = this.$refs.treeContainer;
+                     if (container) {
+                         container.innerHTML = result.html;
+                         Alpine.initTree(container);
+                     }
+                 }
+             } catch (err) {
+                 console.error('Refresh failed:', err);
+                 this.treeError = 'Refresh failed — please try again';
+                 setTimeout(() => { if (this.treeError === 'Refresh failed — please try again') this.treeError = null; }, 4000);
+             }
+
+             this.treeLoading = false;
+             this.syncState(true);
          },
 
          // --- File Viewer Methods ---
@@ -433,70 +469,110 @@
 
     {{-- ===== FILE TREE VIEW ===== --}}
     <div x-show="!viewingFile" class="h-full flex flex-col">
-        {{-- Sticky Header --}}
-        <div class="flex-none flex items-center gap-2 p-4 pb-2 border-b border-gray-700 bg-gray-900">
-            <i class="fa-solid fa-folder-tree text-blue-400"></i>
-            <span class="font-medium text-sm truncate" x-text="rootPath"></span>
-
-            <div class="ml-auto flex items-center gap-1">
-                <button @click="refresh()"
-                        class="p-1.5 hover:bg-gray-700 rounded transition-colors"
-                        title="Refresh">
-                    <i class="fa-solid fa-rotate text-gray-400 hover:text-white text-sm"></i>
-                </button>
-
-                {{-- Settings dropdown --}}
-                <div class="relative">
-                    <button @click="showSettings = !showSettings"
+        {{-- Header --}}
+        <div class="flex-none px-4 py-3 border-b border-gray-700 bg-gray-800/50">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-folder-tree text-blue-400 text-lg"></i>
+                    <h2 class="text-base sm:text-lg font-semibold">File Explorer</h2>
+                    {{-- SSH indicator --}}
+                    @if(!empty($sshLabel))
+                        <span class="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full flex items-center gap-1.5 shrink-0">
+                            <i class="fa-solid fa-terminal text-[9px]"></i>
+                            {{ $sshLabel }}
+                        </span>
+                    @endif
+                </div>
+                <div class="flex items-center gap-1">
+                    <button @click="refresh()"
                             class="p-1.5 hover:bg-gray-700 rounded transition-colors"
-                            :class="{ 'bg-gray-700': showSettings }"
-                            title="Display settings">
-                        <i class="fa-solid fa-sliders text-gray-400 hover:text-white text-sm"></i>
+                            title="Refresh">
+                        <i class="fa-solid fa-rotate text-gray-400 hover:text-white text-sm"></i>
                     </button>
 
-                    <div x-show="showSettings"
-                         @click.away="showSettings = false"
-                         x-cloak
-                         x-transition:enter="transition ease-out duration-100"
-                         x-transition:enter-start="opacity-0 scale-95"
-                         x-transition:enter-end="opacity-100 scale-100"
-                         x-transition:leave="transition ease-in duration-75"
-                         x-transition:leave-start="opacity-100 scale-100"
-                         x-transition:leave-end="opacity-0 scale-95"
-                         class="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 py-1">
-                        <div class="px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-medium">Show columns</div>
-                        <label class="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-700/50 cursor-pointer text-sm text-gray-300">
-                            <input type="checkbox" x-model="settings.showPermissions" @change="syncState()"
-                                   class="w-3.5 h-3.5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0 focus:ring-offset-0">
-                            <span>Permissions</span>
-                        </label>
-                        <label class="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-700/50 cursor-pointer text-sm text-gray-300">
-                            <input type="checkbox" x-model="settings.showOwner" @change="syncState()"
-                                   class="w-3.5 h-3.5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0 focus:ring-offset-0">
-                            <span>Owner / Group</span>
-                        </label>
-                        <label class="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-700/50 cursor-pointer text-sm text-gray-300">
-                            <input type="checkbox" x-model="settings.showModified" @change="syncState()"
-                                   class="w-3.5 h-3.5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0 focus:ring-offset-0">
-                            <span>Date modified</span>
-                        </label>
-                        <label class="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-700/50 cursor-pointer text-sm text-gray-300">
-                            <input type="checkbox" x-model="settings.showSize" @change="syncState()"
-                                   class="w-3.5 h-3.5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0 focus:ring-offset-0">
-                            <span>Size</span>
-                        </label>
+                    {{-- Settings dropdown --}}
+                    <div class="relative">
+                        <button @click="showSettings = !showSettings"
+                                class="p-1.5 hover:bg-gray-700 rounded transition-colors"
+                                :class="{ 'bg-gray-700': showSettings }"
+                                title="Display settings">
+                            <i class="fa-solid fa-sliders text-gray-400 hover:text-white text-sm"></i>
+                        </button>
+
+                        <div x-show="showSettings"
+                             @click.away="showSettings = false"
+                             x-cloak
+                             x-transition:enter="transition ease-out duration-100"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-75"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95"
+                             class="absolute right-0 top-full mt-1 w-44 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-20 py-1">
+                            <div class="px-3 py-1.5 text-[10px] text-gray-500 uppercase tracking-wider font-medium">Show columns</div>
+                            <label class="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-700/50 cursor-pointer text-sm text-gray-300">
+                                <input type="checkbox" x-model="settings.showPermissions" @change="syncState()"
+                                       class="w-3.5 h-3.5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0 focus:ring-offset-0">
+                                <span>Permissions</span>
+                            </label>
+                            <label class="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-700/50 cursor-pointer text-sm text-gray-300">
+                                <input type="checkbox" x-model="settings.showOwner" @change="syncState()"
+                                       class="w-3.5 h-3.5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0 focus:ring-offset-0">
+                                <span>Owner / Group</span>
+                            </label>
+                            <label class="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-700/50 cursor-pointer text-sm text-gray-300">
+                                <input type="checkbox" x-model="settings.showModified" @change="syncState()"
+                                       class="w-3.5 h-3.5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0 focus:ring-offset-0">
+                                <span>Date modified</span>
+                            </label>
+                            <label class="flex items-center gap-2.5 px-3 py-1.5 hover:bg-gray-700/50 cursor-pointer text-sm text-gray-300">
+                                <input type="checkbox" x-model="settings.showSize" @change="syncState()"
+                                       class="w-3.5 h-3.5 rounded bg-gray-700 border-gray-600 text-blue-500 focus:ring-0 focus:ring-offset-0">
+                                <span>Size</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>
+            <div class="text-xs text-gray-500 mt-1 truncate" x-text="rootPath"></div>
         </div>
 
         {{-- Scrollable Content --}}
-        <div class="flex-1 overflow-auto p-4 pt-3">
-            <div class="space-y-0.5 min-w-fit">
-                @foreach($tree as $item)
-                    @include('panels.partials.file-tree-item', ['item' => $item, 'depth' => 0])
-                @endforeach
+        <div class="flex-1 overflow-auto p-4 pt-3 relative">
+            {{-- Loading overlay (covers only the tree area, not header) --}}
+            <div x-show="treeLoading" x-cloak
+                 class="absolute inset-0 flex items-center justify-center bg-gray-900/60 z-10">
+                <svg class="animate-spin w-6 h-6 text-gray-400" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                </svg>
             </div>
+
+            {{-- Transient tree error (e.g. refresh failure) --}}
+            <div x-show="treeError" x-cloak
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 -translate-y-1"
+                 class="mb-2 flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300">
+                <i class="fa-solid fa-circle-exclamation text-red-400"></i>
+                <span x-text="treeError"></span>
+            </div>
+
+            @if(!empty($error ?? null))
+                <div class="flex items-start gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm">
+                    <i class="fa-solid fa-circle-exclamation text-red-400 mt-0.5"></i>
+                    <span class="text-red-300">{{ $error }}</span>
+                </div>
+            @else
+                <div x-ref="treeContainer" class="space-y-0.5 min-w-fit">
+                    @foreach($tree as $item)
+                        @include('panels.partials.file-tree-item', ['item' => $item, 'depth' => 0])
+                    @endforeach
+                </div>
+            @endif
         </div>
     </div>
 
