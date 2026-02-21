@@ -13,15 +13,19 @@ use Illuminate\Support\Facades\Process;
  */
 class SshConnection
 {
-    protected string $host;
-    protected string $user;
-    protected int $port;
+    public readonly string $host;
+    public readonly string $user;
+    public readonly int $port;
     protected ?string $password;
     protected ?string $keyPath;
-    protected ?string $serverName;
+    public readonly ?string $serverName;
 
     public function __construct(array $config)
     {
+        if (empty($config['ssh_host'])) {
+            throw new \InvalidArgumentException('ssh_host is required');
+        }
+
         $this->host = $config['ssh_host'];
         $this->user = $config['ssh_user'] ?? 'root';
         $this->port = (int) ($config['ssh_port'] ?? 22);
@@ -129,6 +133,11 @@ class SshConnection
             $remoteCommand = "cd {$escapedDir} && {$remoteCommand}";
         }
 
+        // Security note: Host key verification is intentionally disabled.
+        // This tool runs in an ephemeral container environment where managing
+        // known_hosts is impractical. The SSH credentials themselves (password
+        // or key) already authenticate the connection. MITM risk is accepted
+        // as a trade-off for automation usability.
         $sshArgs = [
             '-o', 'StrictHostKeyChecking=no',
             '-o', 'UserKnownHostsFile=/dev/null',

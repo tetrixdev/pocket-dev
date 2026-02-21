@@ -159,21 +159,13 @@ class FileExplorerPanel extends Panel
 
         $expanded = $state['expanded'] ?? [];
         $selected = $state['selected'] ?? null;
-        $loadedPaths = $state['loadedPaths'] ?? [];
         $viewingFile = $state['viewingFile'] ?? null;
         $settings = $state['settings'] ?? null;
 
-        // Root path is always loaded (first level is rendered on page load)
-        if (!in_array($rootPath, $loadedPaths)) {
-            $loadedPaths[] = $rootPath;
-        }
-
-        // Ensure all expanded paths are also in loadedPaths so their children render
-        foreach ($expanded as $expandedPath) {
-            if (!in_array($expandedPath, $loadedPaths)) {
-                $loadedPaths[] = $expandedPath;
-            }
-        }
+        // On page render, only load the root + currently expanded paths.
+        // Previously-loaded-but-now-collapsed paths are trimmed to avoid
+        // unnecessary SSH calls (or local du calls) on refresh.
+        $loadedPaths = array_values(array_unique(array_merge([$rootPath], $expanded)));
 
         // Build the file tree - only first level + expanded paths
         $tree = $ssh
@@ -536,9 +528,20 @@ class FileExplorerPanel extends Panel
 
     /**
      * Validate that a remote path is within the configured root.
+     *
+     * Security note: Unlike local PathValidator which resolves symlinks via realpath(),
+     * this is a string-prefix check only. A remote symlink inside the root could point
+     * outside it. This is an accepted limitation: the rootPath is set by the AI (not
+     * end users), and anyone who can create symlinks on the remote server already has
+     * SSH access, making the file explorer a non-factor in the threat model.
      */
     protected function validateRemotePath(string $path, string $rootPath): bool
     {
+        // Root "/" needs special handling: "/" . "/" = "//" which no path starts with
+        if ($rootPath === '/') {
+            return str_starts_with($path, '/');
+        }
+
         return str_starts_with($path . '/', $rootPath . '/') || $path === $rootPath;
     }
 
@@ -811,7 +814,7 @@ class FileExplorerPanel extends Panel
     protected function readFileRemote(SshConnection $ssh, string $path, ?int $maxBytes = null): ?string
     {
         $escaped = escapeshellarg($path);
-        if ($maxBytes) {
+        if ($maxBytes !== null) {
             $cmd = "head -c {$maxBytes} {$escaped} 2>/dev/null";
         } else {
             $cmd = "cat {$escaped} 2>/dev/null";

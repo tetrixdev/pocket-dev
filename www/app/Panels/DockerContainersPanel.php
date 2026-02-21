@@ -3,6 +3,7 @@
 namespace App\Panels;
 
 use App\Support\SshConnection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 
 class DockerContainersPanel extends Panel
@@ -296,7 +297,13 @@ class DockerContainersPanel extends Panel
                 return ['error' => 'Working directory not specified'];
             }
 
-            $ssh->run('docker compose stop 2>&1', 60, $workingDir);
+            $stopResult = $ssh->run('docker compose stop 2>&1', 60, $workingDir);
+            if ($stopResult->failed()) {
+                Log::warning('DockerContainersPanel: remote stop failed before restart', [
+                    'project' => $project,
+                    'output' => substr($stopResult->output(), 0, 200),
+                ]);
+            }
         } else {
             // Local mode
             if (str_starts_with($project, 'pocket-dev')) {
@@ -307,10 +314,16 @@ class DockerContainersPanel extends Panel
                 return ['error' => "Working directory not found: '{$workingDir}'"];
             }
 
-            Process::timeout(60)
+            $stopResult = Process::timeout(60)
                 ->path($workingDir)
                 ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
                 ->run('/usr/libexec/docker/cli-plugins/docker-compose stop 2>&1');
+            if ($stopResult->failed()) {
+                Log::warning('DockerContainersPanel: local stop failed before restart', [
+                    'project' => $project,
+                    'output' => substr($stopResult->output(), 0, 200),
+                ]);
+            }
         }
 
         // Then start with force-recreate
@@ -476,7 +489,7 @@ class DockerContainersPanel extends Panel
 
     public function peek(array $params, array $state): string
     {
-        $ssh = SshConnection::fromPanelParams($params);
+        $ssh = $this->getSsh($params);
 
         $cmd = "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null";
 
