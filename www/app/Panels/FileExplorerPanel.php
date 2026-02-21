@@ -259,7 +259,11 @@ class FileExplorerPanel extends Panel
             }
 
             $mime = mime_content_type($realPath) ?: 'application/octet-stream';
-            $base64 = base64_encode(file_get_contents($realPath));
+            $imageData = file_get_contents($realPath);
+            if ($imageData === false) {
+                return ['error' => 'Unable to read image file'];
+            }
+            $base64 = base64_encode($imageData);
 
             return [
                 'data' => [
@@ -289,6 +293,9 @@ class FileExplorerPanel extends Panel
 
         // Handle text files — check if content looks binary
         $content = file_get_contents($realPath, false, null, 0, min($size, self::MAX_TEXT_SIZE));
+        if ($content === false) {
+            return ['error' => 'Unable to read file contents'];
+        }
         $truncated = $size > self::MAX_TEXT_SIZE;
 
         // Quick binary check: look for null bytes in the first 8KB
@@ -424,7 +431,11 @@ class FileExplorerPanel extends Panel
         }
 
         $mime = mime_content_type($realPath) ?: 'application/octet-stream';
-        $base64 = base64_encode(file_get_contents($realPath));
+        $fileData = file_get_contents($realPath);
+        if ($fileData === false) {
+            return ['error' => 'Unable to read file for download'];
+        }
+        $base64 = base64_encode($fileData);
 
         return [
             'data' => [
