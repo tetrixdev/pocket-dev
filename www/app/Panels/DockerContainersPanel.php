@@ -2,6 +2,7 @@
 
 namespace App\Panels;
 
+use App\Support\SshConnection;
 use Illuminate\Support\Facades\Process;
 
 class DockerContainersPanel extends Panel
@@ -12,13 +13,55 @@ class DockerContainersPanel extends Panel
     public string $icon = 'fa-brands fa-docker';
     public string $category = 'development';
 
-    public array $parameters = [];
+    public array $parameters = [
+        'ssh_host' => [
+            'type' => 'string',
+            'description' => 'SSH host for remote Docker management (omit for local)',
+            'default' => null,
+        ],
+        'ssh_user' => [
+            'type' => 'string',
+            'description' => 'SSH username',
+            'default' => 'root',
+        ],
+        'ssh_port' => [
+            'type' => 'integer',
+            'description' => 'SSH port',
+            'default' => 22,
+        ],
+        'ssh_password' => [
+            'type' => 'string',
+            'description' => 'SSH password (omit for key-based auth)',
+            'default' => null,
+        ],
+        'ssh_key_path' => [
+            'type' => 'string',
+            'description' => 'Path to SSH private key (default: ~/.ssh/id_rsa or id_ed25519)',
+            'default' => null,
+        ],
+        'server_name' => [
+            'type' => 'string',
+            'description' => 'Friendly server name shown in the panel header (e.g. "Production", "SGS Main")',
+            'default' => null,
+        ],
+    ];
+
+    /**
+     * Create SSH connection from panel params, or null for local mode.
+     */
+    protected function getSsh(array $panelParams): ?SshConnection
+    {
+        return SshConnection::fromPanelParams($panelParams);
+    }
 
     public function render(array $params, array $state, ?string $panelStateId = null): string
     {
+        $ssh = $this->getSsh($params);
+
         return view('panels.docker-containers', [
             'state' => $state,
             'panelStateId' => $panelStateId,
+            'sshLabel' => $ssh?->getLabel(),
         ])->render();
     }
 
@@ -28,11 +71,11 @@ class DockerContainersPanel extends Panel
     public function handleAction(string $action, array $params, array $state, array $panelParams = []): array
     {
         return match ($action) {
-            'refresh' => $this->getContainers(),
-            'start' => $this->startProject($params),
-            'stop' => $this->stopProject($params),
-            'restart' => $this->restartProject($params),
-            'logs' => $this->getLogs($params),
+            'refresh' => $this->getContainers($panelParams),
+            'start' => $this->startProject($params, $panelParams),
+            'stop' => $this->stopProject($params, $panelParams),
+            'restart' => $this->restartProject($params, $panelParams),
+            'logs' => $this->getLogs($params, $panelParams),
             default => parent::handleAction($action, $params, $state, $panelParams),
         };
     }
@@ -40,14 +83,22 @@ class DockerContainersPanel extends Panel
     /**
      * Get all containers with their status and metadata.
      */
-    protected function getContainers(): array
+    protected function getContainers(array $panelParams = []): array
     {
+        $ssh = $this->getSsh($panelParams);
+
         $format = '{{.ID}}~{{.Names}}~{{.Image}}~{{.Status}}~{{.CreatedAt}}~{{.Ports}}~{{.Networks}}~{{.Mounts}}~{{.Label "com.docker.compose.project"}}~{{.Label "com.docker.compose.project.working_dir"}}~{{.Label "com.docker.compose.service"}}';
 
-        $result = Process::timeout(30)->run("docker ps -a --format '{$format}' 2>/dev/null");
+        $cmd = "docker ps -a --format '{$format}' 2>/dev/null";
+
+        if ($ssh) {
+            $result = $ssh->run($cmd, 30);
+        } else {
+            $result = Process::timeout(30)->run($cmd);
+        }
 
         if ($result->failed()) {
-            return ['error' => 'Failed to get container list'];
+            return ['error' => 'Failed to get container list' . ($ssh ? ' via SSH' : '')];
         }
 
         $containers = [];
@@ -117,30 +168,50 @@ class DockerContainersPanel extends Panel
     /**
      * Start a Docker Compose project.
      */
-    protected function startProject(array $params): array
+    protected function startProject(array $params, array $panelParams = []): array
     {
+        $ssh = $this->getSsh($panelParams);
         $project = $params['project'] ?? '';
         $workingDir = $params['working_dir'] ?? '';
 
-        if (str_starts_with($project, 'pocket-dev')) {
-            return ['error' => 'Cannot modify PocketDev containers'];
-        }
+        if ($ssh) {
+            // Remote mode: no pocket-dev protection, no compose:transform
+            if (empty($workingDir)) {
+                return ['error' => 'Working directory not specified'];
+            }
 
-        if (empty($workingDir) || !is_dir($workingDir)) {
-            return ['error' => "Working directory not found: '{$workingDir}'"];
-        }
+            // Check remote directory exists
+            $testDir = $ssh->exec("test -d " . escapeshellarg($workingDir) . " && echo yes", 10);
+            if (!$testDir || !str_contains($testDir, 'yes')) {
+                return ['error' => "Remote directory not found: '{$workingDir}'"];
+            }
 
-        // Ensure compose override exists (for PocketDev volume mounts)
-        $composeFile = $this->findComposeFile($workingDir);
-        if ($composeFile && !file_exists($workingDir . '/compose.override.yaml')) {
-            Process::timeout(60)->run("pd compose:transform --input=" . escapeshellarg($composeFile));
-        }
+            $result = $ssh->run(
+                'docker compose up -d --force-recreate 2>&1',
+                120,
+                $workingDir
+            );
+        } else {
+            // Local mode: existing behavior
+            if (str_starts_with($project, 'pocket-dev')) {
+                return ['error' => 'Cannot modify PocketDev containers'];
+            }
 
-        // Start containers
-        $result = Process::timeout(120)
-            ->path($workingDir)
-            ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
-            ->run('/usr/libexec/docker/cli-plugins/docker-compose up -d --force-recreate 2>&1');
+            if (empty($workingDir) || !is_dir($workingDir)) {
+                return ['error' => "Working directory not found: '{$workingDir}'"];
+            }
+
+            // Ensure compose override exists (for PocketDev volume mounts)
+            $composeFile = $this->findComposeFile($workingDir);
+            if ($composeFile && !file_exists($workingDir . '/compose.override.yaml')) {
+                Process::timeout(60)->run("pd compose:transform --input=" . escapeshellarg($composeFile));
+            }
+
+            $result = Process::timeout(120)
+                ->path($workingDir)
+                ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
+                ->run('/usr/libexec/docker/cli-plugins/docker-compose up -d --force-recreate 2>&1');
+        }
 
         if ($result->failed()) {
             $error = trim($result->output());
@@ -161,23 +232,38 @@ class DockerContainersPanel extends Panel
     /**
      * Stop a Docker Compose project.
      */
-    protected function stopProject(array $params): array
+    protected function stopProject(array $params, array $panelParams = []): array
     {
+        $ssh = $this->getSsh($panelParams);
         $project = $params['project'] ?? '';
         $workingDir = $params['working_dir'] ?? '';
 
-        if (str_starts_with($project, 'pocket-dev')) {
-            return ['error' => 'Cannot stop PocketDev containers'];
-        }
+        if ($ssh) {
+            // Remote mode
+            if (empty($workingDir)) {
+                return ['error' => 'Working directory not specified'];
+            }
 
-        if (empty($workingDir) || !is_dir($workingDir)) {
-            return ['error' => "Working directory not found: '{$workingDir}'"];
-        }
+            $result = $ssh->run(
+                'docker compose stop 2>&1',
+                60,
+                $workingDir
+            );
+        } else {
+            // Local mode
+            if (str_starts_with($project, 'pocket-dev')) {
+                return ['error' => 'Cannot stop PocketDev containers'];
+            }
 
-        $result = Process::timeout(60)
-            ->path($workingDir)
-            ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
-            ->run('/usr/libexec/docker/cli-plugins/docker-compose stop 2>&1');
+            if (empty($workingDir) || !is_dir($workingDir)) {
+                return ['error' => "Working directory not found: '{$workingDir}'"];
+            }
+
+            $result = Process::timeout(60)
+                ->path($workingDir)
+                ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
+                ->run('/usr/libexec/docker/cli-plugins/docker-compose stop 2>&1');
+        }
 
         if ($result->failed()) {
             $error = trim($result->output());
@@ -198,34 +284,37 @@ class DockerContainersPanel extends Panel
     /**
      * Restart a Docker Compose project.
      */
-    protected function restartProject(array $params): array
+    protected function restartProject(array $params, array $panelParams = []): array
     {
+        $ssh = $this->getSsh($panelParams);
         $project = $params['project'] ?? '';
         $workingDir = $params['working_dir'] ?? '';
 
-        if (str_starts_with($project, 'pocket-dev')) {
-            return ['error' => 'Cannot modify PocketDev containers'];
-        }
+        if ($ssh) {
+            // Remote mode
+            if (empty($workingDir)) {
+                return ['error' => 'Working directory not specified'];
+            }
 
-        if (empty($workingDir) || !is_dir($workingDir)) {
-            return ['error' => "Working directory not found: '{$workingDir}'"];
-        }
+            $ssh->run('docker compose stop 2>&1', 60, $workingDir);
+        } else {
+            // Local mode
+            if (str_starts_with($project, 'pocket-dev')) {
+                return ['error' => 'Cannot modify PocketDev containers'];
+            }
 
-        // Stop first
-        $stopResult = Process::timeout(60)
-            ->path($workingDir)
-            ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
-            ->run('/usr/libexec/docker/cli-plugins/docker-compose stop 2>&1');
+            if (empty($workingDir) || !is_dir($workingDir)) {
+                return ['error' => "Working directory not found: '{$workingDir}'"];
+            }
+
+            Process::timeout(60)
+                ->path($workingDir)
+                ->env(['HOME' => '/tmp', 'PATH' => getenv('PATH')])
+                ->run('/usr/libexec/docker/cli-plugins/docker-compose stop 2>&1');
+        }
 
         // Then start with force-recreate
-        $startResult = $this->startProject($params);
-
-        // If stop failed but start succeeded, warn the user
-        if ($stopResult->failed() && ($startResult['data']['success'] ?? false)) {
-            $startResult['data']['message'] = 'Warning: Stop failed, but start succeeded';
-        }
-
-        return $startResult;
+        return $this->startProject($params, $panelParams);
     }
 
     /**
@@ -246,18 +335,23 @@ class DockerContainersPanel extends Panel
     /**
      * Get logs for a project or specific container.
      */
-    protected function getLogs(array $params): array
+    protected function getLogs(array $params, array $panelParams = []): array
     {
+        $ssh = $this->getSsh($panelParams);
         $project = $params['project'] ?? '';
         $container = $params['container'] ?? null;
         $workingDir = $params['working_dir'] ?? '';
-        $tail = max(1, min((int) ($params['tail'] ?? 100), 1000)); // Default 100, min 1, max 1000 per request
+        $tail = max(1, min((int) ($params['tail'] ?? 100), 1000));
 
         // For specific container, use docker logs directly
         if ($container) {
-            $result = Process::timeout(30)->run(
-                "docker logs " . escapeshellarg($container) . " --tail {$tail} 2>&1"
-            );
+            $cmd = "docker logs " . escapeshellarg($container) . " --tail {$tail} 2>&1";
+
+            if ($ssh) {
+                $result = $ssh->run($cmd, 30);
+            } else {
+                $result = Process::timeout(30)->run($cmd);
+            }
 
             if ($result->failed()) {
                 return ['error' => 'Failed to get container logs: ' . $result->output()];
@@ -276,40 +370,37 @@ class DockerContainersPanel extends Panel
             ];
         }
 
-        // For project logs, use docker compose
-        if (empty($workingDir) || !is_dir($workingDir)) {
-            // Fallback: get all containers for this project and combine logs
-            $format = '{{.Names}}';
-            $filter = escapeshellarg("label=com.docker.compose.project={$project}");
-            $psResult = Process::timeout(10)->run(
-                "docker ps -a --filter {$filter} --format " . escapeshellarg($format) . " 2>/dev/null"
-            );
-
-            if ($psResult->failed() || empty(trim($psResult->output()))) {
-                return ['error' => "No containers found for project: {$project}"];
-            }
-
-            $containers = array_filter(explode("\n", trim($psResult->output())));
-            $allLogs = [];
-
-            foreach ($containers as $containerName) {
-                $logResult = Process::timeout(15)->run(
-                    "docker logs " . escapeshellarg($containerName) . " --tail " . ceil($tail / count($containers)) . " 2>&1"
+        // For project logs, try docker compose first
+        if ($ssh) {
+            // Remote: always try docker compose logs
+            if (!empty($workingDir)) {
+                $result = $ssh->run(
+                    "docker compose logs --tail {$tail} 2>&1",
+                    60,
+                    $workingDir
                 );
-                if ($logResult->successful()) {
-                    $allLogs[] = "=== {$containerName} ===\n" . $logResult->output();
+
+                if ($result->successful()) {
+                    $lines = explode("\n", $result->output());
+                    return [
+                        'data' => [
+                            'logs' => $result->output(),
+                            'lines' => count($lines),
+                            'tail' => $tail,
+                            'project' => $project,
+                        ],
+                        'error' => null,
+                    ];
                 }
             }
 
-            return [
-                'data' => [
-                    'logs' => implode("\n\n", $allLogs),
-                    'lines' => count(explode("\n", implode("\n", $allLogs))),
-                    'tail' => $tail,
-                    'project' => $project,
-                ],
-                'error' => null,
-            ];
+            // Fallback: get containers by project label and combine logs
+            return $this->getProjectLogsFallback($project, $tail, $ssh);
+        }
+
+        // Local: existing behavior
+        if (empty($workingDir) || !is_dir($workingDir)) {
+            return $this->getProjectLogsFallback($project, $tail, null);
         }
 
         // Use docker compose logs
@@ -335,17 +426,76 @@ class DockerContainersPanel extends Panel
         ];
     }
 
-    public function peek(array $params, array $state): string
+    /**
+     * Fallback log retrieval: get all containers for a project and combine logs.
+     */
+    protected function getProjectLogsFallback(string $project, int $tail, ?SshConnection $ssh): array
     {
-        $result = Process::timeout(10)->run("docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null");
+        $format = '{{.Names}}';
+        $filter = escapeshellarg("label=com.docker.compose.project={$project}");
+        $psCmd = "docker ps -a --filter {$filter} --format " . escapeshellarg($format) . " 2>/dev/null";
 
-        if ($result->failed()) {
-            return "## Docker Containers\n\nDocker not available or no containers running.";
+        if ($ssh) {
+            $psResult = $ssh->run($psCmd, 10);
+        } else {
+            $psResult = Process::timeout(10)->run($psCmd);
         }
 
-        $output = "## Docker Containers\n\n```\n" . trim($result->output()) . "\n```";
+        if ($psResult->failed() || empty(trim($psResult->output()))) {
+            return ['error' => "No containers found for project: {$project}"];
+        }
 
-        return $output;
+        $containers = array_filter(explode("\n", trim($psResult->output())));
+        $allLogs = [];
+        $perContainerTail = (int) ceil($tail / count($containers));
+
+        foreach ($containers as $containerName) {
+            $logCmd = "docker logs " . escapeshellarg($containerName) . " --tail {$perContainerTail} 2>&1";
+
+            if ($ssh) {
+                $logResult = $ssh->run($logCmd, 15);
+            } else {
+                $logResult = Process::timeout(15)->run($logCmd);
+            }
+
+            if ($logResult->successful()) {
+                $allLogs[] = "=== {$containerName} ===\n" . $logResult->output();
+            }
+        }
+
+        return [
+            'data' => [
+                'logs' => implode("\n\n", $allLogs),
+                'lines' => count(explode("\n", implode("\n", $allLogs))),
+                'tail' => $tail,
+                'project' => $project,
+            ],
+            'error' => null,
+        ];
+    }
+
+    public function peek(array $params, array $state): string
+    {
+        $ssh = SshConnection::fromPanelParams($params);
+
+        $cmd = "docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null";
+
+        if ($ssh) {
+            $result = $ssh->run($cmd, 10);
+        } else {
+            $result = Process::timeout(10)->run($cmd);
+        }
+
+        if ($result->failed()) {
+            $target = $ssh ? " ({$ssh->getLabel()})" : '';
+            return "## Docker Containers{$target}\n\nDocker not available or no containers running.";
+        }
+
+        $header = $ssh
+            ? "## Docker Containers (SSH: {$ssh->getLabel()})\n\n"
+            : "## Docker Containers\n\n";
+
+        return $header . "```\n" . trim($result->output()) . "\n```";
     }
 
     public function getSystemPrompt(): string
@@ -372,9 +522,26 @@ Opens an interactive Docker Containers panel showing all running and stopped con
 - "Load More" button fetches additional log history (up to 1000 lines)
 - Copy button to copy logs to clipboard
 
+## SSH Remote Mode
+Connect to a remote Docker host via SSH by passing connection parameters:
+- `ssh_host` (required for SSH): Remote hostname or IP
+- `ssh_user` (default: root): SSH username
+- `ssh_port` (default: 22): SSH port
+- `ssh_password`: Password for SSH auth (omit for key-based auth)
+- `ssh_key_path`: Path to private key (default: tries ~/.ssh/id_rsa, id_ed25519)
+
+When connected via SSH, PocketDev container protections are disabled (they only apply locally).
+
 ## CLI Example
 ```bash
+# Local Docker
 pd tool:run docker-containers
+
+# Remote Docker via SSH (password)
+pd tool:run docker-containers -- --ssh_host=192.168.1.100 --ssh_user=root --ssh_password=secret
+
+# Remote Docker via SSH (key-based)
+pd tool:run docker-containers -- --ssh_host=192.168.1.100 --ssh_user=deploy
 ```
 
 ## When to Use
@@ -382,6 +549,7 @@ pd tool:run docker-containers
 - Starting/stopping Docker Compose projects
 - Viewing port mappings and container details
 - Debugging container issues via logs
+- Managing Docker on remote servers via SSH
 
 Use `pd panel:peek docker-containers` to see current state.
 PROMPT;

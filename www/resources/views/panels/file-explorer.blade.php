@@ -437,6 +437,13 @@
         <div class="flex-none flex items-center gap-2 p-4 pb-2 border-b border-gray-700 bg-gray-900">
             <i class="fa-solid fa-folder-tree text-blue-400"></i>
             <span class="font-medium text-sm truncate" x-text="rootPath"></span>
+            {{-- SSH indicator --}}
+            @if(!empty($sshLabel))
+                <span class="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full flex items-center gap-1.5 shrink-0">
+                    <i class="fa-solid fa-terminal text-[9px]"></i>
+                    {{ $sshLabel }}
+                </span>
+            @endif
 
             <div class="ml-auto flex items-center gap-1">
                 <button @click="refresh()"
@@ -492,11 +499,18 @@
 
         {{-- Scrollable Content --}}
         <div class="flex-1 overflow-auto p-4 pt-3">
-            <div class="space-y-0.5 min-w-fit">
-                @foreach($tree as $item)
-                    @include('panels.partials.file-tree-item', ['item' => $item, 'depth' => 0])
-                @endforeach
-            </div>
+            @if(!empty($error ?? null))
+                <div class="flex items-start gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm">
+                    <i class="fa-solid fa-circle-exclamation text-red-400 mt-0.5"></i>
+                    <span class="text-red-300">{{ $error }}</span>
+                </div>
+            @else
+                <div class="space-y-0.5 min-w-fit">
+                    @foreach($tree as $item)
+                        @include('panels.partials.file-tree-item', ['item' => $item, 'depth' => 0])
+                    @endforeach
+                </div>
+            @endif
         </div>
     </div>
 
