@@ -884,23 +884,28 @@ class FileExplorerPanel extends Panel
      */
     public static function getPathMetadata(string $path): array
     {
+        static $uidCache = [], $gidCache = [];
+
         try {
             $stat = @stat($path);
             if (!$stat) {
                 return ['mtime' => 0, 'mtimeFormatted' => '', 'owner' => '?', 'group' => '?', 'permissions' => '????'];
             }
 
-            $owner = (string) $stat['uid'];
-            $group = (string) $stat['gid'];
+            $uid = $stat['uid'];
+            $gid = $stat['gid'];
 
-            if (function_exists('posix_getpwuid')) {
-                $pwuid = @posix_getpwuid($stat['uid']);
-                if ($pwuid) $owner = $pwuid['name'];
+            if (!isset($uidCache[$uid])) {
+                $pw = function_exists('posix_getpwuid') ? @posix_getpwuid($uid) : false;
+                $uidCache[$uid] = $pw ? $pw['name'] : (string) $uid;
             }
-            if (function_exists('posix_getgrgid')) {
-                $grgid = @posix_getgrgid($stat['gid']);
-                if ($grgid) $group = $grgid['name'];
+            if (!isset($gidCache[$gid])) {
+                $gr = function_exists('posix_getgrgid') ? @posix_getgrgid($gid) : false;
+                $gidCache[$gid] = $gr ? $gr['name'] : (string) $gid;
             }
+
+            $owner = $uidCache[$uid];
+            $group = $gidCache[$gid];
 
             return [
                 'mtime' => $stat['mtime'],
