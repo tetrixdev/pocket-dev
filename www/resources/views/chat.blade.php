@@ -4146,10 +4146,13 @@
                     }
 
                     try {
-                        // Pass workspace path for panels that use it
+                        // Pass workspace path for panels that use it (no fallback — let backend decide)
                         const panelParams = {};
                         if (['file-explorer', 'git-status'].includes(panelSlug)) {
-                            panelParams.path = this.currentWorkspace?.working_directory_path || '/workspace/default';
+                            const workspacePath = this.currentWorkspace?.working_directory_path;
+                            if (workspacePath) {
+                                panelParams.path = workspacePath;
+                            }
                         }
 
                         const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/panel`, {

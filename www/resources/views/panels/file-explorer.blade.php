@@ -155,6 +155,10 @@
                      })
                  });
 
+                 if (!response.ok) {
+                     throw new Error('Server returned ' + response.status);
+                 }
+
                  const result = await response.json();
 
                  if (result.ok && result.data) {
@@ -203,19 +207,27 @@
              }
          },
 
-         copyContent() {
+         async copyContent() {
              if (this.fileContent?.type === 'text' && this.fileContent?.content) {
-                 navigator.clipboard.writeText(this.fileContent.content);
-                 this.copied = true;
-                 setTimeout(() => this.copied = false, 2000);
+                 try {
+                     await navigator.clipboard.writeText(this.fileContent.content);
+                     this.copied = true;
+                     setTimeout(() => this.copied = false, 2000);
+                 } catch (e) {
+                     console.error('Copy failed:', e);
+                 }
              }
          },
 
-         copyPath() {
+         async copyPath() {
              if (this.viewingFile?.path) {
-                 navigator.clipboard.writeText(this.viewingFile.path);
-                 this.copiedPath = true;
-                 setTimeout(() => this.copiedPath = false, 2000);
+                 try {
+                     await navigator.clipboard.writeText(this.viewingFile.path);
+                     this.copiedPath = true;
+                     setTimeout(() => this.copiedPath = false, 2000);
+                 } catch (e) {
+                     console.error('Copy failed:', e);
+                 }
              }
          },
 
@@ -260,6 +272,10 @@
                      })
                  });
 
+                 if (!response.ok) {
+                     throw new Error('Server returned ' + response.status);
+                 }
+
                  const result = await response.json();
 
                  if (result.ok && result.data?.success) {
@@ -284,6 +300,13 @@
 
          // --- Download Method ---
 
+         base64ToBlob(b64, mime) {
+             const byteChars = atob(b64);
+             const byteArr = new Uint8Array(byteChars.length);
+             for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+             return new Blob([byteArr], { type: mime || 'application/octet-stream' });
+         },
+
          async downloadFile() {
              if (!this.viewingFile || this.downloading) return;
              this.downloading = true;
@@ -297,10 +320,7 @@
                      blob = new Blob([this.fileContent.content], { type: 'text/plain' });
                  } else if (this.fileContent?.type === 'image' && this.fileContent?.base64) {
                      // Image already loaded as base64
-                     const byteChars = atob(this.fileContent.base64);
-                     const byteArr = new Uint8Array(byteChars.length);
-                     for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-                     blob = new Blob([byteArr], { type: this.fileContent.mime || 'application/octet-stream' });
+                     blob = this.base64ToBlob(this.fileContent.base64, this.fileContent.mime);
                  } else {
                      // Binary or not loaded — fetch from server
                      const response = await fetch(`/api/panel/${this.panelStateId}/action`, {
@@ -308,16 +328,16 @@
                          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                          body: JSON.stringify({ action: 'downloadFile', params: { path: this.viewingFile.path } })
                      });
+                     if (!response.ok) {
+                         throw new Error('Server returned ' + response.status);
+                     }
                      const result = await response.json();
                      if (!result.ok || !result.data?.base64) {
                          console.error('Download failed:', result.error || 'Unknown error');
                          this.downloading = false;
                          return;
                      }
-                     const byteChars = atob(result.data.base64);
-                     const byteArr = new Uint8Array(byteChars.length);
-                     for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-                     blob = new Blob([byteArr], { type: result.data.mime || 'application/octet-stream' });
+                     blob = this.base64ToBlob(result.data.base64, result.data.mime);
                  }
 
                  // Trigger browser download — use parent document for better
@@ -334,9 +354,10 @@
                      doc.body.removeChild(a);
                      URL.revokeObjectURL(url);
                  } catch (e) {
-                     // Cross-origin fallback: open in new tab
+                     // Cross-origin fallback: open in new tab — delay revocation
+                     // so the new tab has time to load the blob
                      window.open(url, '_blank');
-                     URL.revokeObjectURL(url);
+                     setTimeout(() => URL.revokeObjectURL(url), 30000);
                  }
              } catch (e) {
                  console.error('Download error:', e);
@@ -632,11 +653,7 @@
                          x-effect="
                              if (fileContent?.type === 'text' && fileContent?.content != null) {
                                  const lines = fileContent.content.split('\n').length;
-                                 let nums = '';
-                                 for (let i = 1; i <= lines; i++) {
-                                     nums += i + '\n';
-                                 }
-                                 $refs.lineNumbers.textContent = nums;
+                                 $refs.lineNumbers.textContent = Array.from({length: lines}, (_, i) => i + 1).join('\n');
                              }
                          "
                          style="min-width: 3rem;"></div>

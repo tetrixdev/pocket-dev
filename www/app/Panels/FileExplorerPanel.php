@@ -49,6 +49,16 @@ class FileExplorerPanel extends Panel
      */
     protected const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 
+    /**
+     * Max file size for download via base64 (128 MB).
+     */
+    protected const MAX_DOWNLOAD_SIZE = 128 * 1024 * 1024;
+
+    /**
+     * Max directories to calculate sizes for in a single du call.
+     */
+    protected const MAX_DIR_SIZE_COUNT = 50;
+
     public function render(array $params, array $state, ?string $panelStateId = null): string
     {
         $rootPath = $params['path'] ?? '/workspace/default';
@@ -310,6 +320,11 @@ class FileExplorerPanel extends Panel
             return ['error' => 'No content provided'];
         }
 
+        // Cap write size to match the read limit
+        if (strlen($content) > self::MAX_TEXT_SIZE) {
+            return ['error' => 'Content too large to save (>' . self::formatSizeStatic(self::MAX_TEXT_SIZE) . ')'];
+        }
+
         // Validate file path
         $realPath = $this->validatePath($filePath);
         if ($realPath === null) {
@@ -384,9 +399,8 @@ class FileExplorerPanel extends Panel
         }
 
         $size = filesize($realPath);
-        $maxDownload = 50 * 1024 * 1024; // 50 MB limit
-        if ($size > $maxDownload) {
-            return ['error' => 'File too large to download (>' . self::formatSizeStatic($maxDownload) . ')'];
+        if ($size > self::MAX_DOWNLOAD_SIZE) {
+            return ['error' => 'File too large to download (>' . self::formatSizeStatic(self::MAX_DOWNLOAD_SIZE) . ')'];
         }
 
         $mime = mime_content_type($realPath) ?: 'application/octet-stream';
@@ -411,6 +425,11 @@ class FileExplorerPanel extends Panel
         if (str_ends_with($name, '.blade.php')) {
             return 'php';  // blade templates are best highlighted as PHP
         }
+
+        // Extensionless filename matches
+        $nameLower = strtolower($name);
+        if ($nameLower === 'dockerfile') return 'dockerfile';
+        if ($nameLower === 'makefile' || $nameLower === 'gnumakefile') return 'makefile';
 
         // Extension to hljs language map
         return match ($extension) {
@@ -817,8 +836,14 @@ class FileExplorerPanel extends Panel
             return [];
         }
 
+        // Cap directory count to avoid slow du calls on huge directory listings
+        if (count($dirPaths) > self::MAX_DIR_SIZE_COUNT) {
+            $dirPaths = array_slice($dirPaths, 0, self::MAX_DIR_SIZE_COUNT);
+        }
+
         $escaped = array_map('escapeshellarg', $dirPaths);
-        $cmd = 'du -sb ' . implode(' ', $escaped) . ' 2>/dev/null';
+        // -x: stay on same filesystem (avoid cross-mount traversal)
+        $cmd = 'du -sbx ' . implode(' ', $escaped) . ' 2>/dev/null';
         $output = @shell_exec($cmd);
 
         $sizes = [];

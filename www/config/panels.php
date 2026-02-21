@@ -52,12 +52,14 @@ return [
         ],
         'highlight-css' => [
             'type' => 'stylesheet',
-            'url' => 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css',
+            'url' => 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css',
+            'crossorigin' => 'anonymous',
             'description' => 'Highlight.js GitHub Dark theme for syntax highlighting in code viewers',
         ],
         'highlight-js' => [
             'type' => 'script',
-            'url' => 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js',
+            'url' => 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js',
+            'crossorigin' => 'anonymous',
             'description' => 'Highlight.js - Syntax highlighting for code blocks. Use hljs.highlightElement(el) or hljs.highlight(code, {language})',
         ],
     ],
