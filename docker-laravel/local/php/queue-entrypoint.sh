@@ -63,6 +63,13 @@ mkdir -p /home/appuser/.claude /home/appuser/.codex /home/appuser/.docker 2>/dev
 chown -R "${TARGET_UID}:33" /home/appuser 2>/dev/null || true
 chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex /home/appuser/.docker 2>/dev/null || true
 
+# Fix SSH key permissions for www-data (PHP-FPM) panel access
+# More restrictive than other dirs: 750 for dir, 640 for private keys
+if [ -d /home/appuser/.ssh ]; then
+    chmod 750 /home/appuser/.ssh 2>/dev/null || true
+    find /home/appuser/.ssh -name "id_*" ! -name "*.pub" -exec chmod 640 {} \; 2>/dev/null || true
+fi
+
 # Set up default Claude Code permissions.deny to protect .env files
 # This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
 CLAUDE_SETTINGS="/home/appuser/.claude/settings.json"

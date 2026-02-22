@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Process;
  * Stateless SSH command execution utility.
  *
  * Each run() call builds and executes a fresh SSH command via Laravel's Process facade.
- * Supports password auth (via sshpass -e) and key-based auth (default ~/.ssh/ keys).
+ * Supports password auth (via sshpass -e) and key-based auth (auto-detected from /home/appuser/.ssh/).
  */
 class SshConnection
 {
@@ -31,6 +31,19 @@ class SshConnection
         $this->port = (int) ($config['ssh_port'] ?? 22);
         $this->password = !empty($config['ssh_password']) ? $config['ssh_password'] : null;
         $this->keyPath = !empty($config['ssh_key_path']) ? $config['ssh_key_path'] : null;
+
+        // Auto-detect key from PocketDev's canonical SSH directory.
+        // The PHP container runs as root, so ~/.ssh/ resolves to /root/.ssh/ (empty).
+        // Keys are always stored in /home/appuser/.ssh/ across all containers.
+        if ($this->keyPath === null && !$this->password) {
+            $appUserSshDir = '/home/appuser/.ssh';
+            foreach (['id_ed25519', 'id_rsa', 'id_ecdsa'] as $keyName) {
+                if (is_file("{$appUserSshDir}/{$keyName}")) {
+                    $this->keyPath = "{$appUserSshDir}/{$keyName}";
+                    break;
+                }
+            }
+        }
 
         if ($this->keyPath !== null && !is_file($this->keyPath)) {
             throw new \InvalidArgumentException("SSH key file not found: {$this->keyPath}");
@@ -127,8 +140,8 @@ class SshConnection
      * Build the full SSH command string.
      *
      * Uses sshpass -e (env var mode) for password auth to avoid exposing
-     * the password in /proc. For key-based auth, uses -i if a key path
-     * is provided, otherwise lets SSH try default keys from ~/.ssh/.
+     * the password in /proc. For key-based auth, uses -i with the key path
+     * (auto-detected from /home/appuser/.ssh/ if not explicitly provided).
      */
     protected function buildSshCommand(string $remoteCommand, ?string $workingDir = null): string
     {

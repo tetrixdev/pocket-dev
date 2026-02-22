@@ -53,6 +53,13 @@ mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
 chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
 chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
 
+# Fix SSH key permissions for www-data (PHP-FPM) panel access
+# More restrictive than other dirs: 750 for dir, 640 for private keys
+if [ -d "$HOME/.ssh" ]; then
+    chmod 750 "$HOME/.ssh" 2>/dev/null || true
+    find "$HOME/.ssh" -name "id_*" ! -name "*.pub" -exec chmod 640 {} \; 2>/dev/null || true
+fi
+
 # =============================================================================
 # DOCKER SOCKET ACCESS
 # =============================================================================
