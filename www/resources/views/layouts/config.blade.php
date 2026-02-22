@@ -207,15 +207,13 @@
                     </a>
                 </div>
 
-                @if(app()->environment('local'))
-                <!-- Developer Tools (Local Only) -->
+                <!-- Developer Tools (Restart/Rebuild) -->
                 <div class="border-b border-gray-700">
                     <a href="{{ route('config.developer') }}"
                        class="category-button w-full block {{ Route::currentRouteName() == 'config.developer' ? 'active' : '' }}">
                         🔧 Developer
                     </a>
                 </div>
-                @endif
 
             </div>
         </div>
@@ -429,8 +427,7 @@
                 </a>
             </div>
 
-            @if(app()->environment('local'))
-            <!-- Developer Tools (Local Only) -->
+            <!-- Developer Tools (Restart/Rebuild) -->
             <div class="border-b border-gray-700">
                 <a href="{{ route('config.developer') }}"
                    @click="showMobileDrawer = false"
@@ -438,7 +435,6 @@
                     🔧 Developer
                 </a>
             </div>
-            @endif
 
             <!-- Footer with Back to Chat -->
             <div class="p-4 border-t border-gray-700 mt-auto">
