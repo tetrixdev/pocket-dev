@@ -86,6 +86,10 @@
                 @foreach($item['children'] as $child)
                     @include('panels.partials.file-tree-item', ['item' => $child, 'depth' => $depth + 1])
                 @endforeach
+            @elseif($isLoaded && empty($item['children']))
+                <div class="text-xs text-gray-600 italic py-1" style="padding-left: {{ (($depth + 1) * 16) + 28 }}px">
+                    Empty directory
+                </div>
             @endif
         </div>
     @endif

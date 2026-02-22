@@ -1,5 +1,6 @@
 <div x-data="{
     panelStateId: @js($panelStateId ?? null),
+    sshLabel: @js($sshLabel ?? null),
     containers: [],
     loading: true,
     error: null,
@@ -67,7 +68,7 @@
                     unhealthy: 0,
                     ports: [],
                     working_dir: c.working_dir || '',
-                    isProtected: project === 'pocket-dev'
+                    isProtected: this.sshLabel ? false : (project === 'pocket-dev')
                 };
             }
             groups[project].containers.push(c);
@@ -403,6 +404,13 @@
                     <i class="fa-brands fa-docker text-blue-400 text-lg"></i>
                     <h2 class="text-base sm:text-lg font-semibold">Docker Containers</h2>
                     <span class="text-xs sm:text-sm text-gray-400" x-show="groupedContainers.length > 0" x-text="`(${groupedContainers.length})`"></span>
+                    {{-- SSH indicator --}}
+                    @if(!empty($sshLabel))
+                        <span class="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full flex items-center gap-1.5 shrink-0">
+                            <i class="fa-solid fa-terminal text-[9px]"></i>
+                            {{ $sshLabel }}
+                        </span>
+                    @endif
                 </div>
                 {{-- Desktop: buttons inline --}}
                 <div class="hidden sm:flex items-center gap-2">
