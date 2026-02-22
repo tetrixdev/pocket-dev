@@ -1416,7 +1416,7 @@ class FileExplorerPanel extends Panel
 
     public function peek(array $params, array $state): string
     {
-        $ssh = SshConnection::fromPanelParams($params);
+        $ssh = $this->getSsh($params);
         $rootPath = $params['path'] ?? '/workspace/default';
         $expanded = $state['expanded'] ?? [];
 
@@ -1427,14 +1427,10 @@ class FileExplorerPanel extends Panel
             }
 
             $output = "## File Explorer (SSH: {$ssh->getLabel()}): {$rootPath}\n\n";
-            $tree = $this->buildPeekTreeRemote($ssh, $rootPath, $expanded, 0);
-            $output .= $tree;
+            $counts = ['dirs' => 0, 'files' => 0, 'total' => 0];
+            $output .= $this->buildPeekTreeRemote($ssh, $rootPath, $expanded, 0, $counts);
 
-            // Count visible items from peek tree output
-            $dirs = substr_count($tree, '[DIR]');
-            $files = substr_count($tree, '[FILE]');
-            $total = $dirs + $files;
-            $output .= "\n*{$total} items visible ({$dirs} directories, {$files} files)*";
+            $output .= "\n*{$counts['total']} items visible ({$counts['dirs']} directories, {$counts['files']} files)*";
 
             return $output;
         }
@@ -1459,7 +1455,7 @@ class FileExplorerPanel extends Panel
     /**
      * Build peek tree via SSH.
      */
-    protected function buildPeekTreeRemote(SshConnection $ssh, string $path, array $expanded, int $indent): string
+    protected function buildPeekTreeRemote(SshConnection $ssh, string $path, array $expanded, int $indent, array &$counts = []): string
     {
         $output = '';
         $prefix = str_repeat('   ', $indent);
@@ -1472,9 +1468,11 @@ class FileExplorerPanel extends Panel
                 $isExpanded = in_array($dir, $expanded);
                 $marker = $isExpanded ? '(expanded)' : '(collapsed)';
                 $output .= "{$prefix}[DIR] {$name}/ {$marker}\n";
+                $counts['dirs'] = ($counts['dirs'] ?? 0) + 1;
+                $counts['total'] = ($counts['total'] ?? 0) + 1;
 
                 if ($isExpanded) {
-                    $output .= $this->buildPeekTreeRemote($ssh, $dir, $expanded, $indent + 1);
+                    $output .= $this->buildPeekTreeRemote($ssh, $dir, $expanded, $indent + 1, $counts);
                 }
             }
 
@@ -1482,6 +1480,8 @@ class FileExplorerPanel extends Panel
             foreach ($files as $file) {
                 $size = self::formatSizeStatic($file['size']);
                 $output .= "{$prefix}[FILE] {$file['name']} ({$size})\n";
+                $counts['files'] = ($counts['files'] ?? 0) + 1;
+                $counts['total'] = ($counts['total'] ?? 0) + 1;
             }
         } catch (\Exception $e) {
             $output .= "{$prefix}[!] Cannot read directory\n";
