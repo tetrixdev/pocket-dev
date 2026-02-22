@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Process;
  * Stateless SSH command execution utility.
  *
  * Each run() call builds and executes a fresh SSH command via Laravel's Process facade.
- * Supports password auth (via sshpass -e) and key-based auth (default ~/.ssh/ keys).
+ * Supports password auth (via sshpass -e) and key-based auth (auto-detected from /home/appuser/.ssh/).
  */
 class SshConnection
 {
