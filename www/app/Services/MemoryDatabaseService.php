@@ -125,7 +125,7 @@ class MemoryDatabaseService
                         'PocketDev Skills - slash commands that can be invoked via /name in chat.
 **Typical queries:** Get skill by exact name match
 **Relationships:** None (standalone table)
-**Example:** php artisan memory:query --schema={$schemaName} --sql=\"SELECT instructions FROM skills WHERE name = ''example-skill''\"',
+**Example:** pd memory:query --schema={$schemaName} --sql=\"SELECT instructions FROM memory_{$schemaName}.skills WHERE name = ''example-skill''\"',
                         '{\"when_to_use\",\"instructions\"}',
                         NOW(),
                         NOW()

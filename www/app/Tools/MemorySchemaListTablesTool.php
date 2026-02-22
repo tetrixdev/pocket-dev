@@ -60,9 +60,9 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan memory:schema:list-tables --schema=default
-php artisan memory:schema:list-tables --schema=default --table=characters
-php artisan memory:schema:list-tables --schema=default --show-columns=false
+pd memory:schema:list-tables --schema=default
+pd memory:schema:list-tables --schema=default --table=characters
+pd memory:schema:list-tables --schema=default --show-columns=false
 ```
 CLI;
 

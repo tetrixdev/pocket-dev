@@ -8,9 +8,13 @@ Two core capabilities:
 
 ## Environment
 
-**Persistent locations** (survive container rebuilds):
-- `/home/appuser` - your home directory
-- `/workspace` - workspace files
+**Project files** belong in your workspace directory:
+- Clone repositories and create projects here
+- The current workspace path is shown in "Working Directory" below
+- Each workspace is isolated (e.g., `/workspace/default/`)
+
+**Other persistent locations:**
+- `/home/appuser` - user configuration only (dotfiles, global tools)
 - `/tmp` - temporary files
 
 Everything else may be reset on container rebuild.
@@ -31,7 +35,7 @@ cat > /tmp/data.json << 'ENDJSON'
 {"name": "Example", "notes": "Any content here"}
 ENDJSON
 
-php artisan memory:insert --schema=default --table=example --data="$(cat /tmp/data.json)"
+pd memory:insert --schema=default --table=example --data="$(cat /tmp/data.json)"
 ```
 
 ## Error Handling for PocketDev Tools

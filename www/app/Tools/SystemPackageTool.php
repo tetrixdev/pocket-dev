@@ -5,7 +5,7 @@ namespace App\Tools;
 /**
  * Manage system packages (CLI tools, libraries) installed in the container.
  *
- * This tool provides documentation only - actual execution is via artisan command.
+ * This tool provides documentation only - actual execution is via the pd CLI.
  */
 class SystemPackageTool extends Tool
 {
@@ -65,26 +65,26 @@ INSTRUCTIONS;
 
 ```bash
 # List packages
-php artisan system:package list
+pd system:package list
 
 # Add apt package
-php artisan system:package add --name="jq" --cli_commands="jq" --install_script="apt-get update -qq && apt-get install -y -qq jq"
+pd system:package add --name="jq" --cli_commands="jq" --install_script="apt-get update -qq && apt-get install -y -qq jq"
 
 # Add package where CLI command differs from name
-php artisan system:package add --name="Azure CLI" --cli_commands="az" --install_script="curl -sL https://aka.ms/InstallAzureCLIDeb | bash"
+pd system:package add --name="Azure CLI" --cli_commands="az" --install_script="curl -sL https://aka.ms/InstallAzureCLIDeb | bash"
 
 # Add package with multiple CLI commands
-php artisan system:package add --name="LibreOffice" --cli_commands="libreoffice, soffice" --install_script="apt-get update -qq && apt-get install -y -qq libreoffice"
+pd system:package add --name="LibreOffice" --cli_commands="libreoffice, soffice" --install_script="apt-get update -qq && apt-get install -y -qq libreoffice"
 
 # Update existing package CLI commands
-php artisan system:package update --name="Microsoft Graph CLI" --cli_commands="mgc"
+pd system:package update --name="Microsoft Graph CLI" --cli_commands="mgc"
 
 # Update install script (requires container restart)
-php artisan system:package update --name="extract-msg" --install_script="pip3 install extract-msg && ln -sf ~/.local/bin/extract_msg /usr/local/bin/"
+pd system:package update --name="extract-msg" --install_script="pip3 install extract-msg && ln -sf ~/.local/bin/extract_msg /usr/local/bin/"
 
 # Remove package
-php artisan system:package remove --id="uuid-here"
-php artisan system:package remove --name="jq"
+pd system:package remove --id="uuid-here"
+pd system:package remove --name="jq"
 ```
 
 After adding/updating packages, tell user: "Restart containers via Developer tab in menu to install."
@@ -92,10 +92,10 @@ CLI;
 
     /**
      * This tool is documentation-only for CLI providers.
-     * Execution happens via direct artisan command.
+     * Execution happens via the pd CLI.
      */
     public function execute(array $input, ExecutionContext $context): ToolResult
     {
-        return ToolResult::error('This tool should be invoked via artisan command: php artisan system:package <action>');
+        return ToolResult::error('This tool should be invoked via: pd system:package <action>');
     }
 }

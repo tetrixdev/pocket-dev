@@ -7,6 +7,7 @@ use App\Models\Agent;
 use App\Models\Conversation;
 use App\Models\Credential;
 use App\Models\MemoryDatabase;
+use App\Models\Screen;
 use App\Models\SystemPackage;
 use App\Models\Workspace;
 
@@ -22,14 +23,15 @@ use App\Models\Workspace;
  * 2. Tools - capabilities and how to use them
  * 3. Memory - available data schemas
  * 4. Skills - slash commands that can be invoked
+ * 5. Panel dependencies - CDN libraries for panel creation/update
  *
  * RECENCY ZONE (end - high attention, task-relevant):
- * 5. Additional system prompt - project-wide customs (global)
- * 6. Workspace Prompt - workspace-level base prompt
- * 7. Agent instructions - task-specific behavior
- * 8. Working directory - current context
- * 9. Environment - available resources
- * 10. Context usage - current state
+ * 6. Additional system prompt - project-wide customs (global)
+ * 7. Workspace Prompt - workspace-level base prompt
+ * 8. Agent instructions - task-specific behavior
+ * 9. Working directory - current context
+ * 10. Open panels - currently visible panels in session
+ * 11. Environment - available resources
  */
 class SystemPromptBuilder
 {
@@ -39,10 +41,24 @@ class SystemPromptBuilder
     ) {}
 
     /**
-     * Build the system prompt for a conversation (API providers).
+     * Build the system prompt for a conversation.
+     *
+     * Unified method that handles both API and CLI providers.
+     * The $promptType parameter determines the tool injection strategy:
+     * - 'api': uses ToolRegistry for API provider tool instructions
+     * - 'cli': uses ToolSelector for PocketDev CLI tool instructions
+     *
+     * @param Conversation $conversation The conversation context
+     * @param ToolRegistry $toolRegistry For API providers' tool instructions
+     * @param string $promptType 'api' or 'cli' (from provider->getSystemPromptType())
+     * @param string|null $providerType Provider type string (for CLI tool selection)
      */
-    public function build(Conversation $conversation, ToolRegistry $toolRegistry): string
-    {
+    public function build(
+        Conversation $conversation,
+        ToolRegistry $toolRegistry,
+        string $promptType = 'api',
+        ?string $providerType = null
+    ): string {
         $agent = $conversation->agent()->first();
         $workspace = $agent?->workspace;
         $allowedTools = null;
@@ -57,10 +73,20 @@ class SystemPromptBuilder
         $sections[] = $this->systemPromptService->getCore();
 
         // === MIDDLE ZONE (reference material) ===
-        // 2. Tool instructions
-        $toolInstructions = $toolRegistry->getInstructions($allowedTools);
-        if (!empty($toolInstructions)) {
-            $sections[] = $this->buildToolSection($toolInstructions);
+        // 2. Tool instructions (differs by prompt type)
+        if ($promptType === 'cli') {
+            if (!$providerType) {
+                throw new \InvalidArgumentException('providerType is required when promptType is "cli"');
+            }
+            $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($providerType, $allowedTools, $workspace);
+            if (!empty($pocketDevToolPrompt)) {
+                $sections[] = $pocketDevToolPrompt;
+            }
+        } else {
+            $toolInstructions = $toolRegistry->getInstructions($allowedTools);
+            if (!empty($toolInstructions)) {
+                $sections[] = $this->buildToolSection($toolInstructions);
+            }
         }
 
         // 3. Memory section (separate from tools)
@@ -73,108 +99,62 @@ class SystemPromptBuilder
             $sections[] = $skillsSection;
         }
 
+        // 5. Panel dependencies (for creating/updating panels)
+        if ($panelSection = $this->buildPanelDependenciesSection($allowedTools)) {
+            $sections[] = $panelSection;
+        }
+
         // === RECENCY ZONE (task-relevant) ===
-        // 5. Additional system prompt (global)
+        // 6. Additional system prompt (global)
         $additionalPrompt = $this->systemPromptService->getAdditional();
         if (!empty($additionalPrompt)) {
             $sections[] = $additionalPrompt;
         }
 
-        // 6. Workspace Prompt
+        // 7. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
             $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
         }
 
-        // 7. Agent-specific instructions
+        // 8. Agent-specific instructions
         $agentPrompt = $agent?->system_prompt;
         if (!empty($agentPrompt)) {
             $sections[] = $this->buildAgentSection($agentPrompt);
         }
 
-        // 8. Working directory context
+        // 9. Working directory context
         $sections[] = $this->buildContextSection($conversation);
 
-        // 9. Environment (credentials and packages)
+        // 10. Open panels (if any panels are open in the session)
+        if ($openPanelsSection = $this->buildOpenPanelsSection($conversation)) {
+            $sections[] = $openPanelsSection;
+        }
+
+        // 11. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
         }
 
-        // 10. Context usage (dynamic)
-        if ($contextUsage = $this->buildContextUsageSection($conversation)) {
-            $sections[] = $contextUsage;
-        }
+        // Note: Context usage section removed to improve prompt caching.
+        // The percentage changed every message, invalidating cache.
+        // Users can see context usage in the UI progress bar instead.
 
         return implode("\n\n", array_filter($sections));
     }
 
     /**
      * Build the system prompt for CLI providers (Claude Code, Codex).
-     * Injects PocketDev-exclusive tools (memory, tool management, user tools).
+     *
+     * @deprecated Use build() with promptType='cli' instead.
      */
     public function buildForCliProvider(Conversation $conversation, string $provider): string
     {
-        $agent = $conversation->agent()->first();
-        $workspace = $agent?->workspace;
-        $allowedTools = null;
-        if ($agent && !$agent->inheritsWorkspaceTools()) {
-            $allowedTools = $agent->allowed_tools;
-        }
-
-        $sections = [];
-
-        // === PRIMACY ZONE ===
-        // 1. Core system prompt
-        $sections[] = $this->systemPromptService->getCore();
-
-        // === MIDDLE ZONE (reference material) ===
-        // 2. PocketDev tools
-        $pocketDevToolPrompt = $this->toolSelector->buildSystemPrompt($provider, $allowedTools, $workspace);
-        if (!empty($pocketDevToolPrompt)) {
-            $sections[] = $pocketDevToolPrompt;
-        }
-
-        // 3. Memory section (separate from tools)
-        if ($memorySection = $this->toolSelector->buildMemorySection($agent)) {
-            $sections[] = $memorySection;
-        }
-
-        // 4. Skills section (slash commands)
-        if ($skillsSection = $this->toolSelector->buildSkillsSection($agent)) {
-            $sections[] = $skillsSection;
-        }
-
-        // === RECENCY ZONE (task-relevant) ===
-        // 5. Additional system prompt (global)
-        $additionalPrompt = $this->systemPromptService->getAdditional();
-        if (!empty($additionalPrompt)) {
-            $sections[] = $additionalPrompt;
-        }
-
-        // 6. Workspace Prompt
-        if ($workspace?->claude_base_prompt) {
-            $sections[] = $this->buildWorkspacePromptSection($workspace->claude_base_prompt);
-        }
-
-        // 7. Agent-specific instructions
-        $agentPrompt = $agent?->system_prompt;
-        if (!empty($agentPrompt)) {
-            $sections[] = $this->buildAgentSection($agentPrompt);
-        }
-
-        // 8. Working directory context
-        $sections[] = $this->buildContextSection($conversation);
-
-        // 9. Environment (credentials and packages)
-        if ($envSection = $this->buildEnvironmentSection($workspace)) {
-            $sections[] = $envSection;
-        }
-
-        // 10. Context usage (dynamic)
-        if ($contextUsage = $this->buildContextUsageSection($conversation)) {
-            $sections[] = $contextUsage;
-        }
-
-        return implode("\n\n", array_filter($sections));
+        return $this->build(
+            $conversation,
+            app(ToolRegistry::class),
+            'cli',
+            $provider
+        );
     }
 
     /**
@@ -260,8 +240,17 @@ class SystemPromptBuilder
             $sections[] = $skillsHierarchy;
         }
 
+        // 5. Panel dependencies
+        if ($panelSection = $this->buildPanelDependenciesSection($allowedTools)) {
+            $sections[] = $createSection(
+                'Panel Dependencies',
+                $panelSection,
+                'config/panels.php'
+            );
+        }
+
         // === RECENCY ZONE (task-relevant) ===
-        // 5. Additional system prompt (global)
+        // 6. Additional system prompt (global)
         $additionalPrompt = $this->systemPromptService->getAdditional();
         if (!empty($additionalPrompt)) {
             $sections[] = $createSection(
@@ -271,7 +260,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 6. Workspace Prompt
+        // 7. Workspace Prompt
         if ($workspace?->claude_base_prompt) {
             $sections[] = $createSection(
                 'Workspace Prompt',
@@ -280,7 +269,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 7. Agent instructions
+        // 8. Agent instructions
         if (!empty($agentSystemPrompt)) {
             $sections[] = $createSection(
                 'Agent Instructions',
@@ -289,7 +278,7 @@ class SystemPromptBuilder
             );
         }
 
-        // 8. Working directory
+        // 9. Working directory
         $workingDir = $workspace?->getWorkingDirectoryPath() ?? '/workspace';
         $sections[] = $createSection(
             'Working Directory',
@@ -297,7 +286,14 @@ class SystemPromptBuilder
             'Dynamic (per conversation)'
         );
 
-        // 9. Environment
+        // 10. Open panels (placeholder - actual panels are per-session)
+        $sections[] = $createSection(
+            'Open Panels',
+            "# Open Panels\n\n*This section shows panels currently open in the session.*\n\nExample:\n- git-status (id: abc-123) @ /workspace/default\n- file-explorer (id: def-456) @ /workspace/default\n\nUse `pd panel:peek <panel-slug>` to see current visible state.",
+            'Dynamic (per session)'
+        );
+
+        // 11. Environment
         $envContent = $this->buildEnvironmentSection($workspace);
         if (!empty($envContent)) {
             $sections[] = $createSection(
@@ -357,19 +353,6 @@ All file operations should be relative to or within this directory.
 PROMPT;
     }
 
-    private function buildContextUsageSection(Conversation $conversation): ?string
-    {
-        $percentage = $conversation->getContextUsagePercentage();
-
-        if ($percentage === null) {
-            return null;
-        }
-
-        $formatted = number_format($percentage, 0);
-
-        return "Context window usage: {$formatted}% (estimate includes thinking tokens from current turn)";
-    }
-
     /**
      * Build environment section showing available credentials and packages.
      * This helps AI know what's available without exposing actual values.
@@ -414,5 +397,142 @@ PROMPT;
         }
 
         return "# Environment\n\n".implode("\n", $lines);
+    }
+
+    /**
+     * Build open panels section showing which panels are currently open.
+     *
+     * This helps AI know what panels are available in the current session,
+     * avoiding duplicate opens and enabling peek functionality.
+     */
+    private function buildOpenPanelsSection(Conversation $conversation): ?string
+    {
+        // Get the screen for this conversation
+        $screen = $conversation->screen()->with('session')->first();
+
+        if (!$screen || !$screen->session) {
+            return null;
+        }
+
+        $session = $screen->session;
+
+        // Get all panel screens in this session with their panel states
+        $panelScreens = Screen::where('session_id', $session->id)
+            ->where('type', Screen::TYPE_PANEL)
+            ->with('panelState')
+            ->get();
+
+        if ($panelScreens->isEmpty()) {
+            return null;
+        }
+
+        $lines = [];
+        foreach ($panelScreens as $panelScreen) {
+            $panelState = $panelScreen->panelState;
+            $slug = $panelScreen->panel_slug;
+            $id = $panelState?->id ?? $panelScreen->panel_id ?? 'unknown';
+
+            // Try to get a meaningful context from parameters (e.g., path)
+            $context = 'N/A';
+            if ($panelState && !empty($panelState->parameters)) {
+                // Common parameter names that provide context
+                $contextKeys = ['path', 'directory', 'file', 'query', 'schema', 'table'];
+                foreach ($contextKeys as $key) {
+                    if (isset($panelState->parameters[$key])) {
+                        $context = $panelState->parameters[$key];
+                        break;
+                    }
+                }
+            }
+
+            // Format: - panel-slug (id: full-uuid) @ /path/or/context
+            $lines[] = "- {$slug} (id: {$id}) @ {$context}";
+        }
+
+        $panelList = implode("\n", $lines);
+
+        return <<<PROMPT
+# Open Panels
+
+{$panelList}
+
+To see what's currently visible in a panel, use the PanelPeek tool or run:
+```bash
+pd panel:peek <panel-slug>
+pd panel:peek <panel-slug> --id=<panel-id>
+```
+PROMPT;
+    }
+
+    /**
+     * Build panel dependencies section from config.
+     * This is shown once in the system prompt for panel creation/update reference.
+     * Only included if tool-create or tool-update is allowed (or all tools allowed).
+     */
+    private function buildPanelDependenciesSection(?array $allowedTools = null): ?string
+    {
+        // Only include if panel tools are allowed
+        // null = all tools allowed, otherwise check for tool-create or tool-update
+        if ($allowedTools !== null) {
+            $panelToolsAllowed = in_array('tool-create', $allowedTools) || in_array('tool-update', $allowedTools);
+            if (!$panelToolsAllowed) {
+                return null;
+            }
+        }
+
+        $config = config('panels');
+
+        if (!$config) {
+            return null;
+        }
+
+        $deps = $config['dependencies'] ?? [];
+        $examples = $config['examples'] ?? [];
+        $baseCss = $config['base_css'] ?? '';
+        $tailwindTheme = $config['tailwind_theme'] ?? '';
+
+        $doc = "# Panel Dependencies\n\n";
+
+        $doc .= "## Base Dependencies (always loaded)\n\n";
+        $doc .= "These libraries are loaded for ALL panels automatically:\n\n";
+        foreach ($deps as $name => $dep) {
+            $displayName = ucwords(str_replace('-', ' ', $name));
+            $doc .= "### {$displayName}\n";
+            $doc .= "- **URL:** `" . ($dep['url'] ?? 'N/A') . "`\n";
+            $doc .= "- " . ($dep['description'] ?? '') . "\n\n";
+        }
+
+        $doc .= "## Additional Dependencies\n\n";
+        $doc .= "Panels can load extra CDN libraries via `panel_dependencies` in `tool:create` or `tool:update`.\n";
+        $doc .= "Each entry is an object with `type` (\"script\" or \"stylesheet\") and `url`.\n";
+        $doc .= "Optional keys: `defer` (boolean), `crossorigin` (string), `integrity` (string, SRI hash for stylesheets).\n\n";
+        $doc .= "Example:\n```json\n[{\"type\": \"script\", \"url\": \"https://cdn.jsdelivr.net/npm/chart.js\", \"defer\": true}]\n```\n\n";
+
+        $doc .= "## Base CSS (Always Present)\n\n";
+        $doc .= "```css\n" . trim($baseCss) . "\n```\n\n";
+
+        $doc .= "## Tailwind Theme\n\n";
+        $doc .= "```css\n" . trim($tailwindTheme) . "\n```\n\n";
+
+        $doc .= "## Examples\n\n";
+
+        if (!empty($examples['icons'])) {
+            $doc .= "### Icons (Font Awesome)\n```html\n" . trim($examples['icons']) . "\n```\n\n";
+        }
+
+        if (!empty($examples['collapse'])) {
+            $doc .= "### Collapse Animation\n```blade\n" . trim($examples['collapse']) . "\n```\n\n";
+        }
+
+        if (!empty($examples['card'])) {
+            $doc .= "### Card Component\n```blade\n" . trim($examples['card']) . "\n```\n\n";
+        }
+
+        // Add script environment documentation if present
+        if (!empty($config['script_environment'])) {
+            $doc .= "\n" . $config['script_environment'] . "\n";
+        }
+
+        return $doc;
     }
 }

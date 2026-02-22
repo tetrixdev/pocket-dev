@@ -20,11 +20,19 @@ class StreamManager
     private const TTL_STREAMING = 3600;      // 1 hour for active streams
     private const TTL_COMPLETED = 1800;      // 30 minutes for completed streams (allows reconnection after slow refresh)
 
+    // Instance properties for per-stream logging state (reset in startStream)
+    private ?float $firstEventTime = null;
+    private int $appendEventCount = 0;
+
     /**
      * Start a new stream for a conversation.
      */
     public function startStream(string $conversationUuid, array $metadata = []): void
     {
+        // Reset per-stream logging state
+        $this->firstEventTime = null;
+        $this->appendEventCount = 0;
+
         RequestFlowLogger::log('stream.start', 'Starting stream in Redis', [
             'conversation_uuid' => $conversationUuid,
             'metadata' => $metadata,
@@ -55,6 +63,21 @@ class StreamManager
     {
         $key = $this->key($conversationUuid);
         $json = $event->toJson();
+        $this->appendEventCount++;
+
+        // Log first event and periodically after that
+        if ($this->firstEventTime === null) {
+            $this->firstEventTime = microtime(true);
+            RequestFlowLogger::log('stream.first_event_append', 'First event pushed to Redis', [
+                'event_type' => $event->type,
+            ]);
+        } elseif ($event->type === 'text_delta' && $this->appendEventCount <= 5) {
+            // Log first few text deltas to track when actual content arrives
+            RequestFlowLogger::log('stream.text_delta_append', 'Text delta pushed to Redis', [
+                'event_number' => $this->appendEventCount,
+                'ms_since_first' => round((microtime(true) - $this->firstEventTime) * 1000, 2),
+            ]);
+        }
 
         // Use transaction for list operations to ensure atomicity
         Redis::multi();

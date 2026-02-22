@@ -71,8 +71,8 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan conversation:search --query="How do I set up JWT authentication"
-php artisan conversation:search --query="database migration for user permissions" --limit=5
+pd conversation:search --query="How do I set up JWT authentication"
+pd conversation:search --query="database migration for user permissions" --limit=5
 ```
 CLI;
 

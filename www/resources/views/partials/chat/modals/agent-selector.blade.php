@@ -14,8 +14,8 @@
         {{-- Agent List (grouped by provider) --}}
         <template x-if="agents.length > 0">
             <div>
-                {{-- Filter info when in conversation --}}
-                <template x-if="currentConversationUuid">
+                {{-- Filter info when in conversation with messages (provider is locked) --}}
+                <template x-if="currentConversationUuid && conversationProvider">
                     <div class="text-xs text-gray-400 mb-3 pb-2 border-b border-gray-700">
                         <span x-text="'Showing agents for ' + getProviderDisplayName(conversationProvider)"></span>
                         <span class="text-gray-500">(mid-conversation switch)</span>
@@ -56,7 +56,7 @@
                                                     <span x-show="agent.is_default" class="px-1.5 py-0.5 text-xs bg-blue-600 text-white rounded">Default</span>
                                                 </div>
                                                 <div class="text-xs text-gray-400 mt-1">
-                                                    <span class="font-mono bg-gray-700/50 px-1 rounded" x-text="agent.model"></span>
+                                                    <span class="bg-gray-700/50 px-1 rounded" x-text="getModelDisplayLabel(agent.provider, agent.model)"></span>
                                                     <template x-if="agent.allowed_tools === null">
                                                         <span class="ml-2 text-gray-500">All tools</span>
                                                     </template>

@@ -16,7 +16,6 @@ TARGET_GID="${PD_TARGET_GID:-1000}"
 
 # =============================================================================
 # PHASE 1: ROOT OPERATIONS (permissions, groups)
-# Note: System packages are installed by queue container only (where CLI tools are used)
 # =============================================================================
 
 # Set up Docker socket access for TARGET_UID
@@ -66,9 +65,26 @@ fi
 
 # Set up home directory with correct ownership (cross-group: appuser:www-data)
 export HOME=/home/appuser
-mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.npm" "$HOME/.composer" 2>/dev/null || true
+mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" "$HOME/.npm" "$HOME/.composer" 2>/dev/null || true
 chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
-chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
+chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
+
+# Fix SSH key permissions for www-data (PHP-FPM) panel access
+# More restrictive than other dirs: 750 for dir, 640 for private keys
+if [ -d "$HOME/.ssh" ]; then
+    chmod 750 "$HOME/.ssh" 2>/dev/null || true
+    find "$HOME/.ssh" -name "id_*" ! -name "*.pub" -exec chmod 640 {} \; 2>/dev/null || true
+fi
+
+# Fix permissions for /pocketdev-source (dogfooding - AI edits PocketDev source)
+# PHP-FPM runs as www-data, so we need group ownership for git operations
+# This avoids the CVE-2022-24765 "dubious ownership" error
+if [ -d "/pocketdev-source" ]; then
+    echo "Setting permissions on /pocketdev-source..."
+    chgrp -R 33 /pocketdev-source 2>/dev/null || true
+    find /pocketdev-source -type d -exec chmod g+rwx {} \; 2>/dev/null || true
+    find /pocketdev-source -type f -exec chmod g+rw {} \; 2>/dev/null || true
+fi
 
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
@@ -151,6 +167,31 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     gosu appuser php /var/www/artisan queue:restart
 
     # =============================================================================
+    # SYSTEM PACKAGE INSTALLATION (requires root)
+    # =============================================================================
+    # Install user-configured system packages so they're available for workers.
+    if [ -x /usr/local/bin/install-system-packages ]; then
+        /usr/local/bin/install-system-packages || echo "Warning: System package installation had errors"
+    fi
+
+    # =============================================================================
+    # CREDENTIAL LOADING (requires DB ready)
+    # =============================================================================
+    # Export user-configured credentials as environment variables.
+    # These will be inherited by all worker processes.
+    if [ -x /usr/local/bin/load-credentials ]; then
+        if ! cred_output=$(/usr/local/bin/load-credentials 2>&1); then
+            echo "Credential loading failed - aborting startup"
+            echo "$cred_output"
+            exit 1
+        fi
+        cred_exports=$(echo "$cred_output" | grep '^export ' || true)
+        if [ -n "$cred_exports" ]; then
+            eval "$cred_exports"
+        fi
+    fi
+
+    # =============================================================================
     # PHASE 3: START PHP-FPM AS ROOT (standard Docker practice)
     # =============================================================================
 
@@ -164,6 +205,10 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Set group-writable umask for cross-group ownership model
     # Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable)
     umask 002
+
+    # Increase PHP-FPM worker pool for concurrent SSE streaming connections
+    # Default max_children=5 causes exhaustion with just 5 open conversation tabs
+    sed -i 's/^pm.max_children = .*/pm.max_children = 10/' /usr/local/etc/php-fpm.d/www.conf
 
     # Start PHP-FPM as root - pool workers will be www-data per www.conf
     exec php-fpm

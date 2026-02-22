@@ -6,6 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ProcessConversationStream;
 use App\Models\Agent;
 use App\Models\Conversation;
+use App\Models\Screen;
+use App\Models\Session;
+use App\Models\Workspace;
+use App\Services\ConversationFactory;
 use App\Services\ConversationStreamLogger;
 use App\Services\NativeToolService;
 use App\Services\ProviderFactory;
@@ -14,6 +18,7 @@ use App\Services\StreamManager;
 use App\Streaming\SseWriter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -25,6 +30,7 @@ class ConversationController extends Controller
     public function __construct(
         private ProviderFactory $providerFactory,
         private StreamManager $streamManager,
+        private ConversationFactory $conversationFactory,
     ) {}
 
     /**
@@ -32,6 +38,8 @@ class ConversationController extends Controller
      *
      * When agent_id is provided, the conversation is linked to the agent
      * and inherits its settings (provider, model, reasoning, etc.).
+     *
+     * Uses ConversationFactory to ensure all settings are properly copied.
      */
     public function store(Request $request): JsonResponse
     {
@@ -43,14 +51,9 @@ class ConversationController extends Controller
             // Legacy fields (used when no agent_id provided)
             'provider_type' => 'nullable|string|in:anthropic,openai,claude_code,codex,openai_compatible',
             'model' => 'nullable|string|max:100',
-            'anthropic_thinking_budget' => 'nullable|integer|min:0|max:128000',
-            'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
-            'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
-            'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
-            'response_level' => 'nullable|integer|min:0|max:5',
         ]);
 
-        // If agent_id provided, use agent settings
+        // If agent_id provided, use agent settings via factory
         if (!empty($validated['agent_id'])) {
             $agent = Agent::find($validated['agent_id']);
 
@@ -60,67 +63,59 @@ class ConversationController extends Controller
                 ], 400);
             }
 
-            $conversationData = [
-                'workspace_id' => $validated['workspace_id'] ?? null,
-                'agent_id' => $agent->id,
-                'provider_type' => $agent->provider,
-                'model' => $agent->model,
-                'title' => $validated['title'] ?? null,
-                'working_directory' => $validated['working_directory'],
-                'response_level' => $agent->response_level,
-                'anthropic_thinking_budget' => $agent->anthropic_thinking_budget,
-                'openai_reasoning_effort' => $agent->openai_reasoning_effort,
-                'openai_compatible_reasoning_effort' => $agent->openai_compatible_reasoning_effort ?? 'none',
-                'claude_code_thinking_tokens' => $agent->claude_code_thinking_tokens,
-            ];
+            // Use factory with session structure if workspace provided
+            if (!empty($validated['workspace_id'])) {
+                $workspace = Workspace::find($validated['workspace_id']);
+                if (!$workspace) {
+                    return response()->json(['error' => 'Workspace not found'], 404);
+                }
+                $result = $this->conversationFactory->createWithSessionStructure(
+                    $agent,
+                    $workspace,
+                    $validated['title'] ?? null
+                );
+                $conversation = $result['conversation'];
+            } else {
+                // No workspace - create conversation only
+                $conversation = $this->conversationFactory->createFromAgent(
+                    $agent,
+                    $validated['working_directory'],
+                    null,
+                    $validated['title'] ?? null
+                );
+            }
 
             $provider = $this->providerFactory->make($agent->provider);
         } else {
-            // Legacy: use individual settings
-            $providerType = $validated['provider_type'] ?? config('ai.default_provider', 'anthropic');
-            if (!in_array($providerType, $this->providerFactory->availableTypes(), true)) {
-                $providerType = 'anthropic';
-            }
-            $provider = $this->providerFactory->make($providerType);
+            // Legacy: use defaults via factory
+            $conversation = $this->conversationFactory->createWithDefaults(
+                $validated['working_directory'],
+                $validated['workspace_id'] ?? null,
+                $validated['title'] ?? null,
+                $validated['provider_type'] ?? null,
+                $validated['model'] ?? null
+            );
 
-            $conversationData = [
-                'workspace_id' => $validated['workspace_id'] ?? null,
-                'provider_type' => $providerType,
-                'model' => $validated['model'] ?? config("ai.providers.{$providerType}.default_model"),
-                'title' => $validated['title'] ?? null,
-                'working_directory' => $validated['working_directory'],
-                'response_level' => $validated['response_level'] ?? config('ai.response.default_level', 1),
-            ];
+            // Create session and screen for this conversation if workspace provided
+            if ($conversation->workspace_id) {
+                DB::transaction(function () use ($conversation) {
+                    $session = Session::create([
+                        'workspace_id' => $conversation->workspace_id,
+                        'name' => $conversation->title ?? 'New Session',
+                        'screen_order' => [],
+                    ]);
 
-            // Add provider-specific reasoning settings
-            if ($providerType === 'anthropic' && isset($validated['anthropic_thinking_budget'])) {
-                $conversationData['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
-            }
-            if ($providerType === 'openai' && isset($validated['openai_reasoning_effort'])) {
-                $conversationData['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
-            }
-            if ($providerType === 'openai_compatible' && isset($validated['openai_compatible_reasoning_effort'])) {
-                $conversationData['openai_compatible_reasoning_effort'] = $validated['openai_compatible_reasoning_effort'];
-            }
-            if ($providerType === 'claude_code' && isset($validated['claude_code_thinking_tokens'])) {
-                $conversationData['claude_code_thinking_tokens'] = $validated['claude_code_thinking_tokens'];
-            }
-        }
+                    $screen = Screen::createChatScreen($session, $conversation);
 
-        $conversation = Conversation::create($conversationData);
+                    // Session timestamp: preserve (navigation only)
+                    $session->setActiveScreen($screen);
 
-        // Set initial context window size for the model
-        try {
-            $contextWindow = $provider->getContextWindow($conversation->model);
-            $conversation->updateContextWindowSize($contextWindow);
-        } catch (\Exception $e) {
-            // Model not found or config error - will be updated when we get actual token data
-            \Log::debug('ConversationController: Failed to initialize context window', [
-                'conversation' => $conversation->uuid,
-                'model' => $conversation->model,
-                'provider' => $conversation->provider_type,
-                'error' => $e->getMessage(),
-            ]);
+                    // Load the screen relationship for the response
+                    $conversation->load('screen.session.screens.conversation');
+                });
+            }
+
+            $provider = $this->providerFactory->make($conversation->provider_type);
         }
 
         return response()->json([
@@ -138,7 +133,7 @@ class ConversationController extends Controller
      */
     public function show(Request $request, Conversation $conversation): JsonResponse
     {
-        $conversation->load(['messages.agent', 'agent']);
+        $conversation->load(['messages.agent', 'agent', 'screen.session.screens.conversation']);
 
         return response()->json([
             'conversation' => $conversation,
@@ -213,6 +208,7 @@ class ConversationController extends Controller
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
+            'codex_reasoning_effort' => 'nullable|string|in:minimal,low,medium,high,xhigh',
             'response_level' => 'nullable|integer|min:0|max:5',
             // Legacy support - will be converted to provider-specific
             'thinking_level' => 'nullable|integer|min:0|max:4',
@@ -237,41 +233,10 @@ class ConversationController extends Controller
             $updates['response_level'] = $validated['response_level'];
         }
 
-        // Handle provider-specific reasoning settings
-        if ($conversation->provider_type === 'anthropic') {
-            // Anthropic: use budget_tokens directly or convert from legacy thinking_level
-            if (isset($validated['anthropic_thinking_budget'])) {
-                $updates['anthropic_thinking_budget'] = $validated['anthropic_thinking_budget'];
-            } elseif (isset($validated['thinking_level'])) {
-                // Legacy support: convert thinking_level to budget_tokens
-                $reasoningLevels = config('ai.reasoning.anthropic.levels');
-                $thinkingConfig = $reasoningLevels[$validated['thinking_level']] ?? null;
-                if ($thinkingConfig) {
-                    $updates['anthropic_thinking_budget'] = $thinkingConfig['budget_tokens'] ?? 0;
-                }
-            }
-        } elseif ($conversation->provider_type === 'openai') {
-            // OpenAI: use native effort setting
-            if (isset($validated['openai_reasoning_effort'])) {
-                $updates['openai_reasoning_effort'] = $validated['openai_reasoning_effort'];
-            }
-        } elseif ($conversation->provider_type === 'openai_compatible') {
-            // OpenAI Compatible: use native effort setting (may be ignored by some servers)
-            if (isset($validated['openai_compatible_reasoning_effort'])) {
-                $updates['openai_compatible_reasoning_effort'] = $validated['openai_compatible_reasoning_effort'];
-            }
-        } elseif ($conversation->provider_type === 'claude_code') {
-            // Claude Code: use thinking_tokens (via MAX_THINKING_TOKENS env var)
-            if (isset($validated['claude_code_thinking_tokens'])) {
-                $updates['claude_code_thinking_tokens'] = $validated['claude_code_thinking_tokens'];
-            } elseif (isset($validated['thinking_level'])) {
-                // Legacy support: convert thinking_level to thinking_tokens
-                $reasoningLevels = config('ai.reasoning.claude_code.levels');
-                $thinkingConfig = $reasoningLevels[$validated['thinking_level']] ?? null;
-                if ($thinkingConfig) {
-                    $updates['claude_code_thinking_tokens'] = $thinkingConfig['thinking_tokens'] ?? 0;
-                }
-            }
+        // Handle reasoning config update (unified across all providers)
+        $reasoningUpdate = $this->extractReasoningConfig($request, $conversation->provider_type);
+        if ($reasoningUpdate !== null) {
+            $updates['reasoning_config'] = $reasoningUpdate;
         }
 
         // Apply updates to conversation
@@ -339,11 +304,8 @@ class ConversationController extends Controller
             'model' => $conversation->model,
             'provider' => $conversation->provider_type,
         ]);
-
-        // Clear any old stream events (but keep the status we just set)
-        $key = 'stream:' . $conversation->uuid;
-        \Illuminate\Support\Facades\Redis::del("{$key}:events");
-        RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized, old events cleared');
+        // Note: startStream() already clears old events inside its MULTI/EXEC transaction
+        RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized');
 
         // Dispatch background job - reasoning settings are now stored on conversation
         RequestFlowLogger::log('controller.stream.dispatching_job', 'Dispatching ProcessConversationStream job');
@@ -354,14 +316,14 @@ class ConversationController extends Controller
         );
         RequestFlowLogger::log('controller.stream.job_dispatched', 'Job dispatched to queue');
 
-            RequestFlowLogger::log('controller.stream.success', 'Returning success response');
-            RequestFlowLogger::endRequest('success');
-            return response()->json([
-                'success' => true,
-                'conversation_uuid' => $conversation->uuid,
-                'started_at' => now()->toIso8601String(),
-                'message' => 'Streaming started. Connect to /stream-events to receive updates.',
-            ]);
+        RequestFlowLogger::log('controller.stream.success', 'Returning success response');
+        RequestFlowLogger::endRequest('success');
+        return response()->json([
+            'success' => true,
+            'conversation_uuid' => $conversation->uuid,
+            'started_at' => now()->toIso8601String(),
+            'message' => 'Streaming started. Connect to /stream-events to receive updates.',
+        ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
             RequestFlowLogger::log('controller.stream.validation_failed', 'Validation failed', [
                 'errors' => $e->errors(),
@@ -443,9 +405,22 @@ class ConversationController extends Controller
                 ]);
 
                 if ($status !== 'streaming') {
+                    // Re-fetch any tail events that arrived between getEvents() and getStatus()
+                    // This closes the race window where the job writes final events AND completes
+                    // between our two Redis calls.
+                    $tailEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
+                    foreach ($tailEvents as $event) {
+                        $sse->writeRaw(json_encode(array_merge($event, [
+                            'index' => $currentIndex,
+                            'conversation_uuid' => $conversation->uuid,
+                        ])));
+                        $currentIndex++;
+                    }
+
                     // Stream is done, send final status
                     RequestFlowLogger::log('controller.sse.stream_already_done', 'Stream already completed, sending final status', [
                         'status' => $status,
+                        'tail_events' => count($tailEvents),
                     ]);
                     $sse->writeRaw(json_encode([
                         'type' => 'stream_status',
@@ -461,7 +436,7 @@ class ConversationController extends Controller
                 // Use polling instead of blocking pub/sub for better compatibility
                 $lastActivity = microtime(true);
                 $lastKeepalive = microtime(true);
-                $timeout = 300; // 5 minute timeout for SSE connection (tool calls can be slow)
+                $timeout = 600; // 10 minute timeout for SSE connection (backstop; keepalive events handle health tracking)
                 $keepaliveInterval = 30; // Send keepalive every 30 seconds to prevent proxy timeouts
                 $pollCount = 0;
 
@@ -507,10 +482,23 @@ class ConversationController extends Controller
                     // Check stream status
                     $status = $this->streamManager->getStatus($conversation->uuid);
                     if ($status !== 'streaming') {
+                        // Re-fetch any tail events that arrived between getEvents() and getStatus()
+                        // This closes the race window where the job writes final events AND completes
+                        // between our two Redis calls.
+                        $tailEvents = $this->streamManager->getEvents($conversation->uuid, $currentIndex);
+                        foreach ($tailEvents as $event) {
+                            $sse->writeRaw(json_encode(array_merge($event, [
+                                'index' => $currentIndex,
+                                'conversation_uuid' => $conversation->uuid,
+                            ])));
+                            $currentIndex++;
+                        }
+
                         RequestFlowLogger::log('controller.sse.stream_completed', 'Stream completed, sending final status', [
                             'status' => $status,
                             'final_index' => $currentIndex - 1,
                             'poll_count' => $pollCount,
+                            'tail_events' => count($tailEvents),
                         ]);
                         $sse->writeRaw(json_encode([
                             'type' => 'stream_status',
@@ -525,7 +513,17 @@ class ConversationController extends Controller
                     // Send keepalive to prevent proxy/idle timeouts
                     $timeSinceKeepalive = microtime(true) - $lastKeepalive;
                     if ($timeSinceKeepalive > $keepaliveInterval) {
+                        // Keep the SSE comment for proxy keepalive (invisible to frontend)
                         $sse->writeKeepalive();
+
+                        // Also send a data event for frontend connection health tracking
+                        $sse->writeRaw(json_encode([
+                            'type' => 'keepalive',
+                            'timestamp' => time(),
+                            'elapsed' => round(microtime(true) - $lastActivity, 1),
+                            'conversation_uuid' => $conversation->uuid,
+                        ]));
+
                         $lastKeepalive = microtime(true);
                     }
 
@@ -607,13 +605,14 @@ class ConversationController extends Controller
     }
 
     /**
-     * Update the conversation title.
+     * Update the conversation title and/or tab label.
      */
     public function updateTitle(Request $request, Conversation $conversation): JsonResponse
     {
         // Trim before validation to handle whitespace-only input
         $request->merge([
             'title' => is_string($request->input('title')) ? trim($request->input('title')) : $request->input('title'),
+            'tab_label' => is_string($request->input('tab_label')) ? trim($request->input('tab_label')) : $request->input('tab_label'),
         ]);
 
         $validated = $request->validate([
@@ -627,15 +626,22 @@ class ConversationController extends Controller
                     }
                 },
             ],
+            'tab_label' => 'nullable|string|max:6',
         ]);
 
-        $conversation->update([
-            'title' => $validated['title'],
-        ]);
+        $updates = ['title' => $validated['title']];
+
+        // Only update tab_label if provided in the request (allow setting to null/empty)
+        if ($request->has('tab_label')) {
+            $updates['tab_label'] = $validated['tab_label'] ?: null;
+        }
+
+        $conversation->update($updates);
 
         return response()->json([
             'success' => true,
             'title' => $conversation->title,
+            'tab_label' => $conversation->tab_label,
         ]);
     }
 
@@ -682,9 +688,12 @@ class ConversationController extends Controller
     }
 
     /**
-     * Switch the agent for a conversation mid-conversation.
+     * Switch the agent for a conversation.
      *
-     * Validates that the new agent uses the same provider as the current conversation.
+     * For conversations with messages: only same-provider switches are allowed.
+     * For empty conversations (no messages): cross-provider switches are allowed,
+     * updating provider_type and force-syncing all agent settings.
+     *
      * Optionally syncs agent settings (model, reasoning config) to the conversation.
      */
     public function switchAgent(Request $request, Conversation $conversation): JsonResponse
@@ -721,13 +730,24 @@ class ConversationController extends Controller
             ], 400);
         }
 
-        // Enforce same provider
-        if ($newAgent->provider !== $conversation->provider_type) {
-            return response()->json([
-                'error' => 'Cannot switch to agent with different provider',
-                'current_provider' => $conversation->provider_type,
-                'agent_provider' => $newAgent->provider,
-            ], 400);
+        // Enforce same provider for conversations that have started (have messages).
+        // Empty conversations (e.g. pre-created via addChatScreen on mobile/desktop tabs)
+        // are allowed to switch providers freely.
+        $changingProvider = $newAgent->provider !== $conversation->provider_type;
+        if ($changingProvider) {
+            if ($conversation->hasMessages()) {
+                return response()->json([
+                    'error' => 'Cannot switch to agent with different provider mid-conversation',
+                    'current_provider' => $conversation->provider_type,
+                    'agent_provider' => $newAgent->provider,
+                ], 400);
+            }
+
+            \Log::info('[switchAgent] Cross-provider switch allowed (no messages)', [
+                'conversation_uuid' => $conversation->uuid,
+                'old_provider' => $conversation->provider_type,
+                'new_provider' => $newAgent->provider,
+            ]);
         }
 
         $oldAgentId = $conversation->agent_id;
@@ -736,17 +756,34 @@ class ConversationController extends Controller
         // Update conversation
         $updates = ['agent_id' => $newAgent->id];
 
-        // Optionally sync settings from new agent
-        if ($request->boolean('sync_settings', false)) {
+        // When switching providers (allowed only for empty conversations),
+        // update provider_type and force-sync all agent settings.
+        if ($changingProvider) {
+            $updates['provider_type'] = $newAgent->provider;
             $updates['model'] = $newAgent->model;
             $updates['response_level'] = $newAgent->response_level;
-            $updates['anthropic_thinking_budget'] = $newAgent->anthropic_thinking_budget;
-            $updates['openai_reasoning_effort'] = $newAgent->openai_reasoning_effort;
-            $updates['openai_compatible_reasoning_effort'] = $newAgent->openai_compatible_reasoning_effort;
-            $updates['claude_code_thinking_tokens'] = $newAgent->claude_code_thinking_tokens;
+            $updates['reasoning_config'] = $newAgent->reasoning_config;
+        } elseif ($request->boolean('sync_settings', false)) {
+            // Same-provider switch: optionally sync settings from new agent
+            $updates['model'] = $newAgent->model;
+            $updates['response_level'] = $newAgent->response_level;
+            $updates['reasoning_config'] = $newAgent->reasoning_config;
         }
 
         $conversation->update($updates);
+
+        // Recalculate context window when model or provider changed
+        if (isset($updates['model'])) {
+            try {
+                $provider = $this->providerFactory->make($updates['provider_type'] ?? $conversation->provider_type);
+                $contextWindow = $provider->getContextWindow($updates['model']);
+                $conversation->updateContextWindowSize($contextWindow);
+            } catch (\Exception $e) {
+                \Log::debug('[switchAgent] Failed to update context window', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         \Log::info('[switchAgent] Updated', [
             'conversation_uuid' => $conversation->uuid,
@@ -765,7 +802,8 @@ class ConversationController extends Controller
                 'id' => $newAgent->id,
                 'name' => $newAgent->name,
             ],
-            'settings_synced' => $request->boolean('sync_settings', false),
+            'settings_synced' => $changingProvider || $request->boolean('sync_settings', false),
+            'provider_changed' => $changingProvider,
         ]);
     }
 
@@ -835,5 +873,54 @@ class ConversationController extends Controller
             'exists' => $logger->exists($conversation->uuid),
             'size' => $logger->getSize($conversation->uuid),
         ]);
+    }
+
+    /**
+     * Extract reasoning config from request based on provider type.
+     *
+     * Returns the reasoning_config array to store on the conversation,
+     * or null if no reasoning parameters were provided in the request.
+     *
+     * Supports both native provider-specific params and legacy thinking_level
+     * conversion for Anthropic and Claude Code.
+     */
+    private function extractReasoningConfig(Request $request, string $providerType): ?array
+    {
+        return match ($providerType) {
+            'anthropic' => $request->has('anthropic_thinking_budget')
+                ? ['budget_tokens' => (int) $request->input('anthropic_thinking_budget', 0)]
+                : ($request->has('thinking_level')
+                    ? ['budget_tokens' => $this->convertThinkingLevel($request->input('thinking_level'), 'anthropic')]
+                    : null),
+            'openai' => $request->has('openai_reasoning_effort')
+                ? ['effort' => $request->input('openai_reasoning_effort')]
+                : null,
+            'openai_compatible' => $request->has('openai_compatible_reasoning_effort')
+                ? ['effort' => $request->input('openai_compatible_reasoning_effort')]
+                : null,
+            'claude_code' => $request->has('claude_code_thinking_tokens')
+                ? ['thinking_tokens' => (int) $request->input('claude_code_thinking_tokens', 0)]
+                : ($request->has('thinking_level')
+                    ? ['thinking_tokens' => $this->convertThinkingLevel($request->input('thinking_level'), 'claude_code')]
+                    : null),
+            'codex' => $request->has('codex_reasoning_effort')
+                ? ['effort' => $request->input('codex_reasoning_effort')]
+                : null,
+            default => null,
+        };
+    }
+
+    /**
+     * Convert a legacy thinking_level (0-4) to a provider-specific token value.
+     *
+     * Uses the config/ai.php reasoning level definitions to map
+     * integer levels to budget_tokens (Anthropic) or thinking_tokens (Claude Code).
+     */
+    private function convertThinkingLevel(int $level, string $providerType): int
+    {
+        $configKey = $providerType === 'anthropic' ? 'budget_tokens' : 'thinking_tokens';
+        $levels = config("ai.reasoning.{$providerType}.levels");
+        $config = $levels[$level] ?? null;
+        return $config[$configKey] ?? 0;
     }
 }

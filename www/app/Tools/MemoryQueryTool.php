@@ -103,8 +103,8 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan memory:query --schema=default --sql="SELECT * FROM memory_default.characters LIMIT 10"
-php artisan memory:query --schema=default --sql="SELECT * FROM memory_default.schema_registry"
+pd memory:query --schema=default --sql="SELECT * FROM memory_default.characters LIMIT 10"
+pd memory:query --schema=default --sql="SELECT * FROM memory_default.schema_registry"
 ```
 CLI;
 

@@ -51,7 +51,7 @@ You have access to the following memory schemas. Use `--schema=<name>` with all 
 - **default**: Main campaign database
 - **campaign_2**: Secondary campaign
 
-Example: `php artisan memory:query --schema=default --sql="SELECT * FROM memory_default.schema_registry"`
+Example: `pd memory:query --schema=default --sql="SELECT * FROM memory_default.schema_registry"`
 ```
 
 **Key files:**

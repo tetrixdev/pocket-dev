@@ -63,7 +63,7 @@
                 <div class="px-4 py-3">
                     <span class="text-gray-400 text-sm block mb-2 sm:mb-0 sm:inline">Artisan Command</span>
                     <div class="sm:float-right">
-                        <code class="text-green-400 bg-gray-900 px-2 py-1 rounded text-xs sm:text-sm block sm:inline-block overflow-x-auto">php artisan {{ $tool->getArtisanCommand() }}</code>
+                        <code class="text-green-400 bg-gray-900 px-2 py-1 rounded text-xs sm:text-sm block sm:inline-block overflow-x-auto">pd {{ $tool->getArtisanCommand() }}</code>
                     </div>
                     <div class="clear-both"></div>
                 </div>

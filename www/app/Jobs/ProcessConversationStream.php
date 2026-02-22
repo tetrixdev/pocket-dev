@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Contracts\AIProviderInterface;
-use App\Enums\Provider;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\ModelRepository;
@@ -35,7 +34,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 1800; // 30 minutes max (agentic AI can take a while)
+    public int $timeout = 3600; // 60 minutes max (agentic AI with heavy context can take a while)
     public int $tries = 1;      // Don't retry failed streams
 
     // Note: Redis job reservation timeout is controlled by REDIS_QUEUE_RETRY_AFTER in .env
@@ -69,7 +68,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ]);
 
         try {
-            $conversation = Conversation::where('uuid', $this->conversationUuid)->firstOrFail();
+            $conversation = Conversation::where('uuid', $this->conversationUuid)
+                ->with('screen.session')
+                ->firstOrFail();
             RequestFlowLogger::log('job.handle.conversation_loaded', 'Conversation loaded', [
                 'provider_type' => $conversation->provider_type,
                 'model' => $conversation->model,
@@ -243,7 +244,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             throw new \RuntimeException('Maximum tool execution iterations reached (safety limit)');
         }
         // Reload messages
+        $loadMessagesStart = microtime(true);
         $conversation->load('messages');
+        $loadMessagesTime = (microtime(true) - $loadMessagesStart) * 1000;
+        RequestFlowLogger::log('job.loop.messages_loaded', 'Messages loaded from DB', [
+            'duration_ms' => round($loadMessagesTime, 2),
+            'message_count' => $conversation->messages->count(),
+        ]);
 
         // Check for context reminders (interruption, agent change) on first iteration only
         $contextReminders = [];
@@ -259,26 +266,39 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $combinedReminder = !empty($contextReminders) ? implode("\n\n", $contextReminders) : null;
 
         // Build system prompt with tool instructions
-        // CLI providers (Claude Code, Codex) use artisan commands instead of native tools
-        $providerType = $provider->getProviderType();
-        $providerEnum = Provider::tryFrom($providerType);
-        if ($providerEnum?->isCliProvider()) {
-            $systemPrompt = $systemPromptBuilder->buildForCliProvider($conversation, $providerType);
-        } else {
-            $systemPrompt = $systemPromptBuilder->build($conversation, $toolRegistry);
-        }
+        // Uses provider->getSystemPromptType() to determine tool injection strategy
+        $buildPromptStart = microtime(true);
+        $systemPrompt = $systemPromptBuilder->build(
+            $conversation,
+            $toolRegistry,
+            $provider->getSystemPromptType(),
+            $provider->getProviderType()
+        );
+        $buildPromptTime = (microtime(true) - $buildPromptStart) * 1000;
+        RequestFlowLogger::log('job.loop.system_prompt_built', 'System prompt built', [
+            'duration_ms' => round($buildPromptTime, 2),
+            'prompt_length' => strlen($systemPrompt),
+        ]);
 
         // Prepare provider options
+        $getToolDefsStart = microtime(true);
+        $toolDefinitions = $toolRegistry->getDefinitions();
+        $getToolDefsTime = (microtime(true) - $getToolDefsStart) * 1000;
+        RequestFlowLogger::log('job.loop.tool_definitions', 'Tool definitions retrieved', [
+            'duration_ms' => round($getToolDefsTime, 2),
+            'tool_count' => count($toolDefinitions),
+        ]);
+
         $providerOptions = array_merge($options, [
             'system' => $systemPrompt,
-            'tools' => $toolRegistry->getDefinitions(),
+            'tools' => $toolDefinitions,
             'interruption_reminder' => $combinedReminder,
         ]);
 
         // Track state for this turn
         $contentBlocks = [];
         $pendingToolUses = [];
-        $streamedToolResults = []; // Tool results from providers that execute tools internally (Claude Code, Codex)
+        $streamedToolResults = []; // Tool results from providers where executesToolsInternally() is true
         $pendingCompaction = null; // Compaction event to save after assistant message
         $inputTokens = 0;
         $outputTokens = 0;
@@ -287,6 +307,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $turnCost = 0.0;
         $stopReason = null;
         $currentToolInput = [];
+        // For CLI providers with multi-turn tool execution, track per-turn tokens for context tracking
+        // (cumulative tokens above are for billing, context tokens below are for context % calculation)
+        $contextInputTokens = null;
+        $contextOutputTokens = null;
 
         // Get the model for cost calculation
         $aiModel = $modelRepository->findByModelId($conversation->model);
@@ -300,8 +324,25 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Stream from provider
         RequestFlowLogger::log('job.loop.streaming_start', 'Starting provider stream');
         $eventCount = 0;
+        $firstEventTime = null;
+        $firstTextTime = null;
         foreach ($provider->streamMessage($conversation, $providerOptions) as $event) {
             $eventCount++;
+
+            // Log timing for first event and first text content
+            if ($firstEventTime === null) {
+                $firstEventTime = microtime(true);
+                RequestFlowLogger::log('job.loop.first_event', 'First event received from provider', [
+                    'event_type' => $event->type,
+                ]);
+            }
+            if ($firstTextTime === null && ($event->type === StreamEvent::TEXT_START || $event->type === StreamEvent::TEXT_DELTA)) {
+                $firstTextTime = microtime(true);
+                RequestFlowLogger::log('job.loop.first_text', 'First text content received', [
+                    'event_type' => $event->type,
+                    'ms_since_first_event' => round(($firstTextTime - $firstEventTime) * 1000, 2),
+                ]);
+            }
 
             // Check abort flag BEFORE processing each event
             $isAborted = $streamManager->checkAbortFlag($this->conversationUuid);
@@ -364,7 +405,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                             $cacheCreationTokens,
                             $cacheReadTokens,
                             'aborted',
-                            $turnCost > 0 ? $turnCost : null
+                            $turnCost > 0 ? $turnCost : null,
+                            $contextInputTokens,
+                            $contextOutputTokens
                         );
 
                         // Sync aborted message to provider's native storage (if applicable)
@@ -420,6 +463,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $cacheCreationTokens = $event->metadata['cache_creation_tokens'] ?? $cacheCreationTokens;
                 $cacheReadTokens = $event->metadata['cache_read_tokens'] ?? $cacheReadTokens;
 
+                // Extract context-specific tokens if provided (for CLI providers with multi-turn)
+                // These represent the LAST turn's usage for context percentage calculation
+                // Use same preserve-previous pattern as billing tokens for consistency
+                $contextInputTokens = $event->metadata['context_input_tokens'] ?? $contextInputTokens;
+                $contextOutputTokens = $event->metadata['context_output_tokens'] ?? $contextOutputTokens;
+
                 // Calculate cost using model pricing
                 $cost = null;
                 if ($aiModel) {
@@ -434,13 +483,16 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 }
 
                 // Emit enriched usage event with cost and context info
+                // Pass context-specific tokens if available for accurate percentage calculation
                 $enrichedEvent = StreamEvent::usage(
                     $inputTokens,
                     $outputTokens,
                     $cacheCreationTokens,
                     $cacheReadTokens,
                     $cost,
-                    $conversation->context_window_size
+                    $conversation->context_window_size,
+                    $contextInputTokens,
+                    $contextOutputTokens
                 );
                 $streamManager->appendEvent($this->conversationUuid, $enrichedEvent);
                 continue;
@@ -598,25 +650,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Reindex content blocks
         $contentBlocks = array_values($contentBlocks);
 
-        // Save assistant message
-        RequestFlowLogger::log('job.loop.saving_assistant_message', 'Saving assistant message', [
-            'block_count' => count($contentBlocks),
-            'input_tokens' => $inputTokens,
-            'output_tokens' => $outputTokens,
-            'stop_reason' => $stopReason,
-        ]);
-        $this->saveAssistantMessage(
-            $conversation,
-            $contentBlocks,
-            $inputTokens,
-            $outputTokens,
-            $cacheCreationTokens,
-            $cacheReadTokens,
-            $stopReason,
-            $turnCost > 0 ? $turnCost : null
-        );
-
-        // Save compaction message if one occurred during this turn
+        // Save compaction message FIRST if one occurred during this turn.
+        // This ensures correct sequence ordering: compaction appears before
+        // the post-compaction assistant response when messages are loaded
+        // from the database (ordered by sequence). Matches live streaming order.
         if ($pendingCompaction !== null) {
             RequestFlowLogger::log('job.loop.saving_compaction', 'Saving compaction message', [
                 'summary_length' => strlen($pendingCompaction['summary'] ?? ''),
@@ -637,6 +674,26 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             ]);
         }
 
+        // Save assistant message (gets sequence after compaction if present)
+        RequestFlowLogger::log('job.loop.saving_assistant_message', 'Saving assistant message', [
+            'block_count' => count($contentBlocks),
+            'input_tokens' => $inputTokens,
+            'output_tokens' => $outputTokens,
+            'stop_reason' => $stopReason,
+        ]);
+        $this->saveAssistantMessage(
+            $conversation,
+            $contentBlocks,
+            $inputTokens,
+            $outputTokens,
+            $cacheCreationTokens,
+            $cacheReadTokens,
+            $stopReason,
+            $turnCost > 0 ? $turnCost : null,
+            $contextInputTokens,
+            $contextOutputTokens
+        );
+
         // Handle tool execution
         $shouldExecuteTools = $stopReason === 'tool_use' && !empty($pendingToolUses);
         $hasStreamedToolResults = !empty($streamedToolResults);
@@ -656,7 +713,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 'tool_count' => count($pendingToolUses),
                 'tool_names' => array_map(fn($t) => $t['name'], $pendingToolUses),
             ]);
-            $toolResults = $this->executeTools($pendingToolUses, $conversation, $toolRegistry);
+            $toolResults = $this->executeTools($pendingToolUses, $conversation, $toolRegistry, $streamManager);
             RequestFlowLogger::log('job.loop.tools_executed', 'Tools executed', [
                 'result_count' => count($toolResults),
             ]);
@@ -727,7 +784,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ?int $cacheCreationTokens,
         ?int $cacheReadTokens,
         ?string $stopReason,
-        ?float $cost = null
+        ?float $cost = null,
+        ?int $contextInputTokens = null,
+        ?int $contextOutputTokens = null
     ): Message {
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -746,11 +805,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $conversation->addTokenUsage($inputTokens, $outputTokens);
 
         // Update context window tracking
-        // Context estimate = input_tokens + output_tokens
-        // This slightly overestimates because thinking tokens (in output) are stripped
-        // from previous turns. But overestimating is safer than underestimating.
-        if ($inputTokens > 0) {
-            $conversation->updateContextUsage($inputTokens, $outputTokens);
+        // Use context-specific tokens if provided (for CLI providers with multi-turn),
+        // otherwise fall back to billing tokens (correct for API providers)
+        $ctxInput = $contextInputTokens ?? $inputTokens;
+        $ctxOutput = $contextOutputTokens ?? $outputTokens;
+        if ($ctxInput > 0) {
+            $conversation->updateContextUsage($ctxInput, $ctxOutput);
 
             // Ensure context_window_size is set (for existing conversations that don't have it)
             if (!$conversation->context_window_size) {
@@ -792,12 +852,19 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ]);
     }
 
-    private function executeTools(array $toolUses, Conversation $conversation, ToolRegistry $toolRegistry): array
+    private function executeTools(array $toolUses, Conversation $conversation, ToolRegistry $toolRegistry, StreamManager $streamManager): array
     {
-        // Pass workspace to context so tools can access workspace-specific credentials
+        // Get session from conversation's screen (for panel tools that need to create screens)
+        $session = $conversation->screen?->session;
+
+        // Pass workspace, session, and stream context so tools can access workspace-specific credentials,
+        // create panel screens, and emit stream events when needed
         $context = new ExecutionContext(
             $conversation->working_directory,
-            workspace: $conversation->workspace
+            workspace: $conversation->workspace,
+            session: $session,
+            streamManager: $streamManager,
+            conversationUuid: $this->conversationUuid,
         );
         $results = [];
 

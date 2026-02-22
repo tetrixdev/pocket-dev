@@ -298,19 +298,21 @@ These PocketDev tools are invoked via PHP Artisan commands. Use your Bash tool t
 
 ## How to Invoke
 
+Use the `pd` command (PocketDev wrapper) to run artisan commands from any directory:
+
 **Built-in commands (memory, tool management):**
 ```bash
-php artisan memory:query --sql="SELECT id, name FROM memory_structures"
-php artisan memory:create --structure=project --name="My Project" --data='{"status":"active"}'
-php artisan tool:list
+pd memory:query --schema=default --sql="SELECT * FROM memory_default.schema_registry"
+pd memory:insert --schema=default --table=example --data='{"name":"Test"}'
+pd tool:list
 ```
 
 **User-created tools:**
 ```bash
-php artisan tool:run <slug> -- --arg1=value1 --arg2=value2
+pd tool:run <slug> -- --arg1=value1 --arg2=value2
 ```
 
-**Important:** Only `tool:run` requires the `--` separator, and it must appear before the tool arguments.
+**Important:** Only `tool:run` requires the `--` separator before tool arguments.
 
 ## System Tools
 

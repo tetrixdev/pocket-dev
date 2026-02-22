@@ -57,16 +57,16 @@ Updates REPLACE field values, they do not append. If you update a field without 
 **Correct pattern:**
 ```bash
 # 1. READ the current value
-php artisan memory:query --sql="SELECT backstory, notes FROM memory.characters WHERE id = 'uuid'" --limit=1
+pd memory:query --sql="SELECT backstory, notes FROM memory.characters WHERE id = 'uuid'" --limit=1
 
 # 2. THEN update, preserving and appending to existing content
-php artisan memory:update --table=characters --data='{"backstory":"[preserved original content] + [new content]"}' --where="id = 'uuid'"
+pd memory:update --table=characters --data='{"backstory":"[preserved original content] + [new content]"}' --where="id = 'uuid'"
 ```
 
 **Wrong pattern (causes data loss):**
 ```bash
 # DON'T do this - you'll overwrite the existing backstory
-php artisan memory:update --table=characters --data='{"backstory":"New content only"}' --where="id = 'uuid'"
+pd memory:update --table=characters --data='{"backstory":"New content only"}' --where="id = 'uuid'"
 ```
 
 **Fields that commonly need read-before-write:**
@@ -111,7 +111,7 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan memory:update --schema=default --table=characters --data='{"backstory":"Updated backstory with new details..."}' --where="id = '123e4567-e89b-12d3-a456-426614174000'"
+pd memory:update --schema=default --table=characters --data='{"backstory":"Updated backstory with new details..."}' --where="id = '123e4567-e89b-12d3-a456-426614174000'"
 ```
 CLI;
 

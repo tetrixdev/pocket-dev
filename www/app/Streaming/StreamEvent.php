@@ -27,6 +27,7 @@ class StreamEvent
     public const SYSTEM_INFO = 'system_info';
     public const CONTEXT_COMPACTED = 'context_compacted';
     public const COMPACTION_SUMMARY = 'compaction_summary';
+    public const SCREEN_CREATED = 'screen_created';
 
     /**
      * Unique event ID for reliable event tracking.
@@ -116,7 +117,9 @@ class StreamEvent
         ?int $cacheCreation = null,
         ?int $cacheRead = null,
         ?float $cost = null,
-        ?int $contextWindowSize = null
+        ?int $contextWindowSize = null,
+        ?int $contextInputTokens = null,
+        ?int $contextOutputTokens = null
     ): self {
         $metadata = array_filter([
             'input_tokens' => $inputTokens,
@@ -127,11 +130,26 @@ class StreamEvent
             'context_window_size' => $contextWindowSize,
         ], fn($v) => $v !== null);
 
-        // Calculate context percentage if we have both tokens and window size
-        // Uses input + output for better estimate (slightly overestimates due to thinking tokens)
-        if ($inputTokens > 0 && $contextWindowSize > 0) {
-            $totalContext = $inputTokens + $outputTokens;
-            $metadata['context_percentage'] = min(100, round(($totalContext / $contextWindowSize) * 100, 1));
+        // Include per-turn context tokens for updateContextUsage whenever provided
+        // CLI providers emit usage BEFORE ProcessConversationStream adds context_window_size,
+        // so we must include these fields regardless of contextWindowSize
+        if ($contextInputTokens !== null) {
+            $metadata['context_input_tokens'] = $contextInputTokens;
+        }
+        if ($contextOutputTokens !== null) {
+            $metadata['context_output_tokens'] = $contextOutputTokens;
+        }
+
+        // Calculate context percentage only if we have window size
+        // For CLI providers with multi-turn tool execution, use context-specific tokens
+        // (representing the LAST turn's usage) instead of cumulative billing totals
+        if ($contextWindowSize > 0) {
+            $contextInput = $contextInputTokens ?? $inputTokens;
+            $contextOutput = $contextOutputTokens ?? $outputTokens;
+            if ($contextInput > 0 || $contextOutput > 0) {
+                $totalContext = $contextInput + $contextOutput;
+                $metadata['context_percentage'] = min(100, round(($totalContext / $contextWindowSize) * 100, 1));
+            }
         }
 
         return new self(self::USAGE, null, null, $metadata);
@@ -188,6 +206,25 @@ class StreamEvent
         return new self(self::COMPACTION_SUMMARY, null, $summary, [
             'pre_tokens' => $metadata['pre_tokens'] ?? null,
             'trigger' => $metadata['trigger'] ?? 'auto',
+        ]);
+    }
+
+    /**
+     * Create a screen created event.
+     *
+     * Emitted when a new screen (panel or chat) is created in the session.
+     * Frontend uses this to refresh the screen tabs and switch to the new screen.
+     *
+     * @param string $screenId The UUID of the created screen
+     * @param string $screenType The type of screen ('panel' or 'chat')
+     * @param string|null $panelSlug The panel slug if type is 'panel'
+     */
+    public static function screenCreated(string $screenId, string $screenType, ?string $panelSlug = null): self
+    {
+        return new self(self::SCREEN_CREATED, null, null, [
+            'screen_id' => $screenId,
+            'screen_type' => $screenType,
+            'panel_slug' => $panelSlug,
         ]);
     }
 

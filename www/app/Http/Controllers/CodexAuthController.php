@@ -83,6 +83,12 @@ class CodexAuthController extends Controller
 
             Log::info("[Codex Auth] Credentials saved from JSON input");
 
+            // Create default agent for all workspaces that don't have one
+            $workspaces = \App\Models\Workspace::all();
+            foreach ($workspaces as $workspace) {
+                $this->ensureDefaultAgentExists($workspace->id);
+            }
+
             return response()->json([
                 "success" => true,
                 "message" => "Credentials saved successfully.",
@@ -217,5 +223,59 @@ class CodexAuthController extends Controller
         }
 
         return false;
+    }
+
+    /**
+     * Ensure a default Codex agent exists for the given workspace.
+     *
+     * Called after successful authentication to create a default agent
+     * if none exists, so users can immediately start using Codex.
+     *
+     * @param string $workspaceId The workspace to create the agent in
+     * @return \App\Models\Agent|null The default agent, or null if creation failed
+     */
+    public function ensureDefaultAgentExists(string $workspaceId): ?\App\Models\Agent
+    {
+        // Check if a default Codex agent already exists
+        $existing = \App\Models\Agent::where('workspace_id', $workspaceId)
+            ->where('provider', 'codex')
+            ->where('is_default', true)
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        // Check if ANY Codex agent exists
+        $anyCodex = \App\Models\Agent::where('workspace_id', $workspaceId)
+            ->where('provider', 'codex')
+            ->first();
+
+        if ($anyCodex) {
+            return $anyCodex;
+        }
+
+        // Create default agent
+        try {
+            return \App\Models\Agent::create([
+                'workspace_id' => $workspaceId,
+                'name' => 'Codex',
+                'slug' => 'codex-default',
+                'description' => 'Default Codex agent',
+                'provider' => 'codex',
+                'model' => config('ai.providers.codex.default_model', 'gpt-5.3-codex'),
+                'reasoning_config' => ['effort' => 'minimal'],
+                'response_level' => 1,
+                'enabled' => true,
+                'is_default' => true,
+                'inherit_workspace_tools' => true,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('[Codex Auth] Failed to create default agent', [
+                'workspace_id' => $workspaceId,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
     }
 }

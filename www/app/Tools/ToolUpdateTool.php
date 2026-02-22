@@ -11,7 +11,7 @@ class ToolUpdateTool extends Tool
 {
     public string $name = 'ToolUpdate';
 
-    public string $description = 'Update an existing user tool (name, description, script, etc.).';
+    public string $description = 'Update an existing user tool (name, description, script, blade_template, etc.).';
 
     public string $category = 'tools';
 
@@ -38,6 +38,10 @@ class ToolUpdateTool extends Tool
                 'type' => 'string',
                 'description' => 'New bash script content.',
             ],
+            'blade_template' => [
+                'type' => 'string',
+                'description' => 'New Blade template content for panel tools.',
+            ],
             'category' => [
                 'type' => 'string',
                 'description' => 'New category (memory, tools, file_ops, custom).',
@@ -45,6 +49,21 @@ class ToolUpdateTool extends Tool
             'input_schema' => [
                 'type' => 'object',
                 'description' => 'New JSON Schema for input parameters.',
+            ],
+            'panel_dependencies' => [
+                'type' => 'array',
+                'items' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'type' => ['type' => 'string', 'enum' => ['script', 'stylesheet'], 'description' => 'script or stylesheet'],
+                        'url' => ['type' => 'string', 'description' => 'CDN URL'],
+                        'defer' => ['type' => 'boolean', 'description' => 'Defer loading (scripts only)'],
+                        'crossorigin' => ['type' => 'string', 'description' => 'Crossorigin attribute (e.g., "anonymous")'],
+                        'integrity' => ['type' => 'string', 'description' => 'SRI hash for integrity verification (e.g., "sha384-...")'],
+                    ],
+                    'required' => ['type', 'url'],
+                ],
+                'description' => 'Additional CDN dependencies to load for this panel. Base deps (Tailwind, Alpine, Font Awesome) are always loaded. Each entry needs at minimum type ("script" or "stylesheet") and url.',
             ],
         ],
         'required' => ['slug'],
@@ -57,18 +76,28 @@ Use ToolUpdate to modify an existing user-created tool.
 - Only user-created tools can be modified
 - PocketDev built-in tools cannot be changed
 
+## Updatable Fields
+- name, description, system_prompt: Basic tool info
+- script: Bash script content for script-based tools
+- blade_template: Blade template content for panel tools
+- panel_dependencies: Additional CDN dependencies for panels (array of {type, url} objects)
+- category, input_schema: Tool configuration
+
 ## Valid Categories
 - memory: Memory-related tools
 - tools: Tool management
 - file_ops: File operations
 - custom: Custom tools (default)
+
+**Refer to the Panel Dependencies section for available CSS/JS libraries when updating panel templates.**
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
 ## CLI Example
 
 ```bash
-php artisan tool:update --slug=my-tool --name="Updated Name" --description="New description"
+pd tool:update my-tool --name="Updated Name" --description="New description"
+pd tool:update my-panel-tool --blade-template-file=/path/to/template.blade.php
 ```
 CLI;
 
@@ -80,6 +109,14 @@ Update a tool's script:
 {
   "slug": "my-tool",
   "script": "#!/bin/bash\necho \"Updated script\""
+}
+```
+
+Update a panel tool's blade template:
+```json
+{
+  "slug": "my-panel-tool",
+  "blade_template": "<div>Updated template content</div>"
 }
 ```
 
@@ -133,6 +170,11 @@ API;
             $changes[] = 'script';
         }
 
+        if (isset($input['blade_template'])) {
+            $tool->blade_template = $input['blade_template'];
+            $changes[] = 'blade_template';
+        }
+
         if (isset($input['category'])) {
             $category = $input['category'];
             $allowedCategories = [
@@ -156,8 +198,16 @@ API;
             $changes[] = 'input_schema';
         }
 
+        if (isset($input['panel_dependencies'])) {
+            if (!is_array($input['panel_dependencies'])) {
+                return ToolResult::error('panel_dependencies must be an array of dependency objects');
+            }
+            $tool->panel_dependencies = $input['panel_dependencies'];
+            $changes[] = 'panel_dependencies';
+        }
+
         if (empty($changes)) {
-            return ToolResult::error('No changes specified. Use name, description, system_prompt, script, category, or input_schema.');
+            return ToolResult::error('No changes specified. Use name, description, system_prompt, script, blade_template, panel_dependencies, category, or input_schema.');
         }
 
         try {

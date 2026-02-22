@@ -56,7 +56,7 @@
                     :class="hasAnyFiles ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-600 hover:bg-gray-500 text-gray-200'"
                     class="relative px-4 py-[10px] min-w-[106px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     title="Attach files">
-                <i x-show="isUploading" class="fa-solid fa-spinner fa-spin"></i>
+                <x-spinner x-show="isUploading" x-cloak />
                 <i x-show="!isUploading" class="fa-solid fa-paperclip"></i>
                 <span x-show="!hasAnyFiles">Attach</span>
                 <span x-show="hasAnyFiles"
@@ -106,7 +106,7 @@
                                 </div>
                                 <div class="flex items-center gap-3">
                                     <template x-if="file.uploading">
-                                        <i class="fa-solid fa-spinner fa-spin text-blue-400"></i>
+                                        <x-spinner class="text-blue-400" />
                                     </template>
                                     <template x-if="!file.uploading && !file.error">
                                         <i class="fa-solid fa-check text-green-400"></i>
@@ -204,6 +204,25 @@
                           }
                       "></textarea>
 
+            {{-- Connection health indicator - badge on textarea corner, matches template indicator pattern --}}
+            {{-- Three states: connected (green pulsing), processing (amber, "Processing context..."), disconnected (amber, "Connection may be lost") --}}
+            <template x-if="isStreaming">
+                <span class="absolute -top-1 -right-1 z-10"
+                      :class="getIndicatorState() === 'connected' ? 'pointer-events-none' : 'cursor-help'"
+                      :title="getIndicatorState() === 'connected' ? 'Connected to stream' :
+                             (getIndicatorState() === 'processing' ? 'Processing context...' :
+                              'Connection may be lost')">
+                    <span class="relative flex w-3 h-3">
+                        <span class="absolute inline-flex h-full w-full rounded-full opacity-75"
+                              :class="getIndicatorState() === 'connected' ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'"
+                        ></span>
+                        <span class="relative inline-flex w-3 h-3 rounded-full border border-gray-800"
+                              :class="getIndicatorState() === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'"
+                        ></span>
+                    </span>
+                </span>
+            </template>
+
             {{-- Skill Suggestions Dropdown --}}
             <div x-show="showSkillSuggestions"
                  x-cloak
@@ -248,7 +267,7 @@
             <button type="button"
                     disabled
                     class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-not-allowed bg-gray-600 text-gray-300">
-                <i class="fa-solid fa-spinner fa-spin"></i> Aborting...
+                <x-spinner /> Aborting...
             </button>
         </template>
         <template x-if="isStreaming && !_streamState.abortPending">

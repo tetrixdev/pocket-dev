@@ -82,10 +82,10 @@ INSTRUCTIONS;
 
 ```bash
 # Transform a compose file (creates compose.override.yaml in same directory)
-php artisan compose:transform --input=/workspace/default/my-project/compose.yaml
+pd compose:transform --input=/workspace/default/my-project/compose.yaml
 
 # For a compose file in a subdirectory
-php artisan compose:transform --input=/workspace/default/my-project/docker/compose.yaml
+pd compose:transform --input=/workspace/default/my-project/docker/compose.yaml
 ```
 
 ## After Running

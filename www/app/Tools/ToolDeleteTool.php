@@ -39,7 +39,7 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan tool:delete --slug=my-tool
+pd tool:delete --slug=my-tool
 ```
 CLI;
 

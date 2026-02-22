@@ -38,15 +38,15 @@ Execute bash commands for git, npm, docker, and terminal operations.
 
 ```bash
 # Git operations
-php artisan bash --command="git status"
-php artisan bash --command="git log --oneline -10"
+pd bash --command="git status"
+pd bash --command="git log --oneline -10"
 
 # Package management
-php artisan bash --command="composer install"
-php artisan bash --command="npm run build"
+pd bash --command="composer install"
+pd bash --command="npm run build"
 
 # With timeout for long operations
-php artisan bash --command="npm install" --timeout=300
+pd bash --command="npm install" --timeout=300
 ```
 
 ## Notes

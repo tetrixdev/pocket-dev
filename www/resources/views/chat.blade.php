@@ -70,16 +70,19 @@
                         // Listen for browser back button
                         const store = this;
                         this._popstateHandler = (event) => {
-                            if (window.debugLog) debugLog('popstate event', {
+                            // Ignore if no previews are open
+                            if (!store.isOpen) return;
+
+                            if (window.debugLog) debugLog('popstate event (filePreview)', {
                                 state: event.state,
                                 isOpen: store.isOpen,
                                 stackDepth: store.stack.length
                             });
-                            // Close preview if open (any back navigation while modal is open should close it)
-                            if (store.isOpen) {
-                                if (window.debugLog) debugLog('popstate: closing preview via back button');
-                                store._closeStack();
-                            }
+
+                            // Close preview when navigating back (regardless of state content)
+                            // The popstate event itself signals "go back"
+                            if (window.debugLog) debugLog('popstate: closing preview via back button');
+                            store._closeStack();
                         };
                         window.addEventListener('popstate', this._popstateHandler);
                     },
@@ -370,7 +373,53 @@
             // Global helper for opening file preview
             window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
 
-            // Note: filePreview.init() is auto-called by Alpine when the store is registered
+            // Initialize filePreview store (sets up popstate listener for back button support)
+            // Note: Alpine only auto-calls init() for components (x-data), not stores
+            Alpine.store('filePreview').init();
+
+            // Simple modal back button support
+            // Pushes ONE history entry when first modal opens, closes ALL modals on back
+            Alpine.store('modalBackButton', {
+                count: 0,
+                _initialized: false,
+                _handledBackNavigation: false,  // Flag to prevent chatApp from also handling
+
+                init() {
+                    if (this._initialized) return;
+                    this._initialized = true;
+
+                    window.addEventListener('popstate', (event) => {
+                        // Only handle if we have modals open and this isn't another store's state
+                        if (this.count > 0 && !event.state?.filePreview) {
+                            // Set flag so chatApp popstate handler knows we handled this
+                            this._handledBackNavigation = true;
+                            // Back button pressed - close all modals
+                            window.dispatchEvent(new CustomEvent('close-all-modals'));
+                            this.count = 0;
+                        }
+                    });
+                },
+
+                opened() {
+                    const wasZero = this.count === 0;
+                    this.count++;
+                    if (wasZero) {
+                        // First modal - push one history entry as buffer
+                        history.pushState({ modalOpen: true }, '');
+                    }
+                },
+
+                closed() {
+                    if (this.count > 0) {
+                        this.count--;
+                        if (this.count === 0 && history.state?.modalOpen) {
+                            // Last modal closed via UI - clean up history entry
+                            history.back();
+                        }
+                    }
+                }
+            });
+            Alpine.store('modalBackButton').init();
 
             // File attachments store for managing uploaded files in chat
             Alpine.store('attachments', {
@@ -568,7 +617,7 @@
         /* Hide elements until Alpine.js initializes */
         [x-cloak] { display: none !important; }
 
-        .markdown-content { line-height: 1.6; }
+        .markdown-content { line-height: 1.6; overflow-wrap: break-word; word-wrap: break-word; }
         .markdown-content h1 { font-size: 1.5em; font-weight: bold; margin: 1em 0 0.5em; }
         .markdown-content h2 { font-size: 1.3em; font-weight: bold; margin: 1em 0 0.5em; }
         .markdown-content h3 { font-size: 1.1em; font-weight: bold; margin: 1em 0 0.5em; }
@@ -580,9 +629,13 @@
         .markdown-content pre code { background: none; padding: 0; }
         .markdown-content blockquote { border-left: 4px solid #4b5563; padding-left: 1em; margin: 1em 0; color: #9ca3af; }
         .markdown-content a { color: #60a5fa; text-decoration: underline; }
-        .markdown-content table { border-collapse: collapse; margin: 1em 0; width: 100%; }
-        .markdown-content th, .markdown-content td { border: 1px solid #4b5563; padding: 0.5em; text-align: left; }
+        .markdown-content table { border-collapse: collapse; margin: 1em 0; width: max-content; min-width: 100%; }
+        .markdown-content th, .markdown-content td { border: 1px solid #4b5563; padding: 0.5em; text-align: left; white-space: nowrap; }
         .markdown-content th { background: #374151; font-weight: bold; }
+
+        /* Wrapper for horizontal scroll on tables - applied via JS */
+        .table-wrapper { overflow-x: auto; margin: 1em 0; -webkit-overflow-scrolling: touch; }
+        .table-wrapper table { margin: 0; }
 
         /* File path links - clickable paths that open file preview modal */
         .file-path-link {
@@ -592,7 +645,7 @@
             padding: 0.1em 0.4em;
             border-radius: 0.25em;
             transition: background-color 0.15s ease;
-            white-space: nowrap;
+            word-break: break-all;
         }
         .file-path-link:hover {
             background: rgba(59, 130, 246, 0.25);
@@ -632,29 +685,74 @@
             scrollbar-color: #4b5563 transparent;
         }
 
-        /* Custom scrollbar for messages and conversations - dark theme */
+        /* Custom scrollbar for messages, conversations, and sessions - dark theme */
         #messages::-webkit-scrollbar,
-        #conversations-list::-webkit-scrollbar {
+        #conversations-list::-webkit-scrollbar,
+        #sessions-list::-webkit-scrollbar,
+        #mobile-sessions-list::-webkit-scrollbar {
             width: 6px;
         }
         #messages::-webkit-scrollbar-track,
-        #conversations-list::-webkit-scrollbar-track {
+        #conversations-list::-webkit-scrollbar-track,
+        #sessions-list::-webkit-scrollbar-track,
+        #mobile-sessions-list::-webkit-scrollbar-track {
             background: transparent;
         }
         #messages::-webkit-scrollbar-thumb,
-        #conversations-list::-webkit-scrollbar-thumb {
+        #conversations-list::-webkit-scrollbar-thumb,
+        #sessions-list::-webkit-scrollbar-thumb,
+        #mobile-sessions-list::-webkit-scrollbar-thumb {
             background: #4b5563;
             border-radius: 3px;
         }
         #messages::-webkit-scrollbar-thumb:hover,
-        #conversations-list::-webkit-scrollbar-thumb:hover {
+        #conversations-list::-webkit-scrollbar-thumb:hover,
+        #sessions-list::-webkit-scrollbar-thumb:hover,
+        #mobile-sessions-list::-webkit-scrollbar-thumb:hover {
             background: #6b7280;
         }
         /* Firefox */
         #messages,
-        #conversations-list {
+        #conversations-list,
+        #sessions-list,
+        #mobile-sessions-list {
             scrollbar-width: thin;
             scrollbar-color: #4b5563 transparent;
+        }
+
+        /* Custom horizontal scrollbar for screen tabs - dark theme */
+        #screen-tabs::-webkit-scrollbar {
+            height: 6px;
+        }
+        #screen-tabs::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #screen-tabs::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+        #screen-tabs::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+        /* Firefox */
+        #screen-tabs {
+            scrollbar-width: thin;
+            scrollbar-color: #4b5563 transparent;
+        }
+
+        /* Mobile swipe navigation */
+        .swipe-active {
+            /* Prevent content selection during swipe */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Add subtle shadow during swipe to indicate depth */
+        @media (max-width: 767px) {
+            #messages,
+            [x-show="isActiveScreenPanel"] {
+                will-change: transform;
+            }
         }
     </style>
 </head>
@@ -679,12 +777,12 @@
             {{-- Desktop Header (hidden on mobile) - fixed at top to match fixed #messages --}}
             <div class="hidden md:flex md:fixed md:top-0 md:left-64 md:right-0 md:z-10 bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
                 <div class="flex items-center gap-3 pl-2">
-                    <button @click="openRenameModal()"
-                            :disabled="!currentConversationUuid"
+                    <button @click="openSessionEditModal()"
+                            :disabled="!currentSession"
                             class="text-base font-semibold hover:text-blue-400 transition-colors max-w-[50ch] truncate disabled:cursor-default disabled:hover:text-white"
-                            :class="{ 'cursor-pointer': currentConversationUuid }"
-                            :title="currentConversationUuid ? 'Click to rename' : ''"
-                            x-text="currentConversationTitle || 'New Conversation'">
+                            :class="{ 'cursor-pointer': currentSession }"
+                            :title="currentSession ? 'Click to edit session' : ''"
+                            x-text="currentSession?.name || 'New Session'">
                     </button>
                     <button @click="showAgentSelector = true"
                             class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer"
@@ -703,7 +801,15 @@
                           class="inline-flex items-center justify-center w-4 h-4 rounded-sm cursor-help"
                           :class="getStatusColorClass(currentConversationStatus)"
                           :title="'Status: ' + currentConversationStatus">
-                        <i class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
+                        {{-- Processing: SVG spinner --}}
+                        <svg x-show="currentConversationStatus === 'processing'" x-cloak
+                             class="animate-spin text-white" style="width: 10px; height: 10px;"
+                             viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                        </svg>
+                        {{-- Other statuses: FA icons --}}
+                        <i x-show="currentConversationStatus !== 'processing'" class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
                     </span>
                     {{-- Context window progress bar --}}
                     <x-chat.context-progress />
@@ -718,48 +824,84 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                     </button>
-                    {{-- Dropdown Menu --}}
-                    <div x-show="showConversationMenu"
-                         x-cloak
-                         @click.outside="showConversationMenu = false"
-                         x-transition:enter="transition ease-out duration-100"
-                         x-transition:enter-start="transform opacity-0 scale-95"
-                         x-transition:enter-end="transform opacity-100 scale-100"
-                         x-transition:leave="transition ease-in duration-75"
-                         x-transition:leave-start="transform opacity-100 scale-100"
-                         x-transition:leave-end="transform opacity-0 scale-95"
-                         class="absolute right-0 mt-1 w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-50">
-                        {{-- Workspace --}}
-                        <button @click="openWorkspaceSelector(); showConversationMenu = false"
-                                class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
-                            <i class="fa-solid fa-folder w-4 text-center"></i>
-                            <span class="flex-1">Workspace</span>
-                            <span class="text-xs text-gray-400 truncate max-w-[80px]" x-text="currentWorkspace?.name || 'Default'"></span>
-                        </button>
-                        {{-- Settings --}}
-                        <a href="{{ route('config.index') }}"
-                           class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
-                            <i class="fa-solid fa-cog w-4 text-center"></i>
-                            Settings
-                        </a>
-                        {{-- Archive/Unarchive --}}
-                        <button @click="toggleArchiveConversation(); showConversationMenu = false"
-                                :disabled="!currentConversationUuid"
-                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
-                                class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
-                            <i class="fa-solid fa-box-archive w-4 text-center"></i>
-                            <span x-text="currentConversationStatus === 'archived' ? 'Unarchive' : 'Archive'"></span>
-                        </button>
-                        {{-- Delete --}}
-                        <button @click="deleteConversation(); showConversationMenu = false"
-                                :disabled="!currentConversationUuid"
-                                :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
-                                class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
-                            <i class="fa-solid fa-trash w-4 text-center"></i>
-                            Delete
-                        </button>
-                    </div>
+                    {{-- Dropdown Menu - Teleported to body to escape stacking context --}}
+                    <template x-teleport="body">
+                        <div x-show="showConversationMenu"
+                             x-cloak
+                             @click.outside="showConversationMenu = false"
+                             @keydown.escape="showConversationMenu = false"
+                             x-transition:enter="transition ease-out duration-100"
+                             x-transition:enter-start="transform opacity-0 scale-95"
+                             x-transition:enter-end="transform opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-75"
+                             x-transition:leave-start="transform opacity-100 scale-100"
+                             x-transition:leave-end="transform opacity-0 scale-95"
+                             class="hidden md:block fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 z-[100] overflow-hidden"
+                             style="top: 50px; right: 8px;">
+                            {{-- Workspace --}}
+                            <button @click="openWorkspaceSelector(); showConversationMenu = false"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer">
+                                <i class="fa-solid fa-folder w-4 text-center"></i>
+                                <span class="flex-1">Workspace</span>
+                                <span class="text-xs text-gray-400 truncate max-w-[80px]" x-text="currentWorkspace?.name || 'Default'"></span>
+                            </button>
+                            {{-- Settings --}}
+                            <a href="{{ route('config.index') }}"
+                               class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">
+                                <i class="fa-solid fa-cog w-4 text-center"></i>
+                                Settings
+                            </a>
+                            {{-- Session Section Header --}}
+                            <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
+                            {{-- Archive/Restore Session --}}
+                            <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
+                                    :disabled="!currentSession"
+                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                                <span x-text="currentSession?.is_archived ? 'Restore session' : 'Archive session'"></span>
+                            </button>
+                            {{-- Delete Session --}}
+                            <button @click="deleteSession(currentSession?.id); showConversationMenu = false"
+                                    :disabled="!currentSession"
+                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-trash w-4 text-center"></i>
+                                Delete session
+                            </button>
+                            {{-- Restore Chat (only show if session has archived conversations) --}}
+                            <button x-show="hasArchivedConversations"
+                                    @click="openRestoreChatModal(); showConversationMenu = false"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm text-gray-200 hover:bg-gray-600 cursor-pointer w-full text-left">
+                                <i class="fa-solid fa-rotate-left w-4 text-center"></i>
+                                Restore chat...
+                            </button>
+                            {{-- Conversation Section Header --}}
+                            <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Conversation</div>
+                            {{-- Archive/Unarchive Conversation --}}
+                            <button @click="toggleArchiveConversation(); showConversationMenu = false"
+                                    :disabled="!currentConversationUuid"
+                                    :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-box-archive w-4 text-center"></i>
+                                <span x-text="currentConversationStatus === 'archived' ? 'Unarchive chat' : 'Archive chat'"></span>
+                            </button>
+                            {{-- Delete Conversation --}}
+                            <button @click="deleteConversation(); showConversationMenu = false"
+                                    :disabled="!currentConversationUuid"
+                                    :class="!currentConversationUuid ? 'text-gray-500 cursor-not-allowed' : 'text-red-400 hover:bg-gray-600 cursor-pointer'"
+                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
+                                <i class="fa-solid fa-trash w-4 text-center"></i>
+                                Delete chat
+                            </button>
+                        </div>
+                    </template>
                 </div>
+            </div>
+
+            {{-- Screen Tabs - Unified responsive tabs, fixed below header --}}
+            <div class="fixed top-[57px] left-0 right-0 md:left-64 z-10">
+                @include('partials.chat.screen-tabs')
             </div>
 
             {{-- Messages Container with Drag-and-Drop --}}
@@ -778,10 +920,12 @@
                  class="relative md:flex-1 md:flex md:flex-col md:min-h-0">
 
                 {{-- Drop Overlay (Desktop only) - fixed position matching #messages --}}
+                {{-- TODO: Extract magic numbers (108px, 110px, 57px) to computed properties.
+                     These are: header (57px) + tabs height (51px desktop / 53px mobile) --}}
                 <div x-cloak
                      class="fixed left-64 right-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg hidden"
                      :class="isDragging ? 'md:flex' : 'md:hidden'"
-                     :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
+                     :style="{ top: currentSession ? '108px' : '57px', bottom: desktopInputHeight + 'px' }">
                     <div class="bg-gray-800 rounded-lg p-6 text-center shadow-xl border-2 border-dashed border-blue-400">
                         <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-400 mb-2"></i>
                         <p class="text-gray-200 font-medium">Drop files to attach</p>
@@ -798,8 +942,8 @@
                          x-transition:leave="transition ease-in duration-100"
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
-                         class="fixed top-[57px] left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         :style="{ bottom: mobileInputHeight + 'px' }">
+                         class="fixed left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
+                         :style="{ top: (currentSession ? '110px' : '57px'), bottom: mobileInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -811,6 +955,7 @@
                 </div>
 
                 {{-- Loading Conversation Overlay (Desktop) - visible at md breakpoint and above only --}}
+                {{-- Top offset: header (57px) + tabs (38px when visible) --}}
                 <div class="hidden md:block">
                     <div x-cloak
                          x-show="loadingConversation"
@@ -821,7 +966,7 @@
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
                          class="fixed left-64 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         :style="{ top: '57px', bottom: desktopInputHeight + 'px' }">
+                         :style="{ top: currentSession ? '108px' : '57px', bottom: desktopInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -832,12 +977,24 @@
                     </div>
                 </div>
 
-                <div id="messages"
+                {{-- Messages top offset: header (57px) + tabs (38px when visible on desktop) --}}
+                {{-- Only show messages container when not viewing a panel --}}
+                <div x-show="!isActiveScreenPanel"
+                     id="messages"
                      class="p-4 space-y-4 overflow-y-auto bg-gray-900 fixed left-0 right-0 z-0
                             md:left-64 md:pt-4 md:pb-4"
-                     :class="isDragging ? 'ring-2 ring-blue-500 ring-inset' : ''"
-                     :style="{ top: '57px', bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px' }"
-                     @scroll="handleMessagesScroll($event)">
+                     :class="[isDragging ? 'ring-2 ring-blue-500 ring-inset' : '', isSwiping ? 'swipe-active' : '']"
+                     :style="{
+                         top: (currentSession ? (windowWidth >= 768 ? '108px' : '110px') : '57px'),
+                         bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px',
+                         transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
+                         transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+                     }"
+                     @scroll="handleMessagesScroll($event)"
+                     @touchstart="handleSwipeStart($event)"
+                     @touchmove="handleSwipeMove($event)"
+                     @touchend="handleSwipeEnd($event)"
+                     @touchcancel="resetSwipeState()">
 
                 {{-- Empty State --}}
                 <template x-if="messages.length === 0">
@@ -866,8 +1023,67 @@
             </div>
             </div> {{-- End drag-and-drop wrapper --}}
 
+            {{-- Panel Content Container --}}
+            {{-- Shows rendered panel content when viewing a panel screen --}}
+            <div x-show="isActiveScreenPanel"
+                 x-cloak
+                 class="fixed left-0 right-0 z-0 bg-gray-900 overflow-auto
+                        md:left-64"
+                 :class="isSwiping ? 'swipe-active' : ''"
+                 :style="{
+                     top: (currentSession ? (windowWidth >= 768 ? '108px' : '110px') : '57px'),
+                     bottom: '0px',
+                     transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
+                     transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+                 }"
+                 @touchstart="handleSwipeStart($event)"
+                 @touchmove="handleSwipeMove($event)"
+                 @touchend="handleSwipeEnd($event)"
+                 @touchcancel="resetSwipeState()">
+
+                {{-- Loading State - use x-show to avoid destroying panel Alpine state --}}
+                <div x-show="loadingPanel" class="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+                    <div class="flex flex-col items-center gap-3">
+                        <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span class="text-gray-400 text-sm">Loading panel...</span>
+                    </div>
+                </div>
+
+                {{--
+                    Panel Content (rendered HTML) - Double-buffered iframes
+
+                    Uses two iframes (A and B) to eliminate flash when switching panels:
+                    - One iframe is visible (showing current panel)
+                    - The other is hidden (used for preloading next panel)
+                    - On panel switch, content loads into hidden iframe, then we swap visibility
+
+                    IMPORTANT for panel developers:
+                    - x-init and init() will re-run whenever panel content is refreshed
+                    - Store persistent state in panelState (synced to server) rather than local Alpine state
+                    - Side effects in init() should be idempotent or guarded
+                --}}
+                <iframe id="panel-content-container-a"
+                        x-ref="iframeA"
+                        x-show="activeIframeBuffer === 'A'"
+                        class="w-full h-full border-0 bg-transparent"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
+                        referrerpolicy="no-referrer"
+                        title="Panel content"></iframe>
+                <iframe id="panel-content-container-b"
+                        x-ref="iframeB"
+                        x-show="activeIframeBuffer === 'B'"
+                        class="w-full h-full border-0 bg-transparent"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
+                        referrerpolicy="no-referrer"
+                        title="Panel content"></iframe>
+            </div>
+
             {{-- Scroll to Bottom Button (mobile) - positioned above attachment FAB --}}
-            <button @click="autoScrollEnabled = true; scrollToBottom()"
+            <button x-show="!isActiveScreenPanel"
+                    @click="autoScrollEnabled = true; scrollToBottom()"
                     :class="(!isAtBottom && messages.length > 0) ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-75 pointer-events-none'"
                     class="md:hidden fixed z-50 w-10 h-10 bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-200 right-4"
                     :style="{ bottom: (mobileInputHeight + 64) + 'px' }"
@@ -875,12 +1091,14 @@
                 <i class="fas fa-arrow-down"></i>
             </button>
 
-            {{-- File Attachment FAB (mobile) --}}
-            @include('partials.chat.attachment-fab')
+            {{-- File Attachment FAB (mobile) - hidden when viewing panels --}}
+            <template x-if="!isActiveScreenPanel">
+                @include('partials.chat.attachment-fab')
+            </template>
 
             {{-- Scroll to Bottom Button (desktop) --}}
             <button x-cloak
-                    x-show="!isAtBottom && messages.length > 0"
+                    x-show="!isAtBottom && messages.length > 0 && !isActiveScreenPanel"
                     x-transition:enter="transition ease-out duration-200"
                     x-transition:enter-start="opacity-0 scale-75"
                     x-transition:enter-end="opacity-100 scale-100"
@@ -894,15 +1112,15 @@
                 <i class="fas fa-arrow-down"></i>
             </button>
 
-            {{-- Desktop Input (hidden on mobile) - fixed at bottom to match fixed #messages --}}
-            <div x-ref="desktopInput" class="hidden md:block md:fixed md:bottom-0 md:left-64 md:right-0 md:z-10">
+            {{-- Desktop Input (hidden on mobile and when viewing panels) - fixed at bottom to match fixed #messages --}}
+            <div x-show="!isActiveScreenPanel" x-ref="desktopInput" class="hidden md:block md:fixed md:bottom-0 md:left-64 md:right-0 md:z-10">
                 @include('partials.chat.input-desktop')
             </div>
         </div>
     </div>
 
-    {{-- Mobile Input (hidden on desktop) --}}
-    <div class="md:hidden">
+    {{-- Mobile Input (hidden on desktop and when viewing panels) --}}
+    <div x-show="!isActiveScreenPanel" class="md:hidden">
         @include('partials.chat.input-mobile')
     </div>
 
@@ -926,18 +1144,26 @@
                 // State
                 prompt: '',
                 messages: [],
-                conversations: [],
-                conversationsPage: 1,
-                conversationsLastPage: 1,
-                loadingMoreConversations: false,
                 cachedLatestActivity: null, // For sidebar polling
                 sidebarPollInterval: null, // Polling interval ID
                 currentConversationUuid: null,
                 currentConversationStatus: null, // Current conversation status (idle, processing, archived, failed)
                 showConversationMenu: false, // Dropdown menu visibility
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
-                isStreaming: false,
-                _justCompletedStream: false,
+
+                // Stream state proxies (Sprint 3: delegate to _streamStore)
+                get isStreaming() { return this._streamStore?.isStreaming ?? false; },
+                set isStreaming(val) { if (this._streamStore) this._streamStore.isStreaming = val; },
+                get _streamState() { return this._streamStore?._streamState ?? {}; },
+                set _streamState(val) { if (this._streamStore) this._streamStore._streamState = val; },
+                get _isReplaying() { return this._streamStore?._isReplaying ?? false; },
+                set _isReplaying(val) { if (this._streamStore) this._streamStore._isReplaying = val; },
+                get _wasStreamingBeforeHidden() { return this._streamStore?._wasStreamingBeforeHidden ?? false; },
+                set _wasStreamingBeforeHidden(val) { if (this._streamStore) this._streamStore._wasStreamingBeforeHidden = val; },
+                get _justCompletedStream() { return this._streamStore?._justCompletedStream ?? false; },
+                set _justCompletedStream(val) { if (this._streamStore) this._streamStore._justCompletedStream = val; },
+                get lastEventIndex() { return this._streamStore?.lastEventIndex ?? 0; },
+                set lastEventIndex(val) { if (this._streamStore) this._streamStore.lastEventIndex = val; },
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
                 ignoreScrollEvents: false, // Ignore scroll events during conversation loading
@@ -946,6 +1172,104 @@
                 _initDone: false, // Guard against double initialization
                 sessionCost: 0,
                 totalTokens: 0,
+
+                // Sessions & Screens
+                sessions: [], // All sessions for current workspace
+                sessionsPage: 1, // Current page for pagination
+                sessionsLastPage: 1, // Last page number
+                loadingMoreSessions: false, // Loading state for infinite scroll
+                currentSession: null, // Current session object with screens
+                screens: [], // Flat array of screen objects in the current session
+                activeScreenId: null, // Currently active screen ID
+                availablePanels: [], // Available panel tools
+                _panelsFetchPending: false, // Guard against duplicate panel fetch retries
+                showArchivedSessions: false, // Filter toggle
+                sessionSearchQuery: '', // Filter by name
+                sidebarSearchMode: 'sessions', // 'sessions' or 'conversations'
+                sessionMenuId: null, // Which session's context menu is open
+                sessionMenuPos: { top: 0, left: 0 }, // Position for session context menu
+                workspaceHasDefaultTemplate: false, // Whether workspace has a default session template
+
+                // Restore chat modal
+                showRestoreChatModal: false, // Visibility of restore chat modal
+                archivedConversations: [], // Archived conversations for current session
+                loadingArchivedConversations: false, // Loading state
+
+                // Panel content
+                panelContent: '', // HTML content of active panel
+                loadingPanel: false, // Loading state for panel content
+                activeIframeBuffer: 'A', // Which iframe is currently visible ('A' or 'B')
+
+                // Screen tab drag-and-drop state
+                draggedScreenId: null, // ID of screen being dragged
+                dragOverScreenId: null, // ID of screen being dragged over
+                dragDropPosition: null, // 'before' or 'after' drop position
+
+                // Toast notification
+                toastMessage: '',
+                toastVisible: false,
+
+                // Mobile swipe navigation
+                swipeStartX: 0,
+                swipeStartY: 0,
+                swipeCurrentX: 0,
+                swipeDeltaX: 0,
+                isSwiping: false,
+                swipeThreshold: 80, // Minimum distance to trigger screen change
+                swipeEdgeResistance: 0.3, // How much movement at edges (30%)
+
+                // Computed: filtered sessions based on search query
+                get filteredSessions() {
+                    // Return all sessions if no search query
+                    if (!this.sessionSearchQuery) return this.sessions;
+                    const query = this.sessionSearchQuery.toLowerCase();
+                    return this.sessions.filter(s =>
+                        (s.name || '').toLowerCase().includes(query)
+                    );
+                },
+
+                // Computed: panels grouped by category for dropdown display
+                // Categories are sorted alphabetically, with 'other' always last
+                get panelsByCategory() {
+                    const groups = {};
+
+                    this.availablePanels.forEach(panel => {
+                        const cat = panel.category || 'other';
+                        if (!groups[cat]) groups[cat] = { category: cat, panels: [] };
+                        groups[cat].panels.push(panel);
+                    });
+
+                    return Object.values(groups).sort((a, b) => {
+                        // 'other' always goes last
+                        if (a.category === 'other' && b.category !== 'other') return 1;
+                        if (b.category === 'other' && a.category !== 'other') return -1;
+                        // Otherwise alphabetical
+                        return a.category.localeCompare(b.category);
+                    });
+                },
+
+                // Computed: visible screen order (excludes screens with archived conversations)
+                get visibleScreenOrder() {
+                    if (!this.currentSession?.screen_order) return [];
+                    return this.currentSession.screen_order.filter(screenId => {
+                        const screen = this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
+                        // Show all panel screens, only show chat screens if conversation is not archived
+                        if (!screen) return false;
+                        if (screen.type === 'panel') return true;
+                        return screen.conversation?.status !== 'archived';
+                    });
+                },
+
+                // Computed: get the active screen object
+                get activeScreen() {
+                    if (!this.activeScreenId) return null;
+                    return this._screenMap?.[this.activeScreenId] || this.screens.find(s => s.id === this.activeScreenId);
+                },
+
+                // Computed: is the active screen a panel?
+                get isActiveScreenPanel() {
+                    return this.activeScreen?.type === 'panel';
+                },
 
                 // Agents
                 agents: [],
@@ -993,7 +1317,15 @@
                 // Conversation title (rename)
                 currentConversationTitle: null,
                 renameTitle: '',
+                renameTabLabel: '',
                 renameSaving: false,
+
+                // Session edit modal (combined session name + chat labels)
+                showSessionEditModal: false,
+                sessionEditName: '',
+                sessionEditChats: [],  // Array of {screenId, chatNumber, label}
+                sessionEditSaving: false,
+
                 _systemPromptPreviewNonce: 0,
                 systemPromptPreview: {
                     loading: false,
@@ -1013,6 +1345,8 @@
                 workspacesLoading: false,
                 currentWorkspace: null,
                 currentWorkspaceId: null,
+                _workspaceSwitchVersion: 0,        // Guards against stale async operations on rapid switch
+                _lastSessionIdFromWorkspace: null, // Last session ID returned from workspace API (for init)
 
                 // Conversation search
                 showSearchInput: false,
@@ -1022,6 +1356,7 @@
                 conversationSearchQuery: '',
                 conversationSearchResults: [],
                 conversationSearchLoading: false,
+                conversationSearchRequestId: 0, // For ignoring stale search responses
                 showArchivedConversations: false, // Filter to include archived conversations
                 pendingScrollToTurn: null, // Set when loading from search result
 
@@ -1080,26 +1415,9 @@
                 anthropicKeyInput: '',
                 anthropicKeyConfigured: false,
 
-                // Stream reconnection state
-                lastEventIndex: 0,
-                lastEventId: null,  // Unique event ID for verification
-                streamAbortController: null,
-                _streamConnectNonce: 0,
-                _streamRetryTimeoutId: null,
-                _streamState: {
-                    // Maps block_index -> message array index (for interleaved thinking support)
-                    thinkingBlocks: {},        // { blockIndex: { msgIndex, content, complete } }
-                    currentThinkingBlock: -1,  // Latest thinking block_index (for abort)
-                    textMsgIndex: -1,
-                    toolMsgIndex: -1,
-                    textContent: '',
-                    toolInput: '',
-                    turnCost: 0,
-                    toolInProgress: false,        // True while streaming tool parameters
-                    waitingForToolResults: new Set(), // Tool IDs waiting for execution results
-                    abortPending: false,
-                    abortSkipSync: false,         // If true, backend should skip syncing to CLI session
-                },
+                // === Store References (Sprint 3: Frontend Extraction) ===
+                _messageStore: null,
+                _streamStore: null,
 
                 async init() {
                     // Guard against double initialization
@@ -1109,6 +1427,79 @@
                     }
                     this._initDone = true;
                     this.debugLog('init() started');
+
+                    // === Initialize Stores (Sprint 3: Frontend Extraction) ===
+                    const self = this;
+
+                    // Create message store
+                    this._messageStore = window.createMessageStore({
+                        getCurrentModel: () => this.model,
+                        getCurrentAgent: () => this.currentAgent,
+                    });
+                    // Sync messages array reference for Blade template compatibility
+                    this.messages = this._messageStore.messages;
+
+                    // Create stream store with callbacks
+                    this._streamStore = window.createStreamStore({
+                        getConversationUuid: () => this.currentConversationUuid,
+                        getMessages: () => this.messages,
+                        messageStore: this._messageStore,
+                        scrollToBottom: () => this.scrollToBottom(),
+                        refreshSessionScreens: () => this.refreshSessionScreens(),
+                        dispatch: (event) => this.$dispatch(event),
+                        showError: (msg) => this.showError(msg),
+                        debugLog: (msg, data) => this.debugLog(msg, data),
+                        onStreamStart: () => {
+                            this.currentConversationStatus = 'processing';
+                        },
+                        onStreamEnd: (status) => {
+                            this.currentConversationStatus = status === 'failed' ? 'failed' : 'idle';
+                        },
+                        onAbortCleanup: (state) => {
+                            // Clean up in-progress streaming messages on abort
+                            const incompleteThinkingIndices = [];
+                            for (const blockIdx in state.thinkingBlocks) {
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block && !block.complete && block.msgIndex >= 0 && block.msgIndex < this.messages.length) {
+                                    incompleteThinkingIndices.push(block.msgIndex);
+                                }
+                            }
+                            incompleteThinkingIndices.sort((a, b) => b - a);
+                            for (const idx of incompleteThinkingIndices) {
+                                this.messages.splice(idx, 1);
+                                if (state.textMsgIndex > idx) state.textMsgIndex--;
+                                if (state.toolMsgIndex > idx) state.toolMsgIndex--;
+                            }
+                            // Remove empty text blocks
+                            if (state.textMsgIndex >= 0 && state.textMsgIndex < this.messages.length) {
+                                const textMsg = this.messages[state.textMsgIndex];
+                                if (!textMsg.content || textMsg.content.trim() === '') {
+                                    this.messages.splice(state.textMsgIndex, 1);
+                                }
+                            }
+                            // Add interrupted marker
+                            this.messages.push({
+                                id: 'msg-' + Date.now() + '-interrupted',
+                                role: 'interrupted',
+                                content: 'Response interrupted',
+                                timestamp: new Date().toISOString(),
+                            });
+                            this.scrollToBottom();
+                        },
+                        getModel: () => this.model,
+                        getCurrentAgent: () => this.currentAgent,
+                        updateContext: (data) => {
+                            if (data.contextWindowSize) this.contextWindowSize = data.contextWindowSize;
+                            if (data.contextPercentage !== undefined) {
+                                this.contextPercentage = data.contextPercentage;
+                                this.lastContextTokens = data.lastContextTokens || 0;
+                                this.updateContextWarningLevel();
+                            }
+                        },
+                        showClaudeCodeAuthModal: () => {
+                            this.showClaudeCodeAuthModal = true;
+                        },
+                    });
 
                     // Fetch pricing from database
                     await this.fetchPricing();
@@ -1123,27 +1514,43 @@
                     // Fetch available agents (filtered by workspace)
                     await this.fetchAgents();
 
+                    // Fetch available panels for the "Add Panel" menu
+                    await this.fetchAvailablePanels();
+
                     // Restore filter states from sessionStorage
-                    const savedArchiveFilter = sessionStorage.getItem('pocketdev_showArchivedConversations');
+                    const savedArchiveFilter = sessionStorage.getItem('pocketdev_showArchivedSessions');
                     if (savedArchiveFilter === 'true') {
+                        this.showArchivedSessions = true;
+                        this.showSearchInput = true;
+                    }
+                    const savedSearchMode = sessionStorage.getItem('pocketdev_sidebarSearchMode');
+                    if (savedSearchMode === 'conversations') {
+                        this.sidebarSearchMode = 'conversations';
+                        this.showSearchInput = true;
+                    }
+                    const savedArchivedConversations = sessionStorage.getItem('pocketdev_showArchivedConversations');
+                    if (savedArchivedConversations === 'true') {
                         this.showArchivedConversations = true;
-                        this.showSearchInput = true; // Show filter panel so user sees active filter
-                    }
-                    const savedSearchQuery = sessionStorage.getItem('pocketdev_conversationSearchQuery');
-                    if (savedSearchQuery) {
-                        this.conversationSearchQuery = savedSearchQuery;
-                        this.showSearchInput = true; // Open filter panel if search was active
                     }
 
-                    // Load conversations list
-                    await this.fetchConversations();
-
-                    // If search query was restored, perform the search
-                    if (this.conversationSearchQuery) {
-                        await this.searchConversations();
-                    }
+                    // Load sessions list
+                    await this.fetchSessions();
 
                     // Watch for filter changes to persist to sessionStorage
+                    this.$watch('showArchivedSessions', (value) => {
+                        if (value) {
+                            sessionStorage.setItem('pocketdev_showArchivedSessions', 'true');
+                        } else {
+                            sessionStorage.removeItem('pocketdev_showArchivedSessions');
+                        }
+                    });
+                    this.$watch('sidebarSearchMode', (value) => {
+                        if (value === 'conversations') {
+                            sessionStorage.setItem('pocketdev_sidebarSearchMode', 'conversations');
+                        } else {
+                            sessionStorage.removeItem('pocketdev_sidebarSearchMode');
+                        }
+                    });
                     this.$watch('showArchivedConversations', (value) => {
                         if (value) {
                             sessionStorage.setItem('pocketdev_showArchivedConversations', 'true');
@@ -1151,11 +1558,35 @@
                             sessionStorage.removeItem('pocketdev_showArchivedConversations');
                         }
                     });
-                    this.$watch('conversationSearchQuery', (value) => {
-                        if (value) {
-                            sessionStorage.setItem('pocketdev_conversationSearchQuery', value);
-                        } else {
-                            sessionStorage.removeItem('pocketdev_conversationSearchQuery');
+
+                    // Sync active conversation status to screen data and sidebar session data
+                    this.$watch('currentConversationStatus', (newStatus) => {
+                        if (!newStatus) return;
+
+                        // (a) Sync to active screen's conversation (for tab icon)
+                        const activeScreen = this.getScreen(this.activeScreenId);
+                        if (
+                            !activeScreen ||
+                            activeScreen.type !== 'chat' ||
+                            activeScreen.conversation?.uuid !== this.currentConversationUuid
+                        ) {
+                            return;
+                        }
+                        activeScreen.conversation.status = newStatus;
+
+                        // (b) Sync to session in this.sessions (for sidebar icon)
+                        if (this.currentSession?.id) {
+                            const sessionIdx = this.sessions.findIndex(s => s.id === this.currentSession.id);
+                            if (sessionIdx !== -1) {
+                                const sidebarSession = this.sessions[sessionIdx];
+                                const screenInSidebar = sidebarSession.screens?.find(
+                                    sc => sc.conversation?.id === activeScreen?.conversation_id
+                                );
+                                if (screenInSidebar?.conversation) {
+                                    screenInSidebar.conversation.status = newStatus;
+                                    screenInSidebar.conversation.last_activity_at = new Date().toISOString();
+                                }
+                            }
                         }
                     });
 
@@ -1174,25 +1605,48 @@
                         localStorage.removeItem('pocketdev_returning_from_settings');
                     }
 
-                    // Check URL for conversation UUID and load if present
-                    const urlConversationUuid = this.getConversationUuidFromUrl();
-                    if (urlConversationUuid) {
-                        // Check for ?turn= query parameter to scroll to specific turn
-                        const urlParams = new URLSearchParams(window.location.search);
-                        const turnParam = urlParams.get('turn');
-                        if (turnParam) {
-                            const turnNumber = parseInt(turnParam, 10);
-                            if (!isNaN(turnNumber)) {
-                                this.pendingScrollToTurn = turnNumber;
-                                this.autoScrollEnabled = false;
-                            }
+                    // Check URL for session ID and load if present
+                    const urlSessionId = this.getSessionIdFromUrl();
+                    if (urlSessionId) {
+                        // Ensure history state is set on page load/refresh
+                        // (browsers don't persist history.state across refreshes)
+                        if (!history.state?.sessionId) {
+                            history.replaceState({ sessionId: urlSessionId }, '', location.href);
                         }
 
-                        await this.loadConversation(urlConversationUuid);
+                        await this.loadSession(urlSessionId);
 
-                        // Scroll to bottom if returning from settings (only if not scrolling to turn)
-                        if (returningFromSettings && this.pendingScrollToTurn === null) {
+                        // Scroll to bottom if returning from settings
+                        if (returningFromSettings) {
                             this.$nextTick(() => this.scrollToBottom());
+                        }
+                    } else if (this._lastSessionIdFromWorkspace) {
+                        // No URL session, but workspace has a last active session - restore it
+                        // Note: Session may not be in first page if it has old updated_at but is still "last active"
+                        let lastSession = this.sessions.find(s => s.id === this._lastSessionIdFromWorkspace);
+                        if (!lastSession) {
+                            // Fallback: fetch by ID (session may be past page 1 due to old updated_at)
+                            try {
+                                const resp = await fetch(`/api/sessions/${this._lastSessionIdFromWorkspace}`);
+                                if (resp.ok) {
+                                    lastSession = await resp.json();
+                                    this.sessions.unshift(lastSession); // Keep sidebar consistent
+                                }
+                            } catch (_) {}
+                        }
+                        if (lastSession && !lastSession.is_archived) {
+                            this.debugLog('Restoring last session from workspace', { sessionId: this._lastSessionIdFromWorkspace });
+                            await this.loadSession(this._lastSessionIdFromWorkspace);
+                        } else {
+                            // Session was deleted or archived - stay on home page
+                            if (!history.state) {
+                                history.replaceState({ home: true }, '', location.href);
+                            }
+                        }
+                    } else {
+                        // On home page, ensure we have a known state (not null)
+                        if (!history.state) {
+                            history.replaceState({ home: true }, '', location.href);
                         }
                     }
 
@@ -1203,43 +1657,65 @@
                             return;
                         }
 
-                        // Check for turn parameter in URL
-                        const urlParams = new URLSearchParams(window.location.search);
-                        const turnParam = urlParams.get('turn');
-                        let turnNumber = null;
-                        if (turnParam) {
-                            const parsed = parseInt(turnParam, 10);
-                            if (!isNaN(parsed)) {
-                                turnNumber = parsed;
-                            }
+                        // If modals are open OR were just closed by back button, don't navigate
+                        const modalStore = Alpine.store('modalBackButton');
+                        if (modalStore && (modalStore.count > 0 || modalStore._handledBackNavigation)) {
+                            // Reset the flag for next time
+                            modalStore._handledBackNavigation = false;
+                            return;
                         }
 
-                        if (event.state && event.state.conversationUuid) {
-                            // Don't reload if we're already on this conversation
-                            if (this.currentConversationUuid === event.state.conversationUuid) {
-                                // But still handle turn scrolling if requested
-                                if (turnNumber !== null) {
-                                    this.pendingScrollToTurn = turnNumber;
-                                    this.autoScrollEnabled = false;
-                                    this.scrollToTurn(turnNumber);
-                                }
+                        if (event.state && event.state.sessionId) {
+                            // Don't reload if we're already on this session
+                            if (this.currentSession?.id === event.state.sessionId) {
                                 return;
                             }
-                            // Set pending scroll for new conversation load
-                            if (turnNumber !== null) {
-                                this.pendingScrollToTurn = turnNumber;
-                                this.autoScrollEnabled = false;
-                            }
-                            this.loadConversation(event.state.conversationUuid);
+                            this.loadSession(event.state.sessionId);
                         } else {
-                            // Back to new conversation state
-                            this.newConversation();
+                            // Back to home state - clear session
+                            this.currentSession = null;
+                            this.screens = [];
+                            this.activeScreenId = null;
+                            if (this._messageStore) this._messageStore.clearMessages();
+                            this.currentConversationUuid = null;
                         }
                     });
 
                     // Track window resize for responsive layout calculations
                     window.addEventListener('resize', () => {
                         this.windowWidth = window.innerWidth;
+                    });
+
+                    // Initialize panel iframe swipe listener for mobile tab switching
+                    this.initPanelSwipeListener();
+
+                    // Handle visibility changes (phone standby, tab switching)
+                    // Refresh session screens when page becomes visible again
+                    document.addEventListener('visibilitychange', async () => {
+                        if (document.hidden) {
+                            // Track whether we were streaming when tab went to background
+                            this._wasStreamingBeforeHidden = this.isStreaming;
+                        } else {
+                            // Reconnect stream FIRST if actively streaming.
+                            // IMPORTANT: Do this BEFORE refreshSessionScreens() to prevent
+                            // the screen refresh from killing a just-established stream connection
+                            // (Issue #163: refreshSessionScreens can change activeScreenId which
+                            // triggers disconnectFromStream via watchers).
+                            if (this.currentConversationUuid && (this.isStreaming || this._wasStreamingBeforeHidden)) {
+                                await this.checkAndReconnectStream(this.currentConversationUuid);
+                            }
+
+                            // Clear the flag after reconnection attempt
+                            this._wasStreamingBeforeHidden = false;
+
+                            // Only refresh screens if NOT actively streaming.
+                            // During streaming, screen changes could race with the stream connection.
+                            if (this.currentSession?.id && !this.isStreaming) {
+                                setTimeout(() => {
+                                    this.refreshSessionScreens();
+                                }, 500);
+                            }
+                        }
                     });
 
                     // Track input heights for dynamic messages container positioning
@@ -1285,18 +1761,18 @@
                     });
                 },
 
-                // Extract conversation UUID from URL path (strict UUID validation)
-                getConversationUuidFromUrl() {
+                // Extract session ID from URL path (strict UUID validation)
+                getSessionIdFromUrl() {
                     const path = window.location.pathname.replace(/\/+$/, ''); // tolerate trailing slash
-                    const match = path.match(/^\/chat\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+                    const match = path.match(/^\/session\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
                     return match ? match[1] : null;
                 },
 
-                // Update URL to reflect current conversation
+                // Update URL to reflect current session
                 // Use replace: true to avoid back-button loops when clearing invalid URLs
-                updateUrl(conversationUuid = null, { replace = false } = {}) {
-                    const newPath = conversationUuid ? `/chat/${conversationUuid}` : '/';
-                    const state = conversationUuid ? { conversationUuid } : {};
+                updateSessionUrl(sessionId = null, { replace = false } = {}) {
+                    const newPath = sessionId ? `/session/${sessionId}` : '/';
+                    const state = sessionId ? { sessionId } : {};
 
                     // Only update if path actually changed
                     if (window.location.pathname !== newPath) {
@@ -1305,16 +1781,6 @@
                         } else {
                             window.history.pushState(state, '', newPath);
                         }
-                    }
-
-                    // Set session for "Back to Chat" in settings
-                    if (conversationUuid) {
-                        fetch(`/chat/${conversationUuid}/session`, {
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                            }
-                        });
                     }
                 },
 
@@ -1524,6 +1990,15 @@
                     return names[providerKey] || providerKey;
                 },
 
+                getModelDisplayLabel(providerKey, modelId) {
+                    const modelEntry = this.providers?.[providerKey]?.models?.[modelId];
+                    const displayName = typeof modelEntry === 'string' ? modelEntry : modelEntry?.name;
+                    if (displayName && displayName !== modelId) {
+                        return displayName + ' [' + modelId + ']';
+                    }
+                    return modelId;
+                },
+
                 getProviderColorClass(providerKey) {
                     const colors = {
                         'anthropic': 'bg-orange-500',
@@ -1546,13 +2021,58 @@
                 },
 
                 getStatusIconClass(status) {
+                    // Note: 'processing' status uses SVG spinner in templates, not this function
                     const icons = {
                         'idle': 'fa-solid fa-check',
-                        'processing': 'fa-solid fa-spinner fa-spin',
                         'archived': 'fa-solid fa-box-archive',
                         'failed': 'fa-solid fa-triangle-exclamation'
                     };
                     return icons[status] || 'fa-solid fa-check';
+                },
+
+                getConversationStatus(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen || screen.type !== 'chat') return 'idle';
+                    // For active screen, prefer currentConversationStatus (most up-to-date via SSE)
+                    if (
+                        screenId === this.activeScreenId &&
+                        this.currentConversationStatus &&
+                        screen.conversation?.uuid === this.currentConversationUuid
+                    ) {
+                        return this.currentConversationStatus;
+                    }
+                    return screen.conversation?.status || 'idle';
+                },
+
+                getActiveTabCount(session) {
+                    if (!session.screens) return 0;
+                    return session.screens.filter(s => {
+                        if (!s) return false;
+                        if (s.type === 'panel') return true;
+                        return s.conversation?.status !== 'archived';
+                    }).length;
+                },
+
+                getSessionStatus(session) {
+                    if (session.is_archived) return 'archived';
+
+                    const chatConversations = (session.screens || [])
+                        .filter(s => s.type === 'chat' && s.conversation && s.conversation.status !== 'archived')
+                        .map(s => s.conversation);
+
+                    if (chatConversations.length === 0) return 'idle';
+
+                    // Any conversation processing → processing takes priority
+                    if (chatConversations.some(c => c.status === 'processing')) return 'processing';
+
+                    // Otherwise: status of the latest non-archived conversation by last_activity_at
+                    const sorted = [...chatConversations].sort((a, b) => {
+                        const aTime = a.last_activity_at ? new Date(a.last_activity_at).getTime() : 0;
+                        const bTime = b.last_activity_at ? new Date(b.last_activity_at).getTime() : 0;
+                        return bTime - aTime;
+                    });
+
+                    return sorted[0].status || 'idle';
                 },
 
                 async selectAgent(agent, closeModal = true, { syncBackend = true } = {}) {
@@ -1581,13 +2101,6 @@
                                 return;
                             }
                             this.debugLog('Agent switched on backend', { agentId: agent.id, conversation: this.currentConversationUuid });
-
-                            // Update the conversations array so sidebar shows correct agent
-                            const convIndex = this.conversations.findIndex(c => c.uuid === this.currentConversationUuid);
-                            if (convIndex !== -1) {
-                                this.conversations[convIndex].agent = { id: agent.id, name: agent.name };
-                                this.conversations[convIndex].agent_id = agent.id;
-                            }
                         } catch (err) {
                             console.error('Error switching agent:', err);
                             this.errorMessage = 'Failed to switch agent. Please try again.';
@@ -1598,14 +2111,17 @@
                     this.currentAgentId = agent.id;
                     this.provider = agent.provider;
                     this.model = agent.model;
+                    this.updateModels();
 
                     // Fetch skills for autocomplete
                     this.fetchSkills();
 
-                    // Load agent's reasoning settings
-                    this.anthropicThinkingBudget = agent.anthropic_thinking_budget || 0;
-                    this.openaiReasoningEffort = agent.openai_reasoning_effort || 'none';
-                    this.claudeCodeThinkingTokens = agent.claude_code_thinking_tokens || 0;
+                    // Load agent's reasoning settings from reasoning_config JSON
+                    const rc = agent.reasoning_config || {};
+                    this.anthropicThinkingBudget = rc.budget_tokens || 0;
+                    this.openaiReasoningEffort = rc.effort || 'none';
+                    this.openaiCompatibleReasoningEffort = rc.effort || 'none';
+                    this.claudeCodeThinkingTokens = rc.thinking_tokens || 0;
                     this.responseLevel = agent.response_level || 1;
 
                     // Load allowed tools
@@ -1755,7 +2271,11 @@
                             if (data.workspace) {
                                 this.currentWorkspace = data.workspace;
                                 this.currentWorkspaceId = data.workspace.id;
-                                this.debugLog('Active workspace loaded', { workspace: data.workspace.name });
+                                // Store last session ID for init() to use when no URL session
+                                this._lastSessionIdFromWorkspace = data.last_session_id || null;
+                                // Check if workspace has a default session template
+                                this.workspaceHasDefaultTemplate = !!(data.workspace.default_session_template?.screen_order?.length);
+                                this.debugLog('Active workspace loaded', { workspace: data.workspace.name, lastSessionId: data.last_session_id });
                             }
                         }
                     } catch (err) {
@@ -1778,6 +2298,9 @@
                         return;
                     }
 
+                    // Increment version to guard against stale async operations on rapid switch
+                    const switchVersion = ++this._workspaceSwitchVersion;
+
                     try {
                         const response = await fetch(`/api/workspaces/active/${workspace.id}`, {
                             method: 'POST',
@@ -1787,33 +2310,50 @@
                             }
                         });
 
+                        // Abort if user switched to another workspace while we were fetching
+                        if (this._workspaceSwitchVersion !== switchVersion) {
+                            this.debugLog('Workspace switch aborted (stale)', { attempted: workspace.name, version: switchVersion });
+                            return;
+                        }
+
                         if (response.ok) {
                             const data = await response.json();
                             this.currentWorkspace = workspace;
                             this.currentWorkspaceId = workspace.id;
+                            // Update default template state for new workspace
+                            this.workspaceHasDefaultTemplate = !!(workspace.default_session_template?.screen_order?.length);
                             this.showWorkspaceSelector = false;
-                            this.debugLog('Workspace switched', { workspace: workspace.name, lastConversation: data.last_conversation_uuid });
+                            this.debugLog('Workspace switched', { workspace: workspace.name, lastSession: data.last_session_id });
 
-                            // Clear old workspace state before loading new data
+                            // Clear ALL old workspace state before loading new data
+                            // IMPORTANT: Include messages to prevent stale conversation content
+                            this._messageStore.clearMessages();
                             this.agents = [];
                             this.currentAgentId = null;
                             this.currentConversationUuid = null;
+                            this.currentSession = null;
+                            this.screens = [];
+                            this.activeScreenId = null;
 
-                            // Reload conversations and agents for the new workspace
-                            await this.fetchConversations();
+                            // Reload sessions and agents for the new workspace
+                            await this.fetchSessions();
+                            if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
+
                             await this.fetchAgents();
+                            if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
 
-                            // Restore last conversation for this workspace, or start new
-                            if (data.last_conversation_uuid) {
-                                // Check if conversation still exists in the loaded list
-                                const lastConvo = this.conversations.find(c => c.uuid === data.last_conversation_uuid);
-                                if (lastConvo) {
-                                    await this.loadConversation(data.last_conversation_uuid, true); // skipWorkspaceCheck=true
-                                } else {
-                                    this.newConversation();
+                            // Restore last session for this workspace, or start new
+                            if (data.last_session_id) {
+                                if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
+                                // Try to load directly by ID - loadSession handles 404 gracefully
+                                try {
+                                    await this.loadSession(data.last_session_id);
+                                } catch {
+                                    // Session was deleted - create new
+                                    await this.newSession();
                                 }
                             } else {
-                                this.newConversation();
+                                await this.newSession();
                             }
                         } else {
                             console.error('Failed to switch workspace:', response.status);
@@ -1934,34 +2474,6 @@
                     return modelId.replace(/^claude-/, '').replace(/^gpt-/, 'GPT-').replace(/-\d+$/, '');
                 },
 
-                async fetchConversations() {
-                    try {
-                        let url = '/api/conversations';
-                        const params = [];
-                        if (this.currentWorkspaceId) {
-                            params.push('workspace_id=' + this.currentWorkspaceId);
-                        }
-                        if (this.showArchivedConversations) {
-                            params.push('include_archived=true');
-                        }
-                        if (params.length > 0) {
-                            url += '?' + params.join('&');
-                        }
-                        const response = await fetch(url);
-                        const data = await response.json();
-                        this.conversations = data.data || [];
-                        this.conversationsPage = data.current_page || 1;
-                        this.conversationsLastPage = data.last_page || 1;
-
-                        // Update cached latest activity from first conversation
-                        if (this.conversations.length > 0) {
-                            this.cachedLatestActivity = this.conversations[0].last_activity_at;
-                        }
-                    } catch (err) {
-                        console.error('Failed to fetch conversations:', err);
-                    }
-                },
-
                 // Start polling for sidebar updates (every 30s)
                 startSidebarPolling() {
                     // Clear any existing interval
@@ -1984,16 +2496,16 @@
 
                 // Check if sidebar needs refreshing
                 async checkForSidebarUpdates() {
-                    // Skip if search filter is active
-                    if (this.conversationSearchQuery) {
+                    // Skip if no workspace is active or search filter is active
+                    if (!this.currentWorkspaceId || this.sessionSearchQuery) {
                         return;
                     }
 
                     try {
-                        const response = await fetch('/api/conversations/latest-activity');
+                        const response = await fetch(`/api/sessions/latest-activity?workspace_id=${this.currentWorkspaceId}`);
                         const data = await response.json();
 
-                        // If there's new activity, refresh the first page
+                        // If there's new activity, refresh the sessions list
                         if (data.latest_activity_at && data.latest_activity_at !== this.cachedLatestActivity) {
                             this.debugLog('Sidebar: new activity detected, refreshing');
                             await this.refreshSidebar();
@@ -2005,132 +2517,58 @@
 
                 // Refresh sidebar without losing scroll position or current selection
                 async refreshSidebar() {
+                    // Skip if no workspace ID
+                    if (!this.currentWorkspaceId) {
+                        return;
+                    }
+
                     try {
-                        let url = '/api/conversations';
-                        const params = [];
-                        if (this.currentWorkspaceId) {
-                            params.push('workspace_id=' + this.currentWorkspaceId);
+                        const params = new URLSearchParams({
+                            workspace_id: this.currentWorkspaceId,
+                            include_archived: this.showArchivedSessions ? '1' : '0',
+                            per_page: Math.min(200, Math.max(20, this.sessionsPage * 20)).toString(),
+                        });
+                        const response = await fetch(`/api/sessions?${params}`);
+                        if (!response.ok) {
+                            console.error('Failed to refresh sidebar:', response.status);
+                            return;
                         }
-                        if (this.showArchivedConversations) {
-                            params.push('include_archived=true');
-                        }
-                        if (params.length > 0) {
-                            url += '?' + params.join('&');
-                        }
-                        const response = await fetch(url);
                         const data = await response.json();
-                        const newConversations = data.data || [];
+                        const newSessions = data.data || [];
 
                         // Update cached latest activity
-                        if (newConversations.length > 0) {
-                            this.cachedLatestActivity = newConversations[0].last_activity_at;
+                        if (newSessions.length > 0) {
+                            this.cachedLatestActivity = newSessions[0].updated_at;
                         }
 
-                        // Merge new conversations with existing (preserve any extra pages loaded)
-                        const existingUuids = new Set(newConversations.map(c => c.uuid));
-                        const extraConversations = this.conversations.filter(c => !existingUuids.has(c.uuid));
+                        // Merge new sessions with any additional pages already loaded
+                        const newIds = new Set(newSessions.map(s => s.id));
+                        const extraSessions = this.sessions.filter(s => !newIds.has(s.id));
+                        this.sessions = [...newSessions, ...extraSessions];
 
-                        // Replace first page, keep any extras from infinite scroll
-                        this.conversations = [...newConversations, ...extraConversations];
+                        // Re-sync live SSE status into freshly loaded sidebar data to prevent
+                        // flicker when the backend hasn't persisted the latest status yet
+                        if (this.currentConversationStatus && this.currentSession?.id) {
+                            const activeScreen = this.getScreen(this.activeScreenId);
+                            if (activeScreen?.type === 'chat' && activeScreen.conversation_id) {
+                                const sidebarSession = this.sessions.find(s => s.id === this.currentSession.id);
+                                const screenInSidebar = sidebarSession?.screens?.find(
+                                    sc => sc.conversation?.id === activeScreen.conversation_id
+                                );
+                                if (screenInSidebar?.conversation) {
+                                    screenInSidebar.conversation.status = this.currentConversationStatus;
+                                }
+                            }
+                        }
+
+                        // Don't reset sessionsPage — keep it at the user's scroll depth so
+                        // fetchMoreSessions continues from the right position.
+                        // Compute last_page relative to the standard page size (20) that
+                        // fetchMoreSessions uses, not the inflated per_page we sent.
+                        this.sessionsLastPage = data.total ? Math.ceil(data.total / 20) : 1;
                     } catch (err) {
                         console.error('Failed to refresh sidebar:', err);
                     }
-                },
-
-                async fetchMoreConversations() {
-                    if (this.loadingMoreConversations || this.conversationsPage >= this.conversationsLastPage) {
-                        return;
-                    }
-                    this.loadingMoreConversations = true;
-                    try {
-                        const nextPage = this.conversationsPage + 1;
-                        const params = [`page=${nextPage}`];
-                        if (this.currentWorkspaceId) {
-                            params.push('workspace_id=' + this.currentWorkspaceId);
-                        }
-                        if (this.showArchivedConversations) {
-                            params.push('include_archived=true');
-                        }
-                        const url = '/api/conversations?' + params.join('&');
-                        const response = await fetch(url);
-                        const data = await response.json();
-                        if (data.data && data.data.length > 0) {
-                            this.conversations = [...this.conversations, ...data.data];
-                            this.conversationsPage = data.current_page;
-                            this.conversationsLastPage = data.last_page;
-                        }
-                    } catch (err) {
-                        console.error('Failed to fetch more conversations:', err);
-                    } finally {
-                        this.loadingMoreConversations = false;
-                    }
-                },
-
-                handleConversationsScroll(event) {
-                    const el = event.target;
-                    const threshold = 50; // pixels from bottom
-                    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
-                        this.fetchMoreConversations();
-                    }
-                },
-
-                // Conversation search
-                async searchConversations() {
-                    if (!this.conversationSearchQuery.trim()) {
-                        this.conversationSearchResults = [];
-                        return;
-                    }
-
-                    this.conversationSearchLoading = true;
-                    try {
-                        let url = `/api/conversations/search?query=${encodeURIComponent(this.conversationSearchQuery)}&limit=20`;
-                        if (this.currentWorkspaceId) {
-                            url += '&workspace_id=' + this.currentWorkspaceId;
-                        }
-                        if (this.showArchivedConversations) {
-                            url += '&include_archived=true';
-                        }
-                        const response = await fetch(url);
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                        const data = await response.json();
-                        this.conversationSearchResults = data.results || [];
-                    } catch (err) {
-                        console.error('Failed to search conversations:', err);
-                        this.conversationSearchResults = [];
-                    } finally {
-                        this.conversationSearchLoading = false;
-                    }
-                },
-
-                clearConversationSearch() {
-                    this.conversationSearchQuery = '';
-                    this.conversationSearchResults = [];
-                    this.showSearchInput = false;
-                },
-
-                clearAllFilters() {
-                    this.conversationSearchQuery = '';
-                    this.conversationSearchResults = [];
-                    this.showArchivedConversations = false;
-                    this.showSearchInput = false;
-                    // Clear sessionStorage (also done by $watch, but explicit for clarity)
-                    sessionStorage.removeItem('pocketdev_showArchivedConversations');
-                    sessionStorage.removeItem('pocketdev_conversationSearchQuery');
-                    this.fetchConversations(); // Refresh list without archived
-                },
-
-                async loadSearchResult(result) {
-                    // Close mobile drawer but keep search input visible while search is active
-                    this.showMobileDrawer = false;
-
-                    // Set pending scroll target - loadConversation will scroll to this turn
-                    this.pendingScrollToTurn = result.turn_number;
-
-                    // Disable auto-scroll to prevent other code from scrolling to bottom
-                    this.autoScrollEnabled = false;
-
-                    // Load the conversation (will scroll to turn instead of bottom)
-                    await this.loadConversation(result.conversation_uuid);
                 },
 
                 async newConversation() {
@@ -2141,7 +2579,13 @@
                     this.currentConversationStatus = null; // Reset status for new conversation
                     this.currentConversationTitle = null; // Reset title for new conversation
                     this.conversationProvider = null; // Reset for new conversation
-                    this.messages = [];
+                    this._messageStore.clearMessages();
+
+                    // Clear session/screen state for new conversation
+                    this.currentSession = null;
+                    this.screens = [];
+                    this.activeScreenId = null;
+                    this._screenMap = {};
                     this.sessionCost = 0;
                     this.totalTokens = 0;
                     this.inputTokens = 0;
@@ -2153,7 +2597,7 @@
                     this.resetContextTracking();
 
                     // Clear URL to base path
-                    this.updateUrl(null);
+                    this.updateSessionUrl(null);
 
                     // Re-fetch agents and reload current agent's settings
                     await this.fetchAgents();
@@ -2167,24 +2611,57 @@
                     }
                 },
 
-                async toggleArchiveConversation() {
+                async toggleArchiveConversation(screenId = null) {
                     // Note: API routes don't use CSRF middleware - Laravel excludes it by design for stateless APIs
-                    if (!this.currentConversationUuid) return;
+                    // If screenId provided, use that screen; otherwise use active screen
+                    const targetScreenId = screenId || this.activeScreenId;
+                    const screen = this.getScreen(targetScreenId);
 
-                    const isArchived = this.currentConversationStatus === 'archived';
+                    // Panel screens have no conversation - fall back to close
+                    if (screen?.type === 'panel') {
+                        return this.closeScreen(targetScreenId);
+                    }
+
+                    const conversationUuid = screen?.conversation?.uuid;
+                    if (!conversationUuid) return;
+
+                    const isArchived = screen?.conversation?.status === 'archived';
                     const action = isArchived ? 'unarchive' : 'archive';
+
                     try {
-                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/${action}`, {
+                        const response = await fetch(`/api/conversations/${conversationUuid}/${action}`, {
                             method: 'POST'
                         });
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
                         // Update local state - 'idle' is intentional for unarchive since completed
                         // conversations naturally rest at 'idle', and 'failed' ones can be retried
-                        this.currentConversationStatus = isArchived ? 'idle' : 'archived';
+                        const newStatus = isArchived ? 'idle' : 'archived';
 
-                        // Refresh conversation list
-                        await this.fetchConversations();
+                        // Update currentConversationStatus if targeting the active screen
+                        if (targetScreenId === this.activeScreenId) {
+                            this.currentConversationStatus = newStatus;
+                        }
+
+                        // Find adjacent screen BEFORE updating status (visibleScreenOrder filters archived)
+                        // Only switch screens when archiving the ACTIVE screen
+                        const isArchivingActiveScreen = !isArchived && targetScreenId === this.activeScreenId;
+                        const adjacentScreen = isArchivingActiveScreen ? this.findAdjacentScreenId(targetScreenId) : null;
+
+                        // Also update the screen's conversation status in local data
+                        if (screen?.conversation) {
+                            screen.conversation.status = newStatus;
+                        }
+
+                        // If archiving the active screen, switch to adjacent visible screen (prefer left)
+                        if (!isArchived) {
+                            if (adjacentScreen) {
+                                this.activateScreen(adjacentScreen);
+                            }
+                            this.showToast('Chat archived');
+                        } else {
+                            this.showToast('Chat restored');
+                        }
                     } catch (err) {
                         console.error('Failed to toggle archive:', err);
                         this.showError('Failed to ' + action + ' conversation');
@@ -2207,9 +2684,6 @@
 
                         // Reset to new conversation
                         this.newConversation();
-
-                        // Refresh conversation list
-                        await this.fetchConversations();
                     } catch (err) {
                         console.error('Failed to delete conversation:', err);
                         this.showError('Failed to delete conversation');
@@ -2219,6 +2693,9 @@
                 openRenameModal() {
                     if (!this.currentConversationUuid) return;
                     this.renameTitle = this.currentConversationTitle || '';
+                    // Get tab_label from current screen's conversation
+                    const screen = this.getScreen(this.activeScreenId);
+                    this.renameTabLabel = screen?.conversation?.tab_label || '';
                     this.showRenameModal = true;
                     // Focus input after modal opens
                     this.$nextTick(() => {
@@ -2236,6 +2713,12 @@
                         return;
                     }
 
+                    // Enforce tab label max length (6 chars)
+                    if (this.renameTabLabel.trim().length > 6) {
+                        this.showError('Tab label cannot exceed 6 characters');
+                        return;
+                    }
+
                     this.renameSaving = true;
                     try {
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/title`, {
@@ -2244,7 +2727,10 @@
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                             },
-                            body: JSON.stringify({ title: this.renameTitle.trim() })
+                            body: JSON.stringify({
+                                title: this.renameTitle.trim(),
+                                tab_label: this.renameTabLabel.trim() || null
+                            })
                         });
 
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -2252,10 +2738,13 @@
                         const data = await response.json();
                         this.currentConversationTitle = data.title;
 
-                        // Update the conversation in the sidebar list
-                        const conv = this.conversations.find(c => c.uuid === this.currentConversationUuid);
-                        if (conv) {
-                            conv.title = data.title;
+                        // Also update the screen in the current session if this conversation is displayed
+                        if (this.activeScreenId && this.screens) {
+                            const screen = this.getScreen(this.activeScreenId);
+                            if (screen?.type === 'chat' && screen.conversation?.uuid === this.currentConversationUuid) {
+                                screen.conversation.title = data.title;
+                                screen.conversation.tab_label = data.tab_label;
+                            }
                         }
 
                         this.showRenameModal = false;
@@ -2264,6 +2753,116 @@
                         this.showError('Failed to rename conversation');
                     } finally {
                         this.renameSaving = false;
+                    }
+                },
+
+                // Open the combined session edit modal (session name + chat labels)
+                openSessionEditModal() {
+                    if (!this.currentSession) return;
+
+                    this.sessionEditName = this.currentSession.name || '';
+
+                    // Build list of chat screens with their numbers and labels
+                    this.sessionEditChats = [];
+                    if (this.screens && this.visibleScreenOrder) {
+                        for (const screenId of this.visibleScreenOrder) {
+                            const screen = this.getScreen(screenId);
+                            if (screen?.type === 'chat') {
+                                this.sessionEditChats.push({
+                                    screenId: screenId,
+                                    chatNumber: screen.chat_number || '?',
+                                    label: screen.conversation?.tab_label || ''
+                                });
+                            }
+                        }
+                    }
+
+                    this.showSessionEditModal = true;
+                },
+
+                async saveSessionEdit() {
+                    if (!this.currentSession || !this.sessionEditName.trim()) return;
+
+                    // Enforce max character limit for session name
+                    if (this.sessionEditName.trim().length > window.TITLE_MAX_LENGTH) {
+                        this.showError(`Session name cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
+                        return;
+                    }
+
+                    // Enforce tab label max length (6 chars)
+                    for (const chat of this.sessionEditChats) {
+                        if (chat.label.trim().length > 6) {
+                            this.showError('Tab label cannot exceed 6 characters');
+                            return;
+                        }
+                    }
+
+                    this.sessionEditSaving = true;
+                    try {
+                        // Save session name
+                        const sessionResponse = await fetch(`/api/sessions/${this.currentSession.id}`, {
+                            method: 'PATCH',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            },
+                            body: JSON.stringify({ name: this.sessionEditName.trim() })
+                        });
+
+                        if (!sessionResponse.ok) throw new Error(`HTTP ${sessionResponse.status}`);
+
+                        const sessionData = await sessionResponse.json();
+                        this.currentSession.name = sessionData.name;
+
+                        // Update in sidebar (use this.sessions as source of truth, not filteredSessions)
+                        const sessionInList = this.sessions.find(s => s.id === this.currentSession.id);
+                        if (sessionInList) {
+                            sessionInList.name = sessionData.name;
+                        }
+
+                        // Save chat labels (update each conversation's tab_label)
+                        const failedLabels = [];
+                        for (const chat of this.sessionEditChats) {
+                            const screen = this.getScreen(chat.screenId);
+                            if (!screen?.conversation?.uuid) continue;
+
+                            const currentLabel = screen.conversation.tab_label || '';
+                            const newLabel = chat.label.trim();
+
+                            // Only update if changed
+                            if (currentLabel !== newLabel) {
+                                const convResponse = await fetch(`/api/conversations/${screen.conversation.uuid}/title`, {
+                                    method: 'PATCH',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                                    },
+                                    body: JSON.stringify({
+                                        title: screen.conversation.title || 'Chat',
+                                        tab_label: newLabel || null
+                                    })
+                                });
+
+                                if (convResponse.ok) {
+                                    // Update local state
+                                    screen.conversation.tab_label = newLabel || null;
+                                } else {
+                                    failedLabels.push(chat.chatNumber);
+                                }
+                            }
+                        }
+
+                        if (failedLabels.length > 0) {
+                            this.showError(`Failed to save label(s) for chat ${failedLabels.join(', ')}`);
+                            return;
+                        }
+
+                        this.showSessionEditModal = false;
+                    } catch (err) {
+                        console.error('Failed to save session:', err);
+                        this.showError('Failed to save session');
+                    } finally {
+                        this.sessionEditSaving = false;
                     }
                 },
 
@@ -2327,8 +2926,8 @@
                                     this.currentWorkspace = targetWorkspace;
                                     this.currentWorkspaceId = targetWorkspace.id;
 
-                                    // Reload conversations and agents for the new workspace
-                                    await this.fetchConversations();
+                                    // Reload sessions and agents for the new workspace
+                                    await this.fetchSessions();
                                     await this.fetchAgents();
 
                                     // Clear the loading state before recursive call
@@ -2355,9 +2954,9 @@
                         // Only set state after validating response
                         this.currentConversationUuid = uuid;
 
-                        // Update URL to reflect loaded conversation
-                        this.updateUrl(uuid);
-                        this.messages = [];
+                        // Note: URL is session-based, so we don't update it when loading a conversation
+                        // The session URL is set when loadSession() is called
+                        this._messageStore.clearMessages();
                         this.isAtBottom = true; // Hide scroll button during load
                         // Only enable auto-scroll if not coming from search result
                         if (this.pendingScrollToTurn === null) {
@@ -2440,7 +3039,10 @@
                         // Update provider/model from conversation
                         if (data.conversation?.provider_type) {
                             this.provider = data.conversation.provider_type;
-                            this.conversationProvider = data.conversation.provider_type; // Store for agent filtering
+                            // Only lock provider (for mid-conversation agent filtering) if conversation has messages
+                            // New conversations should allow switching to any agent/provider
+                            const hasMessages = data.conversation.messages && data.conversation.messages.length > 0;
+                            this.conversationProvider = hasMessages ? data.conversation.provider_type : null;
                             this.updateModels(); // Refresh available models for this provider
                         }
                         if (data.conversation?.model) {
@@ -2453,13 +3055,31 @@
                         // Update conversation title for header
                         this.currentConversationTitle = data.conversation?.title || null;
 
-                        // Set agent from conversation (don't use selectAgent which would PATCH backend)
-                        if (data.conversation?.agent_id) {
-                            // If agents not yet loaded, fetch them first
-                            if (this.agents.length === 0) {
-                                await this.fetchAgents();
-                            }
+                        // Load session and screens if available
+                        console.log('[DEBUG] Screen data:', data.conversation?.screen);
+                        console.log('[DEBUG] Session data:', data.conversation?.screen?.session);
+                        if (data.conversation?.screen?.session) {
+                            console.log('[DEBUG] Loading session from conversation');
+                            await this.loadSessionFromConversation(data.conversation.screen.session);
+                            this.activeScreenId = data.conversation.screen.id;
+                            console.log('[DEBUG] currentSession set:', this.currentSession);
+                            console.log('[DEBUG] activeScreenId set:', this.activeScreenId);
+                        } else {
+                            console.log('[DEBUG] No screen.session found - clearing session state');
+                            // Clear session state if conversation has no screen
+                            this.currentSession = null;
+                            this.screens = [];
+                            this.activeScreenId = null;
+                            this._screenMap = {};
+                        }
 
+                        // Set agent from conversation (don't use selectAgent which would PATCH backend)
+                        // If agents not yet loaded, fetch them first
+                        if (this.agents.length === 0) {
+                            await this.fetchAgents();
+                        }
+
+                        if (data.conversation?.agent_id) {
                             const agent = this.agents.find(a => a.id === data.conversation.agent_id);
                             if (agent) {
                                 // Set agent state directly - don't call selectAgent() as that
@@ -2474,16 +3094,33 @@
                                 this.currentAgentId = null;
                             }
                         } else {
-                            // Conversation has no agent - reset agent state
-                            this.currentAgentId = null;
+                            // Conversation has no agent - use default agent for NEW conversations (no messages)
+                            const hasMessages = data.conversation.messages && data.conversation.messages.length > 0;
+                            if (!hasMessages && this.agents.length > 0) {
+                                // New conversation: select default agent
+                                const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+                                if (defaultAgent) {
+                                    this.currentAgentId = defaultAgent.id;
+                                    this.claudeCodeAllowedTools = defaultAgent.allowed_tools || [];
+                                    this.provider = defaultAgent.provider;
+                                    this.model = defaultAgent.model;
+                                    this.clearActiveSkill();
+                                    this.fetchSkills();
+                                    this.updateModels();
+                                }
+                            } else {
+                                // Existing conversation without agent - leave as null
+                                this.currentAgentId = null;
+                            }
                         }
 
-                        // Load provider-specific reasoning settings from conversation
+                        // Load provider-specific reasoning settings from conversation's reasoning_config JSON
                         this.responseLevel = data.conversation?.response_level ?? 1;
-                        this.anthropicThinkingBudget = data.conversation?.anthropic_thinking_budget ?? 0;
-                        this.openaiReasoningEffort = data.conversation?.openai_reasoning_effort ?? 'none';
-                        this.openaiCompatibleReasoningEffort = data.conversation?.openai_compatible_reasoning_effort ?? 'none';
-                        this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
+                        const convRc = data.conversation?.reasoning_config || {};
+                        this.anthropicThinkingBudget = convRc.budget_tokens ?? 0;
+                        this.openaiReasoningEffort = convRc.effort ?? 'none';
+                        this.openaiCompatibleReasoningEffort = convRc.effort ?? 'none';
+                        this.claudeCodeThinkingTokens = convRc.thinking_tokens ?? 0;
 
                         // Note: scrolling is handled inside loadMessagesProgressively
                         // Clear pendingScrollToTurn since it was passed to loadMessagesProgressively
@@ -2504,688 +3141,1589 @@
                         this.showError('Failed to load conversation');
                         // Reset local state and clear URL without creating a back-button loop
                         this.currentConversationUuid = null;
-                        this.messages = [];
-                        this.updateUrl(null, { replace: true });
+                        this._messageStore.clearMessages();
+                        this.updateSessionUrl(null, { replace: true });
                     }
                 },
+
+                // ===== Sessions & Screens =====
+
+                // Fetch sessions for current workspace (first page)
+                async fetchSessions() {
+                    console.log('[DEBUG] fetchSessions called, workspaceId:', this.currentWorkspaceId);
+                    if (!this.currentWorkspaceId) {
+                        console.log('[DEBUG] fetchSessions: No workspace ID, returning early');
+                        return;
+                    }
+
+                    try {
+                        const params = new URLSearchParams({
+                            workspace_id: this.currentWorkspaceId,
+                            include_archived: this.showArchivedSessions ? '1' : '0',
+                        });
+                        console.log('[DEBUG] fetchSessions: Fetching from /api/sessions?' + params.toString());
+                        const response = await fetch(`/api/sessions?${params}`);
+                        console.log('[DEBUG] fetchSessions: Response status:', response.status);
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.sessions = data.data || [];
+                            this.sessionsPage = data.current_page || 1;
+                            this.sessionsLastPage = data.last_page || 1;
+                            console.log('[DEBUG] Fetched sessions:', this.sessions.length, 'page', this.sessionsPage, 'of', this.sessionsLastPage);
+                        } else {
+                            console.error('[DEBUG] fetchSessions: Non-OK response', response.status, await response.text());
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch sessions:', err);
+                    }
+                },
+
+                // Fetch more sessions (infinite scroll)
+                async fetchMoreSessions() {
+                    console.log('[DEBUG] fetchMoreSessions called, page:', this.sessionsPage, 'lastPage:', this.sessionsLastPage, 'loading:', this.loadingMoreSessions);
+                    if (this.loadingMoreSessions || this.sessionsPage >= this.sessionsLastPage) {
+                        console.log('[DEBUG] fetchMoreSessions skipped - already loading or at last page');
+                        return;
+                    }
+
+                    this.loadingMoreSessions = true;
+                    try {
+                        const nextPage = this.sessionsPage + 1;
+                        const params = new URLSearchParams({
+                            workspace_id: this.currentWorkspaceId,
+                            include_archived: this.showArchivedSessions ? '1' : '0',
+                            page: nextPage.toString(),
+                        });
+                        console.log('[DEBUG] fetchMoreSessions fetching page:', nextPage);
+                        const response = await fetch(`/api/sessions?${params}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            const newSessions = data.data || [];
+
+                            // Deduplicate: only add sessions not already in the array
+                            // This handles race conditions with refreshSidebar which resets sessionsPage
+                            const existingIds = new Set(this.sessions.map(s => s.id));
+                            const uniqueNewSessions = newSessions.filter(s => !existingIds.has(s.id));
+
+                            console.log('[DEBUG] fetchMoreSessions received:', newSessions.length, 'items,', uniqueNewSessions.length, 'unique, page:', data.current_page);
+                            this.sessions = [...this.sessions, ...uniqueNewSessions];
+                            this.sessionsPage = data.current_page || nextPage;
+                            this.sessionsLastPage = data.last_page || this.sessionsLastPage;
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch more sessions:', err);
+                    } finally {
+                        this.loadingMoreSessions = false;
+                    }
+                },
+
+                // Handle sessions list scroll for infinite scroll
+                handleSessionsScroll(event) {
+                    const el = event.target;
+                    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+                    if (nearBottom) {
+                        this.fetchMoreSessions();
+                    }
+                },
+
+                // Load a session by ID
+                async loadSession(sessionId) {
+                    console.log('[DEBUG] loadSession called:', sessionId);
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}`);
+                        if (!response.ok) throw new Error('Failed to load session');
+
+                        const session = await response.json();
+                        console.log('[DEBUG] Loaded session:', session.id, session.name, 'screens:', session.screens?.length);
+
+                        // Update URL to session (only if different session)
+                        if (this.currentSession?.id !== session.id) {
+                            this.updateSessionUrl(session.id);
+                        }
+
+                        // Save as last session for this workspace (for returning from settings - PHP session)
+                        fetch(`/session/${sessionId}/last`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        }).catch(() => {}); // Fire and forget
+
+                        // Persist as last active session in database (survives PHP session expiry)
+                        fetch(`/api/sessions/${sessionId}/active`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        }).catch(() => {}); // Fire and forget
+
+                        // Set session state
+                        this.currentSession = session;
+                        this.screens = session.screens || [];
+
+                        // Build lookup map
+                        this._screenMap = {};
+                        for (const screen of this.screens) {
+                            this._screenMap[screen.id] = screen;
+                        }
+
+                        // Determine which screen to show (last active or first)
+                        const activeScreenId = session.last_active_screen_id || session.screen_order?.[0];
+                        this.activeScreenId = activeScreenId;
+
+                        // If it's a chat screen, load the conversation
+                        const activeScreen = this.getScreen(activeScreenId);
+                        if (activeScreen?.type === 'chat' && activeScreen.conversation_id) {
+                            const convUuid = activeScreen.conversation?.uuid;
+                            if (convUuid) {
+                                // Load conversation without triggering session reload
+                                await this.loadConversationForScreen(convUuid);
+                            }
+                        }
+                        // If it's a panel screen, load the panel content
+                        if (activeScreen?.type === 'panel' && activeScreen.panel_id) {
+                            await this.loadPanelContent(activeScreen.panel_id);
+                        }
+
+                    } catch (err) {
+                        console.error('Failed to load session:', err);
+                        this.showError('Failed to load session');
+                    }
+                },
+
+                // Refresh screens list without reloading conversation (for when panels are opened programmatically)
+                async refreshSessionScreens() {
+                    if (!this.currentSession?.id) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}`);
+                        if (!response.ok) throw new Error('Failed to refresh session');
+
+                        const session = await response.json();
+
+                        // Update screens list
+                        this.screens = session.screens || [];
+
+                        // Update currentSession with new screen_order (this drives the tab rendering)
+                        if (this.currentSession) {
+                            this.currentSession.screen_order = session.screen_order || [];
+                            this.currentSession.last_active_screen_id = session.last_active_screen_id;
+                        }
+
+                        // Rebuild lookup map
+                        this._screenMap = {};
+                        for (const screen of this.screens) {
+                            this._screenMap[screen.id] = screen;
+                        }
+
+                        // Update to the newly active screen (the one that was just opened)
+                        if (session.last_active_screen_id && session.last_active_screen_id !== this.activeScreenId) {
+                            this.activeScreenId = session.last_active_screen_id;
+                            const activeScreen = this.getScreen(this.activeScreenId);
+
+                            // If it's a panel, load its content
+                            if (activeScreen?.type === 'panel' && activeScreen.panel_id) {
+                                await this.loadPanelContent(activeScreen.panel_id);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('Failed to refresh session screens:', err);
+                    }
+                },
+
+                // Load conversation without reloading session (for screen switching)
+                async loadConversationForScreen(uuid) {
+                    this.loadingConversation = true;
+                    this._loadingConversationUuid = uuid;
+                    this.disconnectFromStream();
+
+                    // Capture pendingScrollToTurn before loading (it will be cleared after use)
+                    const targetTurn = this.pendingScrollToTurn;
+
+                    try {
+                        const response = await fetch(`/api/conversations/${uuid}`);
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const data = await response.json();
+
+                        if (this._loadingConversationUuid !== uuid) return;
+
+                        this.currentConversationUuid = uuid;
+                        // Note: Don't update URL here - URLs are session-based, not conversation-based
+                        this._messageStore.clearMessages();
+                        this.isAtBottom = true;
+                        // Disable auto-scroll when targeting a specific turn (like loadConversation does)
+                        this.autoScrollEnabled = targetTurn === null;
+                        this.ignoreScrollEvents = true;
+
+                        // Reset counters
+                        this.inputTokens = 0;
+                        this.outputTokens = 0;
+                        this.cacheCreationTokens = 0;
+                        this.cacheReadTokens = 0;
+                        this.sessionCost = 0;
+
+                        // Sum costs from messages
+                        if (data.conversation?.messages) {
+                            for (const msg of data.conversation.messages) {
+                                this.inputTokens += msg.input_tokens || 0;
+                                this.outputTokens += msg.output_tokens || 0;
+                                this.cacheCreationTokens += msg.cache_creation_tokens || 0;
+                                this.cacheReadTokens += msg.cache_read_tokens || 0;
+                                if (msg.cost) this.sessionCost += msg.cost;
+                            }
+                        }
+                        this.totalTokens = this.inputTokens + this.outputTokens;
+
+                        // Load context tracking
+                        if (data.context) {
+                            this.contextWindowSize = data.context.context_window_size || 0;
+                            this.lastContextTokens = data.context.last_context_tokens || 0;
+                            this.contextPercentage = data.context.usage_percentage || 0;
+                            this.contextWarningLevel = data.context.warning_level || 'safe';
+                        }
+
+                        // Load messages (pass targetTurn to center initial batch if searching)
+                        if (data.conversation?.messages?.length > 0) {
+                            await this.loadMessagesProgressively(data.conversation.messages, targetTurn, uuid);
+                        } else {
+                            this.loadingConversation = false;
+                            this._loadingConversationUuid = null;
+                        }
+
+                        // Clear pendingScrollToTurn after applying (so later loads behave normally)
+                        this.pendingScrollToTurn = null;
+
+                        // Update provider/model
+                        const hasMessages = data.conversation?.messages && data.conversation.messages.length > 0;
+                        if (data.conversation?.provider_type) {
+                            this.provider = data.conversation.provider_type;
+                            // Only lock provider for mid-conversation agent filtering if conversation has started
+                            this.conversationProvider = hasMessages ? data.conversation.provider_type : null;
+                            this.updateModels();
+                        }
+                        if (data.conversation?.model) {
+                            this.model = data.conversation.model;
+                        }
+
+                        this.currentConversationStatus = data.conversation?.status || 'idle';
+                        this.currentConversationTitle = data.conversation?.title || null;
+
+                        // Set agent
+                        if (data.conversation?.agent_id) {
+                            const agent = this.agents.find(a => a.id === data.conversation.agent_id);
+                            if (agent) {
+                                this.currentAgentId = agent.id;
+                                this.claudeCodeAllowedTools = agent.allowed_tools || [];
+                                this.clearActiveSkill();
+                                this.fetchSkills();
+                            }
+                        } else if (!hasMessages && this.agents.length > 0) {
+                            // New conversation without agent: use default agent
+                            const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+                            if (defaultAgent) {
+                                this.currentAgentId = defaultAgent.id;
+                                this.claudeCodeAllowedTools = defaultAgent.allowed_tools || [];
+                                this.provider = defaultAgent.provider;
+                                this.model = defaultAgent.model;
+                                this.clearActiveSkill();
+                                this.fetchSkills();
+                                this.updateModels();
+                            }
+                        } else {
+                            this.currentAgentId = null;
+                        }
+
+                        this.$nextTick(() => {
+                            this.ignoreScrollEvents = false;
+                        });
+
+                        await this.checkAndReconnectStream(uuid);
+
+                    } catch (err) {
+                        this.loadingConversation = false;
+                        this._loadingConversationUuid = null;
+                        console.error('Failed to load conversation:', err);
+                    }
+                },
+
+                // Create a new session
+                async newSession() {
+                    if (!this.currentWorkspaceId) return;
+
+                    try {
+                        const response = await fetch('/api/sessions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                workspace_id: this.currentWorkspaceId,
+                                name: 'New Session',
+                                create_initial_chat: true,
+                            }),
+                        });
+
+                        if (!response.ok) throw new Error('Failed to create session');
+
+                        const session = await response.json();
+                        console.log('[DEBUG] Created new session:', session.id);
+
+                        // Add to sessions list
+                        this.sessions.unshift(session);
+
+                        // Load the new session
+                        await this.loadSession(session.id);
+
+                    } catch (err) {
+                        console.error('Failed to create session:', err);
+                        this.showError('Failed to create session');
+                    }
+                },
+
+                // Filter sessions (triggered by search input)
+                filterSessions() {
+                    // The filtering is done by the computed getter `filteredSessions`
+                    // This method exists for the @input handler
+                },
+
+                // Clear all filters (sessions and conversation search)
+                clearAllFilters() {
+                    this.showArchivedSessions = false;
+                    this.sessionSearchQuery = '';
+                    this.sidebarSearchMode = 'sessions';
+                    this.showArchivedConversations = false;
+                    this.clearConversationSearch(); // Invalidates in-flight requests
+                    this.fetchSessions();
+                },
+
+                // Search conversations semantically
+                async searchConversations() {
+                    if (!this.conversationSearchQuery.trim()) {
+                        this.clearConversationSearch(); // Invalidates in-flight requests
+                        return;
+                    }
+
+                    // Increment request ID to track this specific request
+                    const requestId = ++this.conversationSearchRequestId;
+                    this.conversationSearchLoading = true;
+
+                    try {
+                        const params = new URLSearchParams({
+                            query: this.conversationSearchQuery.trim(),
+                            limit: '20',
+                        });
+                        if (this.showArchivedConversations) {
+                            params.set('include_archived', 'true');
+                        }
+                        const response = await fetch(`/api/conversations/search?${params}`);
+                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        const data = await response.json();
+
+                        // Only update if this is still the latest request
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchResults = data.results || [];
+                        }
+                    } catch (err) {
+                        console.error('Failed to search conversations:', err);
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchResults = [];
+                        }
+                    } finally {
+                        if (requestId === this.conversationSearchRequestId) {
+                            this.conversationSearchLoading = false;
+                        }
+                    }
+                },
+
+                // Clear conversation search
+                clearConversationSearch() {
+                    this.conversationSearchRequestId++; // Invalidate any in-flight requests
+                    this.conversationSearchQuery = '';
+                    this.conversationSearchResults = [];
+                    this.conversationSearchLoading = false;
+                },
+
+                // Load a conversation from search result
+                async loadSearchResult(result) {
+                    // Close mobile drawer
+                    this.showMobileDrawer = false;
+
+                    const targetTurn = result.turn_number;
+
+                    // If we have session info, load the session and activate the screen
+                    if (result.session_id) {
+                        await this.loadSession(result.session_id);
+
+                        // Find the screen with this conversation
+                        const screen = this.screens.find(s =>
+                            s.conversation?.uuid === result.conversation_uuid
+                        );
+                        if (screen) {
+                            // Set pendingScrollToTurn so loadConversationForScreen centers around it
+                            this.pendingScrollToTurn = targetTurn;
+                            this.autoScrollEnabled = false;
+
+                            // If screen is already active, activateScreen returns early without loading
+                            // so we need to scroll directly instead
+                            if (this.activeScreenId === screen.id) {
+                                this.$nextTick(() => {
+                                    this.scrollToTurn(targetTurn);
+                                    this.pendingScrollToTurn = null;
+                                });
+                            } else {
+                                await this.activateScreen(screen.id);
+                            }
+                            return;
+                        }
+                    }
+
+                    // Fallback: load conversation directly (handles pendingScrollToTurn internally)
+                    this.pendingScrollToTurn = targetTurn;
+                    this.autoScrollEnabled = false;
+                    await this.loadConversation(result.conversation_uuid);
+                },
+
+                // Load session data from a conversation's screen.session relationship
+                async loadSessionFromConversation(session) {
+                    console.log('[DEBUG] loadSessionFromConversation called with session:', session?.id, session?.name);
+                    console.log('[DEBUG] Session screens:', session?.screens?.length, session?.screens?.map(s => s.id));
+                    console.log('[DEBUG] Session screen_order:', session?.screen_order);
+                    this.currentSession = session;
+                    this.screens = session.screens || [];
+                    console.log('[DEBUG] currentSession now set to:', this.currentSession?.id);
+
+                    // Build a lookup map for quick screen access
+                    this._screenMap = {};
+                    for (const screen of this.screens) {
+                        this._screenMap[screen.id] = screen;
+                    }
+                },
+
+                // Get screen by ID
+                getScreen(screenId) {
+                    return this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
+                },
+
+                // Get screen title for display (full title, used for tooltips)
+                getScreenTitle(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'Screen';
+                    if (screen.type === 'chat') {
+                        return screen.conversation?.title || 'Chat';
+                    }
+                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                },
+
+                // Get screen tab label for display (short form for tabs)
+                getScreenTabLabel(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'Screen';
+                    if (screen.type === 'chat') {
+                        // Use tab_label if set, otherwise show chat number
+                        const tabLabel = screen.conversation?.tab_label;
+                        if (tabLabel && tabLabel.trim()) {
+                            return tabLabel;
+                        }
+                        // Default: show chat number with dot (e.g., "1." or "3.")
+                        return (screen.chat_number || '?') + '.';
+                    }
+                    // For panels, use the full name (they're typically short already)
+                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                },
+
+                // Get screen type icon class
+                getScreenIcon(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'fa-solid fa-square';
+                    if (screen.type === 'panel') {
+                        // Look up panel's custom icon from availablePanels (system panels have custom icons)
+                        const panelSlug = screen.panel_slug || screen.panel?.slug;
+                        const panelInfo = this.availablePanels?.find(p => p.slug === panelSlug);
+                        // If panels haven't loaded yet (API failure), trigger a background retry
+                        if (!panelInfo && this.availablePanels.length === 0 && !this._panelsFetchPending) {
+                            this._panelsFetchPending = true;
+                            this.fetchAvailablePanels().finally(() => { this._panelsFetchPending = false; });
+                        }
+                        return panelInfo?.icon || 'fa-solid fa-table-columns';
+                    }
+                    // Chat screen: show status icon
+                    return this.getStatusIconClass(this.getConversationStatus(screenId));
+                },
+
+                // Get screen type color class (badge background color)
+                getScreenTypeColor(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return 'bg-gray-600';
+                    if (screen.type === 'panel') return 'bg-purple-600';
+                    // Chat screen: show status badge color
+                    return this.getStatusColorClass(this.getConversationStatus(screenId));
+                },
+
+                // Find the adjacent screen (prefer left, fallback to right)
+                // Used when closing/archiving a screen to focus the nearest neighbor
+                findAdjacentScreenId(screenId) {
+                    const order = this.visibleScreenOrder;
+                    const index = order.indexOf(screenId);
+                    if (index === -1) return order[0] || null;
+
+                    // Prefer the screen to the left
+                    if (index > 0) return order[index - 1];
+                    // Fallback to the screen to the right
+                    if (index < order.length - 1) return order[index + 1];
+                    // No other screens
+                    return null;
+                },
+
+                // Activate a screen (switch to it)
+                async activateScreen(screenId) {
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return;
+
+                    // If clicking the already active screen, do nothing
+                    if (this.activeScreenId === screenId) return;
+
+                    // Update local state first
+                    this.activeScreenId = screenId;
+
+                    // Update server state (sets last_active_screen_id on session)
+                    try {
+                        await fetch(`/api/screens/${screenId}/activate`, { method: 'POST' });
+                    } catch (err) {
+                        console.error('Failed to activate screen:', err);
+                    }
+
+                    // For chat screens, load the conversation content
+                    if (screen.type === 'chat' && screen.conversation_id) {
+                        const convUuid = screen.conversation?.uuid;
+                        if (convUuid) {
+                            await this.loadConversationForScreen(convUuid);
+                        }
+                    }
+                    // For panel screens, load panel content
+                    if (screen.type === 'panel' && screen.panel_id) {
+                        await this.loadPanelContent(screen.panel_id);
+                    }
+                },
+
+                // Load panel content from server
+                // Track currently loaded panel to avoid unnecessary reloads
+                _loadedPanelStateId: null,
+                _panelLoadToken: 0,
+
+                async loadPanelContent(panelStateId, force = false) {
+                    // Skip reload if already loaded and not forced
+                    if (!force && this._loadedPanelStateId === panelStateId && this.panelContent) {
+                        return;
+                    }
+
+                    this.loadingPanel = true;
+                    // Generate unique token to guard against stale loads from rapid switching
+                    const loadToken = ++this._panelLoadToken;
+
+                    try {
+                        const response = await fetch(`/api/panel/${panelStateId}/render`);
+                        if (!response.ok) {
+                            throw new Error('Failed to load panel');
+                        }
+                        const content = await response.text();
+
+                        // Discard stale result if a newer load was started
+                        if (loadToken !== this._panelLoadToken) return;
+
+                        this.panelContent = content;
+                        this._loadedPanelStateId = panelStateId;
+
+                        // Double-buffer: load into hidden iframe, then swap visibility
+                        const inactiveBuffer = this.activeIframeBuffer === 'A' ? 'B' : 'A';
+                        const inactiveIframe = this.$refs[`iframe${inactiveBuffer}`];
+                        const activeIframe = this.$refs[`iframe${this.activeIframeBuffer}`];
+
+                        if (inactiveIframe) {
+                            // Create a promise that resolves when the iframe loads (with 30s timeout)
+                            const loadPromise = new Promise((resolve) => {
+                                const onLoad = () => {
+                                    inactiveIframe.removeEventListener('load', onLoad);
+                                    resolve('loaded');
+                                };
+                                inactiveIframe.addEventListener('load', onLoad);
+                                inactiveIframe.srcdoc = content;
+                            });
+                            const timeoutPromise = new Promise((resolve) => {
+                                setTimeout(() => resolve('timeout'), 30000);
+                            });
+                            await Promise.race([loadPromise, timeoutPromise]);
+
+                            // Discard if a newer load was started during iframe load
+                            if (loadToken !== this._panelLoadToken) return;
+
+                            // Swap visibility instantly
+                            this.activeIframeBuffer = inactiveBuffer;
+
+                            // Clear the now-hidden iframe to free resources
+                            if (activeIframe) {
+                                activeIframe.srcdoc = '';
+                            }
+                        }
+                    } catch (err) {
+                        // Discard stale error if a newer load was started
+                        if (loadToken !== this._panelLoadToken) return;
+
+                        console.error('Failed to load panel content:', err);
+                        this.panelContent = '<div class="p-4 text-red-500">Failed to load panel content</div>';
+                        // On error, load directly into current iframe
+                        const currentIframe = this.$refs[`iframe${this.activeIframeBuffer}`];
+                        if (currentIframe) {
+                            currentIframe.srcdoc = this.panelContent;
+                        }
+                    } finally {
+                        // Only clear loading state if this is still the current load
+                        if (loadToken === this._panelLoadToken) {
+                            this.loadingPanel = false;
+                        }
+                    }
+                },
+
+                // Mobile swipe navigation handlers
+                // Check if an element or its parents have horizontal scroll available
+                isInHorizontalScrollArea(element) {
+                    let el = element;
+                    while (el && el !== document.body) {
+                        // Check if this element can scroll horizontally
+                        if (el.scrollWidth > el.clientWidth) {
+                            const style = window.getComputedStyle(el);
+                            if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
+                                return true;
+                            }
+                        }
+                        el = el.parentElement;
+                    }
+                    return false;
+                },
+
+                handleSwipeStart(e) {
+                    // Only enable swipe on mobile and when we have multiple screens
+                    if (this.windowWidth >= 768 || this.screens.length <= 1) return;
+
+                    // Don't activate swipe if touch started in a horizontally scrollable area
+                    if (this.isInHorizontalScrollArea(e.target)) return;
+
+                    this.swipeStartX = e.touches[0].clientX;
+                    this.swipeStartY = e.touches[0].clientY;
+                    this.swipeCurrentX = this.swipeStartX;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
+                },
+
+                handleSwipeMove(e) {
+                    if (this.windowWidth >= 768 || this.screens.length <= 1) return;
+                    if (this.swipeStartX === 0) return;
+
+                    const currentX = e.touches[0].clientX;
+                    const currentY = e.touches[0].clientY;
+                    const deltaX = currentX - this.swipeStartX;
+                    const deltaY = currentY - this.swipeStartY;
+
+                    // Only start swiping if horizontal movement is greater than vertical
+                    if (!this.isSwiping) {
+                        if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY)) {
+                            this.isSwiping = true;
+                        } else if (Math.abs(deltaY) > 10) {
+                            // User is scrolling vertically, abort swipe
+                            this.swipeStartX = 0;
+                            return;
+                        }
+                    }
+
+                    if (!this.isSwiping) return;
+
+                    // Prevent vertical scrolling while swiping
+                    e.preventDefault();
+
+                    const screenOrder = this.visibleScreenOrder;
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+                    const isAtStart = currentIndex === 0;
+                    const isAtEnd = currentIndex === screenOrder.length - 1;
+
+                    // Apply edge resistance when at boundaries
+                    let adjustedDelta = deltaX;
+                    if ((deltaX > 0 && isAtStart) || (deltaX < 0 && isAtEnd)) {
+                        adjustedDelta = deltaX * this.swipeEdgeResistance;
+                    }
+
+                    this.swipeDeltaX = adjustedDelta;
+                    this.swipeCurrentX = currentX;
+                },
+
+                handleSwipeEnd(e) {
+                    if (this.windowWidth >= 768 || !this.isSwiping) {
+                        this.resetSwipeState();
+                        return;
+                    }
+
+                    const screenOrder = this.visibleScreenOrder;
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+
+                    // Check if swipe exceeded threshold
+                    if (Math.abs(this.swipeDeltaX) > this.swipeThreshold) {
+                        if (this.swipeDeltaX > 0 && currentIndex > 0) {
+                            // Swipe right → previous screen
+                            this.activateScreen(screenOrder[currentIndex - 1]);
+                        } else if (this.swipeDeltaX < 0 && currentIndex < screenOrder.length - 1) {
+                            // Swipe left → next screen
+                            this.activateScreen(screenOrder[currentIndex + 1]);
+                        }
+                    }
+
+                    this.resetSwipeState();
+                },
+
+                resetSwipeState() {
+                    this.swipeStartX = 0;
+                    this.swipeStartY = 0;
+                    this.swipeCurrentX = 0;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
+                },
+
+                // Panel iframe swipe message handler
+                // Panels render in iframes, so touch events don't bubble to parent.
+                // The panel wrapper injects a script that posts messages to parent.
+                initPanelSwipeListener() {
+                    window.addEventListener('message', (event) => {
+                        // Validate message source identifier
+                        if (!event.data || event.data.source !== 'pocketdev-panel-swipe') {
+                            return;
+                        }
+
+                        // Validate event.source is from our panel iframes (defense-in-depth)
+                        // Note: We cannot validate event.origin because srcdoc iframes with
+                        // sandbox="allow-same-origin" send event.origin="null", not the parent origin
+                        const panelIframes = [
+                            this.$refs.iframeA?.contentWindow,
+                            this.$refs.iframeB?.contentWindow
+                        ].filter(Boolean);
+                        if (!panelIframes.includes(event.source)) {
+                            return;
+                        }
+
+                        // Only process if we're viewing a panel AND on mobile
+                        if (!this.isActiveScreenPanel || this.windowWidth >= 768) {
+                            return;
+                        }
+
+                        // Need multiple screens to swipe between
+                        if (this.screens.length <= 1) {
+                            return;
+                        }
+
+                        const { type, ...data } = event.data;
+
+                        switch (type) {
+                            case 'touchstart':
+                                this.handlePanelSwipeStart(data);
+                                break;
+                            case 'touchmove':
+                                this.handlePanelSwipeMove(data);
+                                break;
+                            case 'touchend':
+                                this.handlePanelSwipeEnd(data);
+                                break;
+                            case 'touchcancel':
+                                this.resetSwipeState();
+                                break;
+                        }
+                    });
+                },
+
+                handlePanelSwipeStart(data) {
+                    // If touch started in horizontal scroll area (code block, table), don't capture
+                    if (data.isInScrollArea) {
+                        return;
+                    }
+
+                    this.swipeStartX = data.clientX;
+                    this.swipeStartY = data.clientY;
+                    this.swipeCurrentX = data.clientX;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
+                },
+
+                handlePanelSwipeMove(data) {
+                    // If in scroll area, let the panel handle the scroll
+                    if (data.isInScrollArea) {
+                        return;
+                    }
+
+                    if (this.swipeStartX === 0) return;
+
+                    // Wait until direction is determined
+                    if (!data.determinedDirection) return;
+
+                    // If vertical scroll, abort swipe
+                    if (!data.isHorizontal) {
+                        this.swipeStartX = 0;
+                        return;
+                    }
+
+                    // Start swiping
+                    if (!this.isSwiping) {
+                        this.isSwiping = true;
+                    }
+
+                    const screenOrder = this.visibleScreenOrder;
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+                    const isAtStart = currentIndex === 0;
+                    const isAtEnd = currentIndex === screenOrder.length - 1;
+
+                    // Apply edge resistance at boundaries
+                    let adjustedDelta = data.deltaX;
+                    if ((data.deltaX > 0 && isAtStart) || (data.deltaX < 0 && isAtEnd)) {
+                        adjustedDelta = data.deltaX * this.swipeEdgeResistance;
+                    }
+
+                    this.swipeDeltaX = adjustedDelta;
+                    this.swipeCurrentX = data.clientX;
+                },
+
+                handlePanelSwipeEnd(data) {
+                    if (!this.isSwiping) {
+                        this.resetSwipeState();
+                        return;
+                    }
+
+                    const screenOrder = this.visibleScreenOrder;
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+
+                    // Check if swipe exceeded threshold
+                    if (Math.abs(this.swipeDeltaX) > this.swipeThreshold) {
+                        if (this.swipeDeltaX > 0 && currentIndex > 0) {
+                            // Swipe right → previous screen
+                            this.activateScreen(screenOrder[currentIndex - 1]);
+                        } else if (this.swipeDeltaX < 0 && currentIndex < screenOrder.length - 1) {
+                            // Swipe left → next screen
+                            this.activateScreen(screenOrder[currentIndex + 1]);
+                        }
+                    }
+
+                    this.resetSwipeState();
+                },
+
+                // Close/remove a screen
+                async closeScreen(screenId) {
+                    if (this.screens.length <= 1) return; // Don't close last screen
+
+                    const screen = this.getScreen(screenId);
+                    if (!screen) return;
+
+                    // Find adjacent screen BEFORE removing from order
+                    const adjacentScreenId = (this.activeScreenId === screenId)
+                        ? this.findAdjacentScreenId(screenId)
+                        : null;
+
+                    try {
+                        await fetch(`/api/screens/${screenId}`, { method: 'DELETE' });
+
+                        // Clear loaded panel cache if closing the currently loaded panel
+                        if (screen.type === 'panel' && screen.panel_id === this._loadedPanelStateId) {
+                            this._loadedPanelStateId = null;
+                            this.panelContent = '';
+                        }
+
+                        // Remove from local state
+                        this.screens = this.screens.filter(s => s.id !== screenId);
+                        if (this.currentSession?.screen_order) {
+                            this.currentSession.screen_order = this.currentSession.screen_order.filter(id => id !== screenId);
+                        }
+                        delete this._screenMap[screenId];
+
+                        // If we closed the active screen, switch to adjacent (prefer left)
+                        if (adjacentScreenId) {
+                            await this.activateScreen(adjacentScreenId);
+                        }
+                    } catch (err) {
+                        console.error('Failed to close screen:', err);
+                        this.showError('Failed to close screen');
+                    }
+                },
+
+                // Add a new chat screen
+                async addChatScreen() {
+                    // If no session exists yet, create one first
+                    if (!this.currentSession) {
+                        try {
+                            const response = await fetch('/api/sessions', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    name: 'New Session',
+                                    workspace_id: this.currentWorkspaceId
+                                })
+                            });
+                            if (!response.ok) throw new Error('Failed to create session');
+                            const session = await response.json();
+                            this.currentSession = session;
+                            this.sessions.unshift(session);
+                            this.screens = session.screens || [];
+                            this._screenMap = {};
+                            for (const screen of this.screens) {
+                                this._screenMap[screen.id] = screen;
+                            }
+                            console.log('[DEBUG] Created new session for chat:', session.id);
+                        } catch (err) {
+                            console.error('Failed to create session for chat:', err);
+                            this.showError('Failed to create session');
+                            return;
+                        }
+                    }
+
+                    try {
+                        // Get default agent for new conversations (same logic as loadConversation)
+                        const defaultAgent = this.agents.find(a => a.is_default) || this.agents[0];
+
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/chat`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                activate: true,
+                                agent_id: defaultAgent?.id || null
+                            })
+                        });
+
+                        if (!response.ok) throw new Error('Failed to create chat screen');
+
+                        const screen = await response.json();
+                        this.screens.push(screen);
+                        this._screenMap[screen.id] = screen;
+                        this.currentSession.screen_order = [...(this.currentSession.screen_order || []), screen.id];
+                        this.activeScreenId = screen.id;
+
+                        // Load the new conversation
+                        if (screen.conversation?.uuid) {
+                            await this.loadConversation(screen.conversation.uuid);
+
+                            // Fallback: ensure conversation is set even if loadConversation returned early
+                            // This handles race conditions where _loadingConversationUuid changed
+                            // Note: URL is session-based, so we don't update it when switching screens
+                            if (this.currentConversationUuid !== screen.conversation.uuid) {
+                                this.currentConversationUuid = screen.conversation.uuid;
+                            }
+                        }
+
+                        // Dispatch event to scroll tabs
+                        this.$dispatch('screen-added');
+                    } catch (err) {
+                        console.error('Failed to add chat screen:', err);
+                        this.showError('Failed to add new chat');
+                    }
+                },
+
+                // Add a new panel screen
+                async addPanelScreen(panelSlug) {
+                    // If no session exists yet, create one first
+                    if (!this.currentSession) {
+                        try {
+                            const response = await fetch('/api/sessions', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    name: 'New Session',
+                                    workspace_id: this.currentWorkspaceId
+                                })
+                            });
+                            if (!response.ok) throw new Error('Failed to create session');
+                            const session = await response.json();
+                            this.currentSession = session;
+                            this.sessions.unshift(session);
+                            this.screens = session.screens || [];
+                            this._screenMap = {};
+                            for (const screen of this.screens) {
+                                this._screenMap[screen.id] = screen;
+                            }
+                            console.log('[DEBUG] Created new session for panel:', session.id);
+                        } catch (err) {
+                            console.error('Failed to create session for panel:', err);
+                            this.showError('Failed to create session');
+                            return;
+                        }
+                    }
+
+                    try {
+                        // Pass workspace path for panels that use it (no fallback — let backend decide)
+                        const panelParams = {};
+                        if (['file-explorer', 'git-status'].includes(panelSlug)) {
+                            const workspacePath = this.currentWorkspace?.working_directory_path;
+                            if (workspacePath) {
+                                panelParams.path = workspacePath;
+                            }
+                        }
+
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/panel`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                panel_slug: panelSlug,
+                                parameters: Object.keys(panelParams).length > 0 ? panelParams : undefined,
+                                activate: true,
+                            })
+                        });
+
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.error('Panel creation failed:', response.status, errorText);
+                            throw new Error('Failed to create panel screen');
+                        }
+
+                        const data = await response.json();
+                        console.log('[DEBUG] Panel screen created:', data);
+                        const screen = data.screen;
+                        // Store panel info in screen for tab display
+                        if (data.panel) {
+                            screen.panel = data.panel;
+                        }
+                        this.screens.push(screen);
+                        this._screenMap[screen.id] = screen;
+                        this.currentSession.screen_order = [...(this.currentSession.screen_order || []), screen.id];
+                        this.activeScreenId = screen.id;
+                        console.log('[DEBUG] Active screen set:', screen.id, 'type:', screen.type, 'panel_id:', screen.panel_id);
+                        console.log('[DEBUG] isActiveScreenPanel:', this.isActiveScreenPanel);
+
+                        // Load panel content
+                        if (screen.panel_id) {
+                            console.log('[DEBUG] Loading panel content for:', screen.panel_id);
+                            await this.loadPanelContent(screen.panel_id);
+                            console.log('[DEBUG] Panel content loaded, length:', this.panelContent?.length);
+                        } else {
+                            console.warn('[DEBUG] No panel_id on screen:', screen);
+                        }
+
+                        // Dispatch event to scroll tabs
+                        this.$dispatch('screen-added');
+                    } catch (err) {
+                        console.error('Failed to add panel screen:', err);
+                        this.showError('Failed to add panel');
+                    }
+                },
+
+                // Scroll to the active tab in the tabs container
+                scrollToActiveTab() {
+                    const container = this.$refs.screenTabsContainer;
+                    if (!container) return;
+                    const activeTab = container.querySelector(`button[class*="bg-gray-700"]`);
+                    if (activeTab) {
+                        activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                    }
+                },
+
+                // Drag-and-drop handlers for screen tab reordering
+                handleDragStart(event, screenId) {
+                    this.draggedScreenId = screenId;
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', screenId);
+                    // Add a slight delay to allow the drag image to form before adding styling
+                    setTimeout(() => {
+                        if (event.target) {
+                            event.target.closest('[data-screen-tab]')?.classList.add('opacity-50');
+                        }
+                    }, 0);
+                },
+
+                handleDragOver(event, screenId) {
+                    if (!this.draggedScreenId || this.draggedScreenId === screenId) {
+                        this.dragOverScreenId = null;
+                        this.dragDropPosition = null;
+                        return;
+                    }
+
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+
+                    // Determine if dropping before or after based on mouse position
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const midpoint = rect.left + rect.width / 2;
+                    this.dragOverScreenId = screenId;
+                    this.dragDropPosition = event.clientX < midpoint ? 'before' : 'after';
+                },
+
+                handleDragLeave(event) {
+                    // Only clear if we're leaving the tab entirely (not entering a child)
+                    if (!event.currentTarget.contains(event.relatedTarget)) {
+                        this.dragOverScreenId = null;
+                        this.dragDropPosition = null;
+                    }
+                },
+
+                handleDrop(event, targetScreenId) {
+                    event.preventDefault();
+
+                    if (!this.draggedScreenId || this.draggedScreenId === targetScreenId) {
+                        this.resetDragState();
+                        return;
+                    }
+
+                    const currentOrder = [...(this.currentSession?.screen_order || [])];
+                    const draggedIndex = currentOrder.indexOf(this.draggedScreenId);
+                    const targetIndex = currentOrder.indexOf(targetScreenId);
+
+                    if (draggedIndex === -1 || targetIndex === -1) {
+                        this.resetDragState();
+                        return;
+                    }
+
+                    // Remove dragged item from current position
+                    currentOrder.splice(draggedIndex, 1);
+
+                    // Calculate new position
+                    let newIndex = currentOrder.indexOf(targetScreenId);
+                    if (this.dragDropPosition === 'after') {
+                        newIndex += 1;
+                    }
+
+                    // Insert at new position
+                    currentOrder.splice(newIndex, 0, this.draggedScreenId);
+
+                    // Reorder screens
+                    this.reorderScreens(currentOrder);
+                    this.resetDragState();
+                },
+
+                handleDragEnd(event) {
+                    // Remove styling from dragged element
+                    event.target.closest('[data-screen-tab]')?.classList.remove('opacity-50');
+                    this.resetDragState();
+                },
+
+                resetDragState() {
+                    this.draggedScreenId = null;
+                    this.dragOverScreenId = null;
+                    this.dragDropPosition = null;
+                },
+
+                // Persist screen order to server
+                async reorderScreens(newOrder) {
+                    if (!this.currentSession) return;
+
+                    // Update local state immediately for responsiveness
+                    this.currentSession.screen_order = newOrder;
+
+                    try {
+                        // Persist to server
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/reorder`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ screen_order: newOrder })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error('Failed to reorder screens');
+                        }
+                    } catch (err) {
+                        console.error('Failed to reorder screens:', err);
+                        // Optionally: revert local state or show error
+                        this.showError('Failed to save screen order');
+                    }
+                },
+
+                // Fetch available panels
+                async fetchAvailablePanels() {
+                    try {
+                        const response = await fetch('/api/panels');
+                        if (response.ok) {
+                            this.availablePanels = await response.json();
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch panels:', err);
+                    }
+                },
+
+                // Save session layout as workspace default template
+                async saveSessionAsDefault(session) {
+                    if (!session?.id) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${session.id}/save-as-default`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to save as default');
+
+                        const data = await response.json();
+                        this.workspaceHasDefaultTemplate = true;
+                        this.showToast('Session layout saved as default template');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to save session as default:', err);
+                        this.showError('Failed to save session as default template');
+                    }
+                },
+
+                // Clear the workspace default session template
+                async clearDefaultTemplate() {
+                    if (!this.currentSession?.id) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/clear-default`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to clear default');
+
+                        this.workspaceHasDefaultTemplate = false;
+                        this.showToast('Default template cleared');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to clear default template:', err);
+                        this.showError('Failed to clear default template');
+                    }
+                },
+
+                // Show a toast notification
+                showToast(message) {
+                    this.toastMessage = message;
+                    this.toastVisible = true;
+                    setTimeout(() => {
+                        this.toastVisible = false;
+                    }, 3000);
+                },
+
+                // Find the next session by position (below first, then above as fallback)
+                // Used when archiving/deleting to select the session "below" in the sidebar
+                findNextSessionByPosition(excludeSessionId, options = {}) {
+                    const { excludeArchived = true, sessionsArray = null } = options;
+                    const sessions = sessionsArray || this.filteredSessions;
+
+                    // Find current index
+                    const currentIndex = sessions.findIndex(s => s.id === excludeSessionId);
+                    if (currentIndex === -1) return null;
+
+                    // Look below first (older sessions - higher index since sorted by updated_at DESC)
+                    for (let i = currentIndex + 1; i < sessions.length; i++) {
+                        const s = sessions[i];
+                        if (excludeArchived && s.is_archived) continue;
+                        return s;
+                    }
+
+                    // Fallback: look above (newer sessions - lower index)
+                    for (let i = currentIndex - 1; i >= 0; i--) {
+                        const s = sessions[i];
+                        if (s.id === excludeSessionId) continue;
+                        if (excludeArchived && s.is_archived) continue;
+                        return s;
+                    }
+
+                    return null;
+                },
+
+                // Archive a session
+                async archiveSession(sessionId) {
+                    if (!sessionId) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}/archive`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to archive session');
+
+                        // Find next session BEFORE modifying array (to preserve position calculation)
+                        const wasCurrentSession = this.currentSession?.id === sessionId;
+                        const nextSession = wasCurrentSession
+                            ? this.findNextSessionByPosition(sessionId, { excludeArchived: true })
+                            : null;
+
+                        // Update local state - modify sessions array (filteredSessions is a computed getter)
+                        const session = this.sessions.find(s => s.id === sessionId);
+                        if (session) {
+                            session.is_archived = true;
+                        }
+
+                        // If not showing archived, remove from list
+                        if (!this.showArchivedSessions) {
+                            this.sessions = this.sessions.filter(s => s.id !== sessionId);
+                        }
+
+                        // If this was the current session, load the next one below (older) or create new
+                        if (wasCurrentSession) {
+                            if (nextSession) {
+                                await this.loadSession(nextSession.id);
+                            } else {
+                                await this.newSession();
+                            }
+                        }
+
+                        this.showToast('Session archived');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to archive session:', err);
+                        this.showError('Failed to archive session');
+                    }
+                },
+
+                // Restore a session from archive
+                async restoreSession(sessionId) {
+                    if (!sessionId) return;
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}/restore`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to restore session');
+
+                        // Update local state - modify sessions array (filteredSessions is a computed getter)
+                        const session = this.sessions.find(s => s.id === sessionId);
+                        if (session) {
+                            session.is_archived = false;
+                        }
+
+                        this.showToast('Session restored');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to restore session:', err);
+                        this.showError('Failed to restore session');
+                    }
+                },
+
+                // Delete a session (with confirmation)
+                async deleteSession(sessionId) {
+                    if (!sessionId) return;
+
+                    const session = this.sessions.find(s => s.id === sessionId);
+                    const sessionName = session?.name || 'this session';
+
+                    if (!confirm(`Delete "${sessionName}"? This will permanently remove the session and all its tabs. Conversations inside will be archived, not deleted.`)) {
+                        this.sessionMenuId = null;
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`/api/sessions/${sessionId}`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) throw new Error('Failed to delete session');
+
+                        // Find next session BEFORE removing (to preserve position calculation)
+                        const wasCurrentSession = this.currentSession?.id === sessionId;
+                        const nextSession = wasCurrentSession
+                            ? this.findNextSessionByPosition(sessionId, { excludeArchived: true })
+                            : null;
+
+                        // Remove from local list - modify sessions array (filteredSessions is a computed getter)
+                        this.sessions = this.sessions.filter(s => s.id !== sessionId);
+
+                        // If this was the current session, load the next one below (older) or create new
+                        if (wasCurrentSession) {
+                            if (nextSession) {
+                                await this.loadSession(nextSession.id);
+                            } else {
+                                await this.newSession();
+                            }
+                        }
+
+                        this.showToast('Session deleted');
+                        this.sessionMenuId = null;
+                    } catch (err) {
+                        console.error('Failed to delete session:', err);
+                        this.showError('Failed to delete session');
+                    }
+                },
+
+                // Open session context menu
+                openSessionMenu(event, session) {
+                    event.stopPropagation();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    this.sessionMenuPos = {
+                        top: rect.bottom + 4,
+                        left: rect.left,
+                        right: rect.right
+                    };
+                    this.sessionMenuId = session.id;
+                },
+
+                // Close session context menu
+                closeSessionMenu() {
+                    this.sessionMenuId = null;
+                },
+
+                // Open restore chat modal and fetch archived conversations
+                async openRestoreChatModal() {
+                    if (!this.currentSession?.id) return;
+
+                    this.showRestoreChatModal = true;
+                    this.loadingArchivedConversations = true;
+                    this.archivedConversations = [];
+
+                    try {
+                        const response = await fetch(`/api/sessions/${this.currentSession.id}/archived-conversations`);
+                        if (!response.ok) throw new Error('Failed to fetch archived conversations');
+
+                        const data = await response.json();
+                        this.archivedConversations = data.conversations || [];
+                    } catch (err) {
+                        console.error('Failed to fetch archived conversations:', err);
+                        this.showError('Failed to load archived conversations');
+                    } finally {
+                        this.loadingArchivedConversations = false;
+                    }
+                },
+
+                // Close restore chat modal
+                closeRestoreChatModal() {
+                    this.showRestoreChatModal = false;
+                    this.archivedConversations = [];
+                },
+
+                // Restore an archived conversation (unarchive it)
+                async restoreArchivedConversation(conversationId) {
+                    if (!conversationId) return;
+
+                    try {
+                        const response = await fetch(`/api/conversations/${conversationId}/unarchive`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+
+                        // Remove from archived list
+                        this.archivedConversations = this.archivedConversations.filter(c => c.id !== conversationId);
+
+                        // Reload the session to show the restored conversation in tabs
+                        await this.loadSession(this.currentSession.id);
+
+                        this.showToast('Conversation restored');
+
+                        // Close modal if no more archived conversations
+                        if (this.archivedConversations.length === 0) {
+                            this.closeRestoreChatModal();
+                        }
+                    } catch (err) {
+                        console.error('Failed to restore conversation:', err);
+                        this.showError('Failed to restore conversation');
+                    }
+                },
+
+                // Check if current session has archived conversations (for showing/hiding menu item)
+                get hasArchivedConversations() {
+                    // This is populated when session is loaded - check screens for archived conversations
+                    return this.screens.some(s => s.type === 'chat' && s.conversation?.status === 'archived');
+                },
+
+                // ===== Panel State Sync =====
+
+                // Store for debounce timers per panel
+                _panelSyncTimers: {},
+
+                /**
+                 * Sync panel state to server with debouncing.
+                 * Call this from panel templates when state changes.
+                 *
+                 * Usage in panel Blade template:
+                 *   <div x-data="{ expanded: [], ... }"
+                 *        x-effect="$root.syncPanelState('@{{ $panelState->id }}', { expanded })">
+                 *
+                 * @param {string} panelStateId - The UUID of the panel state
+                 * @param {object} state - The state object to sync
+                 * @param {boolean} merge - If true, merge with existing state; otherwise replace
+                 */
+                syncPanelState(panelStateId, state, merge = true) {
+                    // Clear any existing timer for this panel
+                    if (this._panelSyncTimers[panelStateId]) {
+                        clearTimeout(this._panelSyncTimers[panelStateId]);
+                    }
+
+                    // Set a new debounced sync (500ms delay)
+                    this._panelSyncTimers[panelStateId] = setTimeout(async () => {
+                        try {
+                            const response = await fetch(`/api/panel/${panelStateId}/state`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ state, merge })
+                            });
+
+                            if (!response.ok) {
+                                console.warn('Failed to sync panel state:', response.status);
+                            }
+                        } catch (err) {
+                            console.error('Error syncing panel state:', err);
+                        }
+                    }, 500);
+                },
+
+                /**
+                 * Immediately sync panel state (no debounce).
+                 * Use for critical state changes like before navigation.
+                 */
+                async syncPanelStateImmediate(panelStateId, state, merge = true) {
+                    // Clear any pending debounced sync
+                    if (this._panelSyncTimers[panelStateId]) {
+                        clearTimeout(this._panelSyncTimers[panelStateId]);
+                        delete this._panelSyncTimers[panelStateId];
+                    }
+
+                    try {
+                        const response = await fetch(`/api/panel/${panelStateId}/state`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ state, merge })
+                        });
+
+                        if (!response.ok) {
+                            console.warn('Failed to sync panel state:', response.status);
+                        }
+                    } catch (err) {
+                        console.error('Error syncing panel state:', err);
+                    }
+                },
+
+                // ===== End Sessions & Screens =====
+
+                // ===== Stream Methods (Sprint 3: delegate to _streamStore) =====
 
                 // Check for active stream and reconnect if found
                 async checkAndReconnectStream(uuid) {
-                    // Don't reconnect if we just finished streaming (prevents duplicate events)
-                    if (this._justCompletedStream) {
-                        return;
-                    }
-
-                    try {
-                        const response = await fetch(`/api/conversations/${uuid}/stream-status`);
-                        const data = await response.json();
-
-                        if (data.is_streaming) {
-                            // Detect: page refresh vs timeout reconnect
-                            // Page refresh: messages array has no streaming content (only DB messages)
-                            // Timeout reconnect: messages array still has streaming content in memory
-                            const isPageRefresh = !this._hasActiveStreamingContent();
-
-                            let fromIndex;
-                            if (isPageRefresh) {
-                                // PAGE REFRESH: Fresh page load during active stream
-                                // Reset state and replay ALL events from 0 to rebuild UI
-                                this._resetStreamStateForReplay();
-                                fromIndex = 0;
-                                console.log('[Stream] Page refresh reconnect - replaying all events from 0');
-                            } else {
-                                // TIMEOUT RECONNECT: Same session, connection dropped
-                                // Restore state and continue from last index
-                                this._restoreStreamState(uuid);
-                                const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
-                                fromIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
-                                console.log('[Stream] Timeout reconnect:', { uuid, fromIndex, eventCount: data.event_count });
-                            }
-
-                            // Seed in-memory tracker so timeout retries use the correct index
-                            this.lastEventIndex = fromIndex;
-
-                            // Connect to stream events
-                            await this.connectToStreamEvents(fromIndex);
-                        } else {
-                            // Stream is not active, clear any stale sessionStorage
-                            this._clearStreamStorage(uuid);
-                        }
-                    } catch (err) {
-                        // No active stream, that's fine
-                        console.debug('[Stream] No active stream for reconnection:', err.message);
-                    }
+                    return this._streamStore?.checkAndReconnectStream(uuid);
                 },
 
-                // Save stream state to sessionStorage for persistence across refresh
-                _saveStreamState(uuid) {
-                    if (!uuid) return;
-                    try {
-                        const state = {
-                            thinkingBlocks: Object.fromEntries(
-                                Object.entries(this._streamState.thinkingBlocks).map(([k, v]) => [k, {
-                                    msgIndex: v.msgIndex,
-                                    content: v.content,
-                                    complete: v.complete
-                                }])
-                            ),
-                            currentThinkingBlock: this._streamState.currentThinkingBlock,
-                            textMsgIndex: this._streamState.textMsgIndex,
-                            toolMsgIndex: this._streamState.toolMsgIndex,
-                            textContent: this._streamState.textContent,
-                            // Tool state for mid-tool refresh recovery
-                            toolInput: this._streamState.toolInput,
-                            toolInProgress: this._streamState.toolInProgress,
-                            waitingForToolResults: Array.from(this._streamState.waitingForToolResults || []), // Set → Array for JSON
-                            abortPending: this._streamState.abortPending,
-                            abortSkipSync: this._streamState.abortSkipSync,
-                            // Per-turn cost/token counters for usage display
-                            turnCost: this._streamState.turnCost,
-                            turnInputTokens: this._streamState.turnInputTokens,
-                            turnOutputTokens: this._streamState.turnOutputTokens,
-                            turnCacheCreationTokens: this._streamState.turnCacheCreationTokens,
-                            turnCacheReadTokens: this._streamState.turnCacheReadTokens,
-                            startedAt: this._streamState.startedAt,
-                        };
-                        sessionStorage.setItem(`stream_state_${uuid}`, JSON.stringify(state));
-                    } catch (e) {
-                        console.warn('[Stream] Failed to save stream state:', e);
-                    }
-                },
-
-                // Restore stream state from sessionStorage
-                _restoreStreamState(uuid) {
-                    if (!uuid) return;
-                    try {
-                        const saved = sessionStorage.getItem(`stream_state_${uuid}`);
-                        if (saved) {
-                            const state = JSON.parse(saved);
-                            // Restore relevant state properties
-                            if (state.thinkingBlocks) {
-                                this._streamState.thinkingBlocks = state.thinkingBlocks;
-                            }
-                            if (state.currentThinkingBlock !== undefined) {
-                                this._streamState.currentThinkingBlock = state.currentThinkingBlock;
-                            }
-                            if (state.textMsgIndex !== undefined) {
-                                this._streamState.textMsgIndex = state.textMsgIndex;
-                            }
-                            if (state.toolMsgIndex !== undefined) {
-                                this._streamState.toolMsgIndex = state.toolMsgIndex;
-                            }
-                            if (state.textContent !== undefined) {
-                                this._streamState.textContent = state.textContent;
-                            }
-                            // Restore tool state for mid-tool refresh recovery
-                            if (state.toolInput !== undefined) {
-                                this._streamState.toolInput = state.toolInput;
-                            }
-                            if (state.toolInProgress !== undefined) {
-                                this._streamState.toolInProgress = state.toolInProgress;
-                            }
-                            if (Array.isArray(state.waitingForToolResults)) {
-                                this._streamState.waitingForToolResults = new Set(state.waitingForToolResults);
-                            }
-                            if (state.abortPending !== undefined) {
-                                this._streamState.abortPending = state.abortPending;
-                            }
-                            if (state.abortSkipSync !== undefined) {
-                                this._streamState.abortSkipSync = state.abortSkipSync;
-                            }
-                            // Restore per-turn cost/token counters
-                            if (state.turnCost !== undefined) {
-                                this._streamState.turnCost = state.turnCost;
-                            }
-                            if (state.turnInputTokens !== undefined) {
-                                this._streamState.turnInputTokens = state.turnInputTokens;
-                            }
-                            if (state.turnOutputTokens !== undefined) {
-                                this._streamState.turnOutputTokens = state.turnOutputTokens;
-                            }
-                            if (state.turnCacheCreationTokens !== undefined) {
-                                this._streamState.turnCacheCreationTokens = state.turnCacheCreationTokens;
-                            }
-                            if (state.turnCacheReadTokens !== undefined) {
-                                this._streamState.turnCacheReadTokens = state.turnCacheReadTokens;
-                            }
-                            if (state.startedAt) {
-                                this._streamState.startedAt = state.startedAt;
-                            }
-                            console.log('[Stream] Restored stream state from sessionStorage:', state);
-                        }
-                    } catch (e) {
-                        console.warn('[Stream] Failed to restore stream state:', e);
-                    }
-                },
-
-                // Clear stream-related sessionStorage for a conversation
-                _clearStreamStorage(uuid) {
-                    if (!uuid) return;
-                    try {
-                        sessionStorage.removeItem(`stream_index_${uuid}`);
-                        sessionStorage.removeItem(`stream_state_${uuid}`);
-                    } catch (e) {
-                        // sessionStorage might not be available
-                    }
-                },
-
-                // Check if messages array has content from active streaming
-                // Used to distinguish page refresh (no streaming content) from timeout reconnect (has streaming content)
-                _hasActiveStreamingContent() {
-                    // Streaming messages have client-generated IDs: msg-{timestamp}-thinking, msg-{timestamp}-text, msg-{timestamp}-tool
-                    // DB-loaded messages have different ID patterns (numeric or UUID from database)
-                    return this.messages.some(msg => {
-                        if (msg.id && typeof msg.id === 'string') {
-                            return /^msg-\d+-(thinking|text|tool)/.test(msg.id);
-                        }
-                        return false;
-                    });
-                },
-
-                // Reset stream state for clean replay on page refresh
-                // Used when replaying all events from index 0 after a page refresh
-                _resetStreamStateForReplay() {
-                    // Preserve startedAt for accurate elapsed time display
-                    // On page refresh, memory is fresh (no startedAt), so read from sessionStorage
-                    const savedStartedAt = this._streamState.startedAt ?? (() => {
-                        if (!this.currentConversationUuid) return null;
-                        try {
-                            const saved = sessionStorage.getItem(`stream_state_${this.currentConversationUuid}`);
-                            return saved ? JSON.parse(saved).startedAt : null;
-                        } catch (_) {
-                            return null;
-                        }
-                    })();
-
-                    this._streamState = {
-                        thinkingBlocks: {},
-                        currentThinkingBlock: -1,
-                        textMsgIndex: -1,
-                        toolMsgIndex: -1,
-                        textContent: '',
-                        toolInput: '',
-                        turnCost: 0,
-                        turnInputTokens: 0,
-                        turnOutputTokens: 0,
-                        turnCacheCreationTokens: 0,
-                        turnCacheReadTokens: 0,
-                        toolInProgress: false,
-                        waitingForToolResults: new Set(),
-                        abortPending: false,
-                        abortSkipSync: false,
-                        startedAt: savedStartedAt,
-                    };
-
-                    // Reset event tracking for fresh replay
-                    this.lastEventIndex = 0;
-                    this.lastEventId = null;
-                },
+                // ===== Message Methods (Sprint 3: delegate to _messageStore) =====
 
                 /**
-                 * Progressive message loading - renders priority messages first, then fills in the rest.
-                 * For normal load: shows last N messages immediately, then prepends older ones.
-                 * For search: shows messages around target turn first, then fills in.
-                 * @param {string} loadUuid - UUID of conversation being loaded (for race condition guard)
+                 * Progressive message loading - delegates to messageStore
                  */
                 async loadMessagesProgressively(dbMessages, targetTurn = null, loadUuid = null) {
-                    const INITIAL_BATCH = 100;  // Messages to show immediately
-                    const PREPEND_BATCH = 50;   // Messages per prepend batch
-
-                    // Convert all messages to UI format first
-                    const allUiMessages = [];
-                    // Track pending tool_results that need linking (tool_use in different db message)
-                    const pendingToolResults = [];
-
-                    for (const msg of dbMessages) {
-                        const converted = this.convertDbMessageToUi(msg, pendingToolResults);
-                        allUiMessages.push(...converted);
-                    }
-
-                    // Post-process: link any pending tool_results to their tool_use messages
-                    // This handles cases where tool_result is in a separate db message from tool_use
-                    for (const pending of pendingToolResults) {
-                        const toolMsgIndex = allUiMessages.findIndex(m => m.role === 'tool' && m.toolId === pending.tool_use_id);
-                        if (toolMsgIndex >= 0) {
-                            allUiMessages[toolMsgIndex] = {
-                                ...allUiMessages[toolMsgIndex],
-                                toolResult: pending.content
-                            };
+                    const self = this;
+                    return this._messageStore?.loadMessagesProgressively(dbMessages, targetTurn, loadUuid, {
+                        getCurrentUuid: () => this.currentConversationUuid,
+                        nextTick: (fn) => this.$nextTick(fn),
+                        scrollToTurn: (turn) => this.scrollToTurn(turn),
+                        scrollToBottom: () => this.scrollToBottom(),
+                        setLoadingConversation: (val) => {
+                            this.loadingConversation = val;
+                            if (!val) this._loadingConversationUuid = null;
                         }
-                    }
-
-                    if (allUiMessages.length === 0) {
-                        this.loadingConversation = false;
-                        this._loadingConversationUuid = null;
-                        return;
-                    }
-
-                    // Determine which messages to render first based on context
-                    let priorityStartIndex;
-                    if (targetTurn !== null) {
-                        // Search case: find messages around the target turn
-                        const targetIndex = allUiMessages.findIndex(m => m.turn_number === targetTurn);
-                        if (targetIndex !== -1) {
-                            // Center the initial batch around the target
-                            priorityStartIndex = Math.max(0, targetIndex - Math.floor(INITIAL_BATCH / 2));
-                        } else {
-                            // Target not found, fall back to end
-                            priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
-                        }
-                    } else {
-                        // Normal load: show last N messages first
-                        priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
-                    }
-
-                    // Split messages into priority (render first) and before (prepend later)
-                    const messagesBefore = allUiMessages.slice(0, priorityStartIndex);
-                    const priorityMessages = allUiMessages.slice(priorityStartIndex);
-
-                    // Guard: abort if user switched to different conversation during processing
-                    if (loadUuid && this.currentConversationUuid !== loadUuid) {
-                        return;
-                    }
-
-                    // Phase 1: Render priority messages immediately
-                    this.messages = priorityMessages;
-
-                    // Wait for initial render and scroll
-                    await new Promise(resolve => {
-                        this.$nextTick(() => {
-                            if (targetTurn !== null) {
-                                this.scrollToTurn(targetTurn);
-                            } else {
-                                this.scrollToBottom();
-                            }
-                            resolve();
-
-                            // Hide loading overlay AFTER scroll has painted
-                            requestAnimationFrame(() => {
-                                // Guard: only clear if still on same conversation
-                                if (!loadUuid || this.currentConversationUuid === loadUuid) {
-                                    this.loadingConversation = false;
-                                    this._loadingConversationUuid = null;
-                                }
-                            });
-                        });
                     });
-
-                    // Phase 2: Prepend older messages in batches (if any) - runs in background, don't await
-                    if (messagesBefore.length > 0) {
-                        this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH, loadUuid);
-                    }
                 },
 
                 /**
-                 * Prepends messages in batches. Browser's scroll anchoring maintains scroll position.
-                 * @param {string} loadUuid - UUID of conversation being loaded (for race condition guard)
-                 */
-                async prependMessagesInBatches(messages, batchSize, loadUuid = null) {
-                    let remaining = [...messages];
-
-                    while (remaining.length > 0) {
-                        // Guard: abort if user switched to different conversation
-                        if (loadUuid && this.currentConversationUuid !== loadUuid) {
-                            return;
-                        }
-
-                        // Take a batch from the END (newest of the old messages)
-                        const batch = remaining.slice(-batchSize);
-                        remaining = remaining.slice(0, -batchSize);
-
-                        // Prepend batch to beginning of messages array
-                        this.messages.unshift(...batch);
-
-                        // Yield to main thread between batches (lets browser render and handle scroll anchoring)
-                        await new Promise(resolve => requestAnimationFrame(resolve));
-                    }
-                },
-
-                /**
-                 * Converts a DB message to UI format. Returns array (content blocks expand to multiple).
-                 * @param {Object} dbMsg - The database message to convert
-                 * @param {Array} pendingToolResults - Optional array to collect tool_results that couldn't be linked
-                 *                                     (because tool_use is in a different db message)
+                 * Converts a DB message to UI format - delegates to messageStore
                  */
                 convertDbMessageToUi(dbMsg, pendingToolResults = null) {
-                    const result = [];
-                    const content = dbMsg.content;
-                    const msgInputTokens = dbMsg.input_tokens || 0;
-                    const msgOutputTokens = dbMsg.output_tokens || 0;
-                    const msgCacheCreation = dbMsg.cache_creation_tokens || 0;
-                    const msgCacheRead = dbMsg.cache_read_tokens || 0;
-                    const msgModel = dbMsg.model || this.model;
-                    const msgCost = dbMsg.cost || null;
-
-                    // Handle compaction messages specially
-                    if (dbMsg.role === 'compaction') {
-                        const preTokens = content?.pre_tokens;
-                        const preTokensDisplay = preTokens != null ? preTokens.toLocaleString() : 'unknown';
-                        result.push({
-                            id: 'msg-' + Date.now() + '-' + Math.random(),
-                            role: 'compaction',
-                            content: content?.summary || '',
-                            preTokens: preTokens,
-                            preTokensDisplay: preTokensDisplay,
-                            trigger: content?.trigger ?? 'auto',
-                            timestamp: dbMsg.created_at,
-                            collapsed: true,
-                            turn_number: dbMsg.turn_number
-                        });
-                        return result;
-                    }
-
-                    if (typeof content === 'string') {
-                        result.push({
-                            id: 'msg-' + Date.now() + '-' + Math.random(),
-                            role: dbMsg.role,
-                            content: content,
-                            timestamp: dbMsg.created_at,
-                            collapsed: false,
-                            cost: msgCost,
-                            model: msgModel,
-                            inputTokens: msgInputTokens,
-                            outputTokens: msgOutputTokens,
-                            cacheCreationTokens: msgCacheCreation,
-                            cacheReadTokens: msgCacheRead,
-                            agent: dbMsg.agent,
-                            turn_number: dbMsg.turn_number
-                        });
-                    } else if (Array.isArray(content)) {
-                        if (content.length === 0) {
-                            if (msgCost && dbMsg.role === 'assistant') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'empty-response',
-                                    content: null,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: msgCost,
-                                    model: msgModel,
-                                    inputTokens: msgInputTokens,
-                                    outputTokens: msgOutputTokens,
-                                    cacheCreationTokens: msgCacheCreation,
-                                    cacheReadTokens: msgCacheRead,
-                                    agent: dbMsg.agent,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            }
-                            return result;
-                        }
-
-                        const lastBlockIndex = content.length - 1;
-
-                        for (let i = 0; i < content.length; i++) {
-                            const block = content[i];
-                            const isLast = (i === lastBlockIndex);
-
-                            if (block.type === 'text') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'assistant',
-                                    content: block.text,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'thinking') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'thinking',
-                                    content: block.thinking,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: true,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'tool_use') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'tool',
-                                    toolName: block.name,
-                                    toolId: block.id,
-                                    toolInput: block.input,
-                                    toolResult: null,
-                                    content: JSON.stringify(block.input, null, 2),
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: true,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'tool_result' && block.tool_use_id) {
-                                // Link result to the corresponding tool message in result array
-                                const toolMsgIndex = result.findIndex(m => m.role === 'tool' && m.toolId === block.tool_use_id);
-                                if (toolMsgIndex >= 0) {
-                                    result[toolMsgIndex] = {
-                                        ...result[toolMsgIndex],
-                                        toolResult: block.content
-                                    };
-                                } else if (pendingToolResults) {
-                                    // Tool not found in this message - collect for post-processing
-                                    // (tool_use is likely in a different db message)
-                                    pendingToolResults.push({
-                                        tool_use_id: block.tool_use_id,
-                                        content: block.content
-                                    });
-                                }
-                            } else if (block.type === 'interrupted') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'interrupted',
-                                    content: 'Response interrupted',
-                                    timestamp: dbMsg.created_at,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'error') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'error',
-                                    content: block.message || 'An unexpected error occurred',
-                                    timestamp: dbMsg.created_at,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'system') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'system',
-                                    content: block.content,
-                                    subtype: block.subtype,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            }
-                        }
-                    }
-                    return result;
+                    return this._messageStore?.convertDbMessageToUi(dbMsg, pendingToolResults) ?? [];
                 },
 
+                /**
+                 * Add message from DB format - delegates to messageStore
+                 * (retained for backwards compatibility, uses convertDbMessageToUi internally)
+                 */
                 addMessageFromDb(dbMsg) {
-                    // Convert DB message format to UI format
-                    const content = dbMsg.content;
-
-                    // Get token counts and stored cost
-                    const msgInputTokens = dbMsg.input_tokens || 0;
-                    const msgOutputTokens = dbMsg.output_tokens || 0;
-                    const msgCacheCreation = dbMsg.cache_creation_tokens || 0;
-                    const msgCacheRead = dbMsg.cache_read_tokens || 0;
-                    const msgModel = dbMsg.model || this.model;
-
-                    // Use stored cost from server (no client-side calculation)
-                    const msgCost = dbMsg.cost || null;
-
-                    // Handle compaction messages specially
-                    if (dbMsg.role === 'compaction') {
-                        const preTokens = content?.pre_tokens;
-                        const preTokensDisplay = preTokens != null ? preTokens.toLocaleString() : 'unknown';
-                        this.messages.push({
-                            id: 'msg-' + Date.now() + '-' + Math.random(),
-                            role: 'compaction',
-                            content: content?.summary || '',
-                            preTokens: preTokens,
-                            preTokensDisplay: preTokensDisplay,
-                            trigger: content?.trigger ?? 'auto',
-                            timestamp: dbMsg.created_at,
-                            collapsed: true,
-                            turn_number: dbMsg.turn_number
-                        });
-                        return;
-                    }
-
-                    if (typeof content === 'string') {
-                        this.messages.push({
-                            id: 'msg-' + Date.now() + '-' + Math.random(),
-                            role: dbMsg.role,
-                            content: content,
-                            timestamp: dbMsg.created_at,
-                            collapsed: false,
-                            cost: msgCost,
-                            model: msgModel,
-                            inputTokens: msgInputTokens,
-                            outputTokens: msgOutputTokens,
-                            cacheCreationTokens: msgCacheCreation,
-                            cacheReadTokens: msgCacheRead,
-                            agent: dbMsg.agent,
-                            turn_number: dbMsg.turn_number
-                        });
-                    } else if (Array.isArray(content)) {
-                        // Handle empty content arrays (e.g., assistant stopped after tool call)
-                        // Only show if there's a cost to display
-                        if (content.length === 0) {
-                            if (msgCost && dbMsg.role === 'assistant') {
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'empty-response',
-                                    content: null,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: msgCost,
-                                    model: msgModel,
-                                    inputTokens: msgInputTokens,
-                                    outputTokens: msgOutputTokens,
-                                    cacheCreationTokens: msgCacheCreation,
-                                    cacheReadTokens: msgCacheRead,
-                                    agent: dbMsg.agent,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            }
-                            return;
-                        }
-
-                        // Cost goes on the LAST block of this turn (regardless of type)
-                        const lastBlockIndex = content.length - 1;
-
-                        // Handle content blocks - attach cost to the LAST block
-                        for (let i = 0; i < content.length; i++) {
-                            const block = content[i];
-                            const isLast = (i === lastBlockIndex);
-
-                            if (block.type === 'text') {
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'assistant',
-                                    content: block.text,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'thinking') {
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'thinking',
-                                    content: block.thinking,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: true,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'tool_use') {
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'tool',
-                                    toolName: block.name,
-                                    toolId: block.id,
-                                    toolInput: block.input,
-                                    toolResult: null,
-                                    content: JSON.stringify(block.input, null, 2),
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: true,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'tool_result' && block.tool_use_id) {
-                                // Link result to the corresponding tool message
-                                const toolMsgIndex = this.messages.findIndex(m => m.role === 'tool' && m.toolId === block.tool_use_id);
-                                if (toolMsgIndex >= 0) {
-                                    this.messages[toolMsgIndex] = {
-                                        ...this.messages[toolMsgIndex],
-                                        toolResult: block.content
-                                    };
-                                }
-                            } else if (block.type === 'interrupted') {
-                                // Interrupted marker - shown when response was aborted
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'interrupted',
-                                    content: 'Response interrupted',
-                                    timestamp: dbMsg.created_at,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'error') {
-                                // Error marker - shown when job failed unexpectedly
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'error',
-                                    content: block.message || 'An unexpected error occurred',
-                                    timestamp: dbMsg.created_at,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            }
-                        }
+                    const converted = this.convertDbMessageToUi(dbMsg);
+                    for (const msg of converted) {
+                        this.messages.push(msg);
                     }
                 },
 
@@ -3195,6 +4733,12 @@
                     // Allow sending if there's text OR files OR active skill
                     if (!this.prompt.trim() && !attachments.hasFiles && !this.activeSkill) return;
                     if (this.isStreaming) return;
+
+                    // Block sending while conversation is being loaded (prevents race conditions)
+                    if (this.loadingConversation) {
+                        this.showError('Please wait for the conversation to load');
+                        return;
+                    }
 
                     // Block unmatched /commands - if prompt starts with / but no skill is active
                     if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
@@ -3280,10 +4824,16 @@
                             this.currentConversationTitle = data.conversation.title || null;
                             this.conversationProvider = this.provider; // Lock provider for this conversation
 
-                            // Update URL with new conversation UUID
-                            this.updateUrl(this.currentConversationUuid);
-
-                            await this.fetchConversations();
+                            // Load session and screens if returned from the API
+                            if (data.conversation?.screen?.session) {
+                                console.log('[DEBUG] New conversation has session:', data.conversation.screen.session.id);
+                                await this.loadSessionFromConversation(data.conversation.screen.session);
+                                this.activeScreenId = data.conversation.screen.id;
+                                // Refresh sessions list to include the new session
+                                await this.fetchSessions();
+                                // Update URL with new session ID
+                                this.updateSessionUrl(data.conversation.screen.session.id);
+                            }
                         } catch (err) {
                             this.showError('Failed to create conversation: ' + err.message);
                             this.prompt = userPrompt; // Restore prompt so user can retry
@@ -3305,6 +4855,7 @@
                     // Reset stream state
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
+                    // Stream phase is set in connectToStreamEvents() after disconnectFromStream()
                     this._streamState = {
                         // Maps block_index -> { msgIndex, content, complete }
                         thinkingBlocks: {},
@@ -3368,595 +4919,29 @@
                     }
                 },
 
-                // Connect to stream events and handle reconnection
-                async connectToStreamEvents(fromIndex = 0, retryCount = 0) {
-                    if (!this.currentConversationUuid) {
-                        return;
-                    }
-
-                    // Max retries for not_found status (job hasn't started yet)
-                    const maxRetries = 15; // 15 * 200ms = 3 seconds max wait
-
-                    // Abort any existing connection
-                    this.disconnectFromStream();
-
-                    // Increment nonce to invalidate any pending reconnection attempts
-                    const myNonce = ++this._streamConnectNonce;
-
-                    // Debug logging for connection state tracking
-                    console.log('[Stream] connectToStreamEvents:', {
-                        uuid: this.currentConversationUuid,
-                        fromIndex,
-                        retryCount,
-                        nonce: myNonce,
-                        previousNonce: myNonce - 1,
-                        lastEventIndex: this.lastEventIndex,
-                        lastEventId: this.lastEventId,
-                    });
-
-                    this.isStreaming = true;
-                    this.currentConversationStatus = 'processing'; // Update status badge
-
-                    // Optimistic update: immediately show 'processing' in sidebar
-                    // We'll fetch the real status after receiving the first event (when backend has definitely updated)
-                    const convIndex = this.conversations.findIndex(c => c.uuid === this.currentConversationUuid);
-                    if (convIndex !== -1) {
-                        this.conversations[convIndex].status = 'processing';
-                    }
-                    this._sidebarRefreshedThisStream = false;
-
-                    this.streamAbortController = new AbortController();
-
-                    try {
-                        const url = `/api/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`;
-                        const response = await fetch(url, { signal: this.streamAbortController.signal });
-
-                        // Check if we've been superseded by a newer connection attempt
-                        if (myNonce !== this._streamConnectNonce) {
-                            console.log('[Stream] Connection superseded by newer attempt:', {
-                                myNonce,
-                                currentNonce: this._streamConnectNonce,
-                            });
-                            return;
-                        }
-
-                        const reader = response.body.getReader();
-                        const decoder = new TextDecoder();
-                        let buffer = '';
-
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-
-                            buffer += decoder.decode(value, { stream: true });
-                            const lines = buffer.split('\n');
-                            buffer = lines.pop();
-
-                            for (const line of lines) {
-                                if (!line.startsWith('data: ')) continue;
-
-                                try {
-                                    const event = JSON.parse(line.substring(6));
-
-                                    // Track event index and ID for reconnection (persist to sessionStorage for refresh survival)
-                                    if (event.index !== undefined) {
-                                        this.lastEventIndex = event.index + 1;
-                                        try {
-                                            sessionStorage.setItem(`stream_index_${this.currentConversationUuid}`, this.lastEventIndex);
-                                        } catch (e) {
-                                            // sessionStorage might not be available
-                                        }
-                                    }
-                                    // Track unique event ID for verification
-                                    if (event.event_id) {
-                                        this.lastEventId = event.event_id;
-                                    }
-
-                                    // Handle stream status events
-                                    if (event.type === 'stream_status') {
-                                        if (event.status === 'not_found') {
-                                            // Race condition: job hasn't started yet, retry
-                                            if (retryCount < maxRetries) {
-                                                // Check nonce before scheduling retry
-                                                if (myNonce === this._streamConnectNonce) {
-                                                    this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(0, retryCount + 1), 200);
-                                                }
-                                                return;
-                                            } else {
-                                                this.isStreaming = false;
-                                                this.currentConversationStatus = 'failed'; // Update status badge
-                                                // Refresh sidebar to show failed status
-                                                this.fetchConversations();
-                                                this.showError('Failed to connect to stream');
-                                                return;
-                                            }
-                                        }
-                                        if (event.status === 'completed' || event.status === 'failed') {
-                                            this.isStreaming = false;
-                                            // Update status badge
-                                            this.currentConversationStatus = event.status === 'failed' ? 'failed' : 'idle';
-                                            // Prevent reconnection for a short period
-                                            this._justCompletedStream = true;
-                                            // Clear sessionStorage - stream is done, no longer need reconnection state
-                                            this._clearStreamStorage(this.currentConversationUuid);
-                                            await this.fetchConversations();
-                                            // Clear flag after a delay (increased from 1s to 3s for safety)
-                                            setTimeout(() => { this._justCompletedStream = false; }, 3000);
-                                        }
-                                        continue;
-                                    }
-
-                                    if (event.type === 'timeout') {
-                                        // Reconnect from last known position
-                                        // Check nonce before scheduling retry
-                                        if (myNonce === this._streamConnectNonce) {
-                                            this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(this.lastEventIndex), 100);
-                                        }
-                                        return;
-                                    }
-
-                                    // Handle regular stream events
-                                    this.handleStreamEvent(event);
-
-                                    // On first real event, refresh sidebar (backend has now set status to 'processing')
-                                    if (!this._sidebarRefreshedThisStream) {
-                                        this._sidebarRefreshedThisStream = true;
-                                        this.fetchConversations();
-                                    }
-
-                                } catch (parseErr) {
-                                    console.error('Parse error:', parseErr, line);
-                                }
-                            }
-                        }
-                    } catch (err) {
-                        if (err.name === 'AbortError') {
-                            console.log('Stream connection aborted');
-                        } else {
-                            console.error('Stream connection error:', err);
-                        }
-                    } finally {
-                        // Only set isStreaming false if we weren't aborted for reconnection
-                        if (!this.streamAbortController?.signal.aborted) {
-                            this.isStreaming = false;
-                        }
-                    }
+                // Connect to stream events - delegates to _streamStore
+                async connectToStreamEvents(fromIndex = 0, startupRetryCount = 0, networkRetryCount = 0) {
+                    return this._streamStore?.connectToStreamEvents(fromIndex, startupRetryCount, networkRetryCount);
                 },
 
-                // Disconnect from stream (for navigation or cleanup)
+                // Disconnect from stream - delegates to _streamStore
                 disconnectFromStream() {
-                    // Clear any pending retry timeout
-                    if (this._streamRetryTimeoutId) {
-                        clearTimeout(this._streamRetryTimeoutId);
-                        this._streamRetryTimeoutId = null;
-                    }
-
-                    if (this.streamAbortController) {
-                        this.streamAbortController.abort();
-                        this.streamAbortController = null;
-                    }
+                    return this._streamStore?.disconnectFromStream();
                 },
 
-                // Abort the current stream (user clicked stop button)
+                // Abort the current stream - delegates to _streamStore
                 async abortStream() {
-                    if (!this.isStreaming || !this.currentConversationUuid) {
-                        return;
-                    }
-
-                    const state = this._streamState;
-
-                    // If tool parameters are being streamed, wait for tool_use_stop
-                    if (state.toolInProgress) {
-                        console.log('Abort requested while streaming tool parameters - deferring until tool_use_stop');
-                        state.abortPending = true;
-                        return;
-                    }
-
-                    // If tools are waiting for execution results, wait for all tool_results
-                    // This ensures CLI providers have complete tool_use + tool_result in their session
-                    if (state.waitingForToolResults.size > 0) {
-                        console.log('Abort requested while waiting for tool results - deferring until all tools complete');
-                        state.abortPending = true;
-                        return;
-                    }
-
-                    // Determine if we should skip syncing to CLI session file
-                    // skipSync=true when aborting after tools completed (CLI already has complete data)
-                    const skipSync = state.abortSkipSync;
-
-                    try {
-                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/abort`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                            },
-                            body: JSON.stringify({ skipSync }),
-                        });
-
-                        // Reset skipSync flag (even if request fails, don't carry over to next abort)
-                        state.abortSkipSync = false;
-
-                        if (!response.ok) {
-                            console.error('Failed to abort stream:', await response.text());
-                        }
-
-                        // Clean up in-progress streaming messages
-                        // (state was already captured at the start of abortStream)
-
-                        // Remove incomplete thinking blocks (ones without signatures)
-                        // Must iterate in reverse order to maintain correct indices when splicing
-                        const incompleteThinkingIndices = [];
-                        for (const blockIdx in state.thinkingBlocks) {
-                            const block = state.thinkingBlocks[blockIdx];
-                            if (block && !block.complete && block.msgIndex >= 0 && block.msgIndex < this.messages.length) {
-                                incompleteThinkingIndices.push(block.msgIndex);
-                            }
-                        }
-                        // Sort descending so we remove from end first
-                        incompleteThinkingIndices.sort((a, b) => b - a);
-                        for (const idx of incompleteThinkingIndices) {
-                            this.messages.splice(idx, 1);
-                            // Adjust text/tool indices if they come after
-                            if (state.textMsgIndex > idx) state.textMsgIndex--;
-                            if (state.toolMsgIndex > idx) state.toolMsgIndex--;
-                        }
-
-                        // Remove empty text blocks (keep partial text - it's still useful)
-                        if (state.textMsgIndex >= 0 && state.textMsgIndex < this.messages.length) {
-                            const textMsg = this.messages[state.textMsgIndex];
-                            if (!textMsg.content || textMsg.content.trim() === '') {
-                                this.messages.splice(state.textMsgIndex, 1);
-                            }
-                        }
-
-                        // Add interrupted marker
-                        this.messages.push({
-                            id: 'msg-' + Date.now() + '-interrupted',
-                            role: 'interrupted',
-                            content: 'Response interrupted',
-                            timestamp: new Date().toISOString(),
-                        });
-
-                        // Scroll to show the interrupted marker
-                        this.scrollToBottom();
-
-                        // Disconnect from SSE - the done event from abort will handle cleanup
-                        this.disconnectFromStream();
-                        this.isStreaming = false;
-
-                    } catch (err) {
-                        console.error('Error aborting stream:', err);
-                        this.isStreaming = false;
-                    }
+                    return this._streamStore?.abortStream();
                 },
 
-                // Handle a single stream event
+                // Handle a single stream event - delegates to _streamStore
                 handleStreamEvent(event) {
-                    // Validate event belongs to current conversation (prevents cross-talk)
-                    if (event.conversation_uuid && event.conversation_uuid !== this.currentConversationUuid) {
-                        console.debug('Ignoring event for different conversation:', event.conversation_uuid);
-                        return;
-                    }
+                    return this._streamStore?.handleStreamEvent(event);
+                },
 
-                    const state = this._streamState;
-
-                    // Debug: log all events except usage
-                    if (event.type !== 'usage') {
-                        console.log('SSE Event:', event.type, event.content ? String(event.content).substring(0, 50) : '(no content)');
-                    }
-
-                    switch (event.type) {
-                        case 'thinking_start':
-                            // Support interleaved thinking - track by block_index
-                            const thinkingBlockIndex = event.block_index ?? 0;
-                            state.currentThinkingBlock = thinkingBlockIndex;
-                            state.thinkingBlocks[thinkingBlockIndex] = {
-                                msgIndex: this.messages.length,
-                                content: '',
-                                complete: false
-                            };
-                            this.messages.push({
-                                id: 'msg-' + Date.now() + '-thinking-' + thinkingBlockIndex,
-                                role: 'thinking',
-                                content: '',
-                                timestamp: state.startedAt || new Date().toISOString(),
-                                collapsed: false
-                            });
-                            this.scrollToBottom();
-                            // Persist stream state for reconnection
-                            this._saveStreamState(this.currentConversationUuid);
-                            break;
-
-                        case 'thinking_delta':
-                            {
-                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
-                                const block = state.thinkingBlocks[blockIdx];
-                                if (block && event.content) {
-                                    block.content += event.content;
-                                    this.messages[block.msgIndex] = {
-                                        ...this.messages[block.msgIndex],
-                                        content: block.content
-                                    };
-                                    this.scrollToBottom();
-                                    // Persist accumulated content for reconnection
-                                    this._saveStreamState(this.currentConversationUuid);
-                                }
-                            }
-                            break;
-
-                        case 'thinking_signature':
-                            {
-                                // Mark thinking as complete (has signature, safe to keep on abort)
-                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
-                                if (state.thinkingBlocks[blockIdx]) {
-                                    state.thinkingBlocks[blockIdx].complete = true;
-                                }
-                            }
-                            break;
-
-                        case 'thinking_stop':
-                            {
-                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
-                                const block = state.thinkingBlocks[blockIdx];
-                                if (block) {
-                                    this.messages[block.msgIndex] = {
-                                        ...this.messages[block.msgIndex],
-                                        collapsed: true
-                                    };
-                                }
-                            }
-                            break;
-
-                        case 'text_start':
-                            // Collapse all thinking blocks
-                            for (const blockIdx in state.thinkingBlocks) {
-                                const block = state.thinkingBlocks[blockIdx];
-                                if (block && block.msgIndex >= 0) {
-                                    this.messages[block.msgIndex] = {
-                                        ...this.messages[block.msgIndex],
-                                        collapsed: true
-                                    };
-                                }
-                            }
-                            state.textMsgIndex = this.messages.length;
-                            state.textContent = '';
-                            state.turnCost = 0;
-                            state.turnInputTokens = 0;
-                            state.turnOutputTokens = 0;
-                            state.turnCacheCreationTokens = 0;
-                            state.turnCacheReadTokens = 0;
-                            this.messages.push({
-                                id: 'msg-' + Date.now() + '-text',
-                                role: 'assistant',
-                                content: '',
-                                timestamp: state.startedAt || new Date().toISOString(),
-                                collapsed: false
-                            });
-                            this.scrollToBottom();
-                            // Persist stream state for reconnection
-                            this._saveStreamState(this.currentConversationUuid);
-                            break;
-
-                        case 'text_delta':
-                            if (state.textMsgIndex >= 0 && event.content) {
-                                state.textContent += event.content;
-                                this.messages[state.textMsgIndex] = {
-                                    ...this.messages[state.textMsgIndex],
-                                    content: state.textContent
-                                };
-                                this.scrollToBottom();
-                                // Persist accumulated content for reconnection
-                                this._saveStreamState(this.currentConversationUuid);
-                            }
-                            break;
-
-                        case 'text_stop':
-                            // Text block complete
-                            break;
-
-                        case 'tool_use_start':
-                            // Collapse all thinking blocks
-                            for (const blockIdx in state.thinkingBlocks) {
-                                const block = state.thinkingBlocks[blockIdx];
-                                if (block && block.msgIndex >= 0) {
-                                    this.messages[block.msgIndex] = {
-                                        ...this.messages[block.msgIndex],
-                                        collapsed: true
-                                    };
-                                }
-                            }
-                            state.toolInProgress = true;
-                            state.toolMsgIndex = this.messages.length;
-                            state.toolInput = '';
-                            // Track this tool as pending execution
-                            const toolId = event.metadata?.tool_id;
-                            if (toolId) {
-                                state.waitingForToolResults.add(toolId);
-                            } else {
-                                console.warn('tool_use_start event missing tool_id in metadata');
-                            }
-                            this.messages.push({
-                                id: 'msg-' + Date.now() + '-tool',
-                                role: 'tool',
-                                toolName: event.metadata?.tool_name || 'Tool',
-                                toolId: toolId,
-                                toolInput: '',
-                                toolResult: null,
-                                content: '',
-                                timestamp: state.startedAt || new Date().toISOString(),
-                                collapsed: false
-                            });
-                            this.scrollToBottom();
-                            // Persist stream state for reconnection
-                            this._saveStreamState(this.currentConversationUuid);
-                            break;
-
-                        case 'tool_use_delta':
-                            if (state.toolMsgIndex >= 0 && event.content) {
-                                state.toolInput += event.content;
-                                this.messages[state.toolMsgIndex] = {
-                                    ...this.messages[state.toolMsgIndex],
-                                    toolInput: state.toolInput,
-                                    content: state.toolInput
-                                };
-                                this.scrollToBottom();
-                                // Persist accumulated content for reconnection
-                                this._saveStreamState(this.currentConversationUuid);
-                            }
-                            break;
-
-                        case 'tool_use_stop':
-                            state.toolInProgress = false;
-                            if (state.toolMsgIndex >= 0) {
-                                this.messages[state.toolMsgIndex] = {
-                                    ...this.messages[state.toolMsgIndex],
-                                    collapsed: true
-                                };
-                                // Reset for next tool
-                                state.toolMsgIndex = -1;
-                                state.toolInput = '';
-                            }
-                            // Note: We do NOT trigger abort here anymore.
-                            // We wait for tool_result so the tool execution completes.
-                            // The abort will be triggered in tool_result handler.
-                            break;
-
-                        case 'tool_result':
-                            // Find the tool message with matching toolId and add the result
-                            const toolResultId = event.metadata?.tool_id;
-                            if (toolResultId) {
-                                const toolMsgIndex = this.messages.findIndex(m => m.role === 'tool' && m.toolId === toolResultId);
-                                if (toolMsgIndex >= 0) {
-                                    this.messages[toolMsgIndex] = {
-                                        ...this.messages[toolMsgIndex],
-                                        toolResult: event.content
-                                    };
-                                }
-                                // Remove from pending set - tool execution is complete
-                                state.waitingForToolResults.delete(toolResultId);
-                            } else {
-                                console.warn('tool_result event missing tool_id in metadata');
-                            }
-                            // Persist state after tool result (captures waitingForToolResults change)
-                            this._saveStreamState(this.currentConversationUuid);
-                            // If abort was deferred and all tools have results, trigger it now
-                            // Use skipSync=true since CLI already has the complete tool_use + tool_result
-                            if (state.abortPending && state.waitingForToolResults.size === 0 && !state.toolInProgress) {
-                                console.log('All pending tools complete - triggering deferred abort with skipSync');
-                                state.abortPending = false;
-                                state.abortSkipSync = true;
-                                this.abortStream();
-                            }
-                            break;
-
-                        case 'system_info':
-                            // System info from CLI commands like /context, /usage
-                            this.messages.push({
-                                id: 'msg-' + Date.now() + '-' + Math.random(),
-                                role: 'system',
-                                content: event.content,
-                                command: event.metadata?.command || null
-                            });
-                            this.scrollToBottom();
-                            break;
-
-                        case 'usage':
-                            if (event.metadata) {
-                                const input = event.metadata.input_tokens || 0;
-                                const output = event.metadata.output_tokens || 0;
-                                const cacheCreation = event.metadata.cache_creation_tokens || 0;
-                                const cacheRead = event.metadata.cache_read_tokens || 0;
-                                const cost = event.metadata.cost || 0;
-
-                                this.inputTokens += input;
-                                this.outputTokens += output;
-                                this.cacheCreationTokens += cacheCreation;
-                                this.cacheReadTokens += cacheRead;
-                                this.totalTokens += input + output;
-
-                                // Use server-calculated cost
-                                this.sessionCost += cost;
-
-                                // Update context window tracking
-                                if (event.metadata.context_window_size) {
-                                    this.contextWindowSize = event.metadata.context_window_size;
-                                }
-                                if (event.metadata.context_percentage !== undefined) {
-                                    this.contextPercentage = event.metadata.context_percentage;
-                                    this.lastContextTokens = input + output;
-                                    this.updateContextWarningLevel();
-                                }
-
-                                // Store in turn state for message update on done
-                                state.turnCost = cost;
-                                state.turnInputTokens = input;
-                                state.turnOutputTokens = output;
-                                state.turnCacheCreationTokens = cacheCreation;
-                                state.turnCacheReadTokens = cacheRead;
-                            }
-                            break;
-
-                        case 'context_compacted':
-                            // Legacy event - now replaced by compaction_summary
-                            // Keep for backwards compatibility with older conversations
-                            this.debugLog('Context compacted (legacy)', event.metadata);
-                            break;
-
-                        case 'compaction_summary':
-                            // Claude Code auto-compacted the conversation context
-                            // This event contains the full summary that Claude continues with
-                            this.debugLog('Compaction summary received', {
-                                contentLength: event.content?.length,
-                                preTokens: event.metadata?.pre_tokens,
-                                trigger: event.metadata?.trigger
-                            });
-                            const compactPreTokens = event.metadata?.pre_tokens;
-                            const compactPreTokensDisplay = compactPreTokens != null ? compactPreTokens.toLocaleString() : 'unknown';
-                            this.messages.push({
-                                id: 'msg-compaction-' + Date.now(),
-                                role: 'compaction',
-                                content: event.content || '',
-                                preTokens: compactPreTokens,
-                                preTokensDisplay: compactPreTokensDisplay,
-                                trigger: event.metadata?.trigger ?? 'auto',
-                                timestamp: event.timestamp || Date.now(),
-                                collapsed: true // Collapsed by default
-                            });
-                            this.scrollToBottom();
-                            break;
-
-                        case 'done':
-                            if (state.textMsgIndex >= 0) {
-                                this.messages[state.textMsgIndex] = {
-                                    ...this.messages[state.textMsgIndex],
-                                    cost: state.turnCost,
-                                    inputTokens: state.turnInputTokens,
-                                    outputTokens: state.turnOutputTokens,
-                                    cacheCreationTokens: state.turnCacheCreationTokens,
-                                    cacheReadTokens: state.turnCacheReadTokens,
-                                    model: this.model,
-                                    agent: this.currentAgent
-                                };
-                            }
-                            break;
-
-                        case 'error':
-                            // Check for Claude Code auth required error
-                            if (event.content && event.content.startsWith('CLAUDE_CODE_AUTH_REQUIRED:')) {
-                                this.showClaudeCodeAuthModal = true;
-                            } else {
-                                this.showError(event.content || 'Unknown error');
-                            }
-                            break;
-
-                        case 'debug':
-                            console.log('Debug from server:', event.content, event.metadata);
-                            break;
-
-                        default:
-                            console.log('Unknown event type:', event.type, event);
-                    }
+                // Connection indicator state - delegates to _streamStore
+                getIndicatorState() {
+                    return this._streamStore?.getIndicatorState() ?? 'hidden';
                 },
 
                 // Get current provider's reasoning config from loaded providers data
@@ -4237,6 +5222,11 @@
                     // Parse markdown, linkify file paths, then sanitize
                     let html = marked.parse(text);
                     html = window.linkifyFilePaths(html);
+
+                    // Wrap tables in scrollable container for mobile
+                    html = html.replace(/<table>/g, '<div class="table-wrapper"><table>');
+                    html = html.replace(/<\/table>/g, '</table></div>');
+
                     return DOMPurify.sanitize(html);
                 },
 
@@ -4945,8 +5935,9 @@
                 },
 
                 get voiceButtonText() {
-                    if (this.isProcessing) return '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
-                    if (this.waitingForFinalTranscript) return '<i class="fa-solid fa-spinner fa-spin"></i> Finishing...';
+                    const spinnerSvg = '<svg class="animate-spin" style="width: 1em; height: 1em;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+                    if (this.isProcessing) return spinnerSvg + ' Connecting...';
+                    if (this.waitingForFinalTranscript) return spinnerSvg + ' Finishing...';
                     if (this.isRecording) return '<i class="fa-solid fa-stop"></i> Stop';
                     return '<i class="fa-solid fa-microphone"></i> Record';
                 },

@@ -59,8 +59,8 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan conversation:get-turns --turns='[{"conversation_uuid":"abc-123","turn_number":5}]'
-php artisan conversation:get-turns --turns='[{"conversation_uuid":"abc-123","turn_number":4},{"conversation_uuid":"abc-123","turn_number":5}]'
+pd conversation:get-turns --turns='[{"conversation_uuid":"abc-123","turn_number":5}]'
+pd conversation:get-turns --turns='[{"conversation_uuid":"abc-123","turn_number":4},{"conversation_uuid":"abc-123","turn_number":5}]'
 ```
 CLI;
 

@@ -9,8 +9,7 @@ use Illuminate\Console\Command;
 class ToolShowCommand extends Command
 {
     protected $signature = 'tool:show
-        {slug : The slug of the tool to show}
-        {--script : Include the full script in output}';
+        {slug : The slug of the tool to show}';
 
     protected $description = 'Show details of a specific tool';
 
@@ -21,10 +20,6 @@ class ToolShowCommand extends Command
         $input = [
             'slug' => $this->argument('slug'),
         ];
-
-        if ($this->option('script')) {
-            $input['include_script'] = true;
-        }
 
         $context = new ExecutionContext(getcwd() ?: '/var/www');
         $result = $tool->execute($input, $context);

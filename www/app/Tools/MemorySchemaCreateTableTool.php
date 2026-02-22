@@ -81,7 +81,7 @@ The description should enable any AI to use this table correctly:
 [1-2 sentence purpose: What data is stored and why]
 **Typical queries:** [Common access patterns]
 **Relationships:** [Foreign keys and table connections]
-**Example:** php artisan memory:insert --table=X --data='{...}'
+**Example:** pd memory:insert --table=X --data='{...}'
 ```
 
 **Do NOT include `**Auto-embed:**`** - this is automatically added from embed_fields.
@@ -125,13 +125,13 @@ INSTRUCTIONS;
 ## CLI Example
 
 ```bash
-php artisan memory:schema:create-table \
+pd memory:schema:create-table \
     --schema=default \
     --name=tasks \
     --description="Individual tasks belonging to projects.
 **Typical queries:** Get tasks by project, find overdue tasks
 **Relationships:** project_id references projects(id)
-**Example:** php artisan memory:insert --schema=default --table=tasks --data='{\"title\":\"...\", \"status\":\"todo\"}'" \
+**Example:** pd memory:insert --schema=default --table=tasks --data='{\"title\":\"...\", \"status\":\"todo\"}'" \
     --embed-fields="title,description" \
     --column-descriptions='{"title":"Brief task name (5-10 words)","description":"Detailed requirements and context","status":"todo, in_progress, review, done, or blocked","priority":"low, medium, high, or critical"}' \
     --sql="CREATE TABLE memory_default.tasks (

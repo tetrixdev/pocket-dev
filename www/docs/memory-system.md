@@ -84,7 +84,7 @@ Memory System V2 replaces the JSONB-based storage with dynamic PostgreSQL tables
 ### 1. Create a Table
 
 ```bash
-php artisan memory:schema:create-table \
+pd memory:schema:create-table \
   --name=characters \
   --description="Player and NPC characters" \
   --columns='[
@@ -104,7 +104,7 @@ This creates:
 ### 2. Insert Data (Auto-Embedding)
 
 ```bash
-php artisan memory:insert \
+pd memory:insert \
   --table=characters \
   --data='{"name":"Thorin","class":"fighter","level":5,"backstory":"A dwarf warrior..."}'
 ```
@@ -118,7 +118,7 @@ The system:
 ### 3. Query with Semantic Search
 
 ```bash
-php artisan memory:query \
+pd memory:query \
   --sql="SELECT c.id, c.name, 1 - (e.embedding <=> :search_embedding) as sim
          FROM memory.characters c
          JOIN memory.embeddings e ON e.source_table = 'characters' AND e.source_id::uuid = c.id
@@ -130,7 +130,7 @@ php artisan memory:query \
 ### 4. Update Data (Auto-Re-Embedding)
 
 ```bash
-php artisan memory:update \
+pd memory:update \
   --table=characters \
   --data='{"backstory":"Updated backstory..."}' \
   --where="name = 'Thorin'"
@@ -144,20 +144,20 @@ To modify table structure, use the recreate pattern:
 
 ```bash
 # 1. Create new table with updated schema
-php artisan memory:schema:create-table --name=characters_v2 ...
+pd memory:schema:create-table --name=characters_v2 ...
 
 # 2. Migrate data
-php artisan memory:schema:execute \
+pd memory:schema:execute \
   --sql="INSERT INTO memory.characters_v2 (id, name, ...) SELECT id, name, ... FROM memory.characters"
 
 # 3. Drop old table
-php artisan memory:schema:execute --sql="DROP TABLE memory.characters"
+pd memory:schema:execute --sql="DROP TABLE memory.characters"
 
 # 4. Rename new table
-php artisan memory:schema:execute --sql="ALTER TABLE memory.characters_v2 RENAME TO characters"
+pd memory:schema:execute --sql="ALTER TABLE memory.characters_v2 RENAME TO characters"
 
 # 5. Update registry (use memory:schema:execute for consistency)
-php artisan memory:schema:execute \
+pd memory:schema:execute \
   --sql="UPDATE memory.schema_registry SET table_name = 'characters' WHERE table_name = 'characters_v2'"
 ```
 
@@ -214,19 +214,19 @@ The scheduler creates snapshots automatically:
 
 ```bash
 # Create snapshot
-php artisan memory:snapshot create
+pd memory:snapshot create
 
 # Create schema-only snapshot
-php artisan memory:snapshot create --schema-only
+pd memory:snapshot create --schema-only
 
 # List snapshots
-php artisan memory:snapshot list
+pd memory:snapshot list
 
 # Restore (creates backup first)
-php artisan memory:snapshot restore memory_20250115_120000.sql
+pd memory:snapshot restore memory_20250115_120000.sql
 
 # Prune old snapshots
-php artisan memory:snapshot prune
+pd memory:snapshot prune
 ```
 
 ### Export/Import
@@ -359,7 +359,7 @@ Only text fields that should be semantically searchable:
 ### 4. Create Indexes for Common Queries
 
 ```bash
-php artisan memory:schema:execute \
+pd memory:schema:execute \
   --sql="CREATE INDEX idx_characters_class ON memory.characters(class)"
 ```
 

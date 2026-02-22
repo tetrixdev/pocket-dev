@@ -9,7 +9,9 @@
                 :disabled="isProcessing || waitingForFinalTranscript"
                 class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-pointer disabled:cursor-not-allowed"
                 title="Voice input">
-            <i :class="isProcessing || waitingForFinalTranscript ? 'fa-solid fa-spinner fa-spin' : (isRecording ? 'fa-solid fa-stop' : 'fa-solid fa-microphone')"></i>
+            <x-spinner x-show="isProcessing || waitingForFinalTranscript" x-cloak />
+            <i x-show="!isProcessing && !waitingForFinalTranscript && isRecording" class="fa-solid fa-stop" x-cloak></i>
+            <i x-show="!isProcessing && !waitingForFinalTranscript && !isRecording" class="fa-solid fa-microphone"></i>
         </button>
 
         {{-- Textarea with Skill Autocomplete --}}
@@ -60,6 +62,27 @@
                           }
                       "></textarea>
 
+            {{-- Connection health indicator - badge on textarea corner, matches template indicator pattern --}}
+            {{-- Three states: connected (green pulsing), processing (amber, tap for info), disconnected (amber, tap for info) --}}
+            <template x-if="isStreaming">
+                <span class="absolute -top-1 -right-1 z-10"
+                      :class="getIndicatorState() === 'connected' ? 'pointer-events-none' : 'cursor-pointer'"
+                      @click="if (getIndicatorState() !== 'connected') {
+                          showToast(getIndicatorState() === 'processing'
+                              ? 'Processing context...'
+                              : 'Connection may be lost');
+                      }">
+                    <span class="relative flex w-3 h-3">
+                        <span class="absolute inline-flex h-full w-full rounded-full opacity-75"
+                              :class="getIndicatorState() === 'connected' ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'"
+                        ></span>
+                        <span class="relative inline-flex w-3 h-3 rounded-full border border-gray-800"
+                              :class="getIndicatorState() === 'connected' ? 'bg-emerald-500' : 'bg-amber-500'"
+                        ></span>
+                    </span>
+                </span>
+            </template>
+
             {{-- Skill Suggestions Dropdown (Mobile) --}}
             <div x-show="showSkillSuggestions"
                  x-cloak
@@ -87,7 +110,7 @@
                     disabled
                     class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-not-allowed bg-gray-600 text-gray-300"
                     title="Aborting...">
-                <i class="fa-solid fa-spinner fa-spin"></i>
+                <x-spinner />
             </button>
         </template>
         <template x-if="isStreaming && !_streamState.abortPending">
