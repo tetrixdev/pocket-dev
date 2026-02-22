@@ -844,7 +844,7 @@ class FileExplorerPanel extends Panel
         $escaped = escapeshellarg($path);
         // Use printf to handle the base64 string safely, pipe through base64 decode
         $result = $ssh->run(
-            "printf '%s' " . escapeshellarg($b64) . " | base64 -d > {$escaped} 2>&1",
+            "printf '%s' " . escapeshellarg($b64) . " | base64 -d > {$escaped} 2>/dev/null",
             30
         );
         if ($result->failed()) {
