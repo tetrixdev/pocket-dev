@@ -300,11 +300,13 @@ class SessionController extends Controller
             ->whereHas('conversation', function ($q) {
                 $q->where('status', 'archived');
             })
-            ->with('conversation:id,uuid,title,status,updated_at')
+            ->with('conversation:id,uuid,title,tab_label,status,updated_at')
             ->get()
             ->map(fn ($screen) => [
                 'id' => $screen->conversation->uuid, // Use uuid for API calls (route model binding)
                 'title' => $screen->conversation->title,
+                'tab_label' => $screen->conversation->tab_label,
+                'chat_number' => $screen->chat_number,
                 'archived_at' => $screen->conversation->updated_at,
             ]);
 

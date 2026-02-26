@@ -18,7 +18,10 @@
             <template x-for="conv in archivedConversations" :key="conv.id">
                 <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors">
                     <div class="flex-1 min-w-0 mr-3">
-                        <p class="text-sm text-white truncate" x-text="conv.title || 'Untitled'"></p>
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-xs text-gray-500 shrink-0" x-text="conv.chat_number + '.'"></span>
+                            <p class="text-sm text-white truncate" x-text="conv.tab_label || conv.title || 'Untitled'"></p>
+                        </div>
                         <p class="text-xs text-gray-400" x-text="'Archived ' + formatDate(conv.archived_at)"></p>
                     </div>
                     <x-button
