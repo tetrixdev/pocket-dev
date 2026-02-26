@@ -244,7 +244,7 @@ chmod 666 /dev/stdout /dev/stderr 2>/dev/null || true
 # Ensure supervisord log/pid files are writable by TARGET_USER
 # /tmp is a shared volume - files may exist from previous runs with different ownership
 # Guard against symlink traversal (same pattern as /tmp/pocketdev*)
-for f in /tmp/supervisord.log /tmp/supervisord.pid; do
+for f in /tmp/supervisord.log /tmp/supervisord.pid /tmp/supervisor.sock; do
     if [ -L "$f" ]; then
         echo "WARN: $f is a symlink; removing before recreation" >&2
         rm -f "$f" 2>/dev/null || true
