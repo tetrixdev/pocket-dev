@@ -4761,6 +4761,7 @@
                     }
 
                     // Build the prompt - prepend skill instructions if active
+                    const originalPrompt = this.prompt; // Preserve before modifications for auto-title
                     let userPrompt = this.prompt;
                     if (this.activeSkill) {
                         const skillHeader = `**PocketDev Skill: ${this.activeSkill.name}**\n\n${this.activeSkill.instructions}`;
@@ -4809,7 +4810,7 @@
                                 working_directory: this.currentWorkspace?.working_directory_path || '/workspace',
                                 workspace_id: this.currentWorkspaceId,
                                 agent_id: this.currentAgentId,
-                                title: userPrompt.substring(0, 50),
+                                title: originalPrompt.substring(0, 50),
                             };
                             // Note: When using agent_id, the server uses agent settings for reasoning.
                             // The explicit provider-specific settings below are only for legacy/fallback mode.
@@ -4851,6 +4852,28 @@
                     });
                     this.autoScrollEnabled = true; // Re-enable auto-scroll on new message
                     this.scrollToBottom();
+
+                    // Auto-title: if this is the first message and title is still "New Chat",
+                    // update it to the first 50 chars of the user's prompt (non-blocking)
+                    if (this.currentConversationTitle === 'New Chat' && this.currentConversationUuid) {
+                        const autoTitle = originalPrompt.substring(0, 50).trim();
+                        if (autoTitle) {
+                            fetch(`/api/conversations/${this.currentConversationUuid}/title`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ title: autoTitle })
+                            }).then(res => res.json()).then(data => {
+                                if (data.title) {
+                                    this.currentConversationTitle = data.title;
+                                    // Update the screen's conversation title in the tab
+                                    const screen = this.getActiveScreen();
+                                    if (screen?.conversation) {
+                                        screen.conversation.title = data.title;
+                                    }
+                                }
+                            }).catch(() => {}); // Silently ignore - title update is non-critical
+                        }
+                    }
 
                     // Reset stream state
                     this.lastEventIndex = 0;
