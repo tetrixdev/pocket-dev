@@ -399,7 +399,8 @@ class MicrosoftGraphService
 
         $exportDir = "/tmp/email-exports";
         $messageDir = "{$exportDir}/{$date}_{$safeSubject}_{$messageId}";
-        @mkdir($messageDir, 0775, true);
+        @mkdir($messageDir, 0777, true);
+        @chmod($exportDir, 0777);
 
         // Build HTML file with email metadata + body
         $from = $message['from']['emailAddress']['address'] ?? 'unknown';

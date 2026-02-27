@@ -361,18 +361,32 @@
         }
     },
 
-    async exportMessage(messageId) {
-        this.actionLoading['export_' + messageId] = true;
+    async copyToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch {
+            // Fallback for iframes without clipboard-write permission
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;left:-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            return ok;
+        }
+    },
+
+    async copyMessagePath(messageId) {
         try {
             const data = await this.doAction('exportMessage', { messageId });
             if (data.path) {
-                await navigator.clipboard.writeText(data.path);
-                this.showToast('Path copied: ' + data.path);
+                const copied = await this.copyToClipboard(data.path);
+                this.showToast(copied ? 'Path copied: ' + data.path : 'Exported to: ' + data.path);
             }
         } catch (e) {
             this.showToast('Export failed: ' + e.message, 'error');
-        } finally {
-            delete this.actionLoading['export_' + messageId];
         }
     },
 
@@ -403,8 +417,8 @@
         try {
             const data = await this.doAction('downloadToTmp', { messageId, attachmentId });
             if (data.path) {
-                await navigator.clipboard.writeText(data.path);
-                this.showToast('Saved & path copied: ' + data.path);
+                const copied = await this.copyToClipboard(data.path);
+                this.showToast(copied ? 'Saved & path copied: ' + data.path : 'Saved to: ' + data.path);
             }
         } catch (e) {
             this.showToast('Download failed: ' + e.message, 'error');
@@ -518,7 +532,7 @@
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     },
 }"
-class="h-full flex flex-col text-sm"
+class="h-full flex flex-col text-sm relative"
 >
     {{-- ===================================================================== --}}
     {{-- HEADER BAR --}}
@@ -811,9 +825,8 @@ class="h-full flex flex-col text-sm"
 
                                 <div class="w-px h-4 bg-white/10 mx-1"></div>
 
-                                <button @click="exportMessage(selectedMessage.id)"
+                                <button @click="copyMessagePath(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 hover:bg-purple-600/20 rounded text-gray-300 hover:text-purple-300 transition-colors"
-                                    :disabled="actionLoading['export_' + selectedMessage?.id]"
                                     title="Export email to /tmp and copy path to clipboard">
                                     <i class="fa-solid fa-clipboard mr-1"></i>Copy Path
                                 </button>
