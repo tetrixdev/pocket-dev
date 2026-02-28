@@ -384,7 +384,8 @@ class MicrosoftGraphService
     }
 
     /**
-     * Export a message as HTML file to /tmp.
+     * Export a message as .msg (Outlook) file to /tmp.
+     * Uses a Python script to build the OLE compound document.
      * Returns the file path.
      */
     public static function exportMessageToTmp(array $account, string $messageId): string
@@ -398,98 +399,103 @@ class MicrosoftGraphService
             : date('Y-m-d');
 
         $exportDir = "/tmp/email-exports";
-        $messageDir = "{$exportDir}/{$date}_{$safeSubject}_{$messageId}";
-        @mkdir($messageDir, 0777, true);
+        @mkdir($exportDir, 0777, true);
         @chmod($exportDir, 0777);
 
-        // Build HTML file with email metadata + body
-        $from = $message['from']['emailAddress']['address'] ?? 'unknown';
-        $fromName = $message['from']['emailAddress']['name'] ?? $from;
-        $to = implode(', ', array_map(
-            fn($r) => $r['emailAddress']['address'] ?? '',
+        $filePath = "{$exportDir}/{$date}_{$safeSubject}.msg";
+
+        // Build recipients
+        $toRecipients = array_map(
+            fn($r) => [
+                'name' => $r['emailAddress']['name'] ?? $r['emailAddress']['address'] ?? '',
+                'email' => $r['emailAddress']['address'] ?? '',
+            ],
             $message['toRecipients'] ?? []
-        ));
-        $cc = implode(', ', array_map(
-            fn($r) => $r['emailAddress']['address'] ?? '',
+        );
+        $ccRecipients = array_map(
+            fn($r) => [
+                'name' => $r['emailAddress']['name'] ?? $r['emailAddress']['address'] ?? '',
+                'email' => $r['emailAddress']['address'] ?? '',
+            ],
             $message['ccRecipients'] ?? []
-        ));
-        $receivedDate = $message['receivedDateTime'] ?? '';
+        );
+
+        // Get body content
+        $bodyHtml = '';
+        $bodyText = '';
         $bodyContent = $message['body']['content'] ?? '';
-        $contentType = $message['body']['contentType'] ?? 'html';
+        $contentType = strtolower($message['body']['contentType'] ?? 'html');
 
-        if (strtolower($contentType) === 'text') {
-            $bodyContent = '<pre>' . htmlspecialchars($bodyContent) . '</pre>';
+        if ($contentType === 'html') {
+            $bodyHtml = $bodyContent;
+            $bodyText = strip_tags($bodyContent);
+        } else {
+            $bodyText = $bodyContent;
         }
 
-        $html = <<<HTML
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <title>{$subject}</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; }
-                .header { background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-                .header h1 { margin: 0 0 10px 0; font-size: 18px; }
-                .header p { margin: 3px 0; color: #555; font-size: 14px; }
-                .body { border-top: 1px solid #ddd; padding-top: 15px; }
-                .attachments { margin-top: 20px; padding: 10px; background: #f9f9f9; border-radius: 4px; }
-                .attachments h3 { margin: 0 0 8px 0; font-size: 14px; }
-                .attachments a { display: block; margin: 4px 0; }
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1>{$subject}</h1>
-                <p><strong>From:</strong> {$fromName} &lt;{$from}&gt;</p>
-                <p><strong>To:</strong> {$to}</p>
-        HTML;
-
-        if ($cc) {
-            $html .= "        <p><strong>CC:</strong> {$cc}</p>\n";
-        }
-        $html .= "        <p><strong>Date:</strong> {$receivedDate}</p>\n";
-        $html .= "    </div>\n    <div class=\"body\">\n{$bodyContent}\n    </div>\n";
-
-        // Download attachments
-        $attachments = self::listAttachments($account, $messageId);
-        $attachmentList = $attachments['value'] ?? [];
-
-        if (!empty($attachmentList)) {
-            $html .= "    <div class=\"attachments\">\n        <h3>Attachments</h3>\n";
-
-            foreach ($attachmentList as $att) {
+        // Fetch attachments with full content
+        $attachmentData = [];
+        try {
+            $attachments = self::listAttachments($account, $messageId);
+            foreach ($attachments['value'] ?? [] as $att) {
                 if ($att['isInline'] ?? false) {
                     continue;
                 }
-
-                $attName = $att['name'] ?? 'unnamed';
-                $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $attName);
-
                 try {
                     $fullAtt = self::getAttachment($account, $messageId, $att['id']);
                     if (isset($fullAtt['contentBytes'])) {
-                        $bytes = base64_decode($fullAtt['contentBytes']);
-                        file_put_contents("{$messageDir}/{$safeName}", $bytes);
-                        $html .= "        <a href=\"{$safeName}\">{$attName}</a>\n";
+                        $attachmentData[] = [
+                            'name' => $fullAtt['name'] ?? 'unnamed',
+                            'contentType' => $fullAtt['contentType'] ?? 'application/octet-stream',
+                            'contentBytes' => $fullAtt['contentBytes'],
+                            'isInline' => false,
+                        ];
                     }
                 } catch (\Exception $e) {
-                    Log::warning('Failed to download attachment', [
+                    Log::warning('Failed to download attachment for MSG export', [
                         'messageId' => $messageId,
                         'attachmentId' => $att['id'],
                         'error' => $e->getMessage(),
                     ]);
-                    $html .= "        <p>{$attName} (download failed)</p>\n";
                 }
             }
-
-            $html .= "    </div>\n";
+        } catch (\Exception $e) {
+            Log::warning('Failed to list attachments for MSG export', [
+                'messageId' => $messageId,
+                'error' => $e->getMessage(),
+            ]);
         }
 
-        $html .= "</body>\n</html>";
+        // Build JSON payload for the Python script
+        $payload = [
+            'subject' => $subject,
+            'from_name' => $message['from']['emailAddress']['name'] ?? '',
+            'from_email' => $message['from']['emailAddress']['address'] ?? '',
+            'to_recipients' => $toRecipients,
+            'cc_recipients' => $ccRecipients,
+            'body_text' => $bodyText,
+            'body_html' => $bodyHtml,
+            'received_date' => $message['receivedDateTime'] ?? '',
+            'sent_date' => $message['sentDateTime'] ?? $message['receivedDateTime'] ?? '',
+            'internet_message_id' => $message['internetMessageId'] ?? '',
+            'importance' => strtolower($message['importance'] ?? 'normal'),
+            'attachments' => $attachmentData,
+            'output_path' => $filePath,
+        ];
 
-        $filePath = "{$messageDir}/email.html";
-        file_put_contents($filePath, $html);
+        $jsonPath = tempnam('/tmp', 'msg_payload_');
+        file_put_contents($jsonPath, json_encode($payload));
+
+        $scriptPath = base_path('scripts/create_msg.py');
+        $cmd = sprintf('python3 %s < %s 2>&1', escapeshellarg($scriptPath), escapeshellarg($jsonPath));
+        $output = shell_exec($cmd);
+        @unlink($jsonPath);
+
+        $result = json_decode($output, true);
+        if (!$result || !($result['success'] ?? false)) {
+            $error = $result['error'] ?? $output ?? 'Unknown error';
+            throw new \RuntimeException("Failed to create .msg file: {$error}");
+        }
 
         return $filePath;
     }

@@ -827,8 +827,8 @@ class="h-full flex flex-col text-sm relative"
 
                                 <button @click="copyMessagePath(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 hover:bg-purple-600/20 rounded text-gray-300 hover:text-purple-300 transition-colors"
-                                    title="Export email to /tmp and copy path to clipboard">
-                                    <i class="fa-solid fa-clipboard mr-1"></i>Copy Path
+                                    title="Export as .msg to /tmp and copy path to clipboard">
+                                    <i class="fa-solid fa-clipboard mr-1"></i>Copy .msg
                                 </button>
                             </div>
 
