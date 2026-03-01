@@ -653,7 +653,8 @@ class="h-full flex flex-col text-sm relative"
     {{-- ===================================================================== --}}
     {{-- HEADER BAR --}}
     {{-- ===================================================================== --}}
-    <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-white/[0.02] shrink-0 flex-wrap">
+    <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-white/[0.02] shrink-0 flex-wrap"
+         x-show="mobileView !== 'detail' || window.innerWidth >= 1024">
         {{-- Hamburger (mobile) --}}
         <button @click="showSidebar = !showSidebar" class="lg:hidden text-gray-400 hover:text-white p-1 cursor-pointer">
             <i class="fa-solid fa-bars"></i>
@@ -893,50 +894,52 @@ class="h-full flex flex-col text-sm relative"
                                 </div>
                             </div>
 
-                            {{-- Action buttons --}}
-                            <div class="flex items-center gap-1 mt-2 flex-wrap">
+                            {{-- Action buttons (icon-only on mobile, icon+text on desktop) --}}
+                            <div class="flex items-center gap-1 mt-2">
                                 <button @click="openCompose('reply', selectedMessage)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
                                     :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
                                     x-bind:disabled="!canSend()"
-                                    :title="canSend() ? '' : 'Requires Mail.Send permission'">
-                                    <i class="fa-solid fa-reply mr-1"></i>Reply
+                                    title="Reply">
+                                    <i class="fa-solid fa-reply"></i><span class="hidden lg:inline ml-1">Reply</span>
                                 </button>
                                 <button @click="openCompose('replyAll', selectedMessage)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
                                     :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
                                     x-bind:disabled="!canSend()"
-                                    :title="canSend() ? '' : 'Requires Mail.Send permission'">
-                                    <i class="fa-solid fa-reply-all mr-1"></i>Reply All
+                                    title="Reply All">
+                                    <i class="fa-solid fa-reply-all"></i><span class="hidden lg:inline ml-1">Reply All</span>
                                 </button>
                                 <button @click="openCompose('forward', selectedMessage)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
                                     :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
                                     x-bind:disabled="!canSend()"
-                                    :title="canSend() ? '' : 'Requires Mail.Send permission'">
-                                    <i class="fa-solid fa-share mr-1"></i>Forward
+                                    title="Forward">
+                                    <i class="fa-solid fa-share"></i><span class="hidden lg:inline ml-1">Forward</span>
                                 </button>
 
-                                <div class="w-px h-4 bg-white/10 mx-1"></div>
+                                <div class="w-px h-4 bg-white/10 mx-1 hidden lg:block"></div>
 
                                 <button @click="archiveMessage(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
                                     x-bind:class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])">
-                                    <i class="fa-solid fa-box-archive mr-1"></i>Archive
+                                    x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])"
+                                    title="Archive">
+                                    <i class="fa-solid fa-box-archive"></i><span class="hidden lg:inline ml-1">Archive</span>
                                 </button>
                                 <button @click="requestDelete(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 hover:bg-red-600/20 text-gray-300 hover:text-red-300 rounded transition-colors cursor-pointer"
-                                    x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])">
-                                    <i class="fa-solid fa-trash-can mr-1"></i>Delete
+                                    x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])"
+                                    title="Delete">
+                                    <i class="fa-solid fa-trash-can"></i><span class="hidden lg:inline ml-1">Delete</span>
                                 </button>
 
-                                <div class="w-px h-4 bg-white/10 mx-1"></div>
+                                <div class="w-px h-4 bg-white/10 mx-1 hidden lg:block"></div>
 
                                 <button @click="copyMessagePath(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 hover:bg-purple-600/20 rounded text-gray-300 hover:text-purple-300 transition-colors cursor-pointer"
                                     title="Export as .eml to /tmp and copy path to clipboard">
-                                    <i class="fa-solid fa-clipboard mr-1"></i>Copy .eml
+                                    <i class="fa-solid fa-clipboard"></i><span class="hidden lg:inline ml-1">Copy .eml</span>
                                 </button>
                             </div>
 
