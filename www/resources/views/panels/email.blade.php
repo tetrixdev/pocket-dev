@@ -1084,7 +1084,7 @@ class="h-full flex flex-col text-sm relative"
     <template x-if="showCompose">
         <div class="absolute inset-0 z-50 flex flex-col bg-[#1a1a2e]/98 backdrop-blur-sm" x-init="$nextTick(() => initQuill())">
             {{-- Compose header --}}
-            <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 shrink-0">
+            <div class="flex items-center gap-2 px-3 py-1.5 lg:px-4 lg:py-2.5 border-b border-white/10 shrink-0">
                 <span class="text-sm font-medium text-gray-200"
                     x-text="composeMode === 'new' ? 'New Message' : composeMode === 'forward' ? 'Forward' : composeMode === 'replyAll' ? 'Reply All' : 'Reply'"></span>
                 <div class="flex-1"></div>
@@ -1097,46 +1097,51 @@ class="h-full flex flex-col text-sm relative"
             <div x-show="composeDragging" class="absolute inset-0 z-[60] cursor-row-resize"></div>
 
             {{-- Compose content area --}}
-            <div class="flex-1 flex flex-col overflow-hidden px-4 py-3 min-h-0" data-compose-content>
+            <div class="flex-1 flex flex-col overflow-hidden px-3 py-2 lg:px-4 lg:py-3 min-h-0" data-compose-content>
                 {{-- Address fields (fixed, never flex) --}}
                 <div class="shrink-0" data-compose-fields>
-                    {{-- From (display only) --}}
-                    <div class="flex items-center gap-2 mb-2">
+                    {{-- From (display only, desktop) --}}
+                    <div class="hidden lg:flex items-center gap-2 mb-2">
                         <label class="text-xs text-gray-500 w-10 shrink-0">From</label>
                         <span class="text-xs text-gray-300" x-text="getCurrentEmail()"></span>
                     </div>
 
                     {{-- To --}}
-                    <div class="flex items-center gap-2 mb-2">
+                    <div class="flex items-center gap-2 mb-1 lg:mb-2">
                         <label class="text-xs text-gray-500 w-10 shrink-0">To</label>
                         <input type="text" x-model="composeTo"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 lg:py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
                             placeholder="recipient@example.com">
-                        <button x-show="!composeShowCcBcc" @click="composeShowCcBcc = true"
-                            class="text-[10px] text-gray-500 hover:text-gray-300 cursor-pointer">CC/BCC</button>
+                        <button @click="composeShowCcBcc = !composeShowCcBcc"
+                            class="text-[10px] shrink-0 cursor-pointer"
+                            :class="composeShowCcBcc ? 'text-blue-400 hover:text-blue-300' : (composeCc || composeBcc) ? 'text-blue-400 hover:text-blue-300' : 'text-gray-500 hover:text-gray-300'">
+                            <span x-show="!composeShowCcBcc && (composeCc || composeBcc)" x-text="(composeCc ? 'CC: ' + composeCc : '') + (composeCc && composeBcc ? ', ' : '') + (composeBcc ? 'BCC: ' + composeBcc : '')" class="max-w-[80px] lg:max-w-[120px] truncate inline-block align-middle"></span>
+                            <span x-show="!(!composeShowCcBcc && (composeCc || composeBcc))">CC/BCC</span>
+                            <i class="fa-solid fa-chevron-down text-[8px] ml-0.5 transition-transform" :class="composeShowCcBcc && 'rotate-180'"></i>
+                        </button>
                     </div>
 
                     {{-- CC --}}
-                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
+                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-1 lg:mb-2" x-collapse>
                         <label class="text-xs text-gray-500 w-10 shrink-0">CC</label>
                         <input type="text" x-model="composeCc"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 lg:py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
                             placeholder="cc@example.com">
                     </div>
 
                     {{-- BCC --}}
-                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
+                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-1 lg:mb-2" x-collapse>
                         <label class="text-xs text-gray-500 w-10 shrink-0">BCC</label>
                         <input type="text" x-model="composeBcc"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 lg:py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
                             placeholder="bcc@example.com">
                     </div>
 
                     {{-- Subject --}}
-                    <div class="flex items-center gap-2 mb-3">
+                    <div class="flex items-center gap-2 mb-2 lg:mb-3">
                         <label class="text-xs text-gray-500 w-10 shrink-0">Subj</label>
                         <input type="text" x-model="composeSubject"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 lg:py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
                             placeholder="Subject">
                     </div>
                 </div>
@@ -1175,7 +1180,7 @@ class="h-full flex flex-col text-sm relative"
             </div>
 
             {{-- Compose footer --}}
-            <div class="flex items-center gap-2 px-4 py-2.5 border-t border-white/10 shrink-0">
+            <div class="flex items-center gap-2 px-3 py-1.5 lg:px-4 lg:py-2.5 border-t border-white/10 shrink-0">
                 <button @click="sendCompose()"
                     class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-1.5 rounded text-xs font-medium cursor-pointer"
                     x-bind:disabled="composeSending">
