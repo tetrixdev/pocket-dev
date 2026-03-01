@@ -384,14 +384,24 @@ class MicrosoftGraphService
     }
 
     /**
-     * Export a message as .msg (Outlook) file to /tmp.
-     * Uses a Python script to build the OLE compound document.
+     * Export a message as .eml (RFC 2822 MIME) file to /tmp.
      * Returns the file path.
      */
     public static function exportMessageToTmp(array $account, string $messageId): string
     {
-        $message = self::getMessage($account, $messageId);
+        // Fetch the raw MIME content directly from Graph API
+        $token = self::getAccessToken($account);
+        $email = $account['email'];
 
+        $response = Http::withToken($token)
+            ->withHeaders(['Accept' => 'application/octet-stream'])
+            ->get("https://graph.microsoft.com/v1.0/users/{$email}/messages/{$messageId}/\$value");
+
+        if (!$response->successful()) {
+            throw new \RuntimeException("Failed to fetch MIME content: {$response->status()}");
+        }
+
+        $message = self::getMessage($account, $messageId);
         $subject = $message['subject'] ?? 'no-subject';
         $safeSubject = preg_replace('/[^a-zA-Z0-9_-]/', '_', substr($subject, 0, 60));
         $date = isset($message['receivedDateTime'])
@@ -402,100 +412,8 @@ class MicrosoftGraphService
         @mkdir($exportDir, 0777, true);
         @chmod($exportDir, 0777);
 
-        $filePath = "{$exportDir}/{$date}_{$safeSubject}.msg";
-
-        // Build recipients
-        $toRecipients = array_map(
-            fn($r) => [
-                'name' => $r['emailAddress']['name'] ?? $r['emailAddress']['address'] ?? '',
-                'email' => $r['emailAddress']['address'] ?? '',
-            ],
-            $message['toRecipients'] ?? []
-        );
-        $ccRecipients = array_map(
-            fn($r) => [
-                'name' => $r['emailAddress']['name'] ?? $r['emailAddress']['address'] ?? '',
-                'email' => $r['emailAddress']['address'] ?? '',
-            ],
-            $message['ccRecipients'] ?? []
-        );
-
-        // Get body content
-        $bodyHtml = '';
-        $bodyText = '';
-        $bodyContent = $message['body']['content'] ?? '';
-        $contentType = strtolower($message['body']['contentType'] ?? 'html');
-
-        if ($contentType === 'html') {
-            $bodyHtml = $bodyContent;
-            $bodyText = strip_tags($bodyContent);
-        } else {
-            $bodyText = $bodyContent;
-        }
-
-        // Fetch attachments with full content
-        $attachmentData = [];
-        try {
-            $attachments = self::listAttachments($account, $messageId);
-            foreach ($attachments['value'] ?? [] as $att) {
-                if ($att['isInline'] ?? false) {
-                    continue;
-                }
-                try {
-                    $fullAtt = self::getAttachment($account, $messageId, $att['id']);
-                    if (isset($fullAtt['contentBytes'])) {
-                        $attachmentData[] = [
-                            'name' => $fullAtt['name'] ?? 'unnamed',
-                            'contentType' => $fullAtt['contentType'] ?? 'application/octet-stream',
-                            'contentBytes' => $fullAtt['contentBytes'],
-                            'isInline' => false,
-                        ];
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('Failed to download attachment for MSG export', [
-                        'messageId' => $messageId,
-                        'attachmentId' => $att['id'],
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-        } catch (\Exception $e) {
-            Log::warning('Failed to list attachments for MSG export', [
-                'messageId' => $messageId,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        // Build JSON payload for the Python script
-        $payload = [
-            'subject' => $subject,
-            'from_name' => $message['from']['emailAddress']['name'] ?? '',
-            'from_email' => $message['from']['emailAddress']['address'] ?? '',
-            'to_recipients' => $toRecipients,
-            'cc_recipients' => $ccRecipients,
-            'body_text' => $bodyText,
-            'body_html' => $bodyHtml,
-            'received_date' => $message['receivedDateTime'] ?? '',
-            'sent_date' => $message['sentDateTime'] ?? $message['receivedDateTime'] ?? '',
-            'internet_message_id' => $message['internetMessageId'] ?? '',
-            'importance' => strtolower($message['importance'] ?? 'normal'),
-            'attachments' => $attachmentData,
-            'output_path' => $filePath,
-        ];
-
-        $jsonPath = tempnam('/tmp', 'msg_payload_');
-        file_put_contents($jsonPath, json_encode($payload));
-
-        $scriptPath = base_path('scripts/create_msg.py');
-        $cmd = sprintf('python3 %s < %s 2>&1', escapeshellarg($scriptPath), escapeshellarg($jsonPath));
-        $output = shell_exec($cmd);
-        @unlink($jsonPath);
-
-        $result = json_decode($output, true);
-        if (!$result || !($result['success'] ?? false)) {
-            $error = $result['error'] ?? $output ?? 'Unknown error';
-            throw new \RuntimeException("Failed to create .msg file: {$error}");
-        }
+        $filePath = "{$exportDir}/{$date}_{$safeSubject}.eml";
+        file_put_contents($filePath, $response->body());
 
         return $filePath;
     }
