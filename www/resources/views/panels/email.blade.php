@@ -1021,6 +1021,9 @@ class="h-full flex flex-col text-sm relative"
                 </button>
             </div>
 
+            {{-- Drag overlay: captures mouse events above iframes during resize --}}
+            <div x-show="composeDragging" class="absolute inset-0 z-[60] cursor-row-resize"></div>
+
             {{-- Compose content area --}}
             <div class="flex-1 flex flex-col overflow-hidden px-4 py-3 min-h-0" data-compose-content>
                 {{-- Address fields (fixed, never flex) --}}
