@@ -44,6 +44,7 @@
 
     // UI state
     showSidebar: window.innerWidth >= 1024,
+    showAttachments: false,
     actionLoading: {},
     toast: null,
     toastTimeout: null,
@@ -247,6 +248,7 @@
         this.selectedMessage = msg;
         this.messageLoading = true;
         this.mobileView = 'detail';
+        this.showAttachments = false;
 
         try {
             const data = await this.doAction('getMessage', { messageId: msg.id });
@@ -941,6 +943,16 @@ class="h-full flex flex-col text-sm relative"
                                     title="Export as .eml to /tmp and copy path to clipboard">
                                     <i class="fa-solid fa-clipboard"></i><span class="hidden lg:inline ml-1">Copy .eml</span>
                                 </button>
+
+                                {{-- Attachments toggle (mobile: inline button, right-aligned) --}}
+                                <template x-if="selectedMessage?._attachments?.filter(a => !a.isInline).length > 0">
+                                    <button @click="showAttachments = !showAttachments"
+                                        class="lg:hidden ml-auto px-2 py-1 text-[11px] bg-white/5 hover:bg-white/10 rounded text-gray-300 transition-colors cursor-pointer"
+                                        title="Attachments">
+                                        <i class="fa-solid fa-paperclip"></i>
+                                        (<span x-text="selectedMessage._attachments.filter(a => !a.isInline).length"></span>)
+                                    </button>
+                                </template>
                             </div>
 
                             {{-- Permission warning --}}
@@ -955,20 +967,21 @@ class="h-full flex flex-col text-sm relative"
                                 </div>
                             </template>
 
-                            {{-- Attachments (in header) --}}
-                            <template x-if="selectedMessage?._attachments?.length > 0">
-                                <div class="mt-2 pt-2 border-t border-white/5">
-                                    <h4 class="text-[11px] text-gray-400 font-medium mb-1.5">
+                            {{-- Attachments: collapsible on mobile, always visible on desktop --}}
+                            <template x-if="selectedMessage?._attachments?.filter(a => !a.isInline).length > 0">
+                                <div class="mt-2 pt-2 border-t border-white/5"
+                                     x-show="showAttachments || window.innerWidth >= 1024" x-collapse>
+                                    <h4 class="text-[11px] text-gray-400 font-medium mb-1.5 hidden lg:block">
                                         <i class="fa-solid fa-paperclip mr-1"></i>
                                         Attachments (<span x-text="selectedMessage._attachments.filter(a => !a.isInline).length"></span>)
                                     </h4>
-                                    <div class="flex flex-wrap gap-1.5">
+                                    <div class="flex flex-col lg:flex-row lg:flex-wrap gap-1.5">
                                         <template x-for="att in selectedMessage._attachments.filter(a => !a.isInline)" :key="att.id">
                                             <div class="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded px-2 py-1 text-[11px] group">
                                                 <i class="fa-solid fa-file text-gray-500 text-[10px]"></i>
-                                                <span class="text-gray-300 max-w-[200px] truncate" x-text="att.name"></span>
+                                                <span class="text-gray-300 truncate flex-1 lg:flex-none lg:max-w-[200px]" x-text="att.name"></span>
                                                 <span class="text-gray-600 text-[10px]" x-text="formatFileSize(att.size)"></span>
-                                                <div class="flex gap-1 ml-0.5">
+                                                <div class="flex gap-1 ml-auto lg:ml-0.5">
                                                     <button @click="downloadAttachment(selectedMessage.id, att.id, att.name)"
                                                         class="text-blue-400 hover:text-blue-300 cursor-pointer" title="Download">
                                                         <i class="fa-solid fa-download text-[10px]"></i>
