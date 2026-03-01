@@ -53,6 +53,8 @@
     // Quill editor
     quillInstance: null,
     composeOriginalHtml: '',
+    editorHeight: 0,
+    composeDragging: false,
 
     // Permissions (detected from JWT token roles)
     permissions: [],
@@ -555,6 +557,14 @@
             const container = document.getElementById('quill-compose');
             if (!container || typeof Quill === 'undefined') return;
 
+            // Calculate initial editor height: 40% of the content area
+            const formArea = container.closest('[data-compose-content]');
+            if (formArea && this.composeMode !== 'new' && this.composeOriginalHtml) {
+                const addressFields = formArea.querySelector('[data-compose-fields]');
+                const available = formArea.clientHeight - (addressFields?.offsetHeight || 0);
+                this.editorHeight = Math.max(120, Math.round(available * 0.4));
+            }
+
             this.quillInstance = new Quill('#quill-compose', {
                 theme: 'snow',
                 placeholder: 'Write your message...',
@@ -568,6 +578,27 @@
                 },
             });
         });
+    },
+
+    startComposeResize(e) {
+        this.composeDragging = true;
+        const startY = e.clientY;
+        const startHeight = this.editorHeight;
+        const formArea = e.target.closest('[data-compose-content]');
+        const addressFields = formArea?.querySelector('[data-compose-fields]');
+        const maxHeight = (formArea?.clientHeight || 600) - (addressFields?.offsetHeight || 0) - 80;
+
+        const onMouseMove = (ev) => {
+            const delta = ev.clientY - startY;
+            this.editorHeight = Math.max(80, Math.min(maxHeight, startHeight + delta));
+        };
+        const onMouseUp = () => {
+            this.composeDragging = false;
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
     },
 
     getComposeHtml() {
@@ -990,73 +1021,77 @@ class="h-full flex flex-col text-sm relative"
                 </button>
             </div>
 
-            {{-- Compose form --}}
-            <div class="flex-1 overflow-y-auto px-4 py-3">
-                {{-- From (display only) --}}
-                <div class="flex items-center gap-2 mb-2">
-                    <label class="text-xs text-gray-500 w-10 shrink-0">From</label>
-                    <span class="text-xs text-gray-300" x-text="getCurrentEmail()"></span>
+            {{-- Compose content area --}}
+            <div class="flex-1 flex flex-col overflow-hidden px-4 py-3 min-h-0" data-compose-content>
+                {{-- Address fields (fixed, never flex) --}}
+                <div class="shrink-0" data-compose-fields>
+                    {{-- From (display only) --}}
+                    <div class="flex items-center gap-2 mb-2">
+                        <label class="text-xs text-gray-500 w-10 shrink-0">From</label>
+                        <span class="text-xs text-gray-300" x-text="getCurrentEmail()"></span>
+                    </div>
+
+                    {{-- To --}}
+                    <div class="flex items-center gap-2 mb-2">
+                        <label class="text-xs text-gray-500 w-10 shrink-0">To</label>
+                        <input type="text" x-model="composeTo"
+                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                            placeholder="recipient@example.com">
+                        <button x-show="!composeShowCcBcc" @click="composeShowCcBcc = true"
+                            class="text-[10px] text-gray-500 hover:text-gray-300 cursor-pointer">CC/BCC</button>
+                    </div>
+
+                    {{-- CC --}}
+                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
+                        <label class="text-xs text-gray-500 w-10 shrink-0">CC</label>
+                        <input type="text" x-model="composeCc"
+                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                            placeholder="cc@example.com">
+                    </div>
+
+                    {{-- BCC --}}
+                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
+                        <label class="text-xs text-gray-500 w-10 shrink-0">BCC</label>
+                        <input type="text" x-model="composeBcc"
+                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                            placeholder="bcc@example.com">
+                    </div>
+
+                    {{-- Subject --}}
+                    <div class="flex items-center gap-2 mb-3">
+                        <label class="text-xs text-gray-500 w-10 shrink-0">Subj</label>
+                        <input type="text" x-model="composeSubject"
+                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                            placeholder="Subject">
+                    </div>
                 </div>
 
-                {{-- To --}}
-                <div class="flex items-center gap-2 mb-2">
-                    <label class="text-xs text-gray-500 w-10 shrink-0">To</label>
-                    <input type="text" x-model="composeTo"
-                        class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                        placeholder="recipient@example.com">
-                    <button x-show="!composeShowCcBcc" @click="composeShowCcBcc = true"
-                        class="text-[10px] text-gray-500 hover:text-gray-300 cursor-pointer">CC/BCC</button>
+                {{-- Quill editor pane (flex-controlled height) --}}
+                <div class="flex flex-col overflow-hidden"
+                     :class="composeMode !== 'new' && composeOriginalHtml ? 'shrink-0' : 'flex-1 min-h-0'"
+                     :style="composeMode !== 'new' && composeOriginalHtml ? 'height: ' + editorHeight + 'px' : ''">
+                    <div id="quill-compose" class="flex-1 min-h-0"></div>
                 </div>
 
-                {{-- CC --}}
-                <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
-                    <label class="text-xs text-gray-500 w-10 shrink-0">CC</label>
-                    <input type="text" x-model="composeCc"
-                        class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                        placeholder="cc@example.com">
+                {{-- Drag handle (only for reply/forward) --}}
+                <div x-show="composeMode !== 'new' && composeOriginalHtml"
+                     class="shrink-0 h-3 cursor-row-resize group flex items-center justify-center select-none"
+                     @mousedown.prevent="startComposeResize($event)">
+                    <div class="w-10 h-1 rounded-full bg-white/15 group-hover:bg-white/30 transition-colors"></div>
                 </div>
 
-                {{-- BCC --}}
-                <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
-                    <label class="text-xs text-gray-500 w-10 shrink-0">BCC</label>
-                    <input type="text" x-model="composeBcc"
-                        class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                        placeholder="bcc@example.com">
-                </div>
-
-                {{-- Subject --}}
-                <div class="flex items-center gap-2 mb-3">
-                    <label class="text-xs text-gray-500 w-10 shrink-0">Subj</label>
-                    <input type="text" x-model="composeSubject"
-                        class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                        placeholder="Subject">
-                </div>
-
-                {{-- Quill WYSIWYG editor --}}
-                <div id="quill-compose"></div>
-
-                {{-- Original message preview (reply/forward) --}}
+                {{-- Original message pane (fills remaining space) --}}
                 <template x-if="composeMode !== 'new' && composeOriginalHtml">
-                    <div class="mt-3 border-t border-white/10 pt-3">
-                        <div class="text-[10px] text-gray-500 mb-2 font-medium">
+                    <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
+                        <div class="text-[10px] text-gray-500 mb-1.5 font-medium shrink-0">
                             <i class="fa-solid fa-quote-left mr-1"></i>Original message
                         </div>
-                        <div class="bg-white/[0.02] border border-white/5 rounded overflow-hidden">
+                        <div class="flex-1 min-h-0 bg-white/[0.02] border border-white/5 rounded overflow-hidden">
                             <iframe
                                 :srcdoc="composeOriginalHtml"
                                 sandbox=""
-                                class="w-full border-0"
-                                style="min-height: 120px; max-height: 300px; background: white;"
-                                x-init="$nextTick(() => {
-                                    const iframe = $el;
-                                    const resize = () => {
-                                        try {
-                                            const h = iframe.contentDocument?.body?.scrollHeight || iframe.contentDocument?.documentElement?.scrollHeight;
-                                            if (h) iframe.style.height = Math.min(h + 20, 300) + 'px';
-                                        } catch(e) {}
-                                    };
-                                    iframe.addEventListener('load', resize);
-                                })"
+                                class="w-full h-full border-0"
+                                style="background: white;"
                             ></iframe>
                         </div>
                     </div>
@@ -1144,6 +1179,7 @@ class="h-full flex flex-col text-sm relative"
             background: rgba(255,255,255,0.05);
             border-color: rgba(255,255,255,0.1) !important;
             border-radius: 6px 6px 0 0;
+            flex-shrink: 0;
         }
         .ql-container.ql-snow {
             border-color: rgba(255,255,255,0.1) !important;
@@ -1152,11 +1188,13 @@ class="h-full flex flex-col text-sm relative"
             font-size: 13px;
         }
         .ql-container {
+            flex: 1 !important;
             height: auto !important;
+            min-height: 0;
+            overflow-y: auto;
         }
         .ql-editor {
             color: #e5e7eb;
-            min-height: 100px;
         }
         .ql-editor.ql-blank::before {
             color: rgba(255,255,255,0.25);
