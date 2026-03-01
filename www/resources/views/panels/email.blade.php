@@ -47,6 +47,8 @@
     toast: null,
     toastTimeout: null,
     error: null,
+    showDeleteConfirm: false,
+    deleteTargetId: null,
 
     // Permissions (detected from JWT token roles)
     permissions: [],
@@ -116,9 +118,13 @@
         this.foldersLoading = true;
         try {
             const data = await this.doAction('listFolders');
+            console.warn('[PERMS] listFolders response keys:', Object.keys(data));
+            console.warn('[PERMS] data.permissions:', JSON.stringify(data.permissions));
             this.folders = data.folders || [];
             this.wellKnownMap = data.wellKnownMap || {};
             if (data.permissions) this.permissions = data.permissions;
+            console.warn('[PERMS] this.permissions after set:', JSON.stringify(this.permissions));
+            console.warn('[PERMS] canWrite:', this.canWrite(), 'canSend:', this.canSend());
 
             // The backend resolves the well-known inbox folder ID so we can
             // match it in the sidebar regardless of locale (e.g., Postvak IN).
@@ -331,7 +337,24 @@
         }
     },
 
-    async deleteMessage(messageId) {
+    requestDelete(messageId) {
+        console.warn('[DELETE DEBUG] requestDelete called with:', messageId);
+        console.warn('[DELETE DEBUG] canWrite:', this.canWrite(), 'actionLoading:', this.actionLoading[messageId]);
+        this.deleteTargetId = messageId;
+        this.showDeleteConfirm = true;
+        console.warn('[DELETE DEBUG] showDeleteConfirm set to:', this.showDeleteConfirm);
+    },
+
+    cancelDelete() {
+        this.showDeleteConfirm = false;
+        this.deleteTargetId = null;
+    },
+
+    async confirmDelete() {
+        const messageId = this.deleteTargetId;
+        if (!messageId) return;
+        this.showDeleteConfirm = false;
+        this.deleteTargetId = null;
         this.actionLoading[messageId] = true;
         try {
             await this.doAction('deleteMessage', { messageId });
@@ -586,7 +609,7 @@ class="h-full flex flex-col text-sm relative"
         <button @click="openCompose('new')"
             class="px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer"
             :class="canSend() ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 text-gray-500 !cursor-not-allowed'"
-            :disabled="!canSend()"
+            x-bind:disabled="!canSend()"
             :title="canSend() ? '' : 'Requires Mail.Send permission'">
             <i class="fa-solid fa-pen-to-square mr-1"></i>Compose
         </button>
@@ -715,7 +738,7 @@ class="h-full flex flex-col text-sm relative"
                         <div class="p-3 text-center">
                             <button @click="loadMore()"
                                 class="text-xs text-blue-400 hover:text-blue-300 cursor-pointer"
-                                :disabled="messagesLoading">
+                                x-bind:disabled="messagesLoading">
                                 <span x-show="!messagesLoading">Load more</span>
                                 <span x-show="messagesLoading">Loading...</span>
                             </button>
@@ -779,46 +802,44 @@ class="h-full flex flex-col text-sm relative"
                                 <button @click="openCompose('reply', selectedMessage)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
                                     :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    :disabled="!canSend()"
+                                    x-bind:disabled="!canSend()"
                                     :title="canSend() ? '' : 'Requires Mail.Send permission'">
                                     <i class="fa-solid fa-reply mr-1"></i>Reply
                                 </button>
                                 <button @click="openCompose('replyAll', selectedMessage)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
                                     :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    :disabled="!canSend()"
+                                    x-bind:disabled="!canSend()"
                                     :title="canSend() ? '' : 'Requires Mail.Send permission'">
                                     <i class="fa-solid fa-reply-all mr-1"></i>Reply All
                                 </button>
                                 <button @click="openCompose('forward', selectedMessage)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
                                     :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    :disabled="!canSend()"
+                                    x-bind:disabled="!canSend()"
                                     :title="canSend() ? '' : 'Requires Mail.Send permission'">
                                     <i class="fa-solid fa-share mr-1"></i>Forward
                                 </button>
 
                                 <div class="w-px h-4 bg-white/10 mx-1"></div>
 
-                                <button @click="archiveMessage(selectedMessage.id)"
+                                <button @click="console.warn('[ARCHIVE BTN] clicked', selectedMessage?.id); archiveMessage(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
-                                    :class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    :disabled="!canWrite() || actionLoading[selectedMessage.id]"
-                                    :title="canWrite() ? '' : 'Requires Mail.ReadWrite permission'">
+                                    x-bind:class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
+                                    x-bind:disabled="!canWrite() || actionLoading[selectedMessage.id]">
                                     <i class="fa-solid fa-box-archive mr-1"></i>Archive
                                 </button>
-                                <button @click="deleteMessage(selectedMessage.id)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
-                                    :class="canWrite() ? 'hover:bg-red-600/20 text-gray-300 hover:text-red-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    :disabled="!canWrite() || actionLoading[selectedMessage.id]"
-                                    :title="canWrite() ? '' : 'Requires Mail.ReadWrite permission'">
-                                    <i class="fa-solid fa-trash-can mr-1"></i>Delete
+                                <button onclick="console.warn('[DELETE onclick] raw onclick fired')"
+                                    @click="console.warn('[DELETE @click] fired'); requestDelete(selectedMessage.id)"
+                                    class="px-2 py-1 text-[11px] bg-white/5 hover:bg-red-600/20 text-gray-300 hover:text-red-300 rounded transition-colors cursor-pointer"
+                                    x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])"
+                                    x-effect="console.warn('[DELETE x-effect] DISABLED EVAL (bool):', !!(!canWrite() || actionLoading[selectedMessage?.id]), 'el.disabled:', $el.disabled)">
+                                    <i class="fa-solid fa-trash-can mr-1"></i>Delete DBG4
                                 </button>
                                 <button @click="toggleRead(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
-                                    :class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    :disabled="!canWrite()"
-                                    :title="canWrite() ? '' : 'Requires Mail.ReadWrite permission'">
+                                    x-bind:class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
+                                    x-bind:disabled="!canWrite()">
                                     <i class="fa-solid mr-1" :class="selectedMessage.isRead ? 'fa-envelope' : 'fa-envelope-open'"></i>
                                     <span x-text="selectedMessage.isRead ? 'Unread' : 'Read'"></span>
                                 </button>
@@ -981,7 +1002,7 @@ class="h-full flex flex-col text-sm relative"
             <div class="flex items-center gap-2 px-4 py-2.5 border-t border-white/10 shrink-0">
                 <button @click="sendCompose()"
                     class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-1.5 rounded text-xs font-medium cursor-pointer"
-                    :disabled="composeSending">
+                    x-bind:disabled="composeSending">
                     <template x-if="!composeSending">
                         <span><i class="fa-solid fa-paper-plane mr-1"></i>Send</span>
                     </template>
@@ -998,6 +1019,35 @@ class="h-full flex flex-col text-sm relative"
                 <button @click="cancelCompose()" class="px-4 py-1.5 text-xs text-gray-400 hover:text-white cursor-pointer">
                     Cancel
                 </button>
+            </div>
+        </div>
+    </template>
+
+    {{-- ===================================================================== --}}
+    {{-- DELETE CONFIRMATION MODAL --}}
+    {{-- ===================================================================== --}}
+    <div x-effect="if (showDeleteConfirm) console.warn('[DELETE MODAL] x-effect: showDeleteConfirm changed to', showDeleteConfirm)"></div>
+    <template x-if="showDeleteConfirm">
+        <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="cancelDelete()"
+            x-init="console.warn('[DELETE MODAL] modal DIV x-init — I am visible!')">
+            <div class="bg-[#1e1e32] border border-white/10 rounded-xl shadow-2xl px-5 py-4 mx-4 max-w-sm w-full">
+                <div class="flex items-center gap-2.5 mb-3">
+                    <div class="w-8 h-8 rounded-full bg-red-600/20 flex items-center justify-center shrink-0">
+                        <i class="fa-solid fa-trash-can text-red-400 text-sm"></i>
+                    </div>
+                    <h3 class="text-sm font-semibold text-gray-100">Delete email?</h3>
+                </div>
+                <p class="text-xs text-gray-400 mb-4">This will permanently delete this email. This action cannot be undone.</p>
+                <div class="flex items-center justify-end gap-2">
+                    <button @click="cancelDelete()"
+                        class="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 rounded-lg text-gray-300 hover:text-gray-100 transition-colors cursor-pointer">
+                        Cancel
+                    </button>
+                    <button @click="confirmDelete()"
+                        class="px-3 py-1.5 text-xs bg-red-600/80 hover:bg-red-600 rounded-lg text-white transition-colors cursor-pointer">
+                        <i class="fa-solid fa-trash-can mr-1"></i>Delete
+                    </button>
+                </div>
             </div>
         </div>
     </template>

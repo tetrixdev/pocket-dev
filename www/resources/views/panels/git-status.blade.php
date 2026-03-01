@@ -539,13 +539,13 @@
                 {{-- Prev/Next navigation --}}
                 <div class="flex items-center gap-1" x-show="allFiles.length > 1">
                     <button @click="prevFile()"
-                            :disabled="currentFileIndex === 0"
+                            x-bind:disabled="currentFileIndex === 0"
                             class="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             title="Previous file">
                         <i class="fa-solid fa-chevron-up text-sm"></i>
                     </button>
                     <button @click="nextFile()"
-                            :disabled="currentFileIndex >= allFiles.length - 1"
+                            x-bind:disabled="currentFileIndex >= allFiles.length - 1"
                             class="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                             title="Next file">
                         <i class="fa-solid fa-chevron-down text-sm"></i>
