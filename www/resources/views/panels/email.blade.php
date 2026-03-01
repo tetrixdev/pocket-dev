@@ -698,7 +698,7 @@ class="h-full flex flex-col text-sm relative"
                     <i class="fa-solid fa-magnifying-glass text-xs"></i>
                 </button>
             </div>
-            <button @click="showMobileSearch = !showMobileSearch" class="lg:hidden text-gray-400 hover:text-white p-1 cursor-pointer" title="Search">
+            <button @click="showMobileSearch = !showMobileSearch; if (showMobileSearch) $nextTick(() => $refs.mobileSearchInput?.focus())" class="lg:hidden text-gray-400 hover:text-white p-1 cursor-pointer" title="Search">
                 <i class="fa-solid fa-magnifying-glass text-xs"></i>
             </button>
 
