@@ -45,85 +45,27 @@ class MicrosoftGraphTool extends Tool
     ];
 
     public ?string $instructions = <<<'INSTRUCTIONS'
-Make authenticated Microsoft Graph API calls for email and other Microsoft 365 services.
+Thin wrapper around the Microsoft Graph REST API (v1.0). Supports any endpoint and operation available in the Graph API — email, calendar, OneDrive, etc.
 
 ## Account Discovery
 Call without parameters to list available accounts.
-Account names come from AZURE_{NAME}_* credential pairs in Settings > Credentials:
-- AZURE_{NAME}_CLIENT_ID
-- AZURE_{NAME}_CLIENT_SECRET
-- AZURE_{NAME}_TENANT_ID
-- AZURE_{NAME}_EMAIL
+Account names come from AZURE_{NAME}_* credential pairs (CLIENT_ID, CLIENT_SECRET, TENANT_ID, EMAIL).
 
-## Common Email Operations
+## Key Details
+- The `{email}` placeholder in endpoints is auto-replaced with the account's configured email
+- Standard OData query parameters are supported: `$select`, `$top`, `$skip`, `$filter`, `$search`, `$orderby`
 
-### List inbox messages
+## Examples
+
+List inbox:
 ```json
-{"account": "PERSONAL", "method": "GET", "endpoint": "/users/{email}/mailFolders/inbox/messages", "query": {"$top": 10, "$select": "subject,from,receivedDateTime,isRead,bodyPreview", "$orderby": "receivedDateTime desc"}}
+{"account": "PERSONAL", "endpoint": "/users/{email}/mailFolders/inbox/messages", "query": {"$top": 10, "$orderby": "receivedDateTime desc"}}
 ```
 
-### Read a specific message
+Send an email:
 ```json
-{"account": "PERSONAL", "method": "GET", "endpoint": "/users/{email}/messages/{messageId}"}
+{"account": "PERSONAL", "method": "POST", "endpoint": "/users/{email}/sendMail", "body": {"message": {"subject": "Hello", "body": {"contentType": "Text", "content": "Hi!"}, "toRecipients": [{"emailAddress": {"address": "user@example.com"}}]}}}
 ```
-
-### Send an email
-```json
-{"account": "PERSONAL", "method": "POST", "endpoint": "/users/{email}/sendMail", "body": {"message": {"subject": "Hello", "body": {"contentType": "Text", "content": "Hi there!"}, "toRecipients": [{"emailAddress": {"address": "user@example.com"}}]}}}
-```
-
-### Reply to a message
-```json
-{"account": "PERSONAL", "method": "POST", "endpoint": "/users/{email}/messages/{messageId}/reply", "body": {"comment": "Thanks!"}}
-```
-
-### Reply All
-```json
-{"account": "PERSONAL", "method": "POST", "endpoint": "/users/{email}/messages/{messageId}/replyAll", "body": {"comment": "Thanks everyone!"}}
-```
-
-### Forward a message
-```json
-{"account": "PERSONAL", "method": "POST", "endpoint": "/users/{email}/messages/{messageId}/forward", "body": {"comment": "FYI", "toRecipients": [{"emailAddress": {"address": "colleague@example.com"}}]}}
-```
-
-### Move to archive
-```json
-{"account": "PERSONAL", "method": "POST", "endpoint": "/users/{email}/messages/{messageId}/move", "body": {"destinationId": "archive"}}
-```
-
-### Delete a message
-```json
-{"account": "PERSONAL", "method": "DELETE", "endpoint": "/users/{email}/messages/{messageId}"}
-```
-
-### List mail folders
-```json
-{"account": "PERSONAL", "method": "GET", "endpoint": "/users/{email}/mailFolders"}
-```
-
-### Search messages
-```json
-{"account": "PERSONAL", "method": "GET", "endpoint": "/users/{email}/messages", "query": {"$search": "\"invoice\""}}
-```
-
-### Mark as read
-```json
-{"account": "PERSONAL", "method": "PATCH", "endpoint": "/users/{email}/messages/{messageId}", "body": {"isRead": true}}
-```
-
-### List attachments
-```json
-{"account": "PERSONAL", "method": "GET", "endpoint": "/users/{email}/messages/{messageId}/attachments"}
-```
-
-## Notes
-- The {email} placeholder in endpoints is auto-replaced with the account's configured email
-- Response is formatted as JSON
-- Use $select to limit fields and reduce response size
-- Use $top and $skip for pagination
-- Use $search for full-text search (enclose in double quotes)
-- Use $filter for OData filtering (e.g., "isRead eq false")
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'

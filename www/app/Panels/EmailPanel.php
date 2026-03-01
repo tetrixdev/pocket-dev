@@ -526,7 +526,7 @@ Opens an interactive Email panel for viewing and managing Microsoft 365 email.
 - **Archive / Delete**: Quick actions on messages
 - **Mark read/unread**: Toggle read status
 - **Attachments**: View and download email attachments
-- **Export to path**: Download email as HTML to /tmp and copy path to clipboard (useful for discussing emails in conversations)
+- **Export to path**: Download email as .eml to /tmp and copy path to clipboard (useful for discussing emails in conversations)
 - **Search**: Search within the current folder
 
 ## Account Setup
