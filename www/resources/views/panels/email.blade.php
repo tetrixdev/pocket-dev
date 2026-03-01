@@ -1153,7 +1153,7 @@ class="h-full flex flex-col text-sm relative"
         }
         .ql-editor {
             color: #e5e7eb;
-            min-height: 200px;
+            min-height: 100px;
         }
         .ql-editor.ql-blank::before {
             color: rgba(255,255,255,0.25);
