@@ -672,15 +672,18 @@ class="h-full flex flex-col text-sm relative"
         <div class="flex-1"></div>
 
         {{-- Search --}}
-        <div class="relative flex items-center">
-            <input type="text" x-model="searchQuery" @keydown.enter="searchMessages()"
-                placeholder="Search..."
-                class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 w-36 sm:w-48 outline-none focus:border-blue-500/50 placeholder-gray-500">
-            <template x-if="searchQuery">
-                <button @click="clearSearch()" class="absolute right-6 text-gray-500 hover:text-gray-300 cursor-pointer">
-                    <i class="fa-solid fa-xmark text-[10px]"></i>
-                </button>
-            </template>
+        <div class="flex items-center">
+            <div class="relative">
+                <input type="text" x-model="searchQuery" @keydown.enter="searchMessages()"
+                    placeholder="Search..."
+                    class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 w-36 sm:w-48 outline-none focus:border-blue-500/50 placeholder-gray-500"
+                    :class="searchQuery ? 'pr-5' : ''">
+                <template x-if="searchQuery">
+                    <button @click="clearSearch()" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
+                        <i class="fa-solid fa-xmark text-[10px]"></i>
+                    </button>
+                </template>
+            </div>
             <button @click="searchMessages()" class="ml-1 text-gray-400 hover:text-white p-1 cursor-pointer" title="Search">
                 <i class="fa-solid fa-magnifying-glass text-xs"></i>
             </button>
