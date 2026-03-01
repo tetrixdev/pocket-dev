@@ -595,7 +595,7 @@
         if (cc) header += `<b>CC:</b> ${cc}<br>`;
         header += `<b>Subject:</b> ${subject}`;
 
-        return `${replyContent}<br><hr style="border:none;border-top:1px solid #cccccc;margin:16px 0;"><div style="color:#666666;font-size:12px;margin-bottom:12px;">${header}</div><div>${originalBody}</div>`;
+        return `${replyContent}<br><hr style='border:none;border-top:1px solid #cccccc;margin:16px 0;'><div style='color:#666666;font-size:12px;margin-bottom:12px;'>${header}</div><div>${originalBody}</div>`;
     },
 
     formatFileSize(bytes) {
