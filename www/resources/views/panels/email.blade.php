@@ -44,6 +44,7 @@
 
     // UI state
     showSidebar: window.innerWidth >= 1024,
+    showMobileSearch: false,
     showAttachments: false,
     actionLoading: {},
     toast: null,
@@ -156,6 +157,7 @@
         this.activeSearch = '';
         this.isSearching = false;
         this.mobileView = 'list';
+        if (window.innerWidth < 1024) this.showSidebar = false;
         await this.fetchMessages();
     },
 
@@ -655,63 +657,90 @@ class="h-full flex flex-col text-sm relative"
     {{-- ===================================================================== --}}
     {{-- HEADER BAR --}}
     {{-- ===================================================================== --}}
-    <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-white/[0.02] shrink-0 flex-wrap"
+    <div class="shrink-0 border-b border-white/10 bg-white/[0.02]"
          x-show="mobileView !== 'detail' || window.innerWidth >= 1024">
-        {{-- Hamburger (mobile) --}}
-        <button @click="showSidebar = !showSidebar" class="lg:hidden text-gray-400 hover:text-white p-1 cursor-pointer">
-            <i class="fa-solid fa-bars"></i>
-        </button>
+        {{-- Main header row --}}
+        <div class="flex items-center gap-2 px-3 py-2">
+            {{-- Hamburger (mobile) --}}
+            <button @click="showSidebar = !showSidebar" class="lg:hidden text-gray-400 hover:text-white p-1 cursor-pointer">
+                <i class="fa-solid fa-bars"></i>
+            </button>
 
-        {{-- Account selector --}}
-        <template x-if="accounts.length > 1">
-            <select x-model="selectedAccount" @change="switchAccount($event.target.value)"
-                class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 outline-none cursor-pointer">
-                <template x-for="acc in accounts" :key="acc.name">
-                    <option :value="acc.name" x-text="acc.email" class="bg-gray-800"></option>
-                </template>
-            </select>
-        </template>
-        <template x-if="accounts.length === 1">
-            <span class="text-xs text-gray-400" x-text="accounts[0]?.email"></span>
-        </template>
+            {{-- Account selector (desktop only) --}}
+            <template x-if="accounts.length > 1">
+                <select x-model="selectedAccount" @change="switchAccount($event.target.value)"
+                    class="hidden lg:inline-block bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 outline-none cursor-pointer">
+                    <template x-for="acc in accounts" :key="acc.name">
+                        <option :value="acc.name" x-text="acc.email" class="bg-gray-800"></option>
+                    </template>
+                </select>
+            </template>
+            <template x-if="accounts.length === 1">
+                <span class="hidden lg:inline text-xs text-gray-400" x-text="accounts[0]?.email"></span>
+            </template>
 
-        {{-- Folder name --}}
-        <span class="text-gray-200 font-medium text-xs" x-text="selectedFolderName"></span>
+            {{-- Folder name --}}
+            <span class="text-gray-200 font-medium text-xs" x-text="selectedFolderName"></span>
 
-        {{-- Spacer --}}
-        <div class="flex-1"></div>
+            {{-- Spacer --}}
+            <div class="flex-1"></div>
 
-        {{-- Search --}}
-        <div class="flex items-center">
-            <div class="relative">
-                <input type="text" x-model="searchQuery" @keydown.enter="searchMessages()"
-                    placeholder="Search..."
-                    class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 w-36 sm:w-48 outline-none focus:border-blue-500/50 placeholder-gray-500"
-                    :class="searchQuery ? 'pr-5' : ''">
-                <template x-if="searchQuery">
-                    <button @click="clearSearch()" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
-                        <i class="fa-solid fa-xmark text-[10px]"></i>
-                    </button>
-                </template>
+            {{-- Search (desktop: inline input, mobile: toggle icon) --}}
+            <div class="hidden lg:flex items-center">
+                <div class="relative">
+                    <input type="text" x-model="searchQuery" @keydown.enter="searchMessages()"
+                        placeholder="Search..."
+                        class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 w-36 sm:w-48 outline-none focus:border-blue-500/50 placeholder-gray-500"
+                        :class="searchQuery ? 'pr-5' : ''">
+                    <template x-if="searchQuery">
+                        <button @click="clearSearch()" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
+                            <i class="fa-solid fa-xmark text-[10px]"></i>
+                        </button>
+                    </template>
+                </div>
+                <button @click="searchMessages()" class="ml-1 text-gray-400 hover:text-white p-1 cursor-pointer" title="Search">
+                    <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                </button>
             </div>
-            <button @click="searchMessages()" class="ml-1 text-gray-400 hover:text-white p-1 cursor-pointer" title="Search">
+            <button @click="showMobileSearch = !showMobileSearch" class="lg:hidden text-gray-400 hover:text-white p-1 cursor-pointer" title="Search">
                 <i class="fa-solid fa-magnifying-glass text-xs"></i>
+            </button>
+
+            {{-- Refresh --}}
+            <button @click="fetchMessages(); fetchFolders();" class="text-gray-400 hover:text-white p-1 cursor-pointer" title="Refresh">
+                <i class="fa-solid fa-arrows-rotate text-xs"></i>
+            </button>
+
+            {{-- Compose (desktop: full button, mobile: icon only) --}}
+            <button @click="openCompose('new')"
+                class="px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer"
+                :class="canSend() ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 text-gray-500 !cursor-not-allowed'"
+                x-bind:disabled="!canSend()"
+                :title="canSend() ? '' : 'Requires Mail.Send permission'">
+                <i class="fa-solid fa-pen-to-square"></i><span class="hidden lg:inline ml-1">Compose</span>
             </button>
         </div>
 
-        {{-- Refresh --}}
-        <button @click="fetchMessages(); fetchFolders();" class="text-gray-400 hover:text-white p-1 cursor-pointer" title="Refresh">
-            <i class="fa-solid fa-arrows-rotate text-xs"></i>
-        </button>
-
-        {{-- Compose --}}
-        <button @click="openCompose('new')"
-            class="px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer"
-            :class="canSend() ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 text-gray-500 !cursor-not-allowed'"
-            x-bind:disabled="!canSend()"
-            :title="canSend() ? '' : 'Requires Mail.Send permission'">
-            <i class="fa-solid fa-pen-to-square mr-1"></i>Compose
-        </button>
+        {{-- Mobile search bar (expandable) --}}
+        <div x-show="showMobileSearch" x-collapse class="lg:hidden px-3 pb-2">
+            <div class="flex items-center gap-1">
+                <div class="relative flex-1">
+                    <input type="text" x-model="searchQuery" @keydown.enter="searchMessages(); showMobileSearch = false;"
+                        placeholder="Search..."
+                        class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 outline-none focus:border-blue-500/50 placeholder-gray-500"
+                        :class="searchQuery ? 'pr-5' : ''"
+                        x-ref="mobileSearchInput">
+                    <template x-if="searchQuery">
+                        <button @click="clearSearch(); showMobileSearch = false;" class="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 cursor-pointer">
+                            <i class="fa-solid fa-xmark text-[10px]"></i>
+                        </button>
+                    </template>
+                </div>
+                <button @click="searchMessages(); showMobileSearch = false;" class="text-gray-400 hover:text-white p-1 cursor-pointer" title="Search">
+                    <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                </button>
+            </div>
+        </div>
     </div>
 
     {{-- ===================================================================== --}}
@@ -745,6 +774,22 @@ class="h-full flex flex-col text-sm relative"
             <div class="w-44 shrink-0 border-r border-white/10 overflow-y-auto bg-white/[0.01]"
                  :class="{ 'hidden lg:block': !showSidebar, 'block': showSidebar }"
                  x-show="mobileView !== 'detail' || window.innerWidth >= 1024">
+
+                {{-- Account selector (mobile only, inside sidebar) --}}
+                <template x-if="accounts.length > 1">
+                    <div class="lg:hidden px-3 pt-2 pb-1 border-b border-white/10">
+                        <select x-model="selectedAccount" @change="switchAccount($event.target.value)"
+                            class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 outline-none cursor-pointer">
+                            <template x-for="acc in accounts" :key="acc.name">
+                                <option :value="acc.name" x-text="acc.email" class="bg-gray-800"></option>
+                            </template>
+                        </select>
+                    </div>
+                </template>
+                <template x-if="accounts.length === 1">
+                    <div class="lg:hidden px-3 pt-2 pb-1 border-b border-white/10 text-xs text-gray-400 truncate" x-text="accounts[0]?.email"></div>
+                </template>
+
                 <div>
                     <template x-if="foldersLoading">
                         <div class="px-3 py-4 text-center">
