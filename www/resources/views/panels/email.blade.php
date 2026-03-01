@@ -118,13 +118,9 @@
         this.foldersLoading = true;
         try {
             const data = await this.doAction('listFolders');
-            console.warn('[PERMS] listFolders response keys:', Object.keys(data));
-            console.warn('[PERMS] data.permissions:', JSON.stringify(data.permissions));
             this.folders = data.folders || [];
             this.wellKnownMap = data.wellKnownMap || {};
             if (data.permissions) this.permissions = data.permissions;
-            console.warn('[PERMS] this.permissions after set:', JSON.stringify(this.permissions));
-            console.warn('[PERMS] canWrite:', this.canWrite(), 'canSend:', this.canSend());
 
             // The backend resolves the well-known inbox folder ID so we can
             // match it in the sidebar regardless of locale (e.g., Postvak IN).
@@ -338,11 +334,8 @@
     },
 
     requestDelete(messageId) {
-        console.warn('[DELETE DEBUG] requestDelete called with:', messageId);
-        console.warn('[DELETE DEBUG] canWrite:', this.canWrite(), 'actionLoading:', this.actionLoading[messageId]);
         this.deleteTargetId = messageId;
         this.showDeleteConfirm = true;
-        console.warn('[DELETE DEBUG] showDeleteConfirm set to:', this.showDeleteConfirm);
     },
 
     cancelDelete() {
@@ -823,18 +816,16 @@ class="h-full flex flex-col text-sm relative"
 
                                 <div class="w-px h-4 bg-white/10 mx-1"></div>
 
-                                <button @click="console.warn('[ARCHIVE BTN] clicked', selectedMessage?.id); archiveMessage(selectedMessage.id)"
+                                <button @click="archiveMessage(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
                                     x-bind:class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    x-bind:disabled="!canWrite() || actionLoading[selectedMessage.id]">
+                                    x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])">
                                     <i class="fa-solid fa-box-archive mr-1"></i>Archive
                                 </button>
-                                <button onclick="console.warn('[DELETE onclick] raw onclick fired')"
-                                    @click="console.warn('[DELETE @click] fired'); requestDelete(selectedMessage.id)"
+                                <button @click="requestDelete(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 hover:bg-red-600/20 text-gray-300 hover:text-red-300 rounded transition-colors cursor-pointer"
-                                    x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])"
-                                    x-effect="console.warn('[DELETE x-effect] DISABLED EVAL (bool):', !!(!canWrite() || actionLoading[selectedMessage?.id]), 'el.disabled:', $el.disabled)">
-                                    <i class="fa-solid fa-trash-can mr-1"></i>Delete DBG4
+                                    x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])">
+                                    <i class="fa-solid fa-trash-can mr-1"></i>Delete
                                 </button>
                                 <button @click="toggleRead(selectedMessage.id)"
                                     class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
@@ -1026,10 +1017,8 @@ class="h-full flex flex-col text-sm relative"
     {{-- ===================================================================== --}}
     {{-- DELETE CONFIRMATION MODAL --}}
     {{-- ===================================================================== --}}
-    <div x-effect="if (showDeleteConfirm) console.warn('[DELETE MODAL] x-effect: showDeleteConfirm changed to', showDeleteConfirm)"></div>
     <template x-if="showDeleteConfirm">
-        <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="cancelDelete()"
-            x-init="console.warn('[DELETE MODAL] modal DIV x-init — I am visible!')">
+        <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" @click.self="cancelDelete()">
             <div class="bg-[#1e1e32] border border-white/10 rounded-xl shadow-2xl px-5 py-4 mx-4 max-w-sm w-full">
                 <div class="flex items-center gap-2.5 mb-3">
                     <div class="w-8 h-8 rounded-full bg-red-600/20 flex items-center justify-center shrink-0">
