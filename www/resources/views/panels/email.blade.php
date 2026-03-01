@@ -1036,7 +1036,7 @@ class="h-full flex flex-col text-sm relative"
                 </div>
 
                 {{-- Quill WYSIWYG editor (constrained, scrollable) --}}
-                <div class="shrink-0 overflow-y-auto" style="max-height: 250px;">
+                <div class="shrink-0 overflow-y-auto" style="max-height: 40%;">
                     <div id="quill-compose"></div>
                 </div>
 
