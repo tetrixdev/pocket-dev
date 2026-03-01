@@ -582,23 +582,28 @@
 
     startComposeResize(e) {
         this.composeDragging = true;
-        const startY = e.clientY;
+        const isTouch = e.type === 'touchstart';
+        const startY = isTouch ? e.touches[0].clientY : e.clientY;
         const startHeight = this.editorHeight;
         const formArea = e.target.closest('[data-compose-content]');
         const addressFields = formArea?.querySelector('[data-compose-fields]');
         const maxHeight = (formArea?.clientHeight || 600) - (addressFields?.offsetHeight || 0) - 80;
 
-        const onMouseMove = (ev) => {
-            const delta = ev.clientY - startY;
-            this.editorHeight = Math.max(80, Math.min(maxHeight, startHeight + delta));
+        const onMove = (ev) => {
+            const y = ev.type === 'touchmove' ? ev.touches[0].clientY : ev.clientY;
+            this.editorHeight = Math.max(80, Math.min(maxHeight, startHeight + (y - startY)));
         };
-        const onMouseUp = () => {
+        const onEnd = () => {
             this.composeDragging = false;
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onEnd);
+            document.removeEventListener('touchmove', onMove);
+            document.removeEventListener('touchend', onEnd);
         };
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onEnd);
     },
 
     getComposeHtml() {
@@ -1079,7 +1084,8 @@ class="h-full flex flex-col text-sm relative"
                 {{-- Drag handle (only for reply/forward) --}}
                 <div x-show="composeMode !== 'new' && composeOriginalHtml"
                      class="shrink-0 h-3 cursor-row-resize group flex items-center justify-center select-none"
-                     @mousedown.prevent="startComposeResize($event)">
+                     @mousedown.prevent="startComposeResize($event)"
+                     @touchstart.prevent="startComposeResize($event)">
                     <div class="w-10 h-1 rounded-full bg-white/15 group-hover:bg-white/30 transition-colors"></div>
                 </div>
 
