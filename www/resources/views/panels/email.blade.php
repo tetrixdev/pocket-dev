@@ -42,7 +42,7 @@
     replyToMessageId: null,
 
     // UI state
-    showSidebar: true,
+    showSidebar: window.innerWidth >= 1024,
     actionLoading: {},
     toast: null,
     toastTimeout: null,
@@ -1199,6 +1199,7 @@ class="h-full flex flex-col text-sm relative"
         .ql-container {
             flex: 1 !important;
             height: auto !important;
+            overflow: visible !important;
             min-height: 0;
             overflow-y: auto;
         }
