@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Log;
 class EmailPanel extends Panel
 {
     public string $slug = 'email';
-    public string $name = 'Email';
-    public string $description = 'View and manage email from Microsoft 365 accounts';
+    public string $name = 'Outlook';
+    public string $description = 'View and manage email from Microsoft 365 accounts via Graph API';
     public string $icon = 'fa-solid fa-envelope';
     public string $category = 'communication';
 
@@ -19,6 +19,11 @@ class EmailPanel extends Panel
             'description' => 'Azure account name (from AZURE_{NAME}_* credentials). Omit to auto-select first account.',
             'default' => null,
         ],
+    ];
+
+    public array $panelDependencies = [
+        ['type' => 'stylesheet', 'url' => 'https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.snow.css'],
+        ['type' => 'script', 'url' => 'https://cdn.jsdelivr.net/npm/quill@2.0.3/dist/quill.js'],
     ];
 
     public function render(array $params, array $state, ?string $panelStateId = null): string
@@ -308,13 +313,14 @@ class EmailPanel extends Panel
         $account = $this->resolveAccount($params);
         $messageId = $params['messageId'] ?? null;
         $comment = $params['comment'] ?? '';
+        $bodyHtml = $params['bodyHtml'] ?? null;
         $replyAll = $params['replyAll'] ?? false;
 
         if (!$messageId) {
             throw new \RuntimeException('messageId is required');
         }
 
-        MicrosoftGraphService::reply($account, $messageId, $comment, $replyAll);
+        MicrosoftGraphService::reply($account, $messageId, $comment, $replyAll, $bodyHtml);
 
         return ['data' => ['success' => true], 'error' => null];
     }
@@ -325,6 +331,7 @@ class EmailPanel extends Panel
         $messageId = $params['messageId'] ?? null;
         $to = $params['to'] ?? [];
         $comment = $params['comment'] ?? null;
+        $bodyHtml = $params['bodyHtml'] ?? null;
 
         if (!$messageId) {
             throw new \RuntimeException('messageId is required');
@@ -338,7 +345,7 @@ class EmailPanel extends Panel
             $to = array_map('trim', explode(',', $to));
         }
 
-        MicrosoftGraphService::forward($account, $messageId, $to, $comment);
+        MicrosoftGraphService::forward($account, $messageId, $to, $comment, $bodyHtml);
 
         return ['data' => ['success' => true], 'error' => null];
     }
@@ -466,17 +473,17 @@ class EmailPanel extends Panel
             $accounts = MicrosoftGraphService::discoverAccounts();
 
             if (empty($accounts)) {
-                return "## Email\n\nNo Azure accounts configured.";
+                return "## Outlook\n\nNo Azure accounts configured.";
             }
 
             $accountName = $params['account'] ?? $accounts[0]['name'];
             $account = MicrosoftGraphService::getAccount($accountName);
 
             if (!$account) {
-                return "## Email\n\nAccount '{$accountName}' not found.";
+                return "## Outlook\n\nAccount '{$accountName}' not found.";
             }
 
-            $output = "## Email ({$account['email']})\n\n";
+            $output = "## Outlook ({$account['email']})\n\n";
 
             // Get inbox preview
             $result = MicrosoftGraphService::listMessages($account, 'inbox', 5);
@@ -502,14 +509,14 @@ class EmailPanel extends Panel
 
             return $output;
         } catch (\Exception $e) {
-            return "## Email\n\nFailed to load: " . $e->getMessage();
+            return "## Outlook\n\nFailed to load: " . $e->getMessage();
         }
     }
 
     public function getSystemPrompt(): string
     {
         return <<<'PROMPT'
-Opens an interactive Email panel for viewing and managing Microsoft 365 email.
+Opens an interactive Outlook panel for viewing and managing Microsoft 365 email via Graph API.
 
 ## What It Shows
 - Inbox and other mail folders with unread counts
@@ -521,10 +528,9 @@ Opens an interactive Email panel for viewing and managing Microsoft 365 email.
 - **Multi-account**: Switch between configured Azure accounts (dropdown)
 - **Folder navigation**: Inbox, Sent, Drafts, Archive, Deleted Items, custom folders
 - **Read emails**: Click to preview with full HTML body rendering
-- **Reply / Reply All / Forward**: Compose overlay with To/CC/BCC fields
-- **Compose**: Write and send new emails
+- **Reply / Reply All / Forward**: Rich text compose with WYSIWYG editor and original message preview
+- **Compose**: Write and send new emails with formatting (bold, italic, lists, links)
 - **Archive / Delete**: Quick actions on messages
-- **Mark read/unread**: Toggle read status
 - **Attachments**: View and download email attachments
 - **Export to path**: Download email as .eml to /tmp and copy path to clipboard (useful for discussing emails in conversations)
 - **Search**: Search within the current folder

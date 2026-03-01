@@ -303,28 +303,48 @@ class MicrosoftGraphService
 
     /**
      * Reply to a message.
+     *
+     * When $bodyHtml is provided, the reply body is sent as HTML via the message.body
+     * property (full control over formatting). Otherwise, the plain text $comment is used
+     * and Graph auto-generates the reply body with quoted original.
      */
     public static function reply(
         array $account,
         string $messageId,
         string $comment,
         bool $replyAll = false,
+        ?string $bodyHtml = null,
     ): array {
         $action = $replyAll ? 'replyAll' : 'reply';
 
-        return self::request('POST', "/users/{email}/messages/{$messageId}/{$action}", $account, [
-            'comment' => $comment,
-        ]);
+        $body = [];
+
+        if ($bodyHtml !== null) {
+            $body['message'] = [
+                'body' => [
+                    'contentType' => 'HTML',
+                    'content' => $bodyHtml,
+                ],
+            ];
+        } else {
+            $body['comment'] = $comment;
+        }
+
+        return self::request('POST', "/users/{email}/messages/{$messageId}/{$action}", $account, $body);
     }
 
     /**
      * Forward a message.
+     *
+     * When $bodyHtml is provided, the forward body is sent as HTML via the message.body
+     * property. Otherwise, the plain text $comment is used.
      */
     public static function forward(
         array $account,
         string $messageId,
         array $toRecipients,
         ?string $comment = null,
+        ?string $bodyHtml = null,
     ): array {
         $body = [
             'toRecipients' => array_map(fn($email) => [
@@ -332,7 +352,14 @@ class MicrosoftGraphService
             ], $toRecipients),
         ];
 
-        if ($comment) {
+        if ($bodyHtml !== null) {
+            $body['message'] = [
+                'body' => [
+                    'contentType' => 'HTML',
+                    'content' => $bodyHtml,
+                ],
+            ];
+        } elseif ($comment) {
             $body['comment'] = $comment;
         }
 

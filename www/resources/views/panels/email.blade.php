@@ -50,6 +50,10 @@
     showDeleteConfirm: false,
     deleteTargetId: null,
 
+    // Quill editor
+    quillInstance: null,
+    composeOriginalHtml: '',
+
     // Permissions (detected from JWT token roles)
     permissions: [],
 
@@ -449,6 +453,7 @@
         this.composeMode = mode;
         this.replyToMessageId = message?.id || null;
         this.composeShowCcBcc = false;
+        this.composeOriginalHtml = '';
 
         if (mode === 'new') {
             this.composeTo = '';
@@ -472,12 +477,14 @@
             this.composeBcc = '';
             this.composeSubject = (message?.subject || '').startsWith('Re:') ? message.subject : 'Re: ' + (message?.subject || '');
             this.composeBody = '';
+            this.composeOriginalHtml = message?.body?.content || '';
         } else if (mode === 'forward') {
             this.composeTo = '';
             this.composeCc = '';
             this.composeBcc = '';
             this.composeSubject = (message?.subject || '').startsWith('Fwd:') ? message.subject : 'Fwd: ' + (message?.subject || '');
             this.composeBody = '';
+            this.composeOriginalHtml = message?.body?.content || '';
         }
 
         this.showCompose = true;
@@ -494,25 +501,22 @@
             return;
         }
 
+        const body = this.getComposeHtml();
         this.composeSending = true;
         try {
-            if (this.composeMode === 'reply') {
+            if (this.composeMode === 'reply' || this.composeMode === 'replyAll') {
+                const fullHtml = this.buildReplyHtml(body);
                 await this.doAction('replyMessage', {
                     messageId: this.replyToMessageId,
-                    comment: this.composeBody,
-                    replyAll: false,
-                });
-            } else if (this.composeMode === 'replyAll') {
-                await this.doAction('replyMessage', {
-                    messageId: this.replyToMessageId,
-                    comment: this.composeBody,
-                    replyAll: true,
+                    bodyHtml: fullHtml,
+                    replyAll: this.composeMode === 'replyAll',
                 });
             } else if (this.composeMode === 'forward') {
+                const fullHtml = this.buildReplyHtml(body);
                 await this.doAction('forwardMessage', {
                     messageId: this.replyToMessageId,
                     to: this.composeTo,
-                    comment: this.composeBody,
+                    bodyHtml: fullHtml,
                 });
             } else {
                 await this.doAction('sendMail', {
@@ -520,10 +524,12 @@
                     cc: this.composeCc || undefined,
                     bcc: this.composeBcc || undefined,
                     subject: this.composeSubject,
-                    body: this.composeBody,
-                    contentType: 'Text',
+                    body: body,
+                    contentType: 'HTML',
                 });
             }
+            this.quillInstance = null;
+            this.composeOriginalHtml = '';
             this.showCompose = false;
             this.showToast('Sent!');
             // Refresh if in sent folder
@@ -538,7 +544,58 @@
     },
 
     cancelCompose() {
+        this.quillInstance = null;
+        this.composeOriginalHtml = '';
         this.showCompose = false;
+    },
+
+    initQuill() {
+        this.quillInstance = null;
+        this.$nextTick(() => {
+            const container = document.getElementById('quill-compose');
+            if (!container || typeof Quill === 'undefined') return;
+
+            this.quillInstance = new Quill('#quill-compose', {
+                theme: 'snow',
+                placeholder: 'Write your message...',
+                modules: {
+                    toolbar: [
+                        ['bold', 'italic', 'underline'],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        ['link'],
+                        ['clean'],
+                    ],
+                },
+            });
+        });
+    },
+
+    getComposeHtml() {
+        if (this.quillInstance) {
+            return this.quillInstance.root.innerHTML;
+        }
+        return '';
+    },
+
+    buildReplyHtml(replyContent) {
+        const msg = this.selectedMessage;
+        if (!msg) return replyContent;
+
+        const from = msg.from?.emailAddress;
+        const fromStr = from?.name
+            ? `${this.escapeHtml(from.name)} &lt;${this.escapeHtml(from.address)}&gt;`
+            : this.escapeHtml(from?.address || '');
+        const to = this.escapeHtml(this.formatRecipients(msg.toRecipients));
+        const cc = msg.ccRecipients?.length ? this.escapeHtml(this.formatRecipients(msg.ccRecipients)) : '';
+        const date = this.formatDate(msg.receivedDateTime);
+        const subject = this.escapeHtml(msg.subject || '');
+        const originalBody = msg.body?.content || '';
+
+        let header = `<b>From:</b> ${fromStr}<br><b>Sent:</b> ${date}<br><b>To:</b> ${to}<br>`;
+        if (cc) header += `<b>CC:</b> ${cc}<br>`;
+        header += `<b>Subject:</b> ${subject}`;
+
+        return `${replyContent}<br><hr style="border:none;border-top:1px solid #cccccc;margin:16px 0;"><div style="color:#666666;font-size:12px;margin-bottom:12px;">${header}</div><div>${originalBody}</div>`;
     },
 
     formatFileSize(bytes) {
@@ -827,13 +884,6 @@ class="h-full flex flex-col text-sm relative"
                                     x-bind:disabled="!!(!canWrite() || actionLoading[selectedMessage.id])">
                                     <i class="fa-solid fa-trash-can mr-1"></i>Delete
                                 </button>
-                                <button @click="toggleRead(selectedMessage.id)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
-                                    x-bind:class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
-                                    x-bind:disabled="!canWrite()">
-                                    <i class="fa-solid mr-1" :class="selectedMessage.isRead ? 'fa-envelope' : 'fa-envelope-open'"></i>
-                                    <span x-text="selectedMessage.isRead ? 'Unread' : 'Read'"></span>
-                                </button>
 
                                 <div class="w-px h-4 bg-white/10 mx-1"></div>
 
@@ -929,7 +979,7 @@ class="h-full flex flex-col text-sm relative"
     {{-- COMPOSE OVERLAY --}}
     {{-- ===================================================================== --}}
     <template x-if="showCompose">
-        <div class="absolute inset-0 z-50 flex flex-col bg-[#1a1a2e]/98 backdrop-blur-sm">
+        <div class="absolute inset-0 z-50 flex flex-col bg-[#1a1a2e]/98 backdrop-blur-sm" x-init="$nextTick(() => initQuill())">
             {{-- Compose header --}}
             <div class="flex items-center gap-2 px-4 py-2.5 border-b border-white/10 shrink-0">
                 <span class="text-sm font-medium text-gray-200"
@@ -982,11 +1032,35 @@ class="h-full flex flex-col text-sm relative"
                         placeholder="Subject">
                 </div>
 
-                {{-- Body --}}
-                <textarea x-model="composeBody"
-                    class="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-xs text-gray-200 outline-none focus:border-blue-500/50 resize-none"
-                    style="min-height: 250px;"
-                    placeholder="Write your message..."></textarea>
+                {{-- Quill WYSIWYG editor --}}
+                <div id="quill-compose"></div>
+
+                {{-- Original message preview (reply/forward) --}}
+                <template x-if="composeMode !== 'new' && composeOriginalHtml">
+                    <div class="mt-3 border-t border-white/10 pt-3">
+                        <div class="text-[10px] text-gray-500 mb-2 font-medium">
+                            <i class="fa-solid fa-quote-left mr-1"></i>Original message
+                        </div>
+                        <div class="bg-white/[0.02] border border-white/5 rounded overflow-hidden">
+                            <iframe
+                                :srcdoc="composeOriginalHtml"
+                                sandbox=""
+                                class="w-full border-0"
+                                style="min-height: 120px; max-height: 300px; background: white;"
+                                x-init="$nextTick(() => {
+                                    const iframe = $el;
+                                    const resize = () => {
+                                        try {
+                                            const h = iframe.contentDocument?.body?.scrollHeight || iframe.contentDocument?.documentElement?.scrollHeight;
+                                            if (h) iframe.style.height = Math.min(h + 20, 300) + 'px';
+                                        } catch(e) {}
+                                    };
+                                    iframe.addEventListener('load', resize);
+                                })"
+                            ></iframe>
+                        </div>
+                    </div>
+                </template>
             </div>
 
             {{-- Compose footer --}}
@@ -1061,4 +1135,76 @@ class="h-full flex flex-col text-sm relative"
             <button @click="error = null" class="text-red-400 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
         </div>
     </template>
+
+    {{-- ===================================================================== --}}
+    {{-- QUILL DARK THEME OVERRIDES --}}
+    {{-- ===================================================================== --}}
+    <style>
+        .ql-toolbar.ql-snow {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1) !important;
+            border-radius: 6px 6px 0 0;
+        }
+        .ql-container.ql-snow {
+            border-color: rgba(255,255,255,0.1) !important;
+            border-radius: 0 0 6px 6px;
+            font-family: inherit;
+            font-size: 13px;
+        }
+        .ql-editor {
+            color: #e5e7eb;
+            min-height: 200px;
+        }
+        .ql-editor.ql-blank::before {
+            color: rgba(255,255,255,0.25);
+            font-style: normal;
+        }
+        .ql-snow .ql-stroke {
+            stroke: #9ca3af !important;
+        }
+        .ql-snow .ql-fill {
+            fill: #9ca3af !important;
+        }
+        .ql-snow .ql-picker {
+            color: #9ca3af;
+        }
+        .ql-snow .ql-picker-label {
+            color: #9ca3af;
+        }
+        .ql-snow .ql-picker-options {
+            background: #1e1e32;
+            border-color: rgba(255,255,255,0.1) !important;
+        }
+        .ql-snow .ql-picker-item {
+            color: #d1d5db;
+        }
+        .ql-snow button:hover .ql-stroke,
+        .ql-snow .ql-picker-label:hover .ql-stroke {
+            stroke: #e5e7eb !important;
+        }
+        .ql-snow button:hover .ql-fill,
+        .ql-snow .ql-picker-label:hover .ql-fill {
+            fill: #e5e7eb !important;
+        }
+        .ql-snow button.ql-active .ql-stroke {
+            stroke: #60a5fa !important;
+        }
+        .ql-snow button.ql-active .ql-fill {
+            fill: #60a5fa !important;
+        }
+        .ql-snow .ql-tooltip {
+            background: #1e1e32;
+            border-color: rgba(255,255,255,0.1);
+            color: #e5e7eb;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .ql-snow .ql-tooltip input[type=text] {
+            color: #e5e7eb;
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.1);
+        }
+        .ql-snow .ql-tooltip a {
+            color: #60a5fa;
+        }
+    </style>
 </div>
