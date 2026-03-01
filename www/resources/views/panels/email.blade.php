@@ -991,67 +991,72 @@ class="h-full flex flex-col text-sm relative"
             </div>
 
             {{-- Compose form --}}
-            <div class="flex-1 flex flex-col overflow-hidden px-4 py-3 min-h-0">
-                {{-- Address fields (shrink-0, never flex) --}}
-                <div class="shrink-0">
-                    {{-- From (display only) --}}
-                    <div class="flex items-center gap-2 mb-2">
-                        <label class="text-xs text-gray-500 w-10 shrink-0">From</label>
-                        <span class="text-xs text-gray-300" x-text="getCurrentEmail()"></span>
-                    </div>
-
-                    {{-- To --}}
-                    <div class="flex items-center gap-2 mb-2">
-                        <label class="text-xs text-gray-500 w-10 shrink-0">To</label>
-                        <input type="text" x-model="composeTo"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                            placeholder="recipient@example.com">
-                        <button x-show="!composeShowCcBcc" @click="composeShowCcBcc = true"
-                            class="text-[10px] text-gray-500 hover:text-gray-300 cursor-pointer">CC/BCC</button>
-                    </div>
-
-                    {{-- CC --}}
-                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
-                        <label class="text-xs text-gray-500 w-10 shrink-0">CC</label>
-                        <input type="text" x-model="composeCc"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                            placeholder="cc@example.com">
-                    </div>
-
-                    {{-- BCC --}}
-                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
-                        <label class="text-xs text-gray-500 w-10 shrink-0">BCC</label>
-                        <input type="text" x-model="composeBcc"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                            placeholder="bcc@example.com">
-                    </div>
-
-                    {{-- Subject --}}
-                    <div class="flex items-center gap-2 mb-3">
-                        <label class="text-xs text-gray-500 w-10 shrink-0">Subj</label>
-                        <input type="text" x-model="composeSubject"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                            placeholder="Subject">
-                    </div>
+            <div class="flex-1 overflow-y-auto px-4 py-3">
+                {{-- From (display only) --}}
+                <div class="flex items-center gap-2 mb-2">
+                    <label class="text-xs text-gray-500 w-10 shrink-0">From</label>
+                    <span class="text-xs text-gray-300" x-text="getCurrentEmail()"></span>
                 </div>
 
-                {{-- Quill WYSIWYG editor (constrained, scrollable) --}}
-                <div class="shrink-0 overflow-y-auto" style="max-height: 40%;">
-                    <div id="quill-compose"></div>
+                {{-- To --}}
+                <div class="flex items-center gap-2 mb-2">
+                    <label class="text-xs text-gray-500 w-10 shrink-0">To</label>
+                    <input type="text" x-model="composeTo"
+                        class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                        placeholder="recipient@example.com">
+                    <button x-show="!composeShowCcBcc" @click="composeShowCcBcc = true"
+                        class="text-[10px] text-gray-500 hover:text-gray-300 cursor-pointer">CC/BCC</button>
                 </div>
 
-                {{-- Original message preview (reply/forward) - takes remaining space --}}
+                {{-- CC --}}
+                <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
+                    <label class="text-xs text-gray-500 w-10 shrink-0">CC</label>
+                    <input type="text" x-model="composeCc"
+                        class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                        placeholder="cc@example.com">
+                </div>
+
+                {{-- BCC --}}
+                <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-2" x-collapse>
+                    <label class="text-xs text-gray-500 w-10 shrink-0">BCC</label>
+                    <input type="text" x-model="composeBcc"
+                        class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                        placeholder="bcc@example.com">
+                </div>
+
+                {{-- Subject --}}
+                <div class="flex items-center gap-2 mb-3">
+                    <label class="text-xs text-gray-500 w-10 shrink-0">Subj</label>
+                    <input type="text" x-model="composeSubject"
+                        class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
+                        placeholder="Subject">
+                </div>
+
+                {{-- Quill WYSIWYG editor --}}
+                <div id="quill-compose"></div>
+
+                {{-- Original message preview (reply/forward) --}}
                 <template x-if="composeMode !== 'new' && composeOriginalHtml">
-                    <div class="flex-1 min-h-0 flex flex-col mt-3 border-t border-white/10 pt-3 overflow-hidden">
-                        <div class="text-[10px] text-gray-500 mb-2 font-medium shrink-0">
+                    <div class="mt-3 border-t border-white/10 pt-3">
+                        <div class="text-[10px] text-gray-500 mb-2 font-medium">
                             <i class="fa-solid fa-quote-left mr-1"></i>Original message
                         </div>
-                        <div class="flex-1 min-h-0 bg-white/[0.02] border border-white/5 rounded overflow-hidden">
+                        <div class="bg-white/[0.02] border border-white/5 rounded overflow-hidden">
                             <iframe
                                 :srcdoc="composeOriginalHtml"
                                 sandbox=""
-                                class="w-full h-full border-0"
-                                style="background: white;"
+                                class="w-full border-0"
+                                style="min-height: 120px; max-height: 300px; background: white;"
+                                x-init="$nextTick(() => {
+                                    const iframe = $el;
+                                    const resize = () => {
+                                        try {
+                                            const h = iframe.contentDocument?.body?.scrollHeight || iframe.contentDocument?.documentElement?.scrollHeight;
+                                            if (h) iframe.style.height = Math.min(h + 20, 300) + 'px';
+                                        } catch(e) {}
+                                    };
+                                    iframe.addEventListener('load', resize);
+                                })"
                             ></iframe>
                         </div>
                     </div>
@@ -1145,6 +1150,9 @@ class="h-full flex flex-col text-sm relative"
             border-radius: 0 0 6px 6px;
             font-family: inherit;
             font-size: 13px;
+        }
+        .ql-container {
+            height: auto !important;
         }
         .ql-editor {
             color: #e5e7eb;
