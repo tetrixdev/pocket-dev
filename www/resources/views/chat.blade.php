@@ -3602,6 +3602,13 @@
                     return this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
                 },
 
+                // Resolve panel display name from availablePanels (PanelRegistry source of truth)
+                getPanelName(screen) {
+                    const slug = screen.panel_slug || screen.panel?.slug;
+                    const panelInfo = this.availablePanels?.find(p => p.slug === slug);
+                    return panelInfo?.name || screen.panel?.name || screen.panel_slug || 'Panel';
+                },
+
                 // Get screen title for display (full title, used for tooltips)
                 getScreenTitle(screenId) {
                     const screen = this.getScreen(screenId);
@@ -3609,7 +3616,7 @@
                     if (screen.type === 'chat') {
                         return screen.conversation?.title || 'Chat';
                     }
-                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                    return this.getPanelName(screen);
                 },
 
                 // Get screen tab label for display (short form for tabs)
@@ -3626,7 +3633,7 @@
                         return (screen.chat_number || '?') + '.';
                     }
                     // For panels, use the full name (they're typically short already)
-                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                    return this.getPanelName(screen);
                 },
 
                 // Get screen type icon class
