@@ -83,12 +83,14 @@
     // API helper
     // =========================================================================
 
-    async doAction(action, params = {}) {
-        const response = await fetch(`/api/panel/${this.panelStateId}/action`, {
+    async doAction(action, params = {}, signal = null) {
+        const opts = {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action, params: { account: this.selectedAccount, ...params } }),
-        });
+        };
+        if (signal) opts.signal = signal;
+        const response = await fetch(`/api/panel/${this.panelStateId}/action`, opts);
         const result = await response.json();
         if (!result.ok || result.error) {
             throw new Error(result.error || 'Action failed');
@@ -197,7 +199,7 @@
                 params.search = this.searchQuery;
             }
 
-            const data = await this.doAction('listMessages', params);
+            const data = await this.doAction('listMessages', params, this.listAbort.signal);
             const newMessages = data.messages || [];
 
             if (append) {
@@ -252,18 +254,13 @@
         this.showAttachments = false;
 
         try {
-            const data = await this.doAction('getMessage', { messageId: msg.id });
+            const data = await this.doAction('getMessage', { messageId: msg.id }, this.messageAbort.signal);
             this.selectedMessage = data.message;
 
-            // Mark as read on server if unread, then update list
+            // Backend already marks as read in handleGetMessage, just update the list UI
             if (!msg.isRead) {
-                try {
-                    await this.doAction('markRead', { messageId: msg.id });
-                    const idx = this.messages.findIndex(m => m.id === msg.id);
-                    if (idx !== -1) this.messages[idx].isRead = true;
-                } catch (e) {
-                    // Silently fail if no Mail.ReadWrite permission
-                }
+                const idx = this.messages.findIndex(m => m.id === msg.id);
+                if (idx !== -1) this.messages[idx].isRead = true;
             }
         } catch (e) {
             if (e.name === 'AbortError') return;
@@ -512,17 +509,30 @@
         return acc?.email || '';
     },
 
+    isValidEmail(s) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+    },
+
     addTag(field, inputField) {
         const val = this[inputField].trim();
         if (!val) return;
         // Split on comma/semicolon/space to support pasting multiple
-        const emails = val.split(/[,;\s]+/).map(e => e.trim()).filter(Boolean);
-        emails.forEach(email => {
-            if (!this[field].includes(email)) {
-                this[field].push(email);
+        const parts = val.split(/[,;\s]+/).map(e => e.trim()).filter(Boolean);
+        let invalid = [];
+        parts.forEach(email => {
+            if (this.isValidEmail(email)) {
+                if (!this[field].includes(email)) {
+                    this[field].push(email);
+                }
+            } else {
+                invalid.push(email);
             }
         });
-        this[inputField] = '';
+        // Keep invalid text in the input so the user can fix it
+        this[inputField] = invalid.join(', ');
+        if (invalid.length > 0) {
+            this.showToast('Invalid email: ' + invalid.join(', '), 'error');
+        }
     },
 
     removeTag(field, index) {

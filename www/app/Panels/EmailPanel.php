@@ -3,6 +3,7 @@
 namespace App\Panels;
 
 use App\Services\MicrosoftGraphService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class EmailPanel extends Panel
@@ -121,26 +122,30 @@ class EmailPanel extends Panel
         $folders = $result['value'] ?? [];
 
         // Resolve well-known folder IDs so we can sort by role regardless of locale.
-        // Graph API lets you fetch folders by well-known name (e.g., /mailFolders/inbox).
+        // Cached per account for 24 hours — these IDs essentially never change.
         $wellKnownNames = ['inbox', 'sentitems', 'drafts', 'archive', 'deleteditems', 'junkemail'];
-        $wellKnownIdOrder = []; // folder real ID => sort position
+        $cacheKey = 'email_panel:well_known_folders:' . md5($account['email'] ?? $account['name'] ?? '');
 
-        foreach ($wellKnownNames as $position => $wkn) {
-            try {
-                $wkFolder = MicrosoftGraphService::request(
-                    'GET',
-                    "/users/{email}/mailFolders/{$wkn}",
-                    $account,
-                    null,
-                    ['$select' => 'id'],
-                );
-                if (isset($wkFolder['id'])) {
-                    $wellKnownIdOrder[$wkFolder['id']] = $position;
+        $wellKnownIdOrder = Cache::remember($cacheKey, now()->addHours(24), function () use ($account, $wellKnownNames) {
+            $mapping = [];
+            foreach ($wellKnownNames as $position => $wkn) {
+                try {
+                    $wkFolder = MicrosoftGraphService::request(
+                        'GET',
+                        "/users/{email}/mailFolders/{$wkn}",
+                        $account,
+                        null,
+                        ['$select' => 'id'],
+                    );
+                    if (isset($wkFolder['id'])) {
+                        $mapping[$wkFolder['id']] = $position;
+                    }
+                } catch (\Exception $e) {
+                    // Folder may not exist (e.g., Archive not enabled) — skip
                 }
-            } catch (\Exception $e) {
-                // Folder may not exist (e.g., Archive not enabled) — skip
             }
-        }
+            return $mapping;
+        });
 
         // Sort: well-known folders first (by their defined order), then alphabetical
         usort($folders, function ($a, $b) use ($wellKnownIdOrder) {
