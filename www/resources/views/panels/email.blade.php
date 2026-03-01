@@ -153,11 +153,7 @@
         this.selectedMessage = null;
         this.messages = [];
         this.currentSkip = 0;
-        this.searchQuery = '';
-        this.activeSearch = '';
-        this.isSearching = false;
         this.mobileView = 'list';
-        if (window.innerWidth < 1024) this.showSidebar = false;
         await this.fetchMessages();
     },
 
@@ -777,7 +773,7 @@ class="h-full flex flex-col text-sm relative"
 
                 {{-- Account selector (mobile only, inside sidebar) --}}
                 <template x-if="accounts.length > 1">
-                    <div class="lg:hidden px-3 pt-2 pb-1 border-b border-white/10">
+                    <div class="lg:hidden px-3 py-1.5 border-b border-white/10">
                         <select x-model="selectedAccount" @change="switchAccount($event.target.value)"
                             class="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 outline-none cursor-pointer">
                             <template x-for="acc in accounts" :key="acc.name">
@@ -787,7 +783,7 @@ class="h-full flex flex-col text-sm relative"
                     </div>
                 </template>
                 <template x-if="accounts.length === 1">
-                    <div class="lg:hidden px-3 pt-2 pb-1 border-b border-white/10 text-xs text-gray-400 truncate" x-text="accounts[0]?.email"></div>
+                    <div class="lg:hidden px-3 py-1.5 border-b border-white/10 text-xs text-gray-400 truncate" x-text="accounts[0]?.email"></div>
                 </template>
 
                 <div>
