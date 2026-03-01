@@ -539,14 +539,14 @@ class="h-full flex flex-col text-sm relative"
     {{-- ===================================================================== --}}
     <div class="flex items-center gap-2 px-3 py-2 border-b border-white/10 bg-white/[0.02] shrink-0 flex-wrap">
         {{-- Hamburger (mobile) --}}
-        <button @click="showSidebar = !showSidebar" class="lg:hidden text-gray-400 hover:text-white p-1">
+        <button @click="showSidebar = !showSidebar" class="lg:hidden text-gray-400 hover:text-white p-1 cursor-pointer">
             <i class="fa-solid fa-bars"></i>
         </button>
 
         {{-- Account selector --}}
         <template x-if="accounts.length > 1">
             <select x-model="selectedAccount" @change="switchAccount($event.target.value)"
-                class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 outline-none">
+                class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 outline-none cursor-pointer">
                 <template x-for="acc in accounts" :key="acc.name">
                     <option :value="acc.name" x-text="acc.email" class="bg-gray-800"></option>
                 </template>
@@ -568,24 +568,24 @@ class="h-full flex flex-col text-sm relative"
                 placeholder="Search..."
                 class="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200 w-36 sm:w-48 outline-none focus:border-blue-500/50 placeholder-gray-500">
             <template x-if="searchQuery">
-                <button @click="clearSearch()" class="absolute right-6 text-gray-500 hover:text-gray-300">
+                <button @click="clearSearch()" class="absolute right-6 text-gray-500 hover:text-gray-300 cursor-pointer">
                     <i class="fa-solid fa-xmark text-[10px]"></i>
                 </button>
             </template>
-            <button @click="searchMessages()" class="ml-1 text-gray-400 hover:text-white p-1" title="Search">
+            <button @click="searchMessages()" class="ml-1 text-gray-400 hover:text-white p-1 cursor-pointer" title="Search">
                 <i class="fa-solid fa-magnifying-glass text-xs"></i>
             </button>
         </div>
 
         {{-- Refresh --}}
-        <button @click="fetchMessages(); fetchFolders();" class="text-gray-400 hover:text-white p-1" title="Refresh">
+        <button @click="fetchMessages(); fetchFolders();" class="text-gray-400 hover:text-white p-1 cursor-pointer" title="Refresh">
             <i class="fa-solid fa-arrows-rotate text-xs"></i>
         </button>
 
         {{-- Compose --}}
         <button @click="openCompose('new')"
-            class="px-2.5 py-1 rounded text-xs font-medium transition-colors"
-            :class="canSend() ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 text-gray-500 cursor-not-allowed'"
+            class="px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer"
+            :class="canSend() ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-700 text-gray-500 !cursor-not-allowed'"
             :disabled="!canSend()"
             :title="canSend() ? '' : 'Requires Mail.Send permission'">
             <i class="fa-solid fa-pen-to-square mr-1"></i>Compose
@@ -623,7 +623,7 @@ class="h-full flex flex-col text-sm relative"
             <div class="w-44 shrink-0 border-r border-white/10 overflow-y-auto bg-white/[0.01]"
                  :class="{ 'hidden lg:block': !showSidebar, 'block': showSidebar }"
                  x-show="mobileView !== 'detail' || window.innerWidth >= 1024">
-                <div class="py-1">
+                <div>
                     <template x-if="foldersLoading">
                         <div class="px-3 py-4 text-center">
                             <svg class="animate-spin inline-block text-gray-500" style="width:1em;height:1em" viewBox="0 0 24 24" fill="none">
@@ -634,7 +634,7 @@ class="h-full flex flex-col text-sm relative"
                     </template>
                     <template x-for="folder in folders" :key="folder.id">
                         <button @click="selectFolder(folder)"
-                            class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-white/5 transition-colors"
+                            class="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-white/5 transition-colors cursor-pointer"
                             :class="selectedFolderId === folder.id ? 'bg-blue-600/20 text-blue-300' : 'text-gray-300'">
                             <i class="fa-solid text-[10px] w-3.5 text-center opacity-60" :class="getFolderIcon(folder)"></i>
                             <span class="truncate flex-1" x-text="folder.displayName"></span>
@@ -657,7 +657,7 @@ class="h-full flex flex-col text-sm relative"
                     <div class="flex items-center gap-2 px-3 py-1.5 bg-yellow-500/10 border-b border-white/10 text-xs text-yellow-300">
                         <i class="fa-solid fa-magnifying-glass"></i>
                         <span>Searching: "<span x-text="searchQuery"></span>"</span>
-                        <button @click="clearSearch()" class="ml-auto hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+                        <button @click="clearSearch()" class="ml-auto hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
                     </div>
                 </template>
 
@@ -681,7 +681,7 @@ class="h-full flex flex-col text-sm relative"
 
                     <template x-for="msg in messages" :key="msg.id">
                         <button @click="selectMessage(msg)"
-                            class="w-full text-left px-3 py-2.5 border-b border-white/5 hover:bg-white/[0.04] transition-colors"
+                            class="w-full text-left px-3 py-2.5 border-b border-white/5 hover:bg-white/[0.04] transition-colors cursor-pointer"
                             :class="{
                                 'bg-blue-600/15': selectedMessage?.id === msg.id,
                                 'bg-white/[0.02]': selectedMessage?.id !== msg.id
@@ -714,7 +714,7 @@ class="h-full flex flex-col text-sm relative"
                     <template x-if="hasMore">
                         <div class="p-3 text-center">
                             <button @click="loadMore()"
-                                class="text-xs text-blue-400 hover:text-blue-300"
+                                class="text-xs text-blue-400 hover:text-blue-300 cursor-pointer"
                                 :disabled="messagesLoading">
                                 <span x-show="!messagesLoading">Load more</span>
                                 <span x-show="messagesLoading">Loading...</span>
@@ -745,7 +745,7 @@ class="h-full flex flex-col text-sm relative"
                         {{-- Back button (mobile) --}}
                         <div class="lg:hidden px-3 py-2 border-b border-white/10">
                             <button @click="mobileView = 'list'; selectedMessage = null;"
-                                class="text-xs text-blue-400 hover:text-blue-300">
+                                class="text-xs text-blue-400 hover:text-blue-300 cursor-pointer">
                                 <i class="fa-solid fa-chevron-left mr-1"></i>Back
                             </button>
                         </div>
@@ -777,22 +777,22 @@ class="h-full flex flex-col text-sm relative"
                             {{-- Action buttons --}}
                             <div class="flex items-center gap-1 mt-2 flex-wrap">
                                 <button @click="openCompose('reply', selectedMessage)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors"
-                                    :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 cursor-not-allowed'"
+                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
+                                    :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
                                     :disabled="!canSend()"
                                     :title="canSend() ? '' : 'Requires Mail.Send permission'">
                                     <i class="fa-solid fa-reply mr-1"></i>Reply
                                 </button>
                                 <button @click="openCompose('replyAll', selectedMessage)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors"
-                                    :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 cursor-not-allowed'"
+                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
+                                    :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
                                     :disabled="!canSend()"
                                     :title="canSend() ? '' : 'Requires Mail.Send permission'">
                                     <i class="fa-solid fa-reply-all mr-1"></i>Reply All
                                 </button>
                                 <button @click="openCompose('forward', selectedMessage)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors"
-                                    :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 cursor-not-allowed'"
+                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
+                                    :class="canSend() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
                                     :disabled="!canSend()"
                                     :title="canSend() ? '' : 'Requires Mail.Send permission'">
                                     <i class="fa-solid fa-share mr-1"></i>Forward
@@ -801,22 +801,22 @@ class="h-full flex flex-col text-sm relative"
                                 <div class="w-px h-4 bg-white/10 mx-1"></div>
 
                                 <button @click="archiveMessage(selectedMessage.id)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors"
-                                    :class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 cursor-not-allowed'"
+                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
+                                    :class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
                                     :disabled="!canWrite() || actionLoading[selectedMessage.id]"
                                     :title="canWrite() ? '' : 'Requires Mail.ReadWrite permission'">
                                     <i class="fa-solid fa-box-archive mr-1"></i>Archive
                                 </button>
                                 <button @click="deleteMessage(selectedMessage.id)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors"
-                                    :class="canWrite() ? 'hover:bg-red-600/20 text-gray-300 hover:text-red-300' : 'text-gray-600 cursor-not-allowed'"
+                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
+                                    :class="canWrite() ? 'hover:bg-red-600/20 text-gray-300 hover:text-red-300' : 'text-gray-600 !cursor-not-allowed'"
                                     :disabled="!canWrite() || actionLoading[selectedMessage.id]"
                                     :title="canWrite() ? '' : 'Requires Mail.ReadWrite permission'">
                                     <i class="fa-solid fa-trash-can mr-1"></i>Delete
                                 </button>
                                 <button @click="toggleRead(selectedMessage.id)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors"
-                                    :class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 cursor-not-allowed'"
+                                    class="px-2 py-1 text-[11px] bg-white/5 rounded transition-colors cursor-pointer"
+                                    :class="canWrite() ? 'hover:bg-white/10 text-gray-300' : 'text-gray-600 !cursor-not-allowed'"
                                     :disabled="!canWrite()"
                                     :title="canWrite() ? '' : 'Requires Mail.ReadWrite permission'">
                                     <i class="fa-solid mr-1" :class="selectedMessage.isRead ? 'fa-envelope' : 'fa-envelope-open'"></i>
@@ -826,7 +826,7 @@ class="h-full flex flex-col text-sm relative"
                                 <div class="w-px h-4 bg-white/10 mx-1"></div>
 
                                 <button @click="copyMessagePath(selectedMessage.id)"
-                                    class="px-2 py-1 text-[11px] bg-white/5 hover:bg-purple-600/20 rounded text-gray-300 hover:text-purple-300 transition-colors"
+                                    class="px-2 py-1 text-[11px] bg-white/5 hover:bg-purple-600/20 rounded text-gray-300 hover:text-purple-300 transition-colors cursor-pointer"
                                     title="Export as .eml to /tmp and copy path to clipboard">
                                     <i class="fa-solid fa-clipboard mr-1"></i>Copy .eml
                                 </button>
@@ -859,11 +859,11 @@ class="h-full flex flex-col text-sm relative"
                                                 <span class="text-gray-600 text-[10px]" x-text="formatFileSize(att.size)"></span>
                                                 <div class="flex gap-1 ml-0.5">
                                                     <button @click="downloadAttachment(selectedMessage.id, att.id, att.name)"
-                                                        class="text-blue-400 hover:text-blue-300" title="Download">
+                                                        class="text-blue-400 hover:text-blue-300 cursor-pointer" title="Download">
                                                         <i class="fa-solid fa-download text-[10px]"></i>
                                                     </button>
                                                     <button @click="downloadAttachmentToTmp(selectedMessage.id, att.id)"
-                                                        class="text-purple-400 hover:text-purple-300" title="Save to /tmp & copy path">
+                                                        class="text-purple-400 hover:text-purple-300 cursor-pointer" title="Save to /tmp & copy path">
                                                         <i class="fa-solid fa-clipboard text-[10px]"></i>
                                                     </button>
                                                 </div>
@@ -923,7 +923,7 @@ class="h-full flex flex-col text-sm relative"
                 <span class="text-sm font-medium text-gray-200"
                     x-text="composeMode === 'new' ? 'New Message' : composeMode === 'forward' ? 'Forward' : composeMode === 'replyAll' ? 'Reply All' : 'Reply'"></span>
                 <div class="flex-1"></div>
-                <button @click="cancelCompose()" class="text-gray-400 hover:text-white p-1">
+                <button @click="cancelCompose()" class="text-gray-400 hover:text-white p-1 cursor-pointer">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -943,7 +943,7 @@ class="h-full flex flex-col text-sm relative"
                         class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
                         placeholder="recipient@example.com">
                     <button x-show="!composeShowCcBcc" @click="composeShowCcBcc = true"
-                        class="text-[10px] text-gray-500 hover:text-gray-300">CC/BCC</button>
+                        class="text-[10px] text-gray-500 hover:text-gray-300 cursor-pointer">CC/BCC</button>
                 </div>
 
                 {{-- CC --}}
@@ -980,7 +980,7 @@ class="h-full flex flex-col text-sm relative"
             {{-- Compose footer --}}
             <div class="flex items-center gap-2 px-4 py-2.5 border-t border-white/10 shrink-0">
                 <button @click="sendCompose()"
-                    class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-1.5 rounded text-xs font-medium"
+                    class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-1.5 rounded text-xs font-medium cursor-pointer"
                     :disabled="composeSending">
                     <template x-if="!composeSending">
                         <span><i class="fa-solid fa-paper-plane mr-1"></i>Send</span>
@@ -995,7 +995,7 @@ class="h-full flex flex-col text-sm relative"
                         </span>
                     </template>
                 </button>
-                <button @click="cancelCompose()" class="px-4 py-1.5 text-xs text-gray-400 hover:text-white">
+                <button @click="cancelCompose()" class="px-4 py-1.5 text-xs text-gray-400 hover:text-white cursor-pointer">
                     Cancel
                 </button>
             </div>
@@ -1019,7 +1019,7 @@ class="h-full flex flex-col text-sm relative"
         <div class="absolute top-12 left-4 right-4 z-50 bg-red-600/20 border border-red-500/30 rounded-lg px-3 py-2 text-xs text-red-300 flex items-center gap-2">
             <i class="fa-solid fa-circle-exclamation"></i>
             <span x-text="error" class="flex-1"></span>
-            <button @click="error = null" class="text-red-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            <button @click="error = null" class="text-red-400 hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
         </div>
     </template>
 </div>
