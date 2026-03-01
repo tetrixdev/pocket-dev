@@ -20,6 +20,7 @@
 
     // Search
     searchQuery: '',
+    activeSearch: '',
     isSearching: false,
 
     // Selected message
@@ -107,6 +108,8 @@
         this.selectedMessage = null;
         this.messages = [];
         this.searchQuery = '';
+        this.activeSearch = '';
+        this.isSearching = false;
         this.mobileView = 'list';
         this.wellKnownMap = {};
         this.permissions = [];
@@ -149,6 +152,8 @@
         this.messages = [];
         this.currentSkip = 0;
         this.searchQuery = '';
+        this.activeSearch = '';
+        this.isSearching = false;
         this.mobileView = 'list';
         await this.fetchMessages();
     },
@@ -215,6 +220,7 @@
     },
 
     async searchMessages() {
+        this.activeSearch = this.searchQuery;
         this.isSearching = !!this.searchQuery;
         this.selectedMessage = null;
         this.messages = [];
@@ -224,6 +230,7 @@
 
     clearSearch() {
         this.searchQuery = '';
+        this.activeSearch = '';
         this.isSearching = false;
         this.selectedMessage = null;
         this.fetchMessages();
@@ -768,7 +775,7 @@ class="h-full flex flex-col text-sm relative"
                 <template x-if="isSearching">
                     <div class="flex items-center gap-2 px-3 py-1.5 bg-yellow-500/10 border-b border-white/10 text-xs text-yellow-300">
                         <i class="fa-solid fa-magnifying-glass"></i>
-                        <span>Searching: "<span x-text="searchQuery"></span>"</span>
+                        <span>Searching: "<span x-text="activeSearch"></span>"</span>
                         <button @click="clearSearch()" class="ml-auto hover:text-white cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
                     </div>
                 </template>
