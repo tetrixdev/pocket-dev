@@ -259,8 +259,8 @@ class MicrosoftGraphService
 
         if ($search) {
             $params['$search'] = '"' . str_replace('"', '', $search) . '"';
-            // Graph API doesn't support $orderby with $search
-            unset($params['$orderby']);
+            // Graph API doesn't support $orderby or $skip with $search
+            unset($params['$orderby'], $params['$skip']);
         }
 
         if ($filter) {
