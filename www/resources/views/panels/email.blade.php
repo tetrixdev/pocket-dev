@@ -33,9 +33,12 @@
     // Compose
     showCompose: false,
     composeMode: null,
-    composeTo: '',
-    composeCc: '',
-    composeBcc: '',
+    composeTo: [],
+    composeCc: [],
+    composeBcc: [],
+    composeToInput: '',
+    composeCcInput: '',
+    composeBccInput: '',
     composeSubject: '',
     composeBody: '',
     composeSending: false,
@@ -463,34 +466,39 @@
         this.replyToMessageId = message?.id || null;
         this.composeShowCcBcc = false;
         this.composeOriginalHtml = '';
+        this.composeToInput = '';
+        this.composeCcInput = '';
+        this.composeBccInput = '';
 
         if (mode === 'new') {
-            this.composeTo = '';
-            this.composeCc = '';
-            this.composeBcc = '';
+            this.composeTo = [];
+            this.composeCc = [];
+            this.composeBcc = [];
             this.composeSubject = '';
             this.composeBody = '';
         } else if (mode === 'reply' || mode === 'replyAll') {
             const from = message?.from?.emailAddress?.address || '';
-            this.composeTo = from;
+            this.composeTo = from ? [from] : [];
             if (mode === 'replyAll') {
                 const others = (message?.toRecipients || [])
                     .map(r => r.emailAddress?.address)
                     .filter(a => a && a !== this.getCurrentEmail())
                     .concat((message?.ccRecipients || []).map(r => r.emailAddress?.address).filter(Boolean));
                 if (others.length > 0) {
-                    this.composeCc = others.join(', ');
+                    this.composeCc = others;
                     this.composeShowCcBcc = true;
                 }
+            } else {
+                this.composeCc = [];
             }
-            this.composeBcc = '';
+            this.composeBcc = [];
             this.composeSubject = (message?.subject || '').startsWith('Re:') ? message.subject : 'Re: ' + (message?.subject || '');
             this.composeBody = '';
             this.composeOriginalHtml = message?.body?.content || '';
         } else if (mode === 'forward') {
-            this.composeTo = '';
-            this.composeCc = '';
-            this.composeBcc = '';
+            this.composeTo = [];
+            this.composeCc = [];
+            this.composeBcc = [];
             this.composeSubject = (message?.subject || '').startsWith('Fwd:') ? message.subject : 'Fwd: ' + (message?.subject || '');
             this.composeBody = '';
             this.composeOriginalHtml = message?.body?.content || '';
@@ -504,8 +512,47 @@
         return acc?.email || '';
     },
 
+    addTag(field, inputField) {
+        const val = this[inputField].trim();
+        if (!val) return;
+        // Split on comma/semicolon/space to support pasting multiple
+        const emails = val.split(/[,;\s]+/).map(e => e.trim()).filter(Boolean);
+        emails.forEach(email => {
+            if (!this[field].includes(email)) {
+                this[field].push(email);
+            }
+        });
+        this[inputField] = '';
+    },
+
+    removeTag(field, index) {
+        this[field].splice(index, 1);
+    },
+
+    handleTagKeydown(e, field, inputField) {
+        if (e.key === 'Enter' || e.key === ',' || e.key === ';' || e.key === 'Tab') {
+            if (this[inputField].trim()) {
+                e.preventDefault();
+                this.addTag(field, inputField);
+            }
+        } else if (e.key === 'Backspace' && !this[inputField] && this[field].length > 0) {
+            this[field].pop();
+        }
+    },
+
+    handleTagBlur(field, inputField) {
+        if (this[inputField].trim()) {
+            this.addTag(field, inputField);
+        }
+    },
+
     async sendCompose() {
-        if (!this.composeTo.trim()) {
+        // Flush any typed-but-not-entered text into tags
+        this.handleTagBlur('composeTo', 'composeToInput');
+        this.handleTagBlur('composeCc', 'composeCcInput');
+        this.handleTagBlur('composeBcc', 'composeBccInput');
+
+        if (this.composeTo.length === 0) {
             this.showToast('Recipient (To) is required', 'error');
             return;
         }
@@ -530,8 +577,8 @@
             } else {
                 await this.doAction('sendMail', {
                     to: this.composeTo,
-                    cc: this.composeCc || undefined,
-                    bcc: this.composeBcc || undefined,
+                    cc: this.composeCc.length > 0 ? this.composeCc : undefined,
+                    bcc: this.composeBcc.length > 0 ? this.composeBcc : undefined,
                     subject: this.composeSubject,
                     body: body,
                     contentType: 'HTML',
@@ -1107,34 +1154,68 @@ class="h-full flex flex-col text-sm relative"
                     </div>
 
                     {{-- To --}}
-                    <div class="flex items-center gap-2 mb-1 lg:mb-2">
-                        <label class="text-xs text-gray-500 w-10 shrink-0">To</label>
-                        <input type="text" x-model="composeTo"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 lg:py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                            placeholder="recipient@example.com">
+                    <div class="flex items-start gap-2 mb-1 lg:mb-2">
+                        <label class="text-xs text-gray-500 w-10 shrink-0 mt-1.5">To</label>
+                        <div class="flex-1 flex flex-wrap items-center gap-1 bg-white/5 border border-white/10 rounded px-1.5 py-1 min-h-[28px] focus-within:border-blue-500/50 cursor-text"
+                             @click="$refs.toInput.focus()">
+                            <template x-for="(email, i) in composeTo" :key="i">
+                                <span class="inline-flex items-center gap-0.5 bg-blue-600/25 text-blue-300 rounded px-1.5 py-0.5 text-[11px] max-w-[180px]">
+                                    <span class="truncate" x-text="email"></span>
+                                    <button @click.stop="removeTag('composeTo', i)" class="text-blue-400 hover:text-white cursor-pointer ml-0.5">&times;</button>
+                                </span>
+                            </template>
+                            <input type="text" x-model="composeToInput" x-ref="toInput"
+                                @keydown="handleTagKeydown($event, 'composeTo', 'composeToInput')"
+                                @blur="handleTagBlur('composeTo', 'composeToInput')"
+                                class="flex-1 min-w-[80px] bg-transparent text-xs text-gray-200 outline-none placeholder-gray-500 py-0.5"
+                                placeholder="recipient@example.com"
+                                :placeholder="composeTo.length === 0 ? 'recipient@example.com' : ''">
+                        </div>
                         <button @click="composeShowCcBcc = !composeShowCcBcc"
-                            class="text-[10px] shrink-0 cursor-pointer"
-                            :class="composeShowCcBcc ? 'text-blue-400 hover:text-blue-300' : (composeCc || composeBcc) ? 'text-blue-400 hover:text-blue-300' : 'text-gray-500 hover:text-gray-300'">
-                            <span x-show="!composeShowCcBcc && (composeCc || composeBcc)" x-text="(composeCc ? 'CC: ' + composeCc : '') + (composeCc && composeBcc ? ', ' : '') + (composeBcc ? 'BCC: ' + composeBcc : '')" class="max-w-[80px] lg:max-w-[120px] truncate inline-block align-middle"></span>
-                            <span x-show="!(!composeShowCcBcc && (composeCc || composeBcc))">CC/BCC</span>
+                            class="text-[10px] shrink-0 cursor-pointer mt-1.5"
+                            :class="composeShowCcBcc ? 'text-blue-400 hover:text-blue-300' : (composeCc.length || composeBcc.length) ? 'text-blue-400 hover:text-blue-300' : 'text-gray-500 hover:text-gray-300'">
+                            <span x-show="!composeShowCcBcc && (composeCc.length || composeBcc.length)" x-text="(composeCc.length ? 'CC: ' + composeCc.length : '') + (composeCc.length && composeBcc.length ? ', ' : '') + (composeBcc.length ? 'BCC: ' + composeBcc.length : '')" class="inline-block align-middle"></span>
+                            <span x-show="!(!composeShowCcBcc && (composeCc.length || composeBcc.length))">CC/BCC</span>
                             <i class="fa-solid fa-chevron-down text-[8px] ml-0.5 transition-transform" :class="composeShowCcBcc && 'rotate-180'"></i>
                         </button>
                     </div>
 
                     {{-- CC --}}
-                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-1 lg:mb-2" x-collapse>
-                        <label class="text-xs text-gray-500 w-10 shrink-0">CC</label>
-                        <input type="text" x-model="composeCc"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 lg:py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                            placeholder="cc@example.com">
+                    <div x-show="composeShowCcBcc" class="flex items-start gap-2 mb-1 lg:mb-2" x-collapse>
+                        <label class="text-xs text-gray-500 w-10 shrink-0 mt-1.5">CC</label>
+                        <div class="flex-1 flex flex-wrap items-center gap-1 bg-white/5 border border-white/10 rounded px-1.5 py-1 min-h-[28px] focus-within:border-blue-500/50 cursor-text"
+                             @click="$refs.ccInput.focus()">
+                            <template x-for="(email, i) in composeCc" :key="i">
+                                <span class="inline-flex items-center gap-0.5 bg-blue-600/25 text-blue-300 rounded px-1.5 py-0.5 text-[11px] max-w-[180px]">
+                                    <span class="truncate" x-text="email"></span>
+                                    <button @click.stop="removeTag('composeCc', i)" class="text-blue-400 hover:text-white cursor-pointer ml-0.5">&times;</button>
+                                </span>
+                            </template>
+                            <input type="text" x-model="composeCcInput" x-ref="ccInput"
+                                @keydown="handleTagKeydown($event, 'composeCc', 'composeCcInput')"
+                                @blur="handleTagBlur('composeCc', 'composeCcInput')"
+                                class="flex-1 min-w-[80px] bg-transparent text-xs text-gray-200 outline-none placeholder-gray-500 py-0.5"
+                                :placeholder="composeCc.length === 0 ? 'cc@example.com' : ''">
+                        </div>
                     </div>
 
                     {{-- BCC --}}
-                    <div x-show="composeShowCcBcc" class="flex items-center gap-2 mb-1 lg:mb-2" x-collapse>
-                        <label class="text-xs text-gray-500 w-10 shrink-0">BCC</label>
-                        <input type="text" x-model="composeBcc"
-                            class="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 lg:py-1.5 text-xs text-gray-200 outline-none focus:border-blue-500/50"
-                            placeholder="bcc@example.com">
+                    <div x-show="composeShowCcBcc" class="flex items-start gap-2 mb-1 lg:mb-2" x-collapse>
+                        <label class="text-xs text-gray-500 w-10 shrink-0 mt-1.5">BCC</label>
+                        <div class="flex-1 flex flex-wrap items-center gap-1 bg-white/5 border border-white/10 rounded px-1.5 py-1 min-h-[28px] focus-within:border-blue-500/50 cursor-text"
+                             @click="$refs.bccInput.focus()">
+                            <template x-for="(email, i) in composeBcc" :key="i">
+                                <span class="inline-flex items-center gap-0.5 bg-blue-600/25 text-blue-300 rounded px-1.5 py-0.5 text-[11px] max-w-[180px]">
+                                    <span class="truncate" x-text="email"></span>
+                                    <button @click.stop="removeTag('composeBcc', i)" class="text-blue-400 hover:text-white cursor-pointer ml-0.5">&times;</button>
+                                </span>
+                            </template>
+                            <input type="text" x-model="composeBccInput" x-ref="bccInput"
+                                @keydown="handleTagKeydown($event, 'composeBcc', 'composeBccInput')"
+                                @blur="handleTagBlur('composeBcc', 'composeBccInput')"
+                                class="flex-1 min-w-[80px] bg-transparent text-xs text-gray-200 outline-none placeholder-gray-500 py-0.5"
+                                :placeholder="composeBcc.length === 0 ? 'bcc@example.com' : ''">
+                        </div>
                     </div>
 
                     {{-- Subject --}}
