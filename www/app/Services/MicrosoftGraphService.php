@@ -120,6 +120,11 @@ class MicrosoftGraphService
         }
 
         $data = $response->json();
+        if (!is_array($data) || empty($data['access_token'])) {
+            throw new \RuntimeException(
+                "Token response missing access_token for account '{$account['name']}'"
+            );
+        }
         $token = $data['access_token'];
         $expiresIn = $data['expires_in'] ?? 3600;
 

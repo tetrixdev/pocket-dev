@@ -69,7 +69,7 @@ class EmailPanel extends Panel
                 'error' => $e->getMessage(),
                 'exception' => get_class($e),
             ]);
-            return ['data' => null, 'error' => 'Unexpected error: ' . $e->getMessage()];
+            return ['data' => null, 'error' => 'An unexpected error occurred while processing this action.'];
         }
     }
 
@@ -514,7 +514,11 @@ class EmailPanel extends Panel
 
             return $output;
         } catch (\Exception $e) {
-            return "## Outlook\n\nFailed to load: " . $e->getMessage();
+            Log::warning('EmailPanel peek failed', [
+                'exception' => get_class($e),
+                'error' => $e->getMessage(),
+            ]);
+            return "## Outlook\n\nFailed to load inbox preview.";
         }
     }
 
