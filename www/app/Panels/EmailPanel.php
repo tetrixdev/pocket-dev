@@ -29,7 +29,7 @@ class EmailPanel extends Panel
 
     public function render(array $params, array $state, ?string $panelStateId = null): string
     {
-        $accounts = MicrosoftGraphService::discoverAccounts();
+        $accounts = MicrosoftGraphService::discoverAccounts($this->workspaceId);
 
         return view('panels.email', [
             'accounts' => $accounts,
@@ -67,7 +67,7 @@ class EmailPanel extends Panel
             Log::error('EmailPanel action failed', [
                 'action' => $action,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'exception' => get_class($e),
             ]);
             return ['data' => null, 'error' => 'Unexpected error: ' . $e->getMessage()];
         }
@@ -81,14 +81,14 @@ class EmailPanel extends Panel
         $name = $params['account'] ?? null;
 
         if (!$name) {
-            $accounts = MicrosoftGraphService::discoverAccounts();
+            $accounts = MicrosoftGraphService::discoverAccounts($this->workspaceId);
             if (empty($accounts)) {
                 throw new \RuntimeException('No Azure accounts configured. Add AZURE_{NAME}_CLIENT_ID, _CLIENT_SECRET, _TENANT_ID, and _EMAIL in Settings > Credentials.');
             }
             return $accounts[0];
         }
 
-        $account = MicrosoftGraphService::getAccount($name);
+        $account = MicrosoftGraphService::getAccount($name, $this->workspaceId);
         if (!$account) {
             throw new \RuntimeException("Account '{$name}' not found.");
         }
@@ -102,7 +102,7 @@ class EmailPanel extends Panel
 
     private function listAccounts(): array
     {
-        $accounts = MicrosoftGraphService::discoverAccounts();
+        $accounts = MicrosoftGraphService::discoverAccounts($this->workspaceId);
 
         return [
             'data' => [
@@ -475,14 +475,14 @@ class EmailPanel extends Panel
     public function peek(array $params, array $state): string
     {
         try {
-            $accounts = MicrosoftGraphService::discoverAccounts();
+            $accounts = MicrosoftGraphService::discoverAccounts($this->workspaceId);
 
             if (empty($accounts)) {
                 return "## Outlook\n\nNo Azure accounts configured.";
             }
 
             $accountName = $params['account'] ?? $accounts[0]['name'];
-            $account = MicrosoftGraphService::getAccount($accountName);
+            $account = MicrosoftGraphService::getAccount($accountName, $this->workspaceId);
 
             if (!$account) {
                 return "## Outlook\n\nAccount '{$accountName}' not found.";

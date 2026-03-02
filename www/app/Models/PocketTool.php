@@ -58,7 +58,7 @@ class PocketTool extends Model
      */
     public function getNameAttribute(string $value): string
     {
-        if ($this->slug) {
+        if ($this->type === self::TYPE_PANEL && $this->slug) {
             $registry = app(PanelRegistry::class);
             $panel = $registry->get($this->slug);
             if ($panel) {

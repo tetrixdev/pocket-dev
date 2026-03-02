@@ -49,6 +49,7 @@
     showSidebar: window.innerWidth >= 1024,
     showMobileSearch: false,
     showAttachments: false,
+    allowRemoteImages: false,
     actionLoading: {},
     toast: null,
     toastTimeout: null,
@@ -250,6 +251,7 @@
 
         this.selectedMessage = msg;
         this.messageLoading = true;
+        this.allowRemoteImages = false;
         this.mobileView = 'detail';
         this.showAttachments = false;
 
@@ -279,7 +281,23 @@
             return '<pre style=\'white-space:pre-wrap;word-wrap:break-word;font-family:inherit;margin:0;\'>' +
                 this.escapeHtml(body.content || '') + '</pre>';
         }
-        return body.content || '';
+
+        let html = body.content || '';
+
+        // Inject CSP to block remote images when not explicitly allowed.
+        // This prevents tracking pixels and improves privacy.
+        if (!this.allowRemoteImages && html) {
+            const csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"img-src data: cid:; style-src 'unsafe-inline'; default-src 'none';\">";
+            if (html.includes('<head>')) {
+                html = html.replace('<head>', '<head>' + csp);
+            } else if (html.includes('<html')) {
+                html = html.replace(/(<html[^>]*>)/, '$1<head>' + csp + '</head>');
+            } else {
+                html = csp + html;
+            }
+        }
+
+        return html;
     },
 
     escapeHtml(text) {
@@ -930,8 +948,8 @@ class="h-full flex flex-col text-sm relative"
                         </button>
                     </template>
 
-                    {{-- Load more --}}
-                    <template x-if="hasMore">
+                    {{-- Load more (hidden during search — Graph API doesn't support $skip with $search) --}}
+                    <template x-if="hasMore && !isSearching">
                         <div class="p-3 text-center">
                             <button @click="loadMore()"
                                 class="text-xs text-blue-400 hover:text-blue-300 cursor-pointer"
@@ -1105,6 +1123,18 @@ class="h-full flex flex-col text-sm relative"
                                         <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
                                         <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
                                     </svg>
+                                </div>
+                            </template>
+
+                            {{-- "Load remote images" banner --}}
+                            <template x-if="!messageLoading && selectedMessage?.body && !allowRemoteImages">
+                                <div class="flex items-center gap-2 px-3 py-1.5 bg-yellow-900/20 border-b border-yellow-700/30 text-xs text-yellow-300/80 shrink-0">
+                                    <i class="fa-solid fa-shield-halved"></i>
+                                    <span>Remote images are blocked for privacy.</span>
+                                    <button @click="allowRemoteImages = true"
+                                        class="ml-auto text-yellow-300 hover:text-yellow-200 underline cursor-pointer">
+                                        Load images
+                                    </button>
                                 </div>
                             </template>
 

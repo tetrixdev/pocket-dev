@@ -436,11 +436,14 @@ class MicrosoftGraphService
             : date('Y-m-d');
 
         $exportDir = "/tmp/email-exports";
-        @mkdir($exportDir, 0777, true);
-        @chmod($exportDir, 0777);
+        if (!is_dir($exportDir) && !mkdir($exportDir, 0777, true)) {
+            throw new \RuntimeException("Failed to create export directory: {$exportDir}");
+        }
 
         $filePath = "{$exportDir}/{$date}_{$safeSubject}.eml";
-        file_put_contents($filePath, $response->body());
+        if (file_put_contents($filePath, $response->body()) === false) {
+            throw new \RuntimeException("Failed to write export file: {$filePath}");
+        }
 
         return $filePath;
     }
@@ -459,7 +462,9 @@ class MicrosoftGraphService
         $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $name);
 
         $dir = '/tmp/email-attachments';
-        @mkdir($dir, 0775, true);
+        if (!is_dir($dir) && !mkdir($dir, 0775, true)) {
+            throw new \RuntimeException("Failed to create attachment directory: {$dir}");
+        }
 
         $path = "{$dir}/{$safeName}";
 
@@ -470,10 +475,17 @@ class MicrosoftGraphService
             $path = "{$dir}/{$base}_" . substr(md5($attachmentId), 0, 6) . ($ext ? ".{$ext}" : '');
         }
 
-        if (isset($attachment['contentBytes'])) {
-            file_put_contents($path, base64_decode($attachment['contentBytes']));
-        } else {
+        if (!isset($attachment['contentBytes'])) {
             throw new \RuntimeException('Attachment has no content bytes');
+        }
+
+        $decoded = base64_decode($attachment['contentBytes'], true);
+        if ($decoded === false) {
+            throw new \RuntimeException('Failed to decode attachment content (invalid base64)');
+        }
+
+        if (file_put_contents($path, $decoded) === false) {
+            throw new \RuntimeException("Failed to write attachment file: {$path}");
         }
 
         return $path;
