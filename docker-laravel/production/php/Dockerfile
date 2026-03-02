@@ -53,6 +53,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Microsoft Graph CLI (mgc) for Microsoft 365 management
+RUN curl -fsSL -o /tmp/mgc.tar.gz \
+    "https://github.com/microsoftgraph/msgraph-cli/releases/download/v1.9.0/msgraph-cli-linux-x64-1.9.0.tar.gz" \
+    && tar -xzf /tmp/mgc.tar.gz -C /usr/local/bin mgc \
+    && chmod +x /usr/local/bin/mgc \
+    && rm -f /tmp/mgc.tar.gz
+
 # Create groups for various access needs:
 # - docker (999): Docker socket access
 # - hostdocker (1001): Host Docker group compatibility

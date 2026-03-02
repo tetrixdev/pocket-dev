@@ -634,7 +634,7 @@ export function createStreamStore(callbacks) {
             const messageStore = callbacks.messageStore;
 
             if (event.type !== 'usage') {
-                console.log('SSE Event:', event.type, event.content ? String(event.content).substring(0, 50) : '(no content)');
+                console.debug('SSE Event:', event.type, event.content ? String(event.content).substring(0, 50) : '(no content)');
             }
 
             switch (event.type) {

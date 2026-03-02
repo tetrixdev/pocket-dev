@@ -426,7 +426,7 @@
                     </button>
                     <button
                         @click.stop="fetchContainers()"
-                        :disabled="loading"
+                        x-bind:disabled="loading"
                         class="px-3 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors disabled:opacity-50"
                     >
                         <span x-show="!loading">Refresh</span>
@@ -448,7 +448,7 @@
                     </button>
                     <button
                         @click.stop="fetchContainers()"
-                        :disabled="loading"
+                        x-bind:disabled="loading"
                         class="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded transition-colors disabled:opacity-50"
                     >
                         <i class="fa-solid fa-sync text-[10px]" x-show="!loading"></i>
@@ -646,14 +646,14 @@
                     <span class="text-xs text-gray-500" x-text="`${logsTail} lines`"></span>
                     <button
                         @click="loadMoreLogs()"
-                        :disabled="logsLoading || logsTail >= 1000"
+                        x-bind:disabled="logsLoading || logsTail >= 1000"
                         class="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                         <i class="fa-solid fa-plus mr-1"></i>More
                     </button>
                     <button
                         @click="fetchLogs()"
-                        :disabled="logsLoading"
+                        x-bind:disabled="logsLoading"
                         class="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600 disabled:opacity-50 transition-colors"
                         title="Refresh"
                     >
@@ -676,14 +676,14 @@
                 <div class="flex items-center gap-1.5">
                     <button
                         @click="loadMoreLogs()"
-                        :disabled="logsLoading || logsTail >= 1000"
+                        x-bind:disabled="logsLoading || logsTail >= 1000"
                         class="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded disabled:opacity-50"
                     >
                         <i class="fa-solid fa-plus"></i>
                     </button>
                     <button
                         @click="fetchLogs()"
-                        :disabled="logsLoading"
+                        x-bind:disabled="logsLoading"
                         class="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded disabled:opacity-50"
                     >
                         <i class="fa-solid fa-sync" :class="logsLoading && 'fa-spin'"></i>

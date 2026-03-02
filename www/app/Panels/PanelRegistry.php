@@ -24,6 +24,7 @@ class PanelRegistry
         $this->register(new FileExplorerPanel());
         $this->register(new GitStatusPanel());
         $this->register(new DockerContainersPanel());
+        $this->register(new EmailPanel());
     }
 
     public function register(Panel $panel): void
