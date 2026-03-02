@@ -286,12 +286,16 @@
 
         // Inject CSP to block remote images when not explicitly allowed.
         // This prevents tracking pixels and improves privacy.
+        // Note: tag strings are split with concatenation to avoid breaking HTML parsing
+        // of the x-data attribute (browser would interpret literal <head> as a real tag).
         if (!this.allowRemoteImages && html) {
-            const csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"img-src data: cid:; style-src 'unsafe-inline'; default-src 'none';\">";
-            if (html.includes('<head>')) {
-                html = html.replace('<head>', '<head>' + csp);
-            } else if (html.includes('<html')) {
-                html = html.replace(/(<html[^>]*>)/, '$1<head>' + csp + '</head>');
+            const csp = '<' + 'meta http-equiv="Content-Security-Policy" content="img-src data: cid:; style-src \'unsafe-inline\'; default-src \'none\';"' + '>';
+            const headOpen = '<' + 'head>';
+            const headClose = '<' + '/head>';
+            if (html.includes(headOpen)) {
+                html = html.replace(headOpen, headOpen + csp);
+            } else if (html.includes('<' + 'html')) {
+                html = html.replace(/(<html[^>]*>)/, '$1' + headOpen + csp + headClose);
             } else {
                 html = csp + html;
             }
