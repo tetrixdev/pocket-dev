@@ -223,14 +223,71 @@ class EmailPanel extends Panel
             }
         }
 
-        // Get attachments too
+        // Get attachments. Also fetch when body has cid: references, since Graph API
+        // may return hasAttachments=false for emails with only inline images.
+        $bodyHtml = $message['body']['content'] ?? '';
+        $hasCidRefs = ($message['body']['contentType'] ?? '') !== 'text'
+            && $bodyHtml
+            && preg_match('/cid:/i', $bodyHtml);
+
         $attachments = [];
-        if ($message['hasAttachments'] ?? false) {
+        if (($message['hasAttachments'] ?? false) || $hasCidRefs) {
             try {
                 $attResult = MicrosoftGraphService::listAttachments($account, $messageId);
                 $attachments = $attResult['value'] ?? [];
             } catch (\Exception $e) {
                 Log::warning('Failed to list attachments', ['messageId' => $messageId, 'error' => $e->getMessage()]);
+            }
+        }
+
+        // Resolve cid: inline images into data: URIs so they render in the sandboxed iframe.
+        // Content-IDs vary across email clients (simple filenames, GUID-suffixed, or arbitrary),
+        // so we: (1) extract all cid: refs from the HTML, (2) for potentially-inline attachments
+        // fetch the full object to get the real contentId, (3) replace using that exact contentId.
+        if ($attachments && $hasCidRefs) {
+            if (preg_match_all('/cid:([^\s"\'<>]+)/i', $bodyHtml, $cidMatches)) {
+                $cidRefs = array_unique($cidMatches[1]);
+
+                Log::debug('CID resolution: found refs', ['cidRefs' => $cidRefs, 'attachmentCount' => count($attachments)]);
+
+                foreach ($attachments as $key => $att) {
+                    $name = $att['name'] ?? '';
+                    $isInline = $att['isInline'] ?? false;
+
+                    Log::debug('CID resolution: checking attachment', ['name' => $name, 'isInline' => $isInline, 'id' => $att['id'] ?? '']);
+
+                    // Heuristic: is this attachment likely referenced by a cid: in the body?
+                    // Check if any cid ref starts with the attachment name, or trust isInline flag.
+                    $mightBeInline = $isInline;
+                    if (!$mightBeInline && $name) {
+                        foreach ($cidRefs as $ref) {
+                            if (str_starts_with($ref, $name)) {
+                                $mightBeInline = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!$mightBeInline) {
+                        continue;
+                    }
+
+                    try {
+                        $fullAtt = MicrosoftGraphService::getAttachment($account, $messageId, $att['id']);
+                        $contentId = trim($fullAtt['contentId'] ?? '', '<>');
+
+                        if ($contentId && in_array($contentId, $cidRefs) && !empty($fullAtt['contentBytes']) && !empty($fullAtt['contentType'])) {
+                            $dataUri = 'data:' . $fullAtt['contentType'] . ';base64,' . $fullAtt['contentBytes'];
+                            $bodyHtml = str_replace('cid:' . $contentId, $dataUri, $bodyHtml);
+                            $attachments[$key]['_cidResolved'] = true;
+                        }
+                    } catch (\Exception $e) {
+                        Log::debug('Failed to resolve inline image', [
+                            'name' => $name,
+                            'error' => get_class($e),
+                        ]);
+                    }
+                }
+                $message['body']['content'] = $bodyHtml;
             }
         }
 

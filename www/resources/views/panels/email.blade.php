@@ -284,25 +284,41 @@
 
         let html = body.content || '';
 
-        // Inject CSP to block remote images when not explicitly allowed.
-        // This prevents tracking pixels and improves privacy.
-        // Note: double-quote chars must be avoided here because this JS lives
-        // inside an x-data attribute. We use \x22 (JS hex escape) instead.
+        // Strip remote images when not explicitly allowed (privacy/tracking protection).
+        // Preserves data: URIs and cid: references (inline/embedded images).
+        // We manipulate the HTML string directly rather than injecting CSP meta tags,
+        // which avoids escaping issues inside the x-data attribute.
         if (!this.allowRemoteImages && html) {
-            const q = '\x22';
-            const csp = '<' + 'meta http-equiv=' + q + 'Content-Security-Policy' + q + ' content=' + q + 'img-src data: cid:; style-src \'unsafe-inline\'; default-src \'none\';' + q + '>';
-            const headOpen = '<' + 'head>';
-            const headClose = '<' + '/head>';
-            if (html.includes(headOpen)) {
-                html = html.replace(headOpen, headOpen + csp);
-            } else if (html.includes('<' + 'html')) {
-                html = html.replace(/(<html[^>]*>)/, '$1' + headOpen + csp + headClose);
-            } else {
-                html = csp + html;
-            }
+            html = html.replace(
+                /(<img\b[^>]*?\bsrc\s*=\s*)([\x22'])https?:\/\/[^\x22']*?\2/gi,
+                '$1$2$2'
+            );
         }
 
         return html;
+    },
+
+    // Returns only real file attachments, hiding inline images that were
+    // resolved into the email body (via cid: -> data: on the backend)
+    // or flagged as inline by the Graph API.
+    getFileAttachments() {
+        const atts = this.selectedMessage?._attachments;
+        if (!atts || !atts.length) return [];
+        return atts.filter(a => {
+            if (a.isInline) return false;
+            if (a._cidResolved) return false;
+            return true;
+        });
+    },
+
+    // Checks whether the email body contains remote (http/https) images
+    // that would be blocked by our privacy stripping. Used to decide
+    // whether to show the Load images banner.
+    hasRemoteImages() {
+        if (!this.selectedMessage?.body) return false;
+        if (this.selectedMessage.body.contentType === 'text') return false;
+        const content = this.selectedMessage.body.content || '';
+        return /<img\b[^>]+src\s*=\s*[\x22']?https?:\/\//i.test(content);
     },
 
     escapeHtml(text) {
@@ -1066,12 +1082,12 @@ class="h-full flex flex-col text-sm relative"
                                 </button>
 
                                 {{-- Attachments toggle (mobile: inline button, right-aligned) --}}
-                                <template x-if="selectedMessage?._attachments?.filter(a => !a.isInline).length > 0">
+                                <template x-if="getFileAttachments().length > 0">
                                     <button @click="showAttachments = !showAttachments"
                                         class="lg:hidden ml-auto px-2 py-1 text-[11px] bg-white/5 hover:bg-white/10 rounded text-gray-300 transition-colors cursor-pointer"
                                         title="Attachments">
                                         <i class="fa-solid fa-paperclip"></i>
-                                        (<span x-text="selectedMessage._attachments.filter(a => !a.isInline).length"></span>)
+                                        (<span x-text="getFileAttachments().length"></span>)
                                     </button>
                                 </template>
                             </div>
@@ -1089,15 +1105,15 @@ class="h-full flex flex-col text-sm relative"
                             </template>
 
                             {{-- Attachments: collapsible on mobile, always visible on desktop --}}
-                            <template x-if="selectedMessage?._attachments?.filter(a => !a.isInline).length > 0">
+                            <template x-if="getFileAttachments().length > 0">
                                 <div class="mt-2 pt-2 border-t border-white/5"
                                      x-show="showAttachments || window.innerWidth >= 1024" x-collapse>
                                     <h4 class="text-[11px] text-gray-400 font-medium mb-1.5 hidden lg:block">
                                         <i class="fa-solid fa-paperclip mr-1"></i>
-                                        Attachments (<span x-text="selectedMessage._attachments.filter(a => !a.isInline).length"></span>)
+                                        Attachments (<span x-text="getFileAttachments().length"></span>)
                                     </h4>
                                     <div class="flex flex-col lg:flex-row lg:flex-wrap gap-1.5">
-                                        <template x-for="att in selectedMessage._attachments.filter(a => !a.isInline)" :key="att.id">
+                                        <template x-for="att in getFileAttachments()" :key="att.id">
                                             <div class="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded px-2 py-1 text-[11px] group">
                                                 <i class="fa-solid fa-file text-gray-500 text-[10px]"></i>
                                                 <span class="text-gray-300 truncate flex-1 lg:flex-none lg:max-w-[200px]" x-text="att.name"></span>
@@ -1132,7 +1148,7 @@ class="h-full flex flex-col text-sm relative"
                             </template>
 
                             {{-- "Load remote images" banner --}}
-                            <template x-if="!messageLoading && selectedMessage?.body && !allowRemoteImages">
+                            <template x-if="!messageLoading && selectedMessage?.body && !allowRemoteImages && hasRemoteImages()">
                                 <div class="flex items-center gap-2 px-3 py-1.5 bg-yellow-900/20 border-b border-yellow-700/30 text-xs text-yellow-300/80 shrink-0">
                                     <i class="fa-solid fa-shield-halved"></i>
                                     <span>Remote images are blocked for privacy.</span>
