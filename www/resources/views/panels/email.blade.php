@@ -286,12 +286,17 @@
 
         // Inject CSP to block remote images when not explicitly allowed.
         // This prevents tracking pixels and improves privacy.
+        // Note: double-quote chars must be avoided here because this JS lives
+        // inside an x-data attribute. We use \x22 (JS hex escape) instead.
         if (!this.allowRemoteImages && html) {
-            const csp = "<meta http-equiv=\"Content-Security-Policy\" content=\"img-src data: cid:; style-src 'unsafe-inline'; default-src 'none';\">";
-            if (html.includes('<head>')) {
-                html = html.replace('<head>', '<head>' + csp);
-            } else if (html.includes('<html')) {
-                html = html.replace(/(<html[^>]*>)/, '$1<head>' + csp + '</head>');
+            const q = '\x22';
+            const csp = '<' + 'meta http-equiv=' + q + 'Content-Security-Policy' + q + ' content=' + q + 'img-src data: cid:; style-src \'unsafe-inline\'; default-src \'none\';' + q + '>';
+            const headOpen = '<' + 'head>';
+            const headClose = '<' + '/head>';
+            if (html.includes(headOpen)) {
+                html = html.replace(headOpen, headOpen + csp);
+            } else if (html.includes('<' + 'html')) {
+                html = html.replace(/(<html[^>]*>)/, '$1' + headOpen + csp + headClose);
             } else {
                 html = csp + html;
             }
