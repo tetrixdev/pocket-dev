@@ -248,13 +248,9 @@ class EmailPanel extends Panel
             if (preg_match_all('/cid:([^\s"\'<>]+)/i', $bodyHtml, $cidMatches)) {
                 $cidRefs = array_unique($cidMatches[1]);
 
-                Log::debug('CID resolution: found refs', ['cidRefs' => $cidRefs, 'attachmentCount' => count($attachments)]);
-
                 foreach ($attachments as $key => $att) {
                     $name = $att['name'] ?? '';
                     $isInline = $att['isInline'] ?? false;
-
-                    Log::debug('CID resolution: checking attachment', ['name' => $name, 'isInline' => $isInline, 'id' => $att['id'] ?? '']);
 
                     // Heuristic: is this attachment likely referenced by a cid: in the body?
                     // Check if any cid ref starts with the attachment name, or trust isInline flag.
