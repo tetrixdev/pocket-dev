@@ -398,13 +398,13 @@ class MicrosoftGraphService
     }
 
     /**
-     * List attachments for a message.
+     * List attachments for a message (includes contentId and contentBytes for file attachments).
+     * No $select filter — the base attachment type doesn't expose fileAttachment-specific
+     * properties like contentId via $select, but the default response includes everything.
      */
     public static function listAttachments(array $account, string $messageId): array
     {
-        return self::request('GET', "/users/{email}/messages/{$messageId}/attachments", $account, null, [
-            '$select' => 'id,name,size,contentType,isInline',
-        ]);
+        return self::request('GET', "/users/{email}/messages/{$messageId}/attachments", $account);
     }
 
     /**

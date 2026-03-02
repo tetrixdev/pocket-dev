@@ -241,50 +241,31 @@ class EmailPanel extends Panel
         }
 
         // Resolve cid: inline images into data: URIs so they render in the sandboxed iframe.
-        // Content-IDs vary across email clients (simple filenames, GUID-suffixed, or arbitrary),
-        // so we: (1) extract all cid: refs from the HTML, (2) for potentially-inline attachments
-        // fetch the full object to get the real contentId, (3) replace using that exact contentId.
+        // listAttachments returns contentId and contentBytes for all file attachments (no $select),
+        // so we can match and replace in one pass without any extra API calls.
         if ($attachments && $hasCidRefs) {
             if (preg_match_all('/cid:([^\s"\'<>]+)/i', $bodyHtml, $cidMatches)) {
                 $cidRefs = array_unique($cidMatches[1]);
 
                 foreach ($attachments as $key => $att) {
-                    $name = $att['name'] ?? '';
-                    $isInline = $att['isInline'] ?? false;
-
-                    // Heuristic: is this attachment likely referenced by a cid: in the body?
-                    // Check if any cid ref starts with the attachment name, or trust isInline flag.
-                    $mightBeInline = $isInline;
-                    if (!$mightBeInline && $name) {
-                        foreach ($cidRefs as $ref) {
-                            if (str_starts_with($ref, $name)) {
-                                $mightBeInline = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (!$mightBeInline) {
+                    $contentId = trim($att['contentId'] ?? '', '<>');
+                    if (!$contentId || !in_array($contentId, $cidRefs, true)) {
                         continue;
                     }
 
-                    try {
-                        $fullAtt = MicrosoftGraphService::getAttachment($account, $messageId, $att['id']);
-                        $contentId = trim($fullAtt['contentId'] ?? '', '<>');
-
-                        if ($contentId && in_array($contentId, $cidRefs) && !empty($fullAtt['contentBytes']) && !empty($fullAtt['contentType'])) {
-                            $dataUri = 'data:' . $fullAtt['contentType'] . ';base64,' . $fullAtt['contentBytes'];
-                            $bodyHtml = str_replace('cid:' . $contentId, $dataUri, $bodyHtml);
-                            $attachments[$key]['_cidResolved'] = true;
-                        }
-                    } catch (\Exception $e) {
-                        Log::debug('Failed to resolve inline image', [
-                            'name' => $name,
-                            'error' => get_class($e),
-                        ]);
+                    if (!empty($att['contentBytes']) && !empty($att['contentType'])) {
+                        $dataUri = 'data:' . $att['contentType'] . ';base64,' . $att['contentBytes'];
+                        $bodyHtml = str_replace('cid:' . $contentId, $dataUri, $bodyHtml);
+                        $attachments[$key]['_cidResolved'] = true;
                     }
                 }
                 $message['body']['content'] = $bodyHtml;
             }
+        }
+
+        // Strip contentBytes from attachments before sending to frontend (can be megabytes).
+        foreach ($attachments as $key => $att) {
+            unset($attachments[$key]['contentBytes']);
         }
 
         $message['_attachments'] = $attachments;

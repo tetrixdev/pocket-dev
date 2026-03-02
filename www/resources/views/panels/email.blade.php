@@ -284,15 +284,18 @@
 
         let html = body.content || '';
 
-        // Strip remote images when not explicitly allowed (privacy/tracking protection).
-        // Preserves data: URIs and cid: references (inline/embedded images).
-        // We manipulate the HTML string directly rather than injecting CSP meta tags,
-        // which avoids escaping issues inside the x-data attribute.
+        // Block all remote resource loading when not explicitly allowed (privacy/tracking).
+        // CSP img-src covers all image vectors: <img src>, srcset, CSS background-image, etc.
+        // All tag/quote chars use JS hex escapes (\x3c \x3e \x22 \x27) to stay safe inside x-data.
         if (!this.allowRemoteImages && html) {
-            html = html.replace(
-                /(<img\b[^>]*?\bsrc\s*=\s*)([\x22'])https?:\/\/[^\x22']*?\2/gi,
-                '$1$2$2'
-            );
+            const csp = '\x3cmeta http-equiv=\x22Content-Security-Policy\x22 content=\x22img-src data:; default-src \x27none\x27; style-src \x27unsafe-inline\x27;\x22\x3e';
+            if (html.includes('\x3chead\x3e')) {
+                html = html.replace('\x3chead\x3e', '\x3chead\x3e' + csp);
+            } else if (html.includes('\x3chead ')) {
+                html = html.replace(/\x3chead [^>]*\x3e/, '$&' + csp);
+            } else {
+                html = csp + html;
+            }
         }
 
         return html;
@@ -309,16 +312,6 @@
             if (a._cidResolved) return false;
             return true;
         });
-    },
-
-    // Checks whether the email body contains remote (http/https) images
-    // that would be blocked by our privacy stripping. Used to decide
-    // whether to show the Load images banner.
-    hasRemoteImages() {
-        if (!this.selectedMessage?.body) return false;
-        if (this.selectedMessage.body.contentType === 'text') return false;
-        const content = this.selectedMessage.body.content || '';
-        return /<img\b[^>]+src\s*=\s*[\x22']?https?:\/\//i.test(content);
     },
 
     escapeHtml(text) {
@@ -1148,7 +1141,7 @@ class="h-full flex flex-col text-sm relative"
                             </template>
 
                             {{-- "Load remote images" banner --}}
-                            <template x-if="!messageLoading && selectedMessage?.body && !allowRemoteImages && hasRemoteImages()">
+                            <template x-if="!messageLoading && selectedMessage?.body?.contentType !== 'text' && selectedMessage?.body?.content && !allowRemoteImages">
                                 <div class="flex items-center gap-2 px-3 py-1.5 bg-yellow-900/20 border-b border-yellow-700/30 text-xs text-yellow-300/80 shrink-0">
                                     <i class="fa-solid fa-shield-halved"></i>
                                     <span>Remote images are blocked for privacy.</span>
