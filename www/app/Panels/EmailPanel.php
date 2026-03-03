@@ -255,7 +255,8 @@ class EmailPanel extends Panel
 
                     if (!empty($att['contentBytes']) && !empty($att['contentType'])) {
                         $dataUri = 'data:' . $att['contentType'] . ';base64,' . $att['contentBytes'];
-                        $bodyHtml = str_ireplace('cid:' . $contentId, $dataUri, $bodyHtml);
+                        $pattern = '/cid:' . preg_quote($contentId, '/') . '(?=[\\s"\'<>]|$)/i';
+                        $bodyHtml = preg_replace($pattern, $dataUri, $bodyHtml) ?? $bodyHtml;
                         $attachments[$key]['_cidResolved'] = true;
                     }
                 }
