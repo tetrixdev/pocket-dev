@@ -223,15 +223,50 @@ class EmailPanel extends Panel
             }
         }
 
-        // Get attachments too
+        // Get attachments. Also fetch when body has cid: references, since Graph API
+        // may return hasAttachments=false for emails with only inline images.
+        $bodyHtml = $message['body']['content'] ?? '';
+        $hasCidRefs = ($message['body']['contentType'] ?? '') !== 'text'
+            && $bodyHtml
+            && preg_match('/cid:/i', $bodyHtml);
+
         $attachments = [];
-        if ($message['hasAttachments'] ?? false) {
+        if (($message['hasAttachments'] ?? false) || $hasCidRefs) {
             try {
                 $attResult = MicrosoftGraphService::listAttachments($account, $messageId);
                 $attachments = $attResult['value'] ?? [];
             } catch (\Exception $e) {
                 Log::warning('Failed to list attachments', ['messageId' => $messageId, 'error' => $e->getMessage()]);
             }
+        }
+
+        // Resolve cid: inline images into data: URIs so they render in the sandboxed iframe.
+        // listAttachments returns contentId and contentBytes for all file attachments (no $select),
+        // so we can match and replace in one pass without any extra API calls.
+        if ($attachments && $hasCidRefs) {
+            if (preg_match_all('/cid:([^\s"\'<>]+)/i', $bodyHtml, $cidMatches)) {
+                $cidRefs = array_map('strtolower', array_unique($cidMatches[1]));
+
+                foreach ($attachments as $key => $att) {
+                    $contentId = trim($att['contentId'] ?? '', '<>');
+                    if ($contentId === '' || !in_array(strtolower($contentId), $cidRefs, true)) {
+                        continue;
+                    }
+
+                    if (!empty($att['contentBytes']) && !empty($att['contentType'])) {
+                        $dataUri = 'data:' . $att['contentType'] . ';base64,' . $att['contentBytes'];
+                        $pattern = '/cid:' . preg_quote($contentId, '/') . '(?=[\\s"\'<>]|$)/i';
+                        $bodyHtml = preg_replace($pattern, $dataUri, $bodyHtml) ?? $bodyHtml;
+                        $attachments[$key]['_cidResolved'] = true;
+                    }
+                }
+                $message['body']['content'] = $bodyHtml;
+            }
+        }
+
+        // Strip contentBytes from attachments before sending to frontend (can be megabytes).
+        foreach (array_keys($attachments) as $key) {
+            unset($attachments[$key]['contentBytes']);
         }
 
         $message['_attachments'] = $attachments;
@@ -404,8 +439,14 @@ class EmailPanel extends Panel
 
         $result = MicrosoftGraphService::listAttachments($account, $messageId);
 
+        // Strip contentBytes before sending to frontend (can be megabytes of base64).
+        $attachments = $result['value'] ?? [];
+        foreach (array_keys($attachments) as $key) {
+            unset($attachments[$key]['contentBytes']);
+        }
+
         return [
-            'data' => ['attachments' => $result['value'] ?? []],
+            'data' => ['attachments' => $attachments],
             'error' => null,
         ];
     }
