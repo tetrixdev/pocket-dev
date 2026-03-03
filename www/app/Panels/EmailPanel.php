@@ -245,17 +245,17 @@ class EmailPanel extends Panel
         // so we can match and replace in one pass without any extra API calls.
         if ($attachments && $hasCidRefs) {
             if (preg_match_all('/cid:([^\s"\'<>]+)/i', $bodyHtml, $cidMatches)) {
-                $cidRefs = array_unique($cidMatches[1]);
+                $cidRefs = array_map('strtolower', array_unique($cidMatches[1]));
 
                 foreach ($attachments as $key => $att) {
                     $contentId = trim($att['contentId'] ?? '', '<>');
-                    if (!$contentId || !in_array($contentId, $cidRefs, true)) {
+                    if ($contentId === '' || !in_array(strtolower($contentId), $cidRefs, true)) {
                         continue;
                     }
 
                     if (!empty($att['contentBytes']) && !empty($att['contentType'])) {
                         $dataUri = 'data:' . $att['contentType'] . ';base64,' . $att['contentBytes'];
-                        $bodyHtml = str_replace('cid:' . $contentId, $dataUri, $bodyHtml);
+                        $bodyHtml = str_ireplace('cid:' . $contentId, $dataUri, $bodyHtml);
                         $attachments[$key]['_cidResolved'] = true;
                     }
                 }
@@ -264,7 +264,7 @@ class EmailPanel extends Panel
         }
 
         // Strip contentBytes from attachments before sending to frontend (can be megabytes).
-        foreach ($attachments as $key => $att) {
+        foreach (array_keys($attachments) as $key) {
             unset($attachments[$key]['contentBytes']);
         }
 
@@ -440,7 +440,7 @@ class EmailPanel extends Panel
 
         // Strip contentBytes before sending to frontend (can be megabytes of base64).
         $attachments = $result['value'] ?? [];
-        foreach ($attachments as $key => $att) {
+        foreach (array_keys($attachments) as $key) {
             unset($attachments[$key]['contentBytes']);
         }
 
