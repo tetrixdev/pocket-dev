@@ -438,8 +438,14 @@ class EmailPanel extends Panel
 
         $result = MicrosoftGraphService::listAttachments($account, $messageId);
 
+        // Strip contentBytes before sending to frontend (can be megabytes of base64).
+        $attachments = $result['value'] ?? [];
+        foreach ($attachments as $key => $att) {
+            unset($attachments[$key]['contentBytes']);
+        }
+
         return [
-            'data' => ['attachments' => $result['value'] ?? []],
+            'data' => ['attachments' => $attachments],
             'error' => null,
         ];
     }

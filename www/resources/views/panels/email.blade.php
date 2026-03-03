@@ -289,10 +289,9 @@
         // All tag/quote chars use JS hex escapes (\x3c \x3e \x22 \x27) to stay safe inside x-data.
         if (!this.allowRemoteImages && html) {
             const csp = '\x3cmeta http-equiv=\x22Content-Security-Policy\x22 content=\x22img-src data:; default-src \x27none\x27; style-src \x27unsafe-inline\x27;\x22\x3e';
-            if (html.includes('\x3chead\x3e')) {
-                html = html.replace('\x3chead\x3e', '\x3chead\x3e' + csp);
-            } else if (html.includes('\x3chead ')) {
-                html = html.replace(/\x3chead [^>]*\x3e/, '$&' + csp);
+            const headMatch = html.match(/\x3chead[\s>]/i);
+            if (headMatch) {
+                html = html.replace(/\x3chead(?:\s[^>]*)?\x3e/i, '$&' + csp);
             } else {
                 html = csp + html;
             }
@@ -312,6 +311,20 @@
             if (a._cidResolved) return false;
             return true;
         });
+    },
+
+    // Checks whether the email body loads remote resources that our CSP would block.
+    // Targets resource-loading patterns (src, srcset, CSS background) — not plain
+    // hyperlinks, which the CSP does not affect.
+    hasRemoteResources() {
+        if (!this.selectedMessage?.body) return false;
+        if (this.selectedMessage.body.contentType === 'text') return false;
+        const c = this.selectedMessage.body.content || '';
+        // src/srcset with http URL (covers img, source, iframe, etc.)
+        if (/(?:src|srcset)\s*=\s*[\x27\x22]?\s*https?:\/\//i.test(c)) return true;
+        // CSS background-image or shorthand background with url(http...)
+        if (/background(?:-image)?\s*:[^;}]*url\(\s*[\x27\x22]?\s*https?:\/\//i.test(c)) return true;
+        return false;
     },
 
     escapeHtml(text) {
@@ -1141,7 +1154,7 @@ class="h-full flex flex-col text-sm relative"
                             </template>
 
                             {{-- "Load remote images" banner --}}
-                            <template x-if="!messageLoading && selectedMessage?.body?.contentType !== 'text' && selectedMessage?.body?.content && !allowRemoteImages">
+                            <template x-if="!messageLoading && selectedMessage?.body && !allowRemoteImages && hasRemoteResources()">
                                 <div class="flex items-center gap-2 px-3 py-1.5 bg-yellow-900/20 border-b border-yellow-700/30 text-xs text-yellow-300/80 shrink-0">
                                     <i class="fa-solid fa-shield-halved"></i>
                                     <span>Remote images are blocked for privacy.</span>
