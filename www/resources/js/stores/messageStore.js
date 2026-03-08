@@ -276,9 +276,10 @@ export function createMessageStore(options = {}) {
                             toolId: block.id,
                             toolInput: block.input,
                             toolResult: null,
+                            toolInterrupted: !!block.interrupted,
                             content: JSON.stringify(block.input, null, 2),
                             timestamp: dbMsg.created_at,
-                            collapsed: true,
+                            collapsed: !block.interrupted, // Show interrupted tools expanded
                             cost: isLast ? msgCost : null,
                             model: isLast ? msgModel : null,
                             inputTokens: isLast ? msgInputTokens : null,

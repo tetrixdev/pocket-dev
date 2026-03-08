@@ -663,7 +663,22 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
     }
 
     /**
-     * Abort the current streaming operation.
+     * Signal the current process to stop (non-blocking).
+     * Sends SIGINT → SIGKILL but does NOT call proc_close().
+     * Use this for fast abort when you need to return control immediately.
+     * Call abort() later for full cleanup including proc_close().
+     */
+    public function signalAbort(): void
+    {
+        if ($this->activeProcess !== null && is_resource($this->activeProcess)) {
+            $this->signalProcessGroup($this->activeProcess);
+        }
+    }
+
+    /**
+     * Abort the current streaming operation (blocking).
+     * Sends SIGINT → SIGKILL AND calls proc_close() for full cleanup.
+     * This may block briefly while proc_close() waits for the process to exit.
      * Default: SIGINT -> 200ms -> SIGKILL (matches Claude Code behavior).
      * Subclasses can override if different signal handling is needed.
      */

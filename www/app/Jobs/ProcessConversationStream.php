@@ -358,7 +358,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 RequestFlowLogger::log('job.loop.abort_detected', 'Abort flag detected in event loop', [
                     'event_count' => $eventCount,
                 ]);
-                $provider->abort();
+                // Signal process to stop immediately (non-blocking — avoids proc_close delay)
+                // Full cleanup (proc_close) happens in handleAbort's finally block via $provider->abort()
+                if ($provider instanceof AbstractCliProvider) {
+                    $provider->signalAbort();
+                }
                 $this->handleAbort(
                     $conversation, $provider, $streamManager, $contentBlocks,
                     $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
@@ -835,28 +839,28 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ]);
 
         try {
-            // Save partial response - filter out incomplete blocks
+            // Save partial response - filter out unsaveable blocks, mark interrupted ones
             // 1. Remove thinking blocks without signatures (required for multi-turn)
-            // 2. Remove incomplete tool_use blocks (never received TOOL_USE_STOP)
-            $contentBlocks = array_values(array_filter($contentBlocks, function ($block) {
+            // 2. Keep tool_use blocks but mark incomplete ones as interrupted
+            $contentBlocks = array_values(array_filter(array_map(function ($block) {
                 $type = $block['type'] ?? '';
 
                 // Filter out thinking blocks without signatures
                 if ($type === 'thinking' && empty($block['signature'])) {
-                    return false;
+                    return null;
                 }
 
-                // Filter out incomplete tool_use blocks (empty input means never received TOOL_USE_STOP)
+                // Mark incomplete tool_use blocks (empty input means never received TOOL_USE_STOP)
+                // Keep them so the UI can display them as "interrupted tool call"
                 if ($type === 'tool_use') {
                     $input = $block['input'] ?? null;
-                    if ($input instanceof \stdClass && empty((array) $input)) {
-                        return false;
+                    if ($input === null || ($input instanceof \stdClass && empty((array) $input))) {
+                        $block['interrupted'] = true;
                     }
                 }
 
-                // Keep all complete blocks
-                return true;
-            }));
+                return $block;
+            }, $contentBlocks), fn($block) => $block !== null));
 
             // Add an "interrupted" marker for UI display (filtered out when sent to API)
             $contentBlocks[] = [
@@ -891,7 +895,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 // from its own tool execution, and syncing would create duplicates.
                 $hasCompleteToolUseBlocks = false;
                 foreach ($contentBlocks as $block) {
-                    if (($block['type'] ?? '') === 'tool_use') {
+                    if (($block['type'] ?? '') === 'tool_use' && empty($block['interrupted'])) {
                         $input = $block['input'] ?? null;
                         $isComplete = $input !== null && !($input instanceof \stdClass && empty((array) $input));
                         if ($isComplete) {
@@ -926,14 +930,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         } finally {
             RequestFlowLogger::log('job.loop.abort_finalizing', 'Finalizing abort');
 
-            // Ensure the CLI process is fully killed and cleaned up
-            // (signalProcessGroup may have been called in the inner loop, but proc_close not yet)
-            $provider->abort();
-
             // Calculate turns while still locked (even for aborted streams)
             $this->calculateAndStoreTurns($conversation);
 
-            // Always complete stream and cleanup, even if save failed
+            // Complete stream and cleanup FIRST, so the frontend sees the abort immediately.
+            // This must happen before $provider->abort() which may block on proc_close().
             $conversation->completeProcessing();
             $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
             $streamManager->completeStream($this->conversationUuid, 'aborted');
@@ -942,6 +943,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             // Dispatch async embedding job
             GenerateConversationEmbeddings::dispatch($conversation);
             RequestFlowLogger::log('job.loop.abort_complete', 'Abort handling complete');
+
+            // Final cleanup: kill process group and close the process resource.
+            // This may block briefly on proc_close() but the stream is already marked
+            // as complete above, so the frontend won't be waiting.
+            $provider->abort();
         }
     }
 
