@@ -29,6 +29,7 @@ export function createStreamStore(callbacks) {
         _lastKeepaliveAt: null,
         _connectionHealthy: true,
         _keepaliveCheckInterval: null,
+        _abortTimeoutId: null,
 
         // Stream phase tracking
         _streamPhase: 'idle',  // 'idle' | 'waiting' | 'tool_executing' | 'streaming'
@@ -453,10 +454,15 @@ export function createStreamStore(callbacks) {
                                         return;
                                     }
                                 }
-                                if (event.status === 'completed' || event.status === 'failed') {
+                                if (event.status === 'completed' || event.status === 'failed' || event.status === 'aborted') {
                                     this.isStreaming = false;
                                     this._isReplaying = false;
                                     this._replayHighWaterMark = 0;
+                                    // Clear abort safety timeout if still pending
+                                    if (this._abortTimeoutId) {
+                                        clearTimeout(this._abortTimeoutId);
+                                        this._abortTimeoutId = null;
+                                    }
                                     callbacks.onStreamEnd(event.status);
                                     this._justCompletedStream = true;
                                     this._clearStreamStorage(uuid);
@@ -537,6 +543,11 @@ export function createStreamStore(callbacks) {
                 this._streamRetryTimeoutId = null;
             }
 
+            if (this._abortTimeoutId) {
+                clearTimeout(this._abortTimeoutId);
+                this._abortTimeoutId = null;
+            }
+
             if (this._keepaliveCheckInterval) {
                 clearInterval(this._keepaliveCheckInterval);
                 this._keepaliveCheckInterval = null;
@@ -559,6 +570,11 @@ export function createStreamStore(callbacks) {
 
         /**
          * Abort the current stream (user clicked stop)
+         *
+         * Sends POST /abort to backend and waits for the server to confirm
+         * via SSE `done` event with stop_reason 'aborted'. This prevents
+         * race conditions where the user sends a new message before the
+         * backend has finished cleaning up the aborted stream.
          */
         async abortStream() {
             const uuid = callbacks.getConversationUuid();
@@ -566,8 +582,10 @@ export function createStreamStore(callbacks) {
 
             const state = this._streamState;
 
-            // Show "Aborting..." immediately — abort is always sent right away,
-            // even during tool execution. The backend kills the process immediately.
+            // Prevent double-abort
+            if (state.abortPending) return;
+
+            // Mark as aborting — UI shows "Stopping..." but keeps SSE connection alive
             state.abortPending = true;
 
             try {
@@ -581,16 +599,34 @@ export function createStreamStore(callbacks) {
 
                 if (!response.ok) {
                     console.error('Failed to abort stream:', await response.text());
+                    // If the POST itself failed, force-disconnect as fallback
+                    callbacks.onAbortCleanup(state);
+                    this.disconnectFromStream();
+                    this.isStreaming = false;
+                    return;
                 }
 
-                // Clean up in-progress messages via callback
-                callbacks.onAbortCleanup(state);
+                // DO NOT disconnect from SSE here. The SSE connection stays alive
+                // and will receive the `done` event with stop_reason 'aborted',
+                // followed by `stream_status` with status 'aborted'.
+                // The handleStreamEvent 'done' handler and stream_status handler
+                // will take care of cleanup.
 
-                this.disconnectFromStream();
-                this.isStreaming = false;
+                // Safety timeout: if the server doesn't confirm within 10 seconds,
+                // force-disconnect to prevent the UI from being stuck in "Stopping..."
+                this._abortTimeoutId = setTimeout(() => {
+                    if (state.abortPending && this.isStreaming) {
+                        console.warn('[Stream] Abort timeout - server did not confirm within 10s, forcing disconnect');
+                        callbacks.onAbortCleanup(state);
+                        this.disconnectFromStream();
+                        this.isStreaming = false;
+                    }
+                }, 10000);
 
             } catch (err) {
                 console.error('Error aborting stream:', err);
+                callbacks.onAbortCleanup(state);
+                this.disconnectFromStream();
                 this.isStreaming = false;
             }
         },
@@ -910,6 +946,17 @@ export function createStreamStore(callbacks) {
                             model: callbacks.getModel(),
                             agent: callbacks.getCurrentAgent()
                         });
+                    }
+
+                    // Server confirmed abort — clean up the in-progress messages
+                    if (event.metadata?.stop_reason === 'aborted' && state.abortPending) {
+                        console.log('[Stream] Server confirmed abort via done event');
+                        // Clear the safety timeout
+                        if (this._abortTimeoutId) {
+                            clearTimeout(this._abortTimeoutId);
+                            this._abortTimeoutId = null;
+                        }
+                        callbacks.onAbortCleanup(state);
                     }
                     break;
                 }
