@@ -269,15 +269,24 @@ export function createMessageStore(options = {}) {
                             turn_number: dbMsg.turn_number
                         });
                     } else if (block.type === 'tool_use') {
+                        // For interrupted tool calls, use partial_input (raw JSON string)
+                        // if the parsed input is empty. This preserves whatever was streamed
+                        // before the interruption for display purposes.
+                        const hasInput = block.input && !(typeof block.input === 'object' && Object.keys(block.input).length === 0);
+                        const displayInput = hasInput ? block.input : (block.partial_input || block.input);
+                        const displayContent = hasInput
+                            ? JSON.stringify(block.input, null, 2)
+                            : (block.partial_input || JSON.stringify(block.input, null, 2));
                         result.push({
                             id: this._generateMsgId(),
                             role: 'tool',
                             toolName: block.name,
                             toolId: block.id,
-                            toolInput: block.input,
+                            toolInput: displayInput,
                             toolResult: null,
                             toolInterrupted: !!block.interrupted,
-                            content: JSON.stringify(block.input, null, 2),
+                            toolPartialInput: block.partial_input || null,
+                            content: displayContent,
                             timestamp: dbMsg.created_at,
                             collapsed: !block.interrupted, // Show interrupted tools expanded
                             cost: isLast ? msgCost : null,

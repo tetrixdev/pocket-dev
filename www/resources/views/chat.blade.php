@@ -1477,6 +1477,14 @@
                                     this.messages.splice(state.textMsgIndex, 1);
                                 }
                             }
+                            // Mark any in-progress tool blocks as interrupted
+                            // so the amber/warning styling shows immediately (matches DB-loaded view)
+                            for (const msg of this.messages) {
+                                if (msg.role === 'tool' && state.waitingForToolResults.has(msg.toolId)) {
+                                    msg.toolInterrupted = true;
+                                    msg.collapsed = false; // Show expanded so user sees what was attempted
+                                }
+                            }
                             // Add interrupted marker
                             this.messages.push({
                                 id: 'msg-' + Date.now() + '-interrupted',

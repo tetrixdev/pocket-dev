@@ -363,6 +363,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 if ($provider instanceof AbstractCliProvider) {
                     $provider->signalAbort();
                 }
+                // Inject partial tool input into content blocks before saving
+                $this->injectPartialToolInput($contentBlocks, $currentToolInput);
                 $this->handleAbort(
                     $conversation, $provider, $streamManager, $contentBlocks,
                     $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
@@ -566,6 +568,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // detected the abort and returned early from the generator.
         if ($streamManager->checkAbortFlag($this->conversationUuid)) {
             RequestFlowLogger::log('job.loop.abort_detected', 'Abort flag detected after stream completed');
+            $this->injectPartialToolInput($contentBlocks, $currentToolInput);
             $this->handleAbort(
                 $conversation, $provider, $streamManager, $contentBlocks,
                 $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
@@ -810,6 +813,50 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         }
 
         return $results;
+    }
+
+    /**
+     * Inject accumulated partial tool input into content blocks before abort save.
+     *
+     * During streaming, tool_use input JSON accumulates in $currentToolInput as
+     * a raw string, and only gets parsed into $contentBlocks on TOOL_USE_STOP.
+     * On abort, TOOL_USE_STOP never fires, so the content block has empty input.
+     * This method saves the partial raw string so the UI can display what was
+     * attempted before the interruption.
+     */
+    private function injectPartialToolInput(array &$contentBlocks, array $currentToolInput): void
+    {
+        foreach ($contentBlocks as $blockIndex => &$block) {
+            if (($block['type'] ?? '') !== 'tool_use') {
+                continue;
+            }
+
+            // Only inject if the block has empty/null input (TOOL_USE_STOP never fired)
+            $input = $block['input'] ?? null;
+            $isEmpty = $input === null || ($input instanceof \stdClass && empty((array) $input));
+            if (!$isEmpty) {
+                continue;
+            }
+
+            // Check if we have accumulated partial input for this block
+            if (!isset($currentToolInput[$blockIndex]) || $currentToolInput[$blockIndex] === '') {
+                continue;
+            }
+
+            $partialJson = $currentToolInput[$blockIndex];
+
+            // Try to parse it — it might actually be valid JSON if the stream was
+            // interrupted right after the last delta but before TOOL_USE_STOP
+            $parsed = json_decode($partialJson, true);
+            if ($parsed !== null && json_last_error() === JSON_ERROR_NONE) {
+                // Valid JSON — use it as the real input
+                $block['input'] = $parsed;
+            } else {
+                // Incomplete JSON — store as partial_input for display purposes
+                $block['partial_input'] = $partialJson;
+            }
+        }
+        unset($block);
     }
 
     /**

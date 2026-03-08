@@ -51,10 +51,18 @@
             {{-- Content --}}
             <div x-show="!msg.collapsed" class="px-3 md:px-4 py-2 md:py-3 text-xs md:space-y-2"
                  :class="msg.toolInterrupted ? 'text-amber-200/80' : 'text-blue-200'">
-                <template x-if="msg.toolInterrupted && (!msg.toolInput || (typeof msg.toolInput === 'object' && Object.keys(msg.toolInput).length === 0))">
+                {{-- Case 1: Interrupted with no input at all --}}
+                <template x-if="msg.toolInterrupted && !msg.toolPartialInput && (!msg.toolInput || (typeof msg.toolInput === 'object' && Object.keys(msg.toolInput).length === 0))">
                     <div class="text-amber-400/70 italic text-xs">Tool call was interrupted before input was received.</div>
                 </template>
-                <template x-if="!msg.toolInterrupted || (msg.toolInput && !(typeof msg.toolInput === 'object' && Object.keys(msg.toolInput).length === 0))">
+                {{-- Case 2: Interrupted with partial raw JSON (incomplete but informative) --}}
+                <template x-if="msg.toolInterrupted && msg.toolPartialInput">
+                    <div>
+                        <pre class="text-amber-200/70 whitespace-pre-wrap break-all text-xs" x-text="msg.toolPartialInput"></pre>
+                    </div>
+                </template>
+                {{-- Case 3: Has valid parsed input (interrupted or not) --}}
+                <template x-if="!msg.toolInterrupted || (msg.toolInput && !msg.toolPartialInput && !(typeof msg.toolInput === 'object' && Object.keys(msg.toolInput).length === 0))">
                     <div x-html="DOMPurify.sanitize(formatToolContent(msg))"></div>
                 </template>
                 {{-- Show full/less toggle --}}
