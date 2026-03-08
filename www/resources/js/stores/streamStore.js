@@ -52,7 +52,6 @@ export function createStreamStore(callbacks) {
             toolInProgress: false,
             waitingForToolResults: new Set(),
             abortPending: false,
-            abortSkipSync: false,
             startedAt: null,
         },
 
@@ -122,7 +121,6 @@ export function createStreamStore(callbacks) {
                 toolInProgress: false,
                 waitingForToolResults: new Set(),
                 abortPending: false,
-                abortSkipSync: false,
                 startedAt: null,
             };
         },
@@ -158,7 +156,6 @@ export function createStreamStore(callbacks) {
                 toolInProgress: false,
                 waitingForToolResults: new Set(),
                 abortPending: false,
-                abortSkipSync: false,
                 startedAt: savedStartedAt,
             };
 
@@ -189,7 +186,6 @@ export function createStreamStore(callbacks) {
                     toolInProgress: this._streamState.toolInProgress,
                     waitingForToolResults: Array.from(this._streamState.waitingForToolResults || []),
                     abortPending: this._streamState.abortPending,
-                    abortSkipSync: this._streamState.abortSkipSync,
                     turnCost: this._streamState.turnCost,
                     turnInputTokens: this._streamState.turnInputTokens,
                     turnOutputTokens: this._streamState.turnOutputTokens,
@@ -223,7 +219,6 @@ export function createStreamStore(callbacks) {
                         this._streamState.waitingForToolResults = new Set(state.waitingForToolResults);
                     }
                     if (state.abortPending !== undefined) this._streamState.abortPending = state.abortPending;
-                    if (state.abortSkipSync !== undefined) this._streamState.abortSkipSync = state.abortSkipSync;
                     if (state.turnCost !== undefined) this._streamState.turnCost = state.turnCost;
                     if (state.turnInputTokens !== undefined) this._streamState.turnInputTokens = state.turnInputTokens;
                     if (state.turnOutputTokens !== undefined) this._streamState.turnOutputTokens = state.turnOutputTokens;
@@ -571,21 +566,9 @@ export function createStreamStore(callbacks) {
 
             const state = this._streamState;
 
-            // Defer abort if tool parameters are being streamed
-            if (state.toolInProgress) {
-                console.log('Abort requested while streaming tool parameters - deferring');
-                state.abortPending = true;
-                return;
-            }
-
-            // Defer abort if waiting for tool results
-            if (state.waitingForToolResults.size > 0) {
-                console.log('Abort requested while waiting for tool results - deferring');
-                state.abortPending = true;
-                return;
-            }
-
-            const skipSync = state.abortSkipSync;
+            // Show "Aborting..." immediately — abort is always sent right away,
+            // even during tool execution. The backend kills the process immediately.
+            state.abortPending = true;
 
             try {
                 const response = await fetch(`/api/conversations/${uuid}/abort`, {
@@ -594,10 +577,7 @@ export function createStreamStore(callbacks) {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                     },
-                    body: JSON.stringify({ skipSync }),
                 });
-
-                state.abortSkipSync = false;
 
                 if (!response.ok) {
                     console.error('Failed to abort stream:', await response.text());
@@ -831,13 +811,6 @@ export function createStreamStore(callbacks) {
 
                     this._saveStreamState(uuid);
 
-                    // Check deferred abort
-                    if (state.abortPending && state.waitingForToolResults.size === 0 && !state.toolInProgress) {
-                        console.log('All pending tools complete - triggering deferred abort');
-                        state.abortPending = false;
-                        state.abortSkipSync = true;
-                        this.abortStream();
-                    }
                     break;
                 }
 
