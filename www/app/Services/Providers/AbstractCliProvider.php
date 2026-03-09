@@ -351,8 +351,9 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
         ?float $streamStartTime = null
     ): Generator {
         $processInput = $this->prepareProcessInput($command, $userMessage);
-        // Use setsid to create a new process group so we can kill the entire tree on abort
-        $fullCommand = 'setsid ' . $processInput['command'] . ' 2>&1';
+        // The shell and claude CLI share the same process group (inherited from proc_open).
+        // posix_kill(-$shellPid) sends signals to the entire group, killing the full tree.
+        $fullCommand = $processInput['command'] . ' 2>&1';
         $stdinContent = $processInput['stdin'];
 
         $descriptors = [
