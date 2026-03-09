@@ -368,7 +368,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $this->handleAbort(
                     $conversation, $provider, $streamManager, $contentBlocks,
                     $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
-                    $turnCost, $userMessage, $contextInputTokens, $contextOutputTokens
+                    $turnCost, $userMessage, $contextInputTokens, $contextOutputTokens,
+                    $streamedToolResults,
                 );
                 return;
             }
@@ -572,7 +573,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $this->handleAbort(
                 $conversation, $provider, $streamManager, $contentBlocks,
                 $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
-                $turnCost, $userMessage, $contextInputTokens, $contextOutputTokens
+                $turnCost, $userMessage, $contextInputTokens, $contextOutputTokens,
+                $streamedToolResults,
             );
             return;
         }
@@ -880,16 +882,25 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ?Message $userMessage,
         ?int $contextInputTokens,
         ?int $contextOutputTokens,
+        array $streamedToolResults = [],
     ): void {
         Log::info('ProcessConversationStream: Abort requested', [
             'conversation' => $this->conversationUuid,
         ]);
 
+        // Build set of tool IDs that received results (completed before abort)
+        $completedToolIds = [];
+        foreach ($streamedToolResults as $result) {
+            if (!empty($result['tool_use_id'])) {
+                $completedToolIds[$result['tool_use_id']] = true;
+            }
+        }
+
         try {
             // Save partial response - filter out unsaveable blocks, mark interrupted ones
             // 1. Remove thinking blocks without signatures (required for multi-turn)
-            // 2. Keep tool_use blocks but mark incomplete ones as interrupted
-            $contentBlocks = array_values(array_filter(array_map(function ($block) {
+            // 2. Mark tool_use blocks as interrupted ONLY if they didn't get a tool_result
+            $contentBlocks = array_values(array_filter(array_map(function ($block) use ($completedToolIds) {
                 $type = $block['type'] ?? '';
 
                 // Filter out thinking blocks without signatures
@@ -897,11 +908,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     return null;
                 }
 
-                // Mark ALL tool_use blocks as interrupted — the entire response was aborted,
-                // so every tool call was interrupted (either mid-input or mid-execution).
-                // The UI uses this flag for amber/warning styling regardless of input state.
+                // Only mark tool_use blocks as interrupted if they didn't complete
+                // (no corresponding tool_result received before the abort)
                 if ($type === 'tool_use') {
-                    $block['interrupted'] = true;
+                    $toolId = $block['id'] ?? null;
+                    if (!$toolId || !isset($completedToolIds[$toolId])) {
+                        $block['interrupted'] = true;
+                    }
                 }
 
                 return $block;
@@ -939,7 +952,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 // corresponding tool_result — the CLI session likely already has this data
                 // from its own tool execution, and syncing would create duplicates.
                 // Note: we check input completeness directly, not the interrupted flag
-                // (all tool_use blocks are now marked interrupted since the response was aborted).
+                // (only tools without a result are marked interrupted).
                 $hasCompleteToolUseBlocks = false;
                 foreach ($contentBlocks as $block) {
                     if (($block['type'] ?? '') === 'tool_use') {
