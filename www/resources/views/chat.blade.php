@@ -2587,8 +2587,9 @@
                 },
 
                 async newConversation() {
-                    // Disconnect from any active stream
-                    this.disconnectFromStream();
+                    // Reset all stream state before switching
+                    this._streamStore.prepareForConversationSwitch();
+                    this.isStreaming = false;
 
                     this.currentConversationUuid = null;
                     this.currentConversationStatus = null; // Reset status for new conversation
@@ -2607,8 +2608,6 @@
                     this.outputTokens = 0;
                     this.cacheCreationTokens = 0;
                     this.cacheReadTokens = 0;
-                    this.isStreaming = false;
-                    this.lastEventIndex = 0;
                     this.resetContextTracking();
 
                     // Clear URL to base path
@@ -2891,8 +2890,8 @@
                     this.loadingConversation = true;
                     this._loadingConversationUuid = uuid;
 
-                    // Disconnect from any current stream before switching
-                    this.disconnectFromStream();
+                    // Reset all stream state before switching conversations
+                    this._streamStore.prepareForConversationSwitch();
 
                     try {
                         const response = await fetch(`/api/conversations/${uuid}`);
@@ -2985,26 +2984,6 @@
                         this.cacheCreationTokens = 0;
                         this.cacheReadTokens = 0;
                         this.sessionCost = 0;
-                        this.lastEventIndex = 0;
-
-                        // Reset stream state for potential reconnection
-                        this._streamState = {
-                            thinkingBlocks: {},
-                            currentThinkingBlock: -1,
-                            textMsgIndex: -1,
-                            toolMsgIndex: -1,
-                            textContent: '',
-                            toolInput: '',
-                            turnCost: 0,
-                            turnInputTokens: 0,
-                            turnOutputTokens: 0,
-                            turnCacheCreationTokens: 0,
-                            turnCacheReadTokens: 0,
-                            toolInProgress: false,
-                            waitingForToolResults: new Set(),
-                            abortPending: false,
-                            abortSkipSync: false,
-                        };
 
                         // Calculate totals and sum costs from stored values
                         if (data.conversation?.messages) {
@@ -3350,7 +3329,7 @@
                 async loadConversationForScreen(uuid) {
                     this.loadingConversation = true;
                     this._loadingConversationUuid = uuid;
-                    this.disconnectFromStream();
+                    this._streamStore.prepareForConversationSwitch();
 
                     // Capture pendingScrollToTurn before loading (it will be cleared after use)
                     const targetTurn = this.pendingScrollToTurn;
@@ -4874,29 +4853,11 @@
                     this.autoScrollEnabled = true; // Re-enable auto-scroll on new message
                     this.scrollToBottom();
 
-                    // Reset stream state
+                    // Reset stream state for the new message stream
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
                     // Stream phase is set in connectToStreamEvents() after disconnectFromStream()
-                    this._streamState = {
-                        // Maps block_index -> { msgIndex, content, complete }
-                        thinkingBlocks: {},
-                        currentThinkingBlock: -1,
-                        textMsgIndex: -1,
-                        toolMsgIndex: -1,
-                        textContent: '',
-                        toolInput: '',
-                        turnCost: 0,
-                        turnInputTokens: 0,
-                        turnOutputTokens: 0,
-                        turnCacheCreationTokens: 0,
-                        turnCacheReadTokens: 0,
-                        toolInProgress: false,
-                        waitingForToolResults: new Set(),
-                        abortPending: false,
-                        abortSkipSync: false,
-                        startedAt: null, // Will be set from stream response
-                    };
+                    this._streamStore.resetStreamState();
 
                     try {
                         // Build stream request body

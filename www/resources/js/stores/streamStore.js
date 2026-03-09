@@ -249,6 +249,23 @@ export function createStreamStore(callbacks) {
         // === Connection Lifecycle ===
 
         /**
+         * Prepare stream store for switching to a different conversation.
+         * Disconnects SSE, resets all stream state and tracking so no stale
+         * data from the previous conversation can bleed into the next one.
+         */
+        prepareForConversationSwitch() {
+            this.disconnectFromStream();
+            this.resetStreamState();
+            this.lastEventIndex = 0;
+            this.lastEventId = null;
+            this.clearEventIdSet();
+            this._isReplaying = false;
+            this._replayHighWaterMark = 0;
+            this._justCompletedStream = false;
+            this._wasStreamingBeforeHidden = false;
+        },
+
+        /**
          * Check for active stream and reconnect if found
          */
         async checkAndReconnectStream(uuid) {
