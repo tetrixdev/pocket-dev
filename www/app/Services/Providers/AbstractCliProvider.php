@@ -700,26 +700,57 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
     protected function signalProcessGroup($process): void
     {
         $pid = $this->activeProcessPid ?? (proc_get_status($process)['pid'] ?? null);
+        if (!$pid) return;
 
-        if ($pid && function_exists('posix_kill')) {
-            // Send SIGINT to the entire process group (negative PID)
-            posix_kill(-$pid, 2); // SIGINT
-            usleep(200000); // 200ms grace period
+        // Send SIGINT to the entire process tree for graceful shutdown
+        $this->signalProcessTree($pid, 2); // SIGINT
+        usleep(200000); // 200ms grace period
 
-            $status = proc_get_status($process);
-            if ($status['running']) {
-                posix_kill(-$pid, 9); // SIGKILL the group
-            }
-        } else {
-            // Fallback to proc_terminate (sends to shell process only)
-            proc_terminate($process, 2); // SIGINT
-            usleep(200000);
+        $status = proc_get_status($process);
+        if ($status['running']) {
+            // Force kill the entire tree
+            $this->signalProcessTree($pid, 9); // SIGKILL
+        }
+    }
 
-            $status = proc_get_status($process);
-            if ($status['running']) {
-                proc_terminate($process, 9); // SIGKILL
+    /**
+     * Send a signal to a process and all its descendants.
+     * Uses pgrep to find children by parent PID — this works regardless of
+     * process groups (child processes inherit the queue worker's group, so
+     * posix_kill with negative PID doesn't reach them).
+     */
+    protected function signalProcessTree(int $pid, int $signal): void
+    {
+        // Find all descendant PIDs recursively (children, grandchildren, etc.)
+        $descendants = $this->getDescendantPids($pid);
+
+        // Kill descendants first (deepest first), then the root process
+        foreach (array_reverse($descendants) as $descendantPid) {
+            @posix_kill($descendantPid, $signal);
+        }
+        @posix_kill($pid, $signal);
+    }
+
+    /**
+     * Get all descendant PIDs of a process recursively via pgrep.
+     *
+     * @return int[]
+     */
+    protected function getDescendantPids(int $pid): array
+    {
+        $output = trim(shell_exec("pgrep -P $pid 2>/dev/null") ?? '');
+        if ($output === '') return [];
+
+        $descendants = [];
+        foreach (explode("\n", $output) as $line) {
+            $childPid = intval(trim($line));
+            if ($childPid > 0) {
+                $descendants[] = $childPid;
+                // Recurse to find grandchildren
+                $descendants = array_merge($descendants, $this->getDescendantPids($childPid));
             }
         }
+        return $descendants;
     }
 
     /**
