@@ -38,6 +38,9 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
     /** @var callable|null Callback that returns true if abort has been requested */
     protected $abortChecker = null;
 
+    /** @var bool Whether signalProcessGroup has already been called (prevents redundant 200ms sleeps) */
+    protected bool $processSignaled = false;
+
     // Phase-aware timeout constants (seconds) - overridable by subclasses
     protected const TIMEOUT_INITIAL = 1800;
     protected const TIMEOUT_STREAMING = 1800;
@@ -614,6 +617,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
 
             $exitCode = proc_close($process);
             $this->activeProcess = null;
+            $this->activeProcessPid = null;
 
             // Subclass cleanup hook
             $this->onProcessComplete($conversation, $state, $exitCode);
@@ -699,8 +703,13 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
      */
     protected function signalProcessGroup($process): void
     {
+        // Only signal once — subsequent calls are no-ops (avoids redundant 200ms sleeps
+        // when both inner loop, outer loop, and finally block all call this)
+        if ($this->processSignaled) return;
+        $this->processSignaled = true;
+
         $pid = $this->activeProcessPid ?? (proc_get_status($process)['pid'] ?? null);
-        if (!$pid) return;
+        if (!$pid || $pid <= 0) return;
 
         // Send SIGINT to the entire process tree for graceful shutdown
         $this->signalProcessTree($pid, 2); // SIGINT
@@ -721,6 +730,8 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
      */
     protected function signalProcessTree(int $pid, int $signal): void
     {
+        if ($pid <= 0) return;
+
         // Find all descendant PIDs recursively (children, grandchildren, etc.)
         $descendants = $this->getDescendantPids($pid);
 
@@ -738,6 +749,8 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
      */
     protected function getDescendantPids(int $pid): array
     {
+        if ($pid <= 0) return [];
+
         $output = trim(shell_exec("pgrep -P $pid 2>/dev/null") ?? '');
         if ($output === '') return [];
 
@@ -774,6 +787,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
 
         $this->activeProcess = null;
         $this->activeProcessPid = null;
+        $this->processSignaled = false;
     }
 
     /**
