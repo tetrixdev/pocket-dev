@@ -897,13 +897,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     return null;
                 }
 
-                // Mark incomplete tool_use blocks (empty input means never received TOOL_USE_STOP)
-                // Keep them so the UI can display them as "interrupted tool call"
+                // Mark ALL tool_use blocks as interrupted — the entire response was aborted,
+                // so every tool call was interrupted (either mid-input or mid-execution).
+                // The UI uses this flag for amber/warning styling regardless of input state.
                 if ($type === 'tool_use') {
-                    $input = $block['input'] ?? null;
-                    if ($input === null || ($input instanceof \stdClass && empty((array) $input))) {
-                        $block['interrupted'] = true;
-                    }
+                    $block['interrupted'] = true;
                 }
 
                 return $block;
@@ -937,14 +935,17 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 );
 
                 // Determine whether to sync to CLI session based on content analysis.
-                // Skip sync if we have complete tool_use blocks (with parsed input) but no
+                // Skip sync if we have tool_use blocks with fully parsed input but no
                 // corresponding tool_result — the CLI session likely already has this data
                 // from its own tool execution, and syncing would create duplicates.
+                // Note: we check input completeness directly, not the interrupted flag
+                // (all tool_use blocks are now marked interrupted since the response was aborted).
                 $hasCompleteToolUseBlocks = false;
                 foreach ($contentBlocks as $block) {
-                    if (($block['type'] ?? '') === 'tool_use' && empty($block['interrupted'])) {
+                    if (($block['type'] ?? '') === 'tool_use') {
                         $input = $block['input'] ?? null;
-                        $isComplete = $input !== null && !($input instanceof \stdClass && empty((array) $input));
+                        $hasPartial = !empty($block['partial_input']);
+                        $isComplete = !$hasPartial && $input !== null && !($input instanceof \stdClass && empty((array) $input));
                         if ($isComplete) {
                             $hasCompleteToolUseBlocks = true;
                             break;
