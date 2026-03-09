@@ -5376,7 +5376,8 @@
 
                         return html;
                     } catch (e) {
-                        return `<pre class="whitespace-pre-wrap break-all text-xs">${this.escapeHtml(msg.content || '')}</pre>`;
+                        const rawToolContent = msg.toolPartialInput || msg.toolInput || msg.content || '';
+                        return `<pre class="whitespace-pre-wrap break-all text-xs">${this.escapeHtml(rawToolContent)}</pre>`;
                     }
                 },
 

@@ -948,11 +948,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 );
 
                 // Determine whether to sync to CLI session based on content analysis.
-                // Skip sync if we have tool_use blocks with fully parsed input but no
-                // corresponding tool_result — the CLI session likely already has this data
-                // from its own tool execution, and syncing would create duplicates.
-                // Note: we check input completeness directly, not the interrupted flag
-                // (only tools without a result are marked interrupted).
+                // Skip sync if we have tool_use blocks with fully parsed input.
+                // buildAssistantSessionEntry filters out all tool_use blocks anyway (only
+                // text and signed thinking blocks are safe to sync), so syncing here would
+                // just trigger unnecessary file I/O with no useful content.
                 $hasCompleteToolUseBlocks = false;
                 foreach ($contentBlocks as $block) {
                     if (($block['type'] ?? '') === 'tool_use') {
