@@ -267,7 +267,7 @@
             <button type="button"
                     disabled
                     class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-not-allowed bg-gray-600 text-gray-300">
-                <x-spinner /> Aborting...
+                <x-spinner /> Stopping...
             </button>
         </template>
         <template x-if="isStreaming && !_streamState.abortPending">

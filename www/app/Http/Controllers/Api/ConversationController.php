@@ -668,16 +668,9 @@ class ConversationController extends Controller
             ], 400);
         }
 
-        // skipSync=true means the abort happened after tool execution completed,
-        // so CLI providers already have complete data in their session file.
-        // We should not sync partial data that might create duplicates.
-        $skipSync = (bool) $request->input('skipSync', false);
-
-        // Set abort flag - the job will pick this up
-        RequestFlowLogger::log('controller.abort.setting_flag', 'Setting abort flag', [
-            'skip_sync' => $skipSync,
-        ]);
-        $this->streamManager->setAbortFlag($conversation->uuid, $skipSync);
+        // Set abort flag - the job will pick this up and terminate immediately
+        RequestFlowLogger::log('controller.abort.setting_flag', 'Setting abort flag');
+        $this->streamManager->setAbortFlag($conversation->uuid);
 
         RequestFlowLogger::log('controller.abort.success', 'Abort flag set successfully');
         RequestFlowLogger::endRequest('success');
