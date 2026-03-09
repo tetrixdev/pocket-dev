@@ -1483,6 +1483,13 @@
                                 if (msg.role === 'tool' && state.waitingForToolResults.has(msg.toolId)) {
                                     msg.toolInterrupted = true;
                                     msg.collapsed = false; // Show expanded so user sees what was attempted
+                                    // Set toolPartialInput for tools still mid-streaming (before tool_use_stop)
+                                    // so they render via Case 2 (pre with wrapping) matching the DB-loaded view.
+                                    // Only when toolInProgress — tools that completed tool_use_stop have valid
+                                    // JSON in toolInput and should keep using formatToolContent (Case 3).
+                                    if (state.toolInProgress && msg.toolInput && typeof msg.toolInput === 'string') {
+                                        msg.toolPartialInput = msg.toolInput;
+                                    }
                                 }
                             }
                             // Add interrupted marker
@@ -5369,7 +5376,7 @@
 
                         return html;
                     } catch (e) {
-                        return `<pre class="text-xs">${this.escapeHtml(msg.content || '')}</pre>`;
+                        return `<pre class="whitespace-pre-wrap break-all text-xs">${this.escapeHtml(msg.content || '')}</pre>`;
                     }
                 },
 
