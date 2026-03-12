@@ -72,24 +72,26 @@
                     </button>
                 </div>
 
-                <!-- Docker Exec Tab (Subscription) -->
+                <!-- Host Login Tab (Subscription) -->
                 <div id="content-docker" class="tab-content">
-                    <p class="text-gray-300 mb-4">Sign in with your ChatGPT subscription (Plus, Pro, Team, Edu, or Enterprise):</p>
-                    @if(config('backup.user_id') !== null)
-                        <div class="bg-gray-900 rounded p-4 mb-4">
-                            <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.user_id') }} {{ config('pocketdev.project_name', 'pocket-dev') }}-queue codex login --device-auth</code>
+                    <p class="text-gray-300 mb-4">Sign in with your ChatGPT subscription (Plus, Pro, Team, Edu, or Enterprise).</p>
+                    <p class="text-sm text-gray-400 mb-4">
+                        Run this command on your <strong class="text-white">host machine</strong> (not in Docker) to authenticate:
+                    </p>
+                    @if(config('backup.user_id') !== null && config('backup.group_id') !== null)
+                        <div class="bg-gray-900 rounded p-4 mb-4 overflow-x-auto">
+                            <code class="text-sm text-green-400">sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json</code>
                         </div>
                     @else
                         <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">
-                            <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> in your .env file (run <code>id -u</code> to get the value).
+                            <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">PD_USER_ID</code> and <code class="bg-red-900 px-1 rounded">PD_GROUP_ID</code> in your .env file.
+                            <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> and <code>id -g</code> on your host to get the values.</span>
                         </div>
                     @endif
                     <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
                         <li>Copy the command above and run it in your terminal</li>
-                        <li>A URL and device code will appear</li>
-                        <li>Open the URL in your browser: <code class="text-blue-400">https://auth.openai.com/codex/device</code></li>
-                        <li>Enter the device code and sign in with your ChatGPT account</li>
-                        <li>Come back here and refresh the page</li>
+                        <li>This installs Codex locally, opens a browser login, then copies credentials to the container</li>
+                        <li>After completion, come back here and refresh the page</li>
                     </ol>
                     <button onclick="window.location.reload()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded">
                         Refresh Page
@@ -100,18 +102,7 @@
                 <div id="content-json" class="tab-content hidden">
                     <p class="text-gray-300 mb-4">Use an OpenAI API key for pay-per-use access:</p>
 
-                    @if(config('backup.user_id') !== null)
-                        <div class="bg-gray-900/50 border border-gray-700 rounded p-4 mb-4 text-sm">
-                            <p class="text-gray-400 mb-2"><strong>Option 1:</strong> CLI command</p>
-                            <code class="text-green-400">echo "sk-your-key" | docker exec -i -u {{ config('backup.user_id') }} {{ config('pocketdev.project_name', 'pocket-dev') }}-queue codex login --with-api-key</code>
-                        </div>
-                    @else
-                        <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">
-                            <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">USER_ID</code> in your .env file (run <code>id -u</code> to get the value).
-                        </div>
-                    @endif
-
-                    <p class="text-gray-400 mb-2"><strong>Option 2:</strong> Paste auth.json content below</p>
+                    <p class="text-gray-400 mb-2"><strong>Paste auth.json content below</strong></p>
                     <form id="json-form" class="space-y-4">
                         <div>
                             <textarea id="json-input" rows="4" placeholder='{"OPENAI_API_KEY": "sk-proj-..."}'
@@ -137,14 +128,17 @@
             </div>
             @endif
 
-            <!-- Back to Chat -->
-            @if($status["authenticated"])
-            <div class="text-center">
+            <!-- Navigation -->
+            <div class="text-center space-x-4">
+                <a href="{{ route('config.credentials') }}" class="inline-block px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg">
+                    Back to Settings
+                </a>
+                @if($status["authenticated"])
                 <a href="{{ url('/') }}" class="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg">
                     Go to Chat
                 </a>
+                @endif
             </div>
-            @endif
         </div>
     </div>
 
