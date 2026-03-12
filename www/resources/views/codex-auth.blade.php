@@ -223,7 +223,10 @@
         function showResult(elementId, type, message) {
             const element = document.getElementById(elementId);
             const bgColor = type === 'success' ? 'bg-green-900/30 border-green-700 text-green-400' : 'bg-red-900/30 border-red-700 text-red-400';
-            element.innerHTML = `<div class="border rounded p-3 ${bgColor}">${message}</div>`;
+            const div = document.createElement('div');
+            div.className = `border rounded p-3 ${bgColor}`;
+            div.textContent = message;
+            element.replaceChildren(div);
         }
     </script>
 </body>
