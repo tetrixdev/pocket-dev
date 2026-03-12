@@ -193,11 +193,14 @@ class CodexProvider extends AbstractCliProvider
             'inputTokens' => 0,
             'outputTokens' => 0,
             'cachedTokens' => 0,
-            // Compaction tracking (future use: Codex's internal ContextCompacted
-            // event exists but is not yet exposed in `exec --json` JSONL output.
-            // These defaults are kept so the code is ready when Codex adds support.)
-            'awaitingCompactionSummary' => false,
-            'compactionMetadata' => null,
+            // Compaction detection: Codex auto-compaction is completely silent in
+            // JSONL output (no events emitted). For OpenAI models, it calls a
+            // server-side responses/compact endpoint; for local models, it sends a
+            // summarization prompt. The only observable signal is a significant drop
+            // in input_tokens between turn.completed events. We track the previous
+            // turn's input_tokens to detect this.
+            'previousTurnInputTokens' => 0,
+            'compactionDetected' => false,
         ];
     }
 
@@ -213,10 +216,8 @@ class CodexProvider extends AbstractCliProvider
         // Codex doesn't have tool_progress events yet
         // All events reset the timer
         //
-        // Note: context.compacted / thread.compacted are NOT emitted in Codex
-        // `exec --json` JSONL output. The internal ContextCompacted Rust event
-        // exists but is dropped by the JSONL output processor. If Codex starts
-        // exposing these events, add: 'context.compacted', 'thread.compacted' => 'pending_response'
+        // Note: auto-compaction is silent in JSONL output (no events emitted).
+        // Compaction is detected via token count drops in turn.completed instead.
         return [
             'phase' => match ($type) {
                 'item.started' => 'tool_execution',  // command_execution starting
@@ -368,37 +369,22 @@ class CodexProvider extends AbstractCliProvider
                     // Text response (or compaction summary)
                     $text = $item['text'] ?? '';
                     if ($text !== '') {
-                        // Future-proofing: check if this is a compaction summary.
-                        // Currently awaitingCompactionSummary is never set to true because
-                        // context.compacted / thread.compacted events are not emitted in
-                        // Codex JSONL output (see commented-out case block below). This
-                        // branch will activate once Codex exposes those events.
-                        if ($state['awaitingCompactionSummary']) {
-                            $state['awaitingCompactionSummary'] = false;
-                            $metadata = $state['compactionMetadata'] ?? [];
-                            $state['compactionMetadata'] = null;
-                            yield StreamEvent::compactionSummary($text, $metadata);
-                            Log::channel('api')->info('CodexProvider: Compaction summary captured', [
-                                'summary_length' => strlen($text),
-                            ]);
-                        } else {
-                            // Regular text response
-                            // Close thinking block if open
-                            if ($state['thinkingStarted']) {
-                                yield StreamEvent::thinkingStop($state['blockIndex']);
-                                $state['thinkingStarted'] = false;
-                                $state['blockIndex']++;
-                            }
-
-                            if (!$state['textStarted']) {
-                                yield StreamEvent::textStart($state['blockIndex']);
-                                $state['textStarted'] = true;
-                            }
-                            yield StreamEvent::textDelta($state['blockIndex'], $text);
-                            yield StreamEvent::textStop($state['blockIndex']);
-                            $state['textStarted'] = false;
+                        // Regular text response
+                        // Close thinking block if open
+                        if ($state['thinkingStarted']) {
+                            yield StreamEvent::thinkingStop($state['blockIndex']);
+                            $state['thinkingStarted'] = false;
                             $state['blockIndex']++;
                         }
+
+                        if (!$state['textStarted']) {
+                            yield StreamEvent::textStart($state['blockIndex']);
+                            $state['textStarted'] = true;
+                        }
+                        yield StreamEvent::textDelta($state['blockIndex'], $text);
+                        yield StreamEvent::textStop($state['blockIndex']);
+                        $state['textStarted'] = false;
+                        $state['blockIndex']++;
                     }
                 } elseif ($itemType === 'command_execution') {
                     // Command execution completed
@@ -419,54 +405,46 @@ class CodexProvider extends AbstractCliProvider
                 // Codex CLI reports token usage - just use values directly like ClaudeCodeProvider
                 // The input_tokens represents current context usage (what's in the context window)
                 $usage = $data['usage'] ?? [];
-                $state['inputTokens'] = $usage['input_tokens'] ?? 0;
+                $currentInputTokens = $usage['input_tokens'] ?? 0;
                 $state['outputTokens'] = $usage['output_tokens'] ?? 0;
                 $state['cachedTokens'] = $usage['cached_input_tokens'] ?? 0;
+
+                // Detect auto-compaction: Codex compaction is silent in JSONL output
+                // (no events emitted). The only signal is a significant drop in
+                // input_tokens between turns. Compaction triggers at 90% of context
+                // window and replaces history with a summary, causing a large token drop.
+                $prevTokens = $state['previousTurnInputTokens'];
+                if ($prevTokens > 0 && $currentInputTokens > 0 && $currentInputTokens < $prevTokens * 0.7) {
+                    $state['compactionDetected'] = true;
+                    $reduction = round((1 - $currentInputTokens / $prevTokens) * 100, 1);
+                    Log::channel('api')->warning('CodexProvider: Auto-compaction detected (token drop)', [
+                        'previous_input_tokens' => $prevTokens,
+                        'current_input_tokens' => $currentInputTokens,
+                        'reduction_percent' => $reduction,
+                    ]);
+                }
+
+                $state['inputTokens'] = $currentInputTokens;
+                $state['previousTurnInputTokens'] = $currentInputTokens;
 
                 Log::channel('api')->info('CodexProvider: Turn completed', [
                     'input_tokens' => $state['inputTokens'],
                     'output_tokens' => $state['outputTokens'],
                     'cached_tokens' => $state['cachedTokens'],
+                    'compaction_detected' => $state['compactionDetected'],
                 ]);
                 break;
 
             case 'error':
                 $message = $data['message'] ?? 'Unknown error';
-                $state['awaitingCompactionSummary'] = false;
-                $state['compactionMetadata'] = null;
                 yield StreamEvent::error($message);
                 break;
 
             case 'turn.failed':
                 $error = $data['error'] ?? [];
                 $message = $error['message'] ?? 'Turn failed';
-                $state['awaitingCompactionSummary'] = false;
-                $state['compactionMetadata'] = null;
                 yield StreamEvent::error($message);
                 break;
-
-            // DEAD CODE: context.compacted / thread.compacted events are NEVER
-            // emitted in Codex `exec --json` JSONL output. The internal Rust
-            // ContextCompacted event exists in the protocol but is silently
-            // dropped (falls through to `_ => Vec::new()`) in the JSONL output
-            // processor. Compaction warnings do surface as `item.completed`
-            // events with error-type items containing warning text.
-            //
-            // Kept as commented-out code for when Codex eventually exposes
-            // these events in JSONL output:
-            //
-            // case 'context.compacted':
-            // case 'thread.compacted':
-            //     $state['awaitingCompactionSummary'] = true;
-            //     $state['compactionMetadata'] = [
-            //         'pre_tokens' => $data['pre_tokens'] ?? $data['usage']['input_tokens'] ?? null,
-            //         'trigger' => $data['trigger'] ?? 'auto',
-            //     ];
-            //     Log::channel('api')->info('CodexProvider: Context compaction detected', [
-            //         'pre_tokens' => $state['compactionMetadata']['pre_tokens'],
-            //         'trigger' => $state['compactionMetadata']['trigger'],
-            //     ]);
-            //     break;
 
             default:
                 Log::channel('api')->debug('CodexProvider: Unknown event type', [
