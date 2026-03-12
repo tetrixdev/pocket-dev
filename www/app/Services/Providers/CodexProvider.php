@@ -390,8 +390,10 @@ class CodexProvider extends AbstractCliProvider
                     $output = $item['aggregated_output'] ?? '';
                     $exitCode = $item['exit_code'] ?? 0;
 
-                    yield StreamEvent::toolUseStop($state['blockIndex']);
-                    $state['toolUseStarted'] = false;
+                    if ($state['toolUseStarted']) {
+                        yield StreamEvent::toolUseStop($state['blockIndex']);
+                        $state['toolUseStarted'] = false;
+                    }
                     yield StreamEvent::toolResult($toolId, $output, $exitCode !== 0);
                     $state['blockIndex']++;
                 }
@@ -414,12 +416,16 @@ class CodexProvider extends AbstractCliProvider
 
             case 'error':
                 $message = $data['message'] ?? 'Unknown error';
+                $state['awaitingCompactionSummary'] = false;
+                $state['compactionMetadata'] = null;
                 yield StreamEvent::error($message);
                 break;
 
             case 'turn.failed':
                 $error = $data['error'] ?? [];
                 $message = $error['message'] ?? 'Turn failed';
+                $state['awaitingCompactionSummary'] = false;
+                $state['compactionMetadata'] = null;
                 yield StreamEvent::error($message);
                 break;
 
@@ -495,7 +501,8 @@ class CodexProvider extends AbstractCliProvider
             if (isset($claudeConfig['projects']) && is_array($claudeConfig['projects'])) {
                 foreach ($claudeConfig['projects'] as $projectPath => $projectConfig) {
                     // Match the working directory (exact or parent match)
-                    if (str_starts_with($workingDir, $projectPath) && isset($projectConfig['mcpServers'])) {
+                    if (($workingDir === $projectPath || str_starts_with($workingDir, rtrim($projectPath, '/') . '/'))
+                        && isset($projectConfig['mcpServers'])) {
                         foreach ($projectConfig['mcpServers'] as $name => $server) {
                             if (isset($server['command'])) {
                                 $safeName = $this->sanitizeMcpServerName($name);
@@ -572,7 +579,7 @@ class CodexProvider extends AbstractCliProvider
             }
 
             $content = implode("\n\n", $tomlParts) . "\n";
-            file_put_contents($codexConfigPath, $content);
+            file_put_contents($codexConfigPath, $content, LOCK_EX);
 
             Log::channel('api')->info('CodexProvider: Synced MCP servers from Claude Code', [
                 'server_count' => count($mcpServers),
@@ -593,7 +600,9 @@ class CodexProvider extends AbstractCliProvider
      */
     private function sanitizeMcpServerName(string $name): string
     {
-        return preg_replace('/[^A-Za-z0-9_-]/', '-', $name);
+        $sanitized = preg_replace('/[^A-Za-z0-9_-]/', '-', $name);
+        $sanitized = trim($sanitized, '-');
+        return $sanitized !== '' ? $sanitized : 'unnamed-server';
     }
 
     /**
@@ -664,9 +673,10 @@ class CodexProvider extends AbstractCliProvider
         }
 
         if (file_put_contents($file, $content) === false) {
-            Log::channel('api')->warning('CodexProvider: Failed to write .pocketdev-system-prompt.md', [
+            Log::channel('api')->error('CodexProvider: Failed to write system prompt file', [
                 'file' => $file,
             ]);
+            throw new \RuntimeException("Failed to write Codex system prompt file: {$file}");
         }
     }
 
