@@ -80,7 +80,7 @@
                     </p>
                     @if(config('backup.user_id') !== null && config('backup.group_id') !== null)
                         <div class="bg-gray-900 rounded p-4 mb-4 overflow-x-auto">
-                            <code class="text-sm text-green-400">sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json</code>
+                            <code class="text-sm text-green-400">sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 660 /home/appuser/.codex/auth.json</code>
                         </div>
                     @else
                         <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">
