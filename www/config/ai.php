@@ -126,6 +126,7 @@ return [
         // Codex: uses OpenAI-style effort levels (Codex-specific values)
         'codex' => [
             'effort_levels' => [
+                ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
                 ['value' => 'minimal', 'name' => 'Minimal', 'description' => 'Minimal reasoning (fastest)'],
                 ['value' => 'low', 'name' => 'Low', 'description' => 'Quick reasoning'],
                 ['value' => 'medium', 'name' => 'Medium', 'description' => 'Balanced reasoning'],
@@ -325,6 +326,16 @@ return [
         // Pricing is null since Codex CLI uses subscription credits
         // Source: https://developers.openai.com/codex/models/
         'codex' => [
+            [
+                'model_id' => 'gpt-5.4',
+                'display_name' => 'GPT-5.4',
+                'context_window' => 272000,
+                'max_output_tokens' => 128000,
+                'input_price_per_million' => null,
+                'output_price_per_million' => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million' => null,
+            ],
             [
                 'model_id' => 'gpt-5.3-codex',
                 'display_name' => 'GPT-5.3 Codex',

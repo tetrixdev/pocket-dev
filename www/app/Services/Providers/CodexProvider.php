@@ -193,7 +193,9 @@ class CodexProvider extends AbstractCliProvider
             'inputTokens' => 0,
             'outputTokens' => 0,
             'cachedTokens' => 0,
-            // Compaction tracking
+            // Compaction tracking (future use: Codex's internal ContextCompacted
+            // event exists but is not yet exposed in `exec --json` JSONL output.
+            // These defaults are kept so the code is ready when Codex adds support.)
             'awaitingCompactionSummary' => false,
             'compactionMetadata' => null,
         ];
@@ -210,12 +212,16 @@ class CodexProvider extends AbstractCliProvider
 
         // Codex doesn't have tool_progress events yet
         // All events reset the timer
+        //
+        // Note: context.compacted / thread.compacted are NOT emitted in Codex
+        // `exec --json` JSONL output. The internal ContextCompacted Rust event
+        // exists but is dropped by the JSONL output processor. If Codex starts
+        // exposing these events, add: 'context.compacted', 'thread.compacted' => 'pending_response'
         return [
             'phase' => match ($type) {
                 'item.started' => 'tool_execution',  // command_execution starting
                 'item.completed' => 'streaming',
                 'thread.started', 'turn.started' => 'initial',
-                'context.compacted', 'thread.compacted' => 'pending_response',
                 default => null,
             },
             'resetsTimer' => true,
@@ -362,7 +368,11 @@ class CodexProvider extends AbstractCliProvider
                     // Text response (or compaction summary)
                     $text = $item['text'] ?? '';
                     if ($text !== '') {
-                        // Check if this is a compaction summary
+                        // Future-proofing: check if this is a compaction summary.
+                        // Currently awaitingCompactionSummary is never set to true because
+                        // context.compacted / thread.compacted events are not emitted in
+                        // Codex JSONL output (see commented-out case block below). This
+                        // branch will activate once Codex exposes those events.
                         if ($state['awaitingCompactionSummary']) {
                             $state['awaitingCompactionSummary'] = false;
                             $metadata = $state['compactionMetadata'] ?? [];
@@ -435,19 +445,28 @@ class CodexProvider extends AbstractCliProvider
                 yield StreamEvent::error($message);
                 break;
 
-            case 'context.compacted':
-            case 'thread.compacted':
-                // Codex context compaction detected — capture metadata
-                $state['awaitingCompactionSummary'] = true;
-                $state['compactionMetadata'] = [
-                    'pre_tokens' => $data['pre_tokens'] ?? $data['usage']['input_tokens'] ?? null,
-                    'trigger' => $data['trigger'] ?? 'auto',
-                ];
-                Log::channel('api')->info('CodexProvider: Context compaction detected', [
-                    'pre_tokens' => $state['compactionMetadata']['pre_tokens'],
-                    'trigger' => $state['compactionMetadata']['trigger'],
-                ]);
-                break;
+            // DEAD CODE: context.compacted / thread.compacted events are NEVER
+            // emitted in Codex `exec --json` JSONL output. The internal Rust
+            // ContextCompacted event exists in the protocol but is silently
+            // dropped (falls through to `_ => Vec::new()`) in the JSONL output
+            // processor. Compaction warnings do surface as `item.completed`
+            // events with error-type items containing warning text.
+            //
+            // Kept as commented-out code for when Codex eventually exposes
+            // these events in JSONL output:
+            //
+            // case 'context.compacted':
+            // case 'thread.compacted':
+            //     $state['awaitingCompactionSummary'] = true;
+            //     $state['compactionMetadata'] = [
+            //         'pre_tokens' => $data['pre_tokens'] ?? $data['usage']['input_tokens'] ?? null,
+            //         'trigger' => $data['trigger'] ?? 'auto',
+            //     ];
+            //     Log::channel('api')->info('CodexProvider: Context compaction detected', [
+            //         'pre_tokens' => $state['compactionMetadata']['pre_tokens'],
+            //         'trigger' => $state['compactionMetadata']['trigger'],
+            //     ]);
+            //     break;
 
             default:
                 Log::channel('api')->debug('CodexProvider: Unknown event type', [
