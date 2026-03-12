@@ -112,6 +112,14 @@ class CodexProvider extends AbstractCliProvider
         $parts[] = '--model';
         $parts[] = escapeshellarg($model);
 
+        // Add reasoning effort if configured (Codex uses TOML config overrides)
+        $reasoningConfig = $conversation->getReasoningConfig();
+        $effort = $reasoningConfig['effort'] ?? 'minimal';
+        if (!empty($effort) && $effort !== 'minimal') {
+            $parts[] = '-c';
+            $parts[] = escapeshellarg('reasoning_effort="' . $effort . '"');
+        }
+
         // Working directory
         $workingDir = $conversation->working_directory ?? base_path();
         $parts[] = '-C';
@@ -140,6 +148,17 @@ class CodexProvider extends AbstractCliProvider
         // which is set up via `codex login`
 
         return implode(' ', $parts);
+    }
+
+    protected function buildEnvironment(Conversation $conversation, array $options): array
+    {
+        $env = parent::buildEnvironment($conversation, $options);
+
+        // Note: Reasoning effort is passed via -c flag in buildCliCommand(),
+        // not via environment variable (unlike Claude Code's MAX_THINKING_TOKENS).
+        // This override exists for parity and future Codex-specific env vars.
+
+        return $env;
     }
 
     protected function prepareProcessInput(string $command, string $userMessage): array
