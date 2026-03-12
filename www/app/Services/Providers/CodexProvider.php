@@ -209,7 +209,7 @@ class CodexProvider extends AbstractCliProvider
                 'item.started' => 'tool_execution',  // command_execution starting
                 'item.completed' => 'streaming',
                 'thread.started', 'turn.started' => 'initial',
-                'context.compacted', 'thread.compacted' => 'streaming',
+                'context.compacted', 'thread.compacted' => 'pending_response',
                 default => null,
             },
             'resetsTimer' => true,
@@ -482,37 +482,49 @@ class CodexProvider extends AbstractCliProvider
 
             $mcpServers = [];
 
-            // 1. Collect global MCP servers (array format)
+            // 1. Collect global MCP servers (supports both array and keyed-object formats)
             if (isset($claudeConfig['mcpServers']) && is_array($claudeConfig['mcpServers'])) {
-                foreach ($claudeConfig['mcpServers'] as $server) {
-                    if (isset($server['name']) && isset($server['command'])) {
-                        $name = $this->sanitizeMcpServerName($server['name']);
-                        $mcpServers[$name] = [
-                            'command' => $server['command'],
-                            'args' => $server['args'] ?? [],
-                            'env' => $server['env'] ?? [],
-                        ];
+                foreach ($claudeConfig['mcpServers'] as $key => $server) {
+                    if (!is_array($server) || !isset($server['command'])) {
+                        continue;
                     }
+                    // Support both formats: array with 'name' field, or object keyed by name
+                    $name = $this->sanitizeMcpServerName(
+                        isset($server['name']) ? (string) $server['name'] : (string) $key
+                    );
+                    $mcpServers[$name] = [
+                        'command' => $server['command'],
+                        'args' => $server['args'] ?? [],
+                        'env' => $server['env'] ?? [],
+                    ];
                 }
             }
 
-            // 2. Collect project-specific MCP servers (object format)
-            // Check the current working directory's project config
+            // 2. Collect project-specific MCP servers (deepest matching path wins)
             if (isset($claudeConfig['projects']) && is_array($claudeConfig['projects'])) {
+                $bestMatch = null;
+                $bestMatchLength = -1;
+
                 foreach ($claudeConfig['projects'] as $projectPath => $projectConfig) {
-                    // Match the working directory (exact or parent match)
-                    if (($workingDir === $projectPath || str_starts_with($workingDir, rtrim($projectPath, '/') . '/'))
-                        && isset($projectConfig['mcpServers'])) {
-                        foreach ($projectConfig['mcpServers'] as $name => $server) {
-                            if (isset($server['command'])) {
-                                $safeName = $this->sanitizeMcpServerName($name);
-                                // Project-level overrides global
-                                $mcpServers[$safeName] = [
-                                    'command' => $server['command'],
-                                    'args' => $server['args'] ?? [],
-                                    'env' => $server['env'] ?? [],
-                                ];
-                            }
+                    $normalizedPath = rtrim($projectPath, '/');
+                    if (($workingDir === $normalizedPath || str_starts_with($workingDir, $normalizedPath . '/'))
+                        && isset($projectConfig['mcpServers'])
+                        && strlen($normalizedPath) > $bestMatchLength) {
+                        $bestMatch = $projectConfig;
+                        $bestMatchLength = strlen($normalizedPath);
+                    }
+                }
+
+                if ($bestMatch !== null) {
+                    foreach ($bestMatch['mcpServers'] as $name => $server) {
+                        if (isset($server['command'])) {
+                            $safeName = $this->sanitizeMcpServerName($name);
+                            // Project-level overrides global
+                            $mcpServers[$safeName] = [
+                                'command' => $server['command'],
+                                'args' => $server['args'] ?? [],
+                                'env' => $server['env'] ?? [],
+                            ];
                         }
                     }
                 }
@@ -579,7 +591,12 @@ class CodexProvider extends AbstractCliProvider
             }
 
             $content = implode("\n\n", $tomlParts) . "\n";
-            file_put_contents($codexConfigPath, $content, LOCK_EX);
+            if (file_put_contents($codexConfigPath, $content, LOCK_EX) === false) {
+                Log::channel('api')->error('CodexProvider: Failed to write Codex MCP config', [
+                    'file' => $codexConfigPath,
+                ]);
+                return;
+            }
 
             Log::channel('api')->info('CodexProvider: Synced MCP servers from Claude Code', [
                 'server_count' => count($mcpServers),
