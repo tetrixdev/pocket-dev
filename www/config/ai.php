@@ -127,6 +127,7 @@ return [
         // Codex: uses OpenAI-style effort levels (Codex-specific values)
         'codex' => [
             'effort_levels' => [
+                ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
                 ['value' => 'minimal', 'name' => 'Minimal', 'description' => 'Minimal reasoning (fastest)'],
                 ['value' => 'low', 'name' => 'Low', 'description' => 'Quick reasoning'],
                 ['value' => 'medium', 'name' => 'Medium', 'description' => 'Balanced reasoning'],
