@@ -117,13 +117,13 @@ class CodexProvider extends AbstractCliProvider
         $parts[] = '-C';
         $parts[] = escapeshellarg($workingDir);
 
-        // Add system prompt via POCKETDEV-SYSTEM.md in the working directory
+        // Add system prompt via .pocketdev-system-prompt.md in the working directory
         // Codex reads this file via project_doc_fallback_filenames and appends to context
-        // Using a unique filename avoids overwriting user's AGENTS.md
+        // Using a hidden dotfile avoids collisions with user files
         if (!empty($options['system'])) {
             $this->writePocketDevInstructionsFile($workingDir, $options['system']);
             $parts[] = '-c';
-            $parts[] = escapeshellarg('project_doc_fallback_filenames=["POCKETDEV-SYSTEM.md"]');
+            $parts[] = escapeshellarg('project_doc_fallback_filenames=[".pocketdev-system-prompt.md"]');
             // Increase max bytes for system prompt (default is 32KB, PocketDev prompt is ~108KB)
             $parts[] = '-c';
             $parts[] = escapeshellarg('project_doc_max_bytes=' . self::PROJECT_DOC_MAX_BYTES);
@@ -280,6 +280,18 @@ class CodexProvider extends AbstractCliProvider
                 $itemType = $item['type'] ?? '';
 
                 if ($itemType === 'command_execution') {
+                    // Close any open text/thinking blocks before starting tool use
+                    if ($state['textStarted']) {
+                        yield StreamEvent::textStop($state['blockIndex']);
+                        $state['textStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+                    if ($state['thinkingStarted']) {
+                        yield StreamEvent::thinkingStop($state['blockIndex']);
+                        $state['thinkingStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+
                     // Start tool use block for command
                     $toolId = $item['id'] ?? 'tool_' . $state['blockIndex'];
                     $command = $item['command'] ?? '';
@@ -383,15 +395,19 @@ class CodexProvider extends AbstractCliProvider
     // ========================================================================
 
     /**
-     * Write system prompt to POCKETDEV-SYSTEM.md in the working directory.
+     * Write system prompt to .pocketdev-system-prompt.md in the working directory.
      * Codex reads this via project_doc_fallback_filenames config.
-     * Using a unique filename avoids overwriting user's AGENTS.md.
+     *
+     * Filename choice: uses a hidden dotfile with a specific prefix to minimise
+     * the chance of colliding with user files. The old name (POCKETDEV-SYSTEM.md)
+     * was a visible file that could realistically clash with user content.
+     * Users should add ".pocketdev-system-prompt.md" to their .gitignore.
      *
      * @throws \RuntimeException if content exceeds PROJECT_DOC_MAX_BYTES
      */
     private function writePocketDevInstructionsFile(string $workingDir, string $content): void
     {
-        $file = rtrim($workingDir, '/') . '/POCKETDEV-SYSTEM.md';
+        $file = rtrim($workingDir, '/') . '/.pocketdev-system-prompt.md';
         $contentBytes = strlen($content);
 
         // Check if system prompt exceeds the configured limit
@@ -421,8 +437,18 @@ class CodexProvider extends AbstractCliProvider
             ]);
         }
 
+        // Warn if a user file already exists at this path (unlikely for a dotfile,
+        // but guard against it). We still proceed because the system prompt is
+        // required for Codex to function correctly; the file is cleaned up after use.
+        if (file_exists($file)) {
+            Log::channel('api')->warning('CodexProvider: Overwriting existing file at system prompt path', [
+                'file' => $file,
+                'existing_size' => filesize($file),
+            ]);
+        }
+
         if (file_put_contents($file, $content) === false) {
-            Log::channel('api')->warning('CodexProvider: Failed to write POCKETDEV-SYSTEM.md', [
+            Log::channel('api')->warning('CodexProvider: Failed to write .pocketdev-system-prompt.md', [
                 'file' => $file,
             ]);
         }
@@ -433,7 +459,7 @@ class CodexProvider extends AbstractCliProvider
      */
     private function cleanupPocketDevInstructionsFile(string $workingDir): void
     {
-        $file = rtrim($workingDir, '/') . '/POCKETDEV-SYSTEM.md';
+        $file = rtrim($workingDir, '/') . '/.pocketdev-system-prompt.md';
 
         if (file_exists($file)) {
             @unlink($file);
