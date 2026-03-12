@@ -112,13 +112,19 @@ class CodexProvider extends AbstractCliProvider
         $parts[] = '--model';
         $parts[] = escapeshellarg($model);
 
-        // Add reasoning effort if configured (Codex uses TOML config overrides)
+        // Add reasoning effort if configured (Codex config key: model_reasoning_effort)
+        // See: https://developers.openai.com/codex/config-reference/
         $reasoningConfig = $conversation->getReasoningConfig();
-        $effort = $reasoningConfig['effort'] ?? 'minimal';
-        if (!empty($effort) && $effort !== 'minimal') {
+        $effort = $reasoningConfig['effort'] ?? 'medium';
+        if (!empty($effort) && $effort !== 'medium') {
             $parts[] = '-c';
-            $parts[] = escapeshellarg('reasoning_effort="' . $effort . '"');
+            $parts[] = escapeshellarg('model_reasoning_effort="' . $effort . '"');
         }
+
+        // Ensure reasoning summaries are visible in JSON output
+        // Without this, thinking blocks may be hidden depending on model defaults
+        $parts[] = '-c';
+        $parts[] = escapeshellarg('model_reasoning_summary="concise"');
 
         // Working directory
         $workingDir = $conversation->working_directory ?? base_path();
