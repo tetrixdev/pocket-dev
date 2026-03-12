@@ -82,17 +82,17 @@
                         <div class="bg-gray-900 rounded p-4 mb-4 overflow-x-auto">
                             <code class="text-sm text-green-400">sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 660 /home/appuser/.codex/auth.json</code>
                         </div>
+                        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
+                            <li>Copy the command above and run it in your terminal</li>
+                            <li>This installs Codex locally, opens a browser login, then copies credentials to the container</li>
+                            <li>After completion, come back here and refresh the page</li>
+                        </ol>
                     @else
                         <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">
                             <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">PD_USER_ID</code> and <code class="bg-red-900 px-1 rounded">PD_GROUP_ID</code> in your .env file.
-                            <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> and <code>id -g</code> on your host to get the values.</span>
+                            <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> and <code>id -g</code> on your host to get the values. Then reload this page to see the login command.</span>
                         </div>
                     @endif
-                    <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
-                        <li>Copy the command above and run it in your terminal</li>
-                        <li>This installs Codex locally, opens a browser login, then copies credentials to the container</li>
-                        <li>After completion, come back here and refresh the page</li>
-                    </ol>
                     <button onclick="window.location.reload()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded">
                         Refresh Page
                     </button>
