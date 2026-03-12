@@ -249,6 +249,25 @@ export function createStreamStore(callbacks) {
         // === Connection Lifecycle ===
 
         /**
+         * Prepare stream store for switching to a different conversation.
+         * Disconnects SSE, resets all stream state and tracking so no stale
+         * data from the previous conversation can bleed into the next one.
+         */
+        prepareForConversationSwitch() {
+            this.disconnectFromStream();
+            this.isStreaming = false;
+            this._streamConnectNonce++;  // Invalidate any in-flight connectToStreamEvents retries
+            this.resetStreamState();
+            this.lastEventIndex = 0;
+            this.lastEventId = null;
+            this.clearEventIdSet();
+            this._isReplaying = false;
+            this._replayHighWaterMark = 0;
+            this._justCompletedStream = false;
+            this._wasStreamingBeforeHidden = false;
+        },
+
+        /**
          * Check for active stream and reconnect if found
          */
         async checkAndReconnectStream(uuid) {
@@ -268,6 +287,12 @@ export function createStreamStore(callbacks) {
             try {
                 const response = await fetch(`/api/conversations/${uuid}/stream-status`);
                 const data = await response.json();
+
+                // Bail if conversation switched during the async fetch
+                if (callbacks.getConversationUuid() !== uuid) {
+                    console.log('[Stream] Conversation switched during reconnect check, aborting');
+                    return;
+                }
 
                 if (data.is_streaming) {
                     // Detect: page refresh vs timeout/tab-switch reconnect
