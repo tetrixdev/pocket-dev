@@ -329,7 +329,9 @@ return [
             [
                 'model_id' => 'gpt-5.4',
                 'display_name' => 'GPT-5.4',
-                'context_window' => 272000,
+                // API context window is 1.05M tokens. Codex CLI's bundled models.json
+                // conservatively sets 272k; see https://github.com/openai/codex/issues/13738
+                'context_window' => 1050000,
                 'max_output_tokens' => 128000,
                 'input_price_per_million' => null,
                 'output_price_per_million' => null,
