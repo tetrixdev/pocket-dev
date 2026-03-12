@@ -122,6 +122,11 @@ class CodexProvider extends AbstractCliProvider
 
         // Working directory
         $workingDir = $conversation->working_directory ?? base_path();
+
+        // Sync MCP servers from Claude Code config to Codex config.toml
+        // This ensures Codex has access to the same MCP servers configured in the PocketDev UI
+        $this->syncMcpServersFromClaudeCode($workingDir);
+
         $parts[] = '-C';
         $parts[] = escapeshellarg($workingDir);
 
@@ -437,6 +442,168 @@ class CodexProvider extends AbstractCliProvider
                     'type' => $type,
                 ]);
         }
+    }
+
+    // ========================================================================
+    // MCP server synchronization
+    // ========================================================================
+
+    /**
+     * Sync MCP servers from Claude Code config (~/.claude.json) to Codex config (~/.codex/config.toml).
+     *
+     * Claude Code and Codex use different config formats:
+     * - Claude: JSON in ~/.claude.json under "mcpServers" (global) and "projects.*.mcpServers" (per-project)
+     * - Codex: TOML in ~/.codex/config.toml under [mcp_servers.*]
+     *
+     * This method reads both global and project-specific MCP servers from Claude's config
+     * and writes them to Codex's config.toml, preserving any existing Codex-only settings.
+     */
+    private function syncMcpServersFromClaudeCode(string $workingDir): void
+    {
+        $home = getenv('HOME') ?: '/home/appuser';
+        $claudeConfigPath = $home . '/.claude.json';
+        $codexConfigPath = $home . '/.codex/config.toml';
+
+        if (!is_readable($claudeConfigPath)) {
+            return; // No Claude config, nothing to sync
+        }
+
+        try {
+            $claudeConfig = json_decode(file_get_contents($claudeConfigPath), true);
+            if (!is_array($claudeConfig)) {
+                return;
+            }
+
+            $mcpServers = [];
+
+            // 1. Collect global MCP servers (array format)
+            if (isset($claudeConfig['mcpServers']) && is_array($claudeConfig['mcpServers'])) {
+                foreach ($claudeConfig['mcpServers'] as $server) {
+                    if (isset($server['name']) && isset($server['command'])) {
+                        $name = $this->sanitizeMcpServerName($server['name']);
+                        $mcpServers[$name] = [
+                            'command' => $server['command'],
+                            'args' => $server['args'] ?? [],
+                            'env' => $server['env'] ?? [],
+                        ];
+                    }
+                }
+            }
+
+            // 2. Collect project-specific MCP servers (object format)
+            // Check the current working directory's project config
+            if (isset($claudeConfig['projects']) && is_array($claudeConfig['projects'])) {
+                foreach ($claudeConfig['projects'] as $projectPath => $projectConfig) {
+                    // Match the working directory (exact or parent match)
+                    if (str_starts_with($workingDir, $projectPath) && isset($projectConfig['mcpServers'])) {
+                        foreach ($projectConfig['mcpServers'] as $name => $server) {
+                            if (isset($server['command'])) {
+                                $safeName = $this->sanitizeMcpServerName($name);
+                                // Project-level overrides global
+                                $mcpServers[$safeName] = [
+                                    'command' => $server['command'],
+                                    'args' => $server['args'] ?? [],
+                                    'env' => $server['env'] ?? [],
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (empty($mcpServers)) {
+                return; // No MCP servers to sync
+            }
+
+            // 3. Read existing Codex config (preserve non-MCP settings)
+            $nonMcpLines = [];
+            if (is_readable($codexConfigPath)) {
+                $existingToml = file_get_contents($codexConfigPath);
+                // Extract lines that are NOT part of [mcp_servers.*] sections
+                $lines = explode("\n", $existingToml);
+                $inMcpSection = false;
+                foreach ($lines as $line) {
+                    if (preg_match('/^\[mcp_servers\b/', $line)) {
+                        $inMcpSection = true;
+                        continue;
+                    }
+                    if ($inMcpSection && preg_match('/^\[(?!mcp_servers)/', $line)) {
+                        $inMcpSection = false;
+                    }
+                    if (!$inMcpSection) {
+                        $nonMcpLines[] = $line;
+                    }
+                }
+            }
+
+            // 4. Build TOML content for MCP servers
+            $tomlParts = [];
+
+            // Keep non-MCP config
+            $nonMcpContent = trim(implode("\n", $nonMcpLines));
+            if (!empty($nonMcpContent)) {
+                $tomlParts[] = $nonMcpContent;
+            }
+
+            // Add MCP servers
+            foreach ($mcpServers as $name => $server) {
+                $section = "[mcp_servers.{$name}]";
+                $section .= "\ncommand = " . $this->toTomlString($server['command']);
+
+                if (!empty($server['args'])) {
+                    $argsToml = array_map(fn($a) => $this->toTomlString((string) $a), $server['args']);
+                    $section .= "\nargs = [" . implode(', ', $argsToml) . "]";
+                }
+
+                if (!empty($server['env'])) {
+                    $section .= "\n\n[mcp_servers.{$name}.env]";
+                    foreach ($server['env'] as $key => $value) {
+                        $section .= "\n{$key} = " . $this->toTomlString((string) $value);
+                    }
+                }
+
+                $tomlParts[] = $section;
+            }
+
+            // 5. Write config.toml
+            $dir = dirname($codexConfigPath);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+
+            $content = implode("\n\n", $tomlParts) . "\n";
+            file_put_contents($codexConfigPath, $content);
+
+            Log::channel('api')->info('CodexProvider: Synced MCP servers from Claude Code', [
+                'server_count' => count($mcpServers),
+                'servers' => array_keys($mcpServers),
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::channel('api')->warning('CodexProvider: Failed to sync MCP servers', [
+                'error' => $e->getMessage(),
+            ]);
+            // Non-fatal: Codex can still work without MCP servers
+        }
+    }
+
+    /**
+     * Sanitize an MCP server name for use as a TOML key.
+     * TOML bare keys allow: A-Za-z0-9, dash, underscore.
+     */
+    private function sanitizeMcpServerName(string $name): string
+    {
+        return preg_replace('/[^A-Za-z0-9_-]/', '-', $name);
+    }
+
+    /**
+     * Escape a string value for TOML format.
+     */
+    private function toTomlString(string $value): string
+    {
+        // Use basic string (double quotes) with escaping
+        $escaped = str_replace(['\\', '"', "\n", "\r", "\t"], ['\\\\', '\\"', '\\n', '\\r', '\\t'], $value);
+        return '"' . $escaped . '"';
     }
 
     // ========================================================================
