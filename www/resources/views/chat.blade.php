@@ -2590,6 +2590,10 @@
                     // Reset all stream state before switching
                     this._streamStore.prepareForConversationSwitch();
                     this.isStreaming = false;
+                    // Invalidate any in-flight conversation loads so stale responses
+                    // fail their guard checks instead of restoring old state
+                    this.loadingConversation = false;
+                    this._loadingConversationUuid = null;
 
                     this.currentConversationUuid = null;
                     this.currentConversationStatus = null; // Reset status for new conversation

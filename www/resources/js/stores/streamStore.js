@@ -255,6 +255,8 @@ export function createStreamStore(callbacks) {
          */
         prepareForConversationSwitch() {
             this.disconnectFromStream();
+            this.isStreaming = false;
+            this._streamConnectNonce++;  // Invalidate any in-flight connectToStreamEvents retries
             this.resetStreamState();
             this.lastEventIndex = 0;
             this.lastEventId = null;
@@ -285,6 +287,12 @@ export function createStreamStore(callbacks) {
             try {
                 const response = await fetch(`/api/conversations/${uuid}/stream-status`);
                 const data = await response.json();
+
+                // Bail if conversation switched during the async fetch
+                if (callbacks.getConversationUuid() !== uuid) {
+                    console.log('[Stream] Conversation switched during reconnect check, aborting');
+                    return;
+                }
 
                 if (data.is_streaming) {
                     // Detect: page refresh vs timeout/tab-switch reconnect
