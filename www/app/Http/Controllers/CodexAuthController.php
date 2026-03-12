@@ -264,7 +264,7 @@ class CodexAuthController extends Controller
                 'description' => 'Default Codex agent',
                 'provider' => 'codex',
                 'model' => config('ai.providers.codex.default_model', 'gpt-5.3-codex'),
-                'reasoning_config' => ['effort' => 'minimal'],
+                'reasoning_config' => ['effort' => 'medium'],
                 'response_level' => 1,
                 'enabled' => true,
                 'is_default' => true,
