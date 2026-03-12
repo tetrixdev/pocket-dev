@@ -182,6 +182,9 @@ class CodexProvider extends AbstractCliProvider
             'inputTokens' => 0,
             'outputTokens' => 0,
             'cachedTokens' => 0,
+            // Compaction tracking
+            'awaitingCompactionSummary' => false,
+            'compactionMetadata' => null,
         ];
     }
 
@@ -201,6 +204,7 @@ class CodexProvider extends AbstractCliProvider
                 'item.started' => 'tool_execution',  // command_execution starting
                 'item.completed' => 'streaming',
                 'thread.started', 'turn.started' => 'initial',
+                'context.compacted', 'thread.compacted' => 'streaming',
                 default => null,
             },
             'resetsTimer' => true,
@@ -344,24 +348,36 @@ class CodexProvider extends AbstractCliProvider
                         $state['blockIndex']++;
                     }
                 } elseif ($itemType === 'agent_message') {
-                    // Text response
+                    // Text response (or compaction summary)
                     $text = $item['text'] ?? '';
                     if ($text !== '') {
-                        // Close thinking block if open
-                        if ($state['thinkingStarted']) {
-                            yield StreamEvent::thinkingStop($state['blockIndex']);
-                            $state['thinkingStarted'] = false;
+                        // Check if this is a compaction summary
+                        if ($state['awaitingCompactionSummary']) {
+                            $state['awaitingCompactionSummary'] = false;
+                            $metadata = $state['compactionMetadata'] ?? [];
+                            $state['compactionMetadata'] = null;
+                            yield StreamEvent::compactionSummary($text, $metadata);
+                            Log::channel('api')->info('CodexProvider: Compaction summary captured', [
+                                'summary_length' => strlen($text),
+                            ]);
+                        } else {
+                            // Regular text response
+                            // Close thinking block if open
+                            if ($state['thinkingStarted']) {
+                                yield StreamEvent::thinkingStop($state['blockIndex']);
+                                $state['thinkingStarted'] = false;
+                                $state['blockIndex']++;
+                            }
+
+                            if (!$state['textStarted']) {
+                                yield StreamEvent::textStart($state['blockIndex']);
+                                $state['textStarted'] = true;
+                            }
+                            yield StreamEvent::textDelta($state['blockIndex'], $text);
+                            yield StreamEvent::textStop($state['blockIndex']);
+                            $state['textStarted'] = false;
                             $state['blockIndex']++;
                         }
-
-                        if (!$state['textStarted']) {
-                            yield StreamEvent::textStart($state['blockIndex']);
-                            $state['textStarted'] = true;
-                        }
-                        yield StreamEvent::textDelta($state['blockIndex'], $text);
-                        yield StreamEvent::textStop($state['blockIndex']);
-                        $state['textStarted'] = false;
-                        $state['blockIndex']++;
                     }
                 } elseif ($itemType === 'command_execution') {
                     // Command execution completed
@@ -400,6 +416,20 @@ class CodexProvider extends AbstractCliProvider
                 $error = $data['error'] ?? [];
                 $message = $error['message'] ?? 'Turn failed';
                 yield StreamEvent::error($message);
+                break;
+
+            case 'context.compacted':
+            case 'thread.compacted':
+                // Codex context compaction detected — capture metadata
+                $state['awaitingCompactionSummary'] = true;
+                $state['compactionMetadata'] = [
+                    'pre_tokens' => $data['pre_tokens'] ?? $data['usage']['input_tokens'] ?? null,
+                    'trigger' => $data['trigger'] ?? 'auto',
+                ];
+                Log::channel('api')->info('CodexProvider: Context compaction detected', [
+                    'pre_tokens' => $state['compactionMetadata']['pre_tokens'],
+                    'trigger' => $state['compactionMetadata']['trigger'],
+                ]);
                 break;
 
             default:
