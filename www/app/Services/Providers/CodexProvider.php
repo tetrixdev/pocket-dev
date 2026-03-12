@@ -23,6 +23,12 @@ class CodexProvider extends AbstractCliProvider
      */
     private const PROJECT_DOC_MAX_BYTES = 500000; // ~488KB
 
+    /**
+     * Unique per-run system prompt filename to avoid overwriting user files.
+     * Generated in buildCliCommand(), used by write/cleanup methods.
+     */
+    private ?string $systemPromptFile = null;
+
     public function __construct(ModelRepository $models)
     {
         parent::__construct($models);
@@ -56,13 +62,42 @@ class CodexProvider extends AbstractCliProvider
     // ========================================================================
 
     /**
-     * Check if Codex auth.json exists and is readable (contains either OAuth or API key).
+     * Check if Codex auth.json exists, is readable, and contains valid credentials.
+     *
+     * Validates the file content matches Codex's actual auth.json schema:
+     * - OPENAI_API_KEY (API key mode)
+     * - tokens.access_token (OAuth/subscription mode)
      */
     public function hasCredentials(): bool
     {
         $home = getenv('HOME') ?: '/home/appuser';
         $authFile = $home . '/.codex/auth.json';
-        return is_readable($authFile);
+
+        if (!is_readable($authFile)) {
+            return false;
+        }
+
+        $content = @file_get_contents($authFile);
+        if ($content === false) {
+            return false;
+        }
+
+        $data = json_decode($content, true);
+        if (!is_array($data)) {
+            return false;
+        }
+
+        // Valid if has OPENAI_API_KEY (API key format)
+        if (!empty($data['OPENAI_API_KEY'])) {
+            return true;
+        }
+
+        // Valid if has tokens.access_token (OAuth format)
+        if (!empty($data['tokens']['access_token'])) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -136,13 +171,17 @@ class CodexProvider extends AbstractCliProvider
         $parts[] = '-C';
         $parts[] = escapeshellarg($workingDir);
 
-        // Add system prompt via .pocketdev-system-prompt.md in the working directory
-        // Codex reads this file via project_doc_fallback_filenames and appends to context
-        // Using a hidden dotfile avoids collisions with user files
+        // Add system prompt via a unique per-run dotfile in the working directory.
+        // Codex reads this file via project_doc_fallback_filenames and appends to context.
+        // Using a unique filename per run prevents overwriting user files and avoids
+        // collisions between concurrent sessions.
         if (!empty($options['system'])) {
-            $this->writePocketDevInstructionsFile($workingDir, $options['system']);
+            $uniqueId = bin2hex(random_bytes(8));
+            $filename = ".pocketdev-system-prompt-{$uniqueId}.md";
+            $this->systemPromptFile = rtrim($workingDir, '/') . '/' . $filename;
+            $this->writePocketDevInstructionsFile($this->systemPromptFile, $options['system']);
             $parts[] = '-c';
-            $parts[] = escapeshellarg('project_doc_fallback_filenames=[".pocketdev-system-prompt.md"]');
+            $parts[] = escapeshellarg("project_doc_fallback_filenames=[\"{$filename}\"]");
             // Increase max bytes for system prompt (default is 32KB, PocketDev prompt is ~108KB)
             $parts[] = '-c';
             $parts[] = escapeshellarg('project_doc_max_bytes=' . self::PROJECT_DOC_MAX_BYTES);
@@ -640,19 +679,19 @@ class CodexProvider extends AbstractCliProvider
     // ========================================================================
 
     /**
-     * Write system prompt to .pocketdev-system-prompt.md in the working directory.
+     * Write system prompt to a unique per-run dotfile.
      * Codex reads this via project_doc_fallback_filenames config.
      *
-     * Filename choice: uses a hidden dotfile with a specific prefix to minimise
-     * the chance of colliding with user files. The old name (POCKETDEV-SYSTEM.md)
-     * was a visible file that could realistically clash with user content.
-     * Users should add ".pocketdev-system-prompt.md" to their .gitignore.
+     * Uses a unique filename per run (e.g., .pocketdev-system-prompt-a1b2c3d4e5f6.md)
+     * to prevent overwriting user files and avoid collisions between concurrent sessions.
+     * Users should add ".pocketdev-system-prompt-*" to their .gitignore.
      *
-     * @throws \RuntimeException if content exceeds PROJECT_DOC_MAX_BYTES
+     * @param string $file Full path to the unique system prompt file
+     * @param string $content The system prompt content
+     * @throws \RuntimeException if content exceeds PROJECT_DOC_MAX_BYTES or write fails
      */
-    private function writePocketDevInstructionsFile(string $workingDir, string $content): void
+    private function writePocketDevInstructionsFile(string $file, string $content): void
     {
-        $file = rtrim($workingDir, '/') . '/.pocketdev-system-prompt.md';
         $contentBytes = strlen($content);
 
         // Check if system prompt exceeds the configured limit
@@ -682,16 +721,6 @@ class CodexProvider extends AbstractCliProvider
             ]);
         }
 
-        // Warn if a user file already exists at this path (unlikely for a dotfile,
-        // but guard against it). We still proceed because the system prompt is
-        // required for Codex to function correctly; the file is cleaned up after use.
-        if (file_exists($file)) {
-            Log::channel('api')->warning('CodexProvider: Overwriting existing file at system prompt path', [
-                'file' => $file,
-                'existing_size' => filesize($file),
-            ]);
-        }
-
         if (file_put_contents($file, $content) === false) {
             Log::channel('api')->error('CodexProvider: Failed to write system prompt file', [
                 'file' => $file,
@@ -702,13 +731,15 @@ class CodexProvider extends AbstractCliProvider
 
     /**
      * Remove the temporary system prompt file after Codex has read it.
+     * Only removes the file created by this run (tracked via $systemPromptFile).
      */
     private function cleanupPocketDevInstructionsFile(string $workingDir): void
     {
-        $file = rtrim($workingDir, '/') . '/.pocketdev-system-prompt.md';
+        $file = $this->systemPromptFile;
 
-        if (file_exists($file)) {
+        if ($file !== null && file_exists($file)) {
             @unlink($file);
+            $this->systemPromptFile = null;
         }
     }
 }
