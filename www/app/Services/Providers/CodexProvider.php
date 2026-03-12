@@ -121,10 +121,10 @@ class CodexProvider extends AbstractCliProvider
             $parts[] = escapeshellarg('model_reasoning_effort="' . $effort . '"');
         }
 
-        // Ensure reasoning summaries are visible in JSON output
-        // Without this, thinking blocks may be hidden depending on model defaults
+        // Show full reasoning summaries in JSON output
+        // "detailed" gives the most comprehensive thinking blocks available
         $parts[] = '-c';
-        $parts[] = escapeshellarg('model_reasoning_summary="concise"');
+        $parts[] = escapeshellarg('model_reasoning_summary="detailed"');
 
         // Working directory
         $workingDir = $conversation->working_directory ?? base_path();
