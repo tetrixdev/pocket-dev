@@ -494,9 +494,23 @@ PROMPT;
         $lines[] = "| Slug | Provider | Model | Description |";
         $lines[] = "|------|----------|-------|-------------|";
 
+        $escapeCell = static function (?string $value): string {
+            $value = preg_replace('/\s+/', ' ', trim((string) $value)) ?? '';
+            return str_replace('|', '\|', $value === '' ? '-' : $value);
+        };
+
         foreach ($agents as $agent) {
-            $desc = $agent->description ? Str::limit($agent->description, 60) : '-';
-            $lines[] = "| {$agent->slug} | {$agent->provider} | {$agent->model} | {$desc} |";
+            $desc = $agent->description
+                ? Str::limit(preg_replace('/\s+/', ' ', trim($agent->description)) ?? '', 60)
+                : '-';
+
+            $lines[] = sprintf(
+                '| %s | %s | %s | %s |',
+                $escapeCell($agent->slug),
+                $escapeCell($agent->provider),
+                $escapeCell($agent->model),
+                $escapeCell($desc),
+            );
         }
 
         return implode("\n", $lines);
