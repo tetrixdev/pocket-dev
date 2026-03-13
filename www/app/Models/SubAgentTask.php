@@ -84,14 +84,9 @@ class SubAgentTask extends Model
 
         $output = [];
         foreach ($messages as $message) {
-            $content = $message->content;
-            if (!is_array($content)) {
-                continue;
-            }
-            foreach ($content as $block) {
-                if (is_array($block) && ($block['type'] ?? '') === 'text' && !empty($block['text'])) {
-                    $output[] = $block['text'];
-                }
+            $text = trim($message->getTextContent());
+            if ($text !== '') {
+                $output[] = $text;
             }
         }
 
