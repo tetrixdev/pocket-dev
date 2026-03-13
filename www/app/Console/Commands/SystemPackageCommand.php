@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\SystemPackage;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 class SystemPackageCommand extends Command
 {
@@ -104,19 +105,42 @@ class SystemPackageCommand extends Command
             'name' => $name,
             'cli_commands' => $cliCommands,
             'install_script' => $installScript,
-            'status' => SystemPackage::STATUS_REQUIRES_RESTART,
+            'status' => SystemPackage::STATUS_PENDING,
         ]);
 
-        $this->outputJson([
-            'output' => "Package '{$name}' added. AI prompt will show: '{$cliCommands}'. Restart containers to install (Developer tab in menu).",
-            'package' => [
-                'id' => $package->id,
-                'name' => $name,
-                'cli_commands' => $cliCommands,
-                'install_script' => $installScript,
-            ],
-            'is_error' => false,
-        ]);
+        // Attempt hot-install (no restart needed)
+        $hotInstallResult = $this->hotInstallPackage($package);
+
+        if ($hotInstallResult['success']) {
+            $this->outputJson([
+                'output' => "Package '{$name}' installed successfully. AI prompt will show: '{$cliCommands}'. Available immediately, no restart needed.",
+                'package' => [
+                    'id' => $package->id,
+                    'name' => $name,
+                    'cli_commands' => $cliCommands,
+                    'status' => 'installed',
+                ],
+                'is_error' => false,
+            ]);
+        } else {
+            // Hot-install failed — fall back to requires_restart
+            $package->update([
+                'status' => SystemPackage::STATUS_FAILED,
+                'status_message' => $hotInstallResult['error'],
+            ]);
+
+            $this->outputJson([
+                'output' => "Package '{$name}' added but installation failed: {$hotInstallResult['error']}. You can retry by restarting containers (Developer tab in menu).",
+                'package' => [
+                    'id' => $package->id,
+                    'name' => $name,
+                    'cli_commands' => $cliCommands,
+                    'status' => 'failed',
+                    'error' => $hotInstallResult['error'],
+                ],
+                'is_error' => false,
+            ]);
+        }
 
         return Command::SUCCESS;
     }
@@ -170,16 +194,23 @@ class SystemPackageCommand extends Command
             return Command::FAILURE;
         }
 
-        // If install script changed, mark as requires_restart
-        if ($requiresRestart) {
-            $updates['status'] = SystemPackage::STATUS_REQUIRES_RESTART;
-        }
-
         $package->update($updates);
 
         $message = "Package '{$package->name}' updated.";
+
+        // If install script changed, hot-install immediately
         if ($requiresRestart) {
-            $message .= ' Restart containers to apply install script changes.';
+            $hotInstallResult = $this->hotInstallPackage($package);
+
+            if ($hotInstallResult['success']) {
+                $message .= ' New install script applied successfully, available immediately.';
+            } else {
+                $package->update([
+                    'status' => SystemPackage::STATUS_FAILED,
+                    'status_message' => $hotInstallResult['error'],
+                ]);
+                $message .= " Install script updated but installation failed: {$hotInstallResult['error']}. Retry by restarting containers (Developer tab in menu).";
+            }
         }
 
         $this->outputJson([
@@ -230,7 +261,7 @@ class SystemPackageCommand extends Command
         $remainingCount = SystemPackage::count();
 
         $this->outputJson([
-            'output' => "Package '{$packageName}' removed. Still installed in current container until restart.",
+            'output' => "Package '{$packageName}' removed. It remains installed until the next container restart.",
             'package' => $packageName,
             'remaining_count' => $remainingCount,
             'is_error' => false,
@@ -277,6 +308,7 @@ class SystemPackageCommand extends Command
         $validStatuses = [
             SystemPackage::STATUS_REQUIRES_RESTART,
             SystemPackage::STATUS_PENDING,
+            SystemPackage::STATUS_INSTALLING,
             SystemPackage::STATUS_INSTALLED,
             SystemPackage::STATUS_FAILED,
         ];
@@ -313,6 +345,130 @@ class SystemPackageCommand extends Command
 
         $this->output->writeln("Marked {$count} pending package(s) as failed");
         return Command::SUCCESS;
+    }
+
+    /**
+     * Hot-install a single package into the running container(s) via docker exec.
+     *
+     * Runs the package's install script as root inside the container without
+     * requiring a restart. The binary is immediately available to all processes
+     * (Claude Code, MCP servers, etc.) since they resolve PATH at exec time.
+     *
+     * @return array{success: bool, error: ?string, output: ?string}
+     */
+    private function hotInstallPackage(SystemPackage $package): array
+    {
+        $installScript = $package->install_script;
+
+        if (empty($installScript)) {
+            return ['success' => false, 'error' => 'No install script defined', 'output' => null];
+        }
+
+        // Check if docker CLI is available
+        exec('which docker 2>/dev/null', $dockerCheck, $dockerReturn);
+        if ($dockerReturn !== 0) {
+            return ['success' => false, 'error' => 'Docker CLI not available for hot-install', 'output' => null];
+        }
+
+        // Apply /tmp → /var/tmp rewrite (same as install-system-packages.sh)
+        // Fixes curl write errors caused by the shared /tmp volume
+        $installScript = $this->rewriteTmpPaths($installScript);
+
+        // Write the install script to a temp file to avoid shell escaping issues
+        $tempScript = tempnam('/var/tmp', 'pkg_install_');
+        if ($tempScript === false) {
+            return ['success' => false, 'error' => 'Failed to create temp file for install script', 'output' => null];
+        }
+        file_put_contents($tempScript, "#!/bin/bash\nset -e\n" . $installScript);
+        chmod($tempScript, 0755);
+
+        $package->update(['status' => SystemPackage::STATUS_INSTALLING]);
+
+        // Install in the queue container (where Claude Code and MCP servers run)
+        $containers = ['pocket-dev-queue', 'pocket-dev-php'];
+        $lastError = null;
+        $queueSuccess = false;
+
+        foreach ($containers as $container) {
+            // Copy script into the target container, then execute as root
+            $copyCmd = sprintf(
+                'docker cp %s %s:/var/tmp/pkg_install.sh 2>&1',
+                escapeshellarg($tempScript),
+                escapeshellarg($container)
+            );
+            exec($copyCmd, $copyOutput, $copyReturn);
+
+            if ($copyReturn !== 0) {
+                $lastError = "Failed to copy install script to {$container}: " . implode(' ', $copyOutput);
+                Log::warning("Hot-install: {$lastError}");
+                continue;
+            }
+
+            $execCmd = sprintf(
+                'docker exec -u root %s bash -c %s 2>&1',
+                escapeshellarg($container),
+                escapeshellarg('chmod +x /var/tmp/pkg_install.sh && /var/tmp/pkg_install.sh && rm -f /var/tmp/pkg_install.sh')
+            );
+
+            exec($execCmd, $execOutput, $execReturn);
+            $output = implode("\n", $execOutput);
+
+            if ($execReturn !== 0) {
+                // Extract last few lines for error message
+                $errorLines = array_slice($execOutput, -3);
+                $lastError = "Install failed in {$container}: " . implode(' ', $errorLines);
+                Log::warning("Hot-install: {$lastError}", ['output' => $output]);
+
+                if ($container === 'pocket-dev-queue') {
+                    // Queue container is critical — if it fails, the package won't work
+                    break;
+                }
+                continue;
+            }
+
+            if ($container === 'pocket-dev-queue') {
+                $queueSuccess = true;
+            }
+
+            Log::info("Hot-install: {$package->name} installed in {$container}");
+        }
+
+        // Clean up temp file
+        @unlink($tempScript);
+
+        if ($queueSuccess) {
+            $package->update([
+                'status' => SystemPackage::STATUS_INSTALLED,
+                'status_message' => null,
+                'installed_at' => now(),
+            ]);
+            return ['success' => true, 'error' => null, 'output' => 'Installed successfully'];
+        }
+
+        return ['success' => false, 'error' => $lastError ?? 'Unknown error', 'output' => null];
+    }
+
+    /**
+     * Rewrite /tmp/ paths to /var/tmp/ in install scripts.
+     *
+     * Same logic as install-system-packages.sh — fixes curl write errors
+     * caused by the shared /tmp volume.
+     */
+    private function rewriteTmpPaths(string $script): string
+    {
+        $replacements = [
+            ' /tmp/'  => ' /var/tmp/',
+            '"/tmp/'  => '"/var/tmp/',
+            "'/tmp/"  => "'/var/tmp/",
+            '=/tmp/'  => '=/var/tmp/',
+            '>/tmp/'  => '>/var/tmp/',
+            '>>/tmp/' => '>>/var/tmp/',
+            '2>/tmp/' => '2>/var/tmp/',
+            '2>>/tmp/'=> '2>>/var/tmp/',
+            '>&/tmp/' => '>&/var/tmp/',
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $script);
     }
 
     private function invalidAction(string $action): int

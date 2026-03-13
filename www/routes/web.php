@@ -145,9 +145,7 @@ Route::get("/config/backup/download/{filename}", [\App\Http\Controllers\BackupCo
 Route::delete("/config/backup/{filename}", [\App\Http\Controllers\BackupController::class, "delete"])->name("config.backup.delete");
 Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::class, "restore"])->name("config.backup.restore");
 
-// Developer tools (only available in local environment)
-if (app()->environment('local')) {
-    Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");
-    Route::post("/config/developer/force-recreate", [ConfigController::class, "forceRecreate"])->name("config.developer.force-recreate");
-    Route::post("/config/developer/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.developer.rebuild");
-}
+// Developer tools (restart/rebuild containers)
+Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");
+Route::post("/config/developer/force-recreate", [ConfigController::class, "forceRecreate"])->name("config.developer.force-recreate");
+Route::post("/config/developer/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.developer.rebuild");
