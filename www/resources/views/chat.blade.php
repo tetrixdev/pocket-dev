@@ -41,6 +41,7 @@
                     stack: [],
                     loading: false,
                     copied: false,
+                    copiedPath: false,
 
                     // Edit mode state
                     editing: false,
@@ -110,6 +111,7 @@
                         }
                         this.loading = true;
                         this.copied = false;
+                        this.copiedPath = false;
 
                         // Generate unique ID for this entry to handle race conditions
                         // (if user opens/closes files while fetch is in-flight)
@@ -234,6 +236,7 @@
                         }
                         this.stack.pop();
                         this.copied = false;
+                        this.copiedPath = false;
                         if (window.debugLog) debugLog('filePreview._closeStack()', { remainingStack: this.stack.length });
                     },
 
@@ -265,6 +268,7 @@
                         }
                         this.stack = [];
                         this.copied = false;
+                        this.copiedPath = false;
                         if (window.debugLog) debugLog('filePreview.closeAll()');
                         if (history.state?.filePreview) {
                             // Go back through all preview history entries
@@ -280,6 +284,17 @@
                             setTimeout(() => { this.copied = false; }, 1500);
                         } catch (err) {
                             console.error('Copy failed:', err);
+                        }
+                    },
+
+                    async copyPath() {
+                        if (!this.path) return;
+                        try {
+                            await navigator.clipboard.writeText(this.path);
+                            this.copiedPath = true;
+                            setTimeout(() => { this.copiedPath = false; }, 1500);
+                        } catch (err) {
+                            console.error('Copy path failed:', err);
                         }
                     },
 
