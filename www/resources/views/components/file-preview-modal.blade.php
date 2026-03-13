@@ -53,7 +53,7 @@
                 {{-- View mode buttons --}}
                 <template x-if="!$store.filePreview.editing">
                     <div class="flex items-center gap-2">
-                        {{-- Copy button - show when file loaded (even if empty) --}}
+                        {{-- Copy content button - show when file loaded (even if empty) --}}
                         <button @click="$store.filePreview.copyContent()"
                                 class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Copy content"
@@ -62,6 +62,19 @@
                                 <i class="fa-regular fa-copy"></i>
                             </template>
                             <template x-if="$store.filePreview.copied">
+                                <i class="fa-solid fa-check text-green-400"></i>
+                            </template>
+                        </button>
+
+                        {{-- Copy path button - always show (even on error, path is still valid) --}}
+                        <button @click="$store.filePreview.copyPath()"
+                                class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                title="Copy path"
+                                x-show="!$store.filePreview.loading">
+                            <template x-if="!$store.filePreview.copiedPath">
+                                <i class="fa-solid fa-link"></i>
+                            </template>
+                            <template x-if="$store.filePreview.copiedPath">
                                 <i class="fa-solid fa-check text-green-400"></i>
                             </template>
                         </button>
