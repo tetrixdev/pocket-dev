@@ -9,6 +9,7 @@ use App\Models\SubAgentTask;
 use App\Models\Workspace;
 use App\Services\ConversationFactory;
 use App\Services\StreamManager;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -111,45 +112,50 @@ API;
             return ToolResult::error('prompt is required');
         }
 
-        // Resolve agent by slug first, then fall back to UUID lookup
-        $agent = Agent::where('slug', $agentIdentifier)->first();
+        // Scope agent resolution to the caller's workspace
+        $workspace = $context->getWorkspace();
+        $agentQuery = Agent::query()->where('enabled', true);
+        if ($workspace) {
+            $agentQuery->where('workspace_id', $workspace->id);
+        }
+
+        $agent = (clone $agentQuery)->where('slug', $agentIdentifier)->first();
         if (!$agent && Str::isUuid($agentIdentifier)) {
-            $agent = Agent::find($agentIdentifier);
+            $agent = (clone $agentQuery)->whereKey($agentIdentifier)->first();
         }
 
         if (!$agent) {
             return ToolResult::error("Agent '{$agentIdentifier}' not found. Use an agent slug or UUID from the Available Agents list.");
         }
 
-        if (!$agent->enabled) {
-            return ToolResult::error("Agent '{$agent->name}' is disabled.");
-        }
-
-        // Determine workspace
-        $workspace = $context->getWorkspace() ?? $agent->workspace;
+        // Determine workspace (fall back to agent's workspace if context has none)
+        $workspace = $workspace ?? $agent->workspace;
         $workspaceId = $workspace?->id;
         $workingDirectory = $context->workingDirectory;
 
         try {
-            // Create child conversation via the factory
-            $factory = app(ConversationFactory::class);
-            $conversation = $factory->createFromAgent(
-                $agent,
-                $workingDirectory,
-                $workspaceId,
-                'Subagent: ' . Str::limit($prompt, 60)
-            );
+            // Create child conversation + task atomically
+            [$conversation, $task] = DB::transaction(function () use ($agent, $workingDirectory, $workspaceId, $prompt, $context, $isBackground) {
+                $factory = app(ConversationFactory::class);
+                $conversation = $factory->createFromAgent(
+                    $agent,
+                    $workingDirectory,
+                    $workspaceId,
+                    'Subagent: ' . Str::limit($prompt, 60)
+                );
 
-            // Create the subagent task record
-            $task = SubAgentTask::create([
-                'parent_conversation_uuid' => $context->conversationUuid,
-                'child_conversation_uuid' => $conversation->uuid,
-                'agent_id' => $agent->id,
-                'prompt' => $prompt,
-                'is_background' => $isBackground,
-            ]);
+                $task = SubAgentTask::create([
+                    'parent_conversation_uuid' => $context->conversationUuid,
+                    'child_conversation_uuid' => $conversation->uuid,
+                    'agent_id' => $agent->id,
+                    'prompt' => $prompt,
+                    'is_background' => $isBackground,
+                ]);
 
-            // Initialize the Redis stream
+                return [$conversation, $task];
+            });
+
+            // Initialize the Redis stream (outside transaction — not DB state)
             $streamManager = app(StreamManager::class);
             $streamManager->startStream($conversation->uuid, [
                 'model' => $conversation->model,
@@ -207,7 +213,7 @@ API;
         while (time() - $startTime < $maxWaitSeconds) {
             $conversation->refresh();
 
-            if ($conversation->status === Conversation::STATUS_IDLE) {
+            if (in_array($conversation->status, [Conversation::STATUS_IDLE, Conversation::STATUS_ARCHIVED], true)) {
                 // Reload task's relationship so collectOutput sees the final messages
                 $task->unsetRelation('childConversation');
                 $output = $task->collectOutput();
