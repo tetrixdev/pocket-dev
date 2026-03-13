@@ -60,7 +60,7 @@ class SubAgentTask extends Model
             return 'pending';
         }
         return match ($conversation->status) {
-            Conversation::STATUS_IDLE => 'completed',
+            Conversation::STATUS_IDLE, Conversation::STATUS_ARCHIVED => 'completed',
             Conversation::STATUS_PROCESSING => 'running',
             Conversation::STATUS_FAILED => 'failed',
             default => 'pending',

@@ -111,12 +111,11 @@ API;
             return ToolResult::error('prompt is required');
         }
 
-        // Resolve agent by slug, or by UUID if input looks like one
-        $query = Agent::where('slug', $agentIdentifier);
-        if (Str::isUuid($agentIdentifier)) {
-            $query->orWhere('id', $agentIdentifier);
+        // Resolve agent by slug first, then fall back to UUID lookup
+        $agent = Agent::where('slug', $agentIdentifier)->first();
+        if (!$agent && Str::isUuid($agentIdentifier)) {
+            $agent = Agent::find($agentIdentifier);
         }
-        $agent = $query->first();
 
         if (!$agent) {
             return ToolResult::error("Agent '{$agentIdentifier}' not found. Use an agent slug or UUID from the Available Agents list.");
@@ -206,8 +205,6 @@ API;
         $startTime = time();
 
         while (time() - $startTime < $maxWaitSeconds) {
-            usleep($pollIntervalMicroseconds);
-
             $conversation->refresh();
 
             if ($conversation->status === Conversation::STATUS_IDLE) {
@@ -224,15 +221,14 @@ API;
             if ($conversation->status === Conversation::STATUS_FAILED) {
                 $task->unsetRelation('childConversation');
                 $error = $task->getError();
-                return ToolResult::error(json_encode([
-                    'task_id' => $task->id,
-                    'status' => 'failed',
-                    'error' => $error,
-                ], JSON_PRETTY_PRINT));
+                return ToolResult::error("Sub-agent task '{$task->id}' failed: {$error}");
             }
+
+            usleep($pollIntervalMicroseconds);
         }
 
-        // Timed out
+        // Timed out — returned as success because the task is still running
+        // and the caller can poll via SubAgentOutput later.
         return ToolResult::success(json_encode([
             'task_id' => $task->id,
             'status' => 'timeout',
