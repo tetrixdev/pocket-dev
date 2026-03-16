@@ -621,7 +621,7 @@
                     <button @click="downloadFile()"
                             class="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white transition-colors"
                             :class="{ 'opacity-50 cursor-not-allowed': downloading }"
-                            :disabled="downloading"
+                            x-bind:disabled="downloading"
                             title="Download file">
                         <i x-show="!downloading" class="fa-solid fa-download text-xs"></i>
                         <svg x-show="downloading" x-cloak class="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
@@ -656,12 +656,12 @@
                 <div x-show="editing" x-cloak class="flex items-center gap-2 shrink-0">
                     <button @click="cancelEditing()"
                             class="px-2.5 py-1 text-xs text-gray-300 hover:text-white transition-colors rounded hover:bg-gray-700"
-                            :disabled="saving">
+                            x-bind:disabled="saving">
                         Cancel
                     </button>
                     <button @click="saveFile()"
                             class="px-2.5 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-1.5"
-                            :disabled="saving"
+                            x-bind:disabled="saving"
                             :class="{ 'opacity-50 cursor-not-allowed': saving }">
                         <svg x-show="saving" class="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
                             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
@@ -686,7 +686,7 @@
                 <textarea x-ref="editTextarea"
                           x-model="editContent"
                           class="flex-1 w-full p-3 bg-gray-950 text-gray-300 font-mono text-xs resize-none border-none focus:ring-0 focus:outline-none leading-5"
-                          :disabled="saving"
+                          x-bind:disabled="saving"
                           spellcheck="false"
                           style="tab-size: 4;"></textarea>
             </div>

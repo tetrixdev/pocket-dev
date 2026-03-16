@@ -109,7 +109,7 @@
             <button type="button"
                     disabled
                     class="w-12 py-[10px] rounded-lg text-xl flex items-center justify-center transition-colors cursor-not-allowed bg-gray-600 text-gray-300"
-                    title="Aborting...">
+                    title="Stopping...">
                 <x-spinner />
             </button>
         </template>
