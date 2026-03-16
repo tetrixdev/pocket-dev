@@ -141,6 +141,12 @@ services:
     # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
     entrypoint: ["/queue-entrypoint.sh"]
     # Command removed - supervisord in entrypoint manages multiple workers
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | grep -q RUNNING || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       - HOME=/home/appuser
       - PD_TARGET_UID=${PD_USER_ID:-1000}
