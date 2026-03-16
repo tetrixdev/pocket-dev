@@ -142,7 +142,7 @@ services:
     entrypoint: ["/queue-entrypoint.sh"]
     # Command removed - supervisord in entrypoint manages multiple workers
     healthcheck:
-      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | grep -q RUNNING || exit 1"]
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | awk 'BEGIN{ok=1;count=0} /^queue-worker_/ {count++; if ($2 != \"RUNNING\") ok=0} END{if (count==0) ok=0; exit !ok}'"]
       interval: 30s
       timeout: 10s
       retries: 3

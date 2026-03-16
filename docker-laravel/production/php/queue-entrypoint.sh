@@ -254,8 +254,8 @@ for f in /tmp/supervisord.log /tmp/supervisord.pid /tmp/supervisor.sock; do
 done
 
 # Ensure queue worker log files are writable by TARGET_USER
-# Supervisor creates 10 workers (00-09) with stdout and stderr logs each
-for i in $(seq -f '%02g' 0 9); do
+# Supervisor creates 20 workers (00-19) with stdout and stderr logs each
+for i in $(seq -f '%02g' 0 19); do
     for f in "/tmp/queue-worker-${i}.log" "/tmp/queue-worker-${i}-error.log"; do
         if [ -L "$f" ]; then
             echo "WARN: $f is a symlink; removing before recreation" >&2
