@@ -10,6 +10,7 @@ class GitStatusPanel extends Panel
     public string $name = 'Git Status';
     public string $description = 'View git repository status with file tree and diff viewer';
     public string $icon = 'fa-brands fa-git-alt';
+    public string $category = 'development';
 
     public array $parameters = [
         'path' => [

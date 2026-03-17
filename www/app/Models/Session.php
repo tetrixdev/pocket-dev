@@ -7,7 +7,20 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
+/**
+ * Session model for PocketDev chat sessions.
+ *
+ * IMPORTANT: DO NOT use updateQuietly() on this model!
+ * Laravel's updateQuietly() only suppresses model events (observers),
+ * but still updates the updated_at timestamp. For session updates that
+ * should preserve timestamps (navigation, metadata changes), use the
+ * updatePreservingTimestamp() method instead.
+ *
+ * Only Conversation::completeProcessing() and Conversation::markFailed()
+ * should touch the session timestamp (via explicit $session->touch()).
+ */
 class Session extends Model
 {
     use HasUuids;
@@ -22,11 +35,13 @@ class Session extends Model
         'is_archived',
         'last_active_screen_id',
         'screen_order',
+        'next_chat_number',
     ];
 
     protected $casts = [
         'is_archived' => 'boolean',
         'screen_order' => 'array',
+        'next_chat_number' => 'integer',
     ];
 
     /**
@@ -94,11 +109,42 @@ class Session extends Model
     }
 
     /**
+     * Update session columns WITHOUT touching updated_at.
+     *
+     * Use this instead of updateQuietly() which only skips events but still
+     * updates timestamps. This method uses a raw query to truly preserve
+     * the updated_at column.
+     *
+     * @param array<string, mixed> $attributes Key-value pairs to update
+     */
+    public function updatePreservingTimestamp(array $attributes): void
+    {
+        // Handle JSON columns (screen_order needs json_encode for raw query)
+        $dbAttributes = [];
+        foreach ($attributes as $key => $value) {
+            if ($key === 'screen_order' && is_array($value)) {
+                $dbAttributes[$key] = json_encode($value);
+            } else {
+                $dbAttributes[$key] = $value;
+            }
+        }
+
+        DB::table('pocketdev_sessions')
+            ->where('id', $this->id)
+            ->update($dbAttributes);
+
+        // Sync in-memory model
+        foreach ($attributes as $key => $value) {
+            $this->$key = $value;
+        }
+    }
+
+    /**
      * Archive the session.
      */
     public function archive(): void
     {
-        $this->update(['is_archived' => true]);
+        $this->updatePreservingTimestamp(['is_archived' => true]);
     }
 
     /**
@@ -107,7 +153,7 @@ class Session extends Model
     // TODO: Rename to unarchive() to avoid conflict with SoftDeletes::restore()
     public function restore(): void
     {
-        $this->update(['is_archived' => false]);
+        $this->updatePreservingTimestamp(['is_archived' => false]);
     }
 
     /**
@@ -115,7 +161,7 @@ class Session extends Model
      */
     public function setActiveScreen(Screen $screen): void
     {
-        $this->update(['last_active_screen_id' => $screen->id]);
+        $this->updatePreservingTimestamp(['last_active_screen_id' => $screen->id]);
     }
 
     /**
@@ -126,7 +172,7 @@ class Session extends Model
         $order = $this->screen_order ?? [];
         if (!in_array($screenId, $order)) {
             $order[] = $screenId;
-            $this->update(['screen_order' => $order]);
+            $this->updatePreservingTimestamp(['screen_order' => $order]);
         }
     }
 
@@ -137,7 +183,7 @@ class Session extends Model
     {
         $order = $this->screen_order ?? [];
         $order = array_values(array_filter($order, fn($id) => $id !== $screenId));
-        $this->update(['screen_order' => $order]);
+        $this->updatePreservingTimestamp(['screen_order' => $order]);
     }
 
     /**
@@ -145,7 +191,33 @@ class Session extends Model
      */
     public function reorderScreens(array $screenIds): void
     {
-        $this->update(['screen_order' => $screenIds]);
+        $this->updatePreservingTimestamp(['screen_order' => $screenIds]);
+    }
+
+    /**
+     * Get the next chat number and increment the counter atomically.
+     *
+     * Uses a database transaction with row locking to prevent race conditions
+     * when multiple chats are created concurrently for the same session.
+     */
+    public function getNextChatNumber(): int
+    {
+        return DB::transaction(function () {
+            // Lock the session row to prevent concurrent assignment
+            $session = DB::table('pocketdev_sessions')
+                ->where('id', $this->id)
+                ->lockForUpdate()
+                ->first();
+
+            $chatNumber = $session->next_chat_number ?? 1;
+
+            // Increment the counter
+            DB::table('pocketdev_sessions')
+                ->where('id', $this->id)
+                ->update(['next_chat_number' => $chatNumber + 1]);
+
+            return $chatNumber;
+        });
     }
 
     /**

@@ -206,7 +206,7 @@ API;
             name: $tool->name,
             arguments: $arguments,
             context: $context,
-            peekGenerator: fn (PanelState $panelState) => $this->generatePeek($tool, $panelState)
+            peekGenerator: fn (PanelState $panelState) => $this->generatePeek($tool, $panelState, $context)
         );
     }
 
@@ -298,7 +298,7 @@ API;
     /**
      * Generate peek output for a panel.
      */
-    private function generatePeek(PocketTool $panel, PanelState $panelState): string
+    private function generatePeek(PocketTool $panel, PanelState $panelState, ExecutionContext $context): string
     {
         // If no script, return a basic peek
         if (! $panel->hasScript()) {
@@ -306,13 +306,18 @@ API;
         }
 
         try {
+            // Get credentials for environment injection (workspace-specific override global)
+            $workspace = $context->getWorkspace();
+            $workspaceId = $workspace?->id;
+            $credentials = Credential::getEnvArrayForWorkspace($workspaceId);
+
             // Set environment variables for the peek script
-            $env = [
+            $env = array_merge($credentials, [
                 'PANEL_STATE' => json_encode($panelState->state ?? []),
                 'PANEL_PARAMS' => json_encode($panelState->parameters ?? []),
                 'PANEL_INSTANCE_ID' => $panelState->id,
                 'PANEL_SLUG' => $panelState->panel_slug,
-            ];
+            ]);
 
             // Write script to temp file to handle multi-line scripts correctly
             $tmpScript = tempnam(sys_get_temp_dir(), 'panel_peek_');

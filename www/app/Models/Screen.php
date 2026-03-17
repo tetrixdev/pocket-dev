@@ -21,6 +21,7 @@ class Screen extends Model
     protected $fillable = [
         'session_id',
         'type',
+        'chat_number',
         'conversation_id',
         'panel_slug',
         'panel_id',
@@ -99,12 +100,14 @@ class Screen extends Model
     public function activate(): void
     {
         // Deactivate all other screens in the session
+        // Use direct query to avoid triggering timestamps
         self::where('session_id', $this->session_id)
             ->where('id', '!=', $this->id)
             ->update(['is_active' => false]);
 
         // Activate this screen
-        $this->update(['is_active' => true]);
+        // Screen timestamp: preserve (navigation only)
+        $this->updateQuietly(['is_active' => true]);
 
         // Update session's last active screen
         $this->session->setActiveScreen($this);
@@ -142,6 +145,7 @@ class Screen extends Model
         $screen = self::create([
             'session_id' => $session->id,
             'type' => self::TYPE_CHAT,
+            'chat_number' => $session->getNextChatNumber(),
             'conversation_id' => $conversation->id,
         ]);
 

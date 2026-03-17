@@ -3,7 +3,7 @@
     <div class="space-y-4">
         {{-- Loading state --}}
         <div x-show="loadingArchivedConversations" class="text-center py-4">
-            <i class="fas fa-spinner fa-spin text-gray-400"></i>
+            <x-spinner class="text-gray-400" />
             <p class="text-gray-400 text-sm mt-2">Loading archived chats...</p>
         </div>
 
@@ -18,7 +18,7 @@
             <template x-for="conv in archivedConversations" :key="conv.id">
                 <div class="flex items-center justify-between p-3 bg-gray-700 rounded-lg hover:bg-gray-600 transition-colors">
                     <div class="flex-1 min-w-0 mr-3">
-                        <p class="text-sm text-white truncate" x-text="conv.title || 'Untitled'"></p>
+                        <p class="text-sm text-white truncate" x-text="conv.tab_label && conv.tab_label.trim() ? conv.tab_label : (conv.chat_number || '?') + '.'"></p>
                         <p class="text-xs text-gray-400" x-text="'Archived ' + formatDate(conv.archived_at)"></p>
                     </div>
                     <x-button

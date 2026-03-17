@@ -15,10 +15,16 @@ use Illuminate\Support\Facades\Process;
 class PanelController extends Controller
 {
     /**
-     * Wrap panel HTML in a full document with all configured dependencies.
-     * Uses config/panels.php as the single source of truth for CDN libraries.
+     * Wrap panel HTML in a full document with configured dependencies.
+     *
+     * Base dependencies (Tailwind, Alpine, Font Awesome) from config/panels.php
+     * are always loaded. Panels can declare additional dependencies as full
+     * dependency objects (e.g., CDN scripts/stylesheets for Chart.js, Highlight.js, etc.).
+     *
+     * @param string $html The panel's rendered HTML content
+     * @param array $panelDeps Additional dependency objects from the panel itself
      */
-    private function wrapPanelHtml(string $html): string
+    private function wrapPanelHtml(string $html, array $panelDeps = []): string
     {
         $config = config('panels');
 
@@ -27,9 +33,130 @@ class PanelController extends Controller
             return "<!DOCTYPE html><html><head></head><body>{$html}</body></html>";
         }
 
-        $headTags = $this->buildPanelHeadTags($config['dependencies']);
+        // Merge base deps (from config) with panel-specific deps (full objects)
+        // Deduplicate by URL so panels can't accidentally double-load base deps
+        $baseDeps = array_values($config['dependencies'] ?? []);
+        $baseUrls = array_column($baseDeps, 'url');
+        $filteredPanelDeps = array_values(array_filter(
+            $panelDeps,
+            fn($d) => !in_array($d['url'] ?? '', $baseUrls, true)
+        ));
+        $allDeps = array_merge($baseDeps, $filteredPanelDeps);
+        $headTags = $this->buildPanelHeadTags($allDeps);
         $tailwindTheme = $config['tailwind_theme'];
         $baseCss = $config['base_css'];
+
+        // Swipe detection script for cross-iframe communication
+        // This enables swipe-to-switch-tabs when swiping inside panel iframes
+        $swipeScript = <<<'SWIPE'
+<script>
+(function() {
+    // Panel swipe detection - communicates with parent window for tab switching
+    // Replicates the isInHorizontalScrollArea() logic from the parent
+
+    let swipeState = {
+        active: false,
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        isInScrollArea: false,
+        determinedDirection: false,
+        isHorizontal: false
+    };
+
+    function isInHorizontalScrollArea(element) {
+        let el = element;
+        while (el && el !== document.body) {
+            if (el.scrollWidth > el.clientWidth) {
+                const style = window.getComputedStyle(el);
+                if (style.overflowX === 'auto' || style.overflowX === 'scroll') {
+                    return true;
+                }
+            }
+            el = el.parentElement;
+        }
+        return false;
+    }
+
+    function postSwipeMessage(type, data) {
+        if (window.parent !== window) {
+            window.parent.postMessage({
+                source: 'pocketdev-panel-swipe',
+                type: type,
+                ...data
+            }, '*');
+        }
+    }
+
+    document.addEventListener('touchstart', function(e) {
+        if (e.touches.length !== 1) return;
+
+        const touch = e.touches[0];
+        swipeState = {
+            active: true,
+            startX: touch.clientX,
+            startY: touch.clientY,
+            currentX: touch.clientX,
+            isInScrollArea: isInHorizontalScrollArea(e.target),
+            determinedDirection: false,
+            isHorizontal: false
+        };
+
+        postSwipeMessage('touchstart', {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            isInScrollArea: swipeState.isInScrollArea
+        });
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function(e) {
+        if (!swipeState.active || e.touches.length !== 1) return;
+
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - swipeState.startX;
+        const deltaY = touch.clientY - swipeState.startY;
+
+        swipeState.currentX = touch.clientX;
+
+        // Determine direction once we have enough movement
+        if (!swipeState.determinedDirection && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+            swipeState.determinedDirection = true;
+            swipeState.isHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+        }
+
+        postSwipeMessage('touchmove', {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            deltaX: deltaX,
+            deltaY: deltaY,
+            isHorizontal: swipeState.isHorizontal,
+            determinedDirection: swipeState.determinedDirection,
+            isInScrollArea: swipeState.isInScrollArea
+        });
+    }, { passive: true });
+
+    document.addEventListener('touchend', function(e) {
+        if (!swipeState.active) return;
+
+        const deltaX = swipeState.currentX - swipeState.startX;
+
+        postSwipeMessage('touchend', {
+            deltaX: deltaX,
+            isInScrollArea: swipeState.isInScrollArea,
+            isHorizontal: swipeState.isHorizontal
+        });
+
+        swipeState.active = false;
+    }, { passive: true });
+
+    document.addEventListener('touchcancel', function(e) {
+        if (!swipeState.active) return;
+        postSwipeMessage('touchcancel', {});
+        swipeState.active = false;
+    }, { passive: true });
+})();
+</script>
+SWIPE;
 
         return <<<HTML
 <!DOCTYPE html>
@@ -47,6 +174,7 @@ class PanelController extends Controller
 </head>
 <body>
 {$html}
+{$swipeScript}
 </body>
 </html>
 HTML;
@@ -60,13 +188,15 @@ HTML;
         $tags = [];
 
         foreach ($dependencies as $dep) {
-            if ($dep['type'] === 'script') {
-                $defer = ($dep['defer'] ?? false) ? ' defer' : '';
-                $tags[] = "    <script{$defer} src=\"{$dep['url']}\"></script>";
-            } elseif ($dep['type'] === 'stylesheet') {
-                $integrity = isset($dep['integrity']) ? " integrity=\"{$dep['integrity']}\"" : '';
-                $crossorigin = isset($dep['crossorigin']) ? " crossorigin=\"{$dep['crossorigin']}\"" : '';
-                $tags[] = "    <link rel=\"stylesheet\" href=\"{$dep['url']}\"{$integrity}{$crossorigin} referrerpolicy=\"no-referrer\">";
+            $url = e($dep['url'] ?? '');
+            $crossorigin = isset($dep['crossorigin']) ? ' crossorigin="' . e($dep['crossorigin']) . '"' : '';
+
+            if (($dep['type'] ?? '') === 'script') {
+                $defer = !empty($dep['defer']) ? ' defer' : '';
+                $tags[] = '    <script' . $defer . ' src="' . $url . '"' . $crossorigin . '></script>';
+            } elseif (($dep['type'] ?? '') === 'stylesheet') {
+                $integrity = isset($dep['integrity']) ? ' integrity="' . e($dep['integrity']) . '"' : '';
+                $tags[] = '    <link rel="stylesheet" href="' . $url . '"' . $integrity . $crossorigin . ' referrerpolicy="no-referrer">';
             }
         }
 
@@ -88,8 +218,10 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $html = $systemPanel->render($params, $state, $panelState->id);
-                return response($this->wrapPanelHtml($html))->header('Content-Type', 'text/html');
+                $deps = $systemPanel->panelDependencies;
+                return response($this->wrapPanelHtml($html, $deps))->header('Content-Type', 'text/html');
             } catch (\Throwable $e) {
                 \Log::error('System panel render error', [
                     'panel_slug' => $slug,
@@ -126,7 +258,8 @@ HTML;
                 'panel' => $panel,
             ]);
 
-            return response($this->wrapPanelHtml($html))
+            $deps = $panel->panel_dependencies ?? [];
+            return response($this->wrapPanelHtml($html, $deps))
                 ->header('Content-Type', 'text/html');
         } catch (\Throwable $e) {
             \Log::error('Panel render error', [
@@ -207,6 +340,7 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $panelParams = $panelState->parameters ?? [];
                 $result = $systemPanel->handleAction($action, $params, $state, $panelParams);
 
@@ -349,6 +483,7 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $markdown = $systemPanel->peek($params, $state);
                 return response($markdown)->header('Content-Type', 'text/markdown');
             } catch (\Throwable $e) {
@@ -460,6 +595,14 @@ HTML;
         $output .= "\n*No peek script defined for this panel.*\n";
 
         return $output;
+    }
+
+    /**
+     * Extract workspace ID from a panel state via its screen → session chain.
+     */
+    private function getWorkspaceId(PanelState $panelState): ?string
+    {
+        return $panelState->screen?->session?->workspace_id;
     }
 
     /**

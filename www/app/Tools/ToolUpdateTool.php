@@ -50,6 +50,21 @@ class ToolUpdateTool extends Tool
                 'type' => 'object',
                 'description' => 'New JSON Schema for input parameters.',
             ],
+            'panel_dependencies' => [
+                'type' => 'array',
+                'items' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'type' => ['type' => 'string', 'enum' => ['script', 'stylesheet'], 'description' => 'script or stylesheet'],
+                        'url' => ['type' => 'string', 'description' => 'CDN URL'],
+                        'defer' => ['type' => 'boolean', 'description' => 'Defer loading (scripts only)'],
+                        'crossorigin' => ['type' => 'string', 'description' => 'Crossorigin attribute (e.g., "anonymous")'],
+                        'integrity' => ['type' => 'string', 'description' => 'SRI hash for integrity verification (e.g., "sha384-...")'],
+                    ],
+                    'required' => ['type', 'url'],
+                ],
+                'description' => 'Additional CDN dependencies to load for this panel. Base deps (Tailwind, Alpine, Font Awesome) are always loaded. Each entry needs at minimum type ("script" or "stylesheet") and url.',
+            ],
         ],
         'required' => ['slug'],
     ];
@@ -65,6 +80,7 @@ Use ToolUpdate to modify an existing user-created tool.
 - name, description, system_prompt: Basic tool info
 - script: Bash script content for script-based tools
 - blade_template: Blade template content for panel tools
+- panel_dependencies: Additional CDN dependencies for panels (array of {type, url} objects)
 - category, input_schema: Tool configuration
 
 ## Valid Categories
@@ -182,8 +198,16 @@ API;
             $changes[] = 'input_schema';
         }
 
+        if (isset($input['panel_dependencies'])) {
+            if (!is_array($input['panel_dependencies'])) {
+                return ToolResult::error('panel_dependencies must be an array of dependency objects');
+            }
+            $tool->panel_dependencies = $input['panel_dependencies'];
+            $changes[] = 'panel_dependencies';
+        }
+
         if (empty($changes)) {
-            return ToolResult::error('No changes specified. Use name, description, system_prompt, script, blade_template, category, or input_schema.');
+            return ToolResult::error('No changes specified. Use name, description, system_prompt, script, blade_template, panel_dependencies, category, or input_schema.');
         }
 
         try {

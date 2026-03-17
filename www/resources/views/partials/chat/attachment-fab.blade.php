@@ -48,7 +48,7 @@
             title="Attach files">
 
         {{-- Main Icon (spinner when uploading) --}}
-        <i x-show="isUploading" class="fa-solid fa-spinner fa-spin text-white text-base"></i>
+        <x-spinner x-show="isUploading" class="text-white text-base" x-cloak />
         <i x-show="!isUploading" class="fa-solid fa-paperclip text-white text-base"></i>
 
         {{-- Badge --}}
@@ -101,7 +101,7 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <template x-if="file.uploading">
-                                <i class="fa-solid fa-spinner fa-spin text-blue-400"></i>
+                                <x-spinner class="text-blue-400" />
                             </template>
                             <template x-if="!file.uploading && !file.error">
                                 <i class="fa-solid fa-check text-green-400"></i>

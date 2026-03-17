@@ -65,9 +65,16 @@ fi
 
 # Set up home directory with correct ownership (cross-group: appuser:www-data)
 export HOME=/home/appuser
-mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.npm" "$HOME/.composer" 2>/dev/null || true
+mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" "$HOME/.npm" "$HOME/.composer" 2>/dev/null || true
 chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
-chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
+chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
+
+# Fix SSH key permissions for www-data (PHP-FPM) panel access
+# More restrictive than other dirs: 750 for dir, 640 for private keys
+if [ -d "$HOME/.ssh" ]; then
+    chmod 750 "$HOME/.ssh" 2>/dev/null || true
+    find "$HOME/.ssh" -name "id_*" ! -name "*.pub" -exec chmod 640 {} \; 2>/dev/null || true
+fi
 
 # Fix permissions for /pocketdev-source (dogfooding - AI edits PocketDev source)
 # PHP-FPM runs as www-data, so we need group ownership for git operations
@@ -198,6 +205,10 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Set group-writable umask for cross-group ownership model
     # Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable)
     umask 002
+
+    # Increase PHP-FPM worker pool for concurrent SSE streaming connections
+    # Default max_children=5 causes exhaustion with just 5 open conversation tabs
+    sed -i 's/^pm.max_children = .*/pm.max_children = 10/' /usr/local/etc/php-fpm.d/www.conf
 
     # Start PHP-FPM as root - pool workers will be www-data per www.conf
     exec php-fpm

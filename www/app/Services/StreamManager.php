@@ -20,11 +20,19 @@ class StreamManager
     private const TTL_STREAMING = 3600;      // 1 hour for active streams
     private const TTL_COMPLETED = 1800;      // 30 minutes for completed streams (allows reconnection after slow refresh)
 
+    // Instance properties for per-stream logging state (reset in startStream)
+    private ?float $firstEventTime = null;
+    private int $appendEventCount = 0;
+
     /**
      * Start a new stream for a conversation.
      */
     public function startStream(string $conversationUuid, array $metadata = []): void
     {
+        // Reset per-stream logging state
+        $this->firstEventTime = null;
+        $this->appendEventCount = 0;
+
         RequestFlowLogger::log('stream.start', 'Starting stream in Redis', [
             'conversation_uuid' => $conversationUuid,
             'metadata' => $metadata,
@@ -55,6 +63,21 @@ class StreamManager
     {
         $key = $this->key($conversationUuid);
         $json = $event->toJson();
+        $this->appendEventCount++;
+
+        // Log first event and periodically after that
+        if ($this->firstEventTime === null) {
+            $this->firstEventTime = microtime(true);
+            RequestFlowLogger::log('stream.first_event_append', 'First event pushed to Redis', [
+                'event_type' => $event->type,
+            ]);
+        } elseif ($event->type === 'text_delta' && $this->appendEventCount <= 5) {
+            // Log first few text deltas to track when actual content arrives
+            RequestFlowLogger::log('stream.text_delta_append', 'Text delta pushed to Redis', [
+                'event_number' => $this->appendEventCount,
+                'ms_since_first' => round((microtime(true) - $this->firstEventTime) * 1000, 2),
+            ]);
+        }
 
         // Use transaction for list operations to ensure atomicity
         Redis::multi();
@@ -245,23 +268,15 @@ class StreamManager
     /**
      * Set the abort flag for a stream.
      * The job will check this flag and terminate if set.
-     *
-     * @param string $conversationUuid
-     * @param bool $skipSync If true, the job should skip syncing to CLI session files
-     *                       (used when aborting after tool execution completed)
      */
-    public function setAbortFlag(string $conversationUuid, bool $skipSync = false): void
+    public function setAbortFlag(string $conversationUuid): void
     {
         RequestFlowLogger::log('stream.abort_flag_set', 'Setting abort flag', [
             'conversation_uuid' => $conversationUuid,
-            'skip_sync' => $skipSync,
         ]);
 
         $key = $this->key($conversationUuid);
         Redis::set("{$key}:abort", 'true', 'EX', self::TTL_STREAMING);
-        if ($skipSync) {
-            Redis::set("{$key}:abort_skip_sync", 'true', 'EX', self::TTL_STREAMING);
-        }
     }
 
     /**
@@ -273,15 +288,6 @@ class StreamManager
     }
 
     /**
-     * Check if sync should be skipped when aborting.
-     * This is true when abort happened after tool execution completed.
-     */
-    public function shouldSkipSyncOnAbort(string $conversationUuid): bool
-    {
-        return Redis::get($this->key($conversationUuid) . ':abort_skip_sync') === 'true';
-    }
-
-    /**
      * Clear the abort flag for a stream.
      */
     public function clearAbortFlag(string $conversationUuid): void
@@ -290,8 +296,7 @@ class StreamManager
             'conversation_uuid' => $conversationUuid,
         ]);
 
-        $key = $this->key($conversationUuid);
-        Redis::del("{$key}:abort", "{$key}:abort_skip_sync");
+        Redis::del($this->key($conversationUuid) . ':abort');
     }
 
     /**
@@ -300,7 +305,7 @@ class StreamManager
     public function cleanup(string $conversationUuid): void
     {
         $key = $this->key($conversationUuid);
-        Redis::del("{$key}:events", "{$key}:status", "{$key}:metadata", "{$key}:abort", "{$key}:abort_skip_sync");
+        Redis::del("{$key}:events", "{$key}:status", "{$key}:metadata", "{$key}:abort");
     }
 
     /**

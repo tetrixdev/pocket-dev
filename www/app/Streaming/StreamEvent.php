@@ -117,7 +117,9 @@ class StreamEvent
         ?int $cacheCreation = null,
         ?int $cacheRead = null,
         ?float $cost = null,
-        ?int $contextWindowSize = null
+        ?int $contextWindowSize = null,
+        ?int $contextInputTokens = null,
+        ?int $contextOutputTokens = null
     ): self {
         $metadata = array_filter([
             'input_tokens' => $inputTokens,
@@ -128,11 +130,26 @@ class StreamEvent
             'context_window_size' => $contextWindowSize,
         ], fn($v) => $v !== null);
 
-        // Calculate context percentage if we have both tokens and window size
-        // Uses input + output for better estimate (slightly overestimates due to thinking tokens)
-        if ($inputTokens > 0 && $contextWindowSize > 0) {
-            $totalContext = $inputTokens + $outputTokens;
-            $metadata['context_percentage'] = min(100, round(($totalContext / $contextWindowSize) * 100, 1));
+        // Include per-turn context tokens for updateContextUsage whenever provided
+        // CLI providers emit usage BEFORE ProcessConversationStream adds context_window_size,
+        // so we must include these fields regardless of contextWindowSize
+        if ($contextInputTokens !== null) {
+            $metadata['context_input_tokens'] = $contextInputTokens;
+        }
+        if ($contextOutputTokens !== null) {
+            $metadata['context_output_tokens'] = $contextOutputTokens;
+        }
+
+        // Calculate context percentage only if we have window size
+        // For CLI providers with multi-turn tool execution, use context-specific tokens
+        // (representing the LAST turn's usage) instead of cumulative billing totals
+        if ($contextWindowSize > 0) {
+            $contextInput = $contextInputTokens ?? $inputTokens;
+            $contextOutput = $contextOutputTokens ?? $outputTokens;
+            if ($contextInput > 0 || $contextOutput > 0) {
+                $totalContext = $contextInput + $contextOutput;
+                $metadata['context_percentage'] = min(100, round(($totalContext / $contextWindowSize) * 100, 1));
+            }
         }
 
         return new self(self::USAGE, null, null, $metadata);

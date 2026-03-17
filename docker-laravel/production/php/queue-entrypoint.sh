@@ -79,9 +79,16 @@ fi
 
 # Ensure home directory exists and has correct permissions for TARGET_UID
 # Cross-group ownership: appuser:www-data (TARGET_UID:33) with group-writable permissions
-mkdir -p /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
+mkdir -p /home/appuser/.claude /home/appuser/.codex /home/appuser/.docker 2>/dev/null || true
 chown -R "${TARGET_UID}:33" /home/appuser 2>/dev/null || true
-chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex 2>/dev/null || true
+chmod 775 /home/appuser /home/appuser/.claude /home/appuser/.codex /home/appuser/.docker 2>/dev/null || true
+
+# Fix SSH key permissions for www-data (PHP-FPM) panel access
+# More restrictive than other dirs: 750 for dir, 640 for private keys
+if [ -d /home/appuser/.ssh ]; then
+    chmod 750 /home/appuser/.ssh 2>/dev/null || true
+    find /home/appuser/.ssh -name "id_*" ! -name "*.pub" -exec chmod 640 {} \; 2>/dev/null || true
+fi
 
 # Set up default Claude Code permissions.deny to protect .env files
 # This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
@@ -237,7 +244,7 @@ chmod 666 /dev/stdout /dev/stderr 2>/dev/null || true
 # Ensure supervisord log/pid files are writable by TARGET_USER
 # /tmp is a shared volume - files may exist from previous runs with different ownership
 # Guard against symlink traversal (same pattern as /tmp/pocketdev*)
-for f in /tmp/supervisord.log /tmp/supervisord.pid; do
+for f in /tmp/supervisord.log /tmp/supervisord.pid /tmp/supervisor.sock; do
     if [ -L "$f" ]; then
         echo "WARN: $f is a symlink; removing before recreation" >&2
         rm -f "$f" 2>/dev/null || true
@@ -247,8 +254,8 @@ for f in /tmp/supervisord.log /tmp/supervisord.pid; do
 done
 
 # Ensure queue worker log files are writable by TARGET_USER
-# Supervisor creates 10 workers (00-09) with stdout and stderr logs each
-for i in $(seq -f '%02g' 0 9); do
+# Supervisor creates 20 workers (00-19) with stdout and stderr logs each
+for i in $(seq -f '%02g' 0 19); do
     for f in "/tmp/queue-worker-${i}.log" "/tmp/queue-worker-${i}-error.log"; do
         if [ -L "$f" ]; then
             echo "WARN: $f is a symlink; removing before recreation" >&2

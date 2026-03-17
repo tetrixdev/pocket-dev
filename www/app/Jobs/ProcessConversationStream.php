@@ -3,9 +3,9 @@
 namespace App\Jobs;
 
 use App\Contracts\AIProviderInterface;
-use App\Enums\Provider;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Services\Providers\AbstractCliProvider;
 use App\Services\ModelRepository;
 use App\Services\ProviderFactory;
 use App\Services\RequestFlowLogger;
@@ -35,7 +35,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 1800; // 30 minutes max (agentic AI can take a while)
+    public int $timeout = 3600; // 60 minutes max (agentic AI with heavy context can take a while)
     public int $tries = 1;      // Don't retry failed streams
 
     // Note: Redis job reservation timeout is controlled by REDIS_QUEUE_RETRY_AFTER in .env
@@ -245,7 +245,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             throw new \RuntimeException('Maximum tool execution iterations reached (safety limit)');
         }
         // Reload messages
+        $loadMessagesStart = microtime(true);
         $conversation->load('messages');
+        $loadMessagesTime = (microtime(true) - $loadMessagesStart) * 1000;
+        RequestFlowLogger::log('job.loop.messages_loaded', 'Messages loaded from DB', [
+            'duration_ms' => round($loadMessagesTime, 2),
+            'message_count' => $conversation->messages->count(),
+        ]);
 
         // Check for context reminders (interruption, agent change) on first iteration only
         $contextReminders = [];
@@ -261,26 +267,39 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $combinedReminder = !empty($contextReminders) ? implode("\n\n", $contextReminders) : null;
 
         // Build system prompt with tool instructions
-        // CLI providers (Claude Code, Codex) use artisan commands instead of native tools
-        $providerType = $provider->getProviderType();
-        $providerEnum = Provider::tryFrom($providerType);
-        if ($providerEnum?->isCliProvider()) {
-            $systemPrompt = $systemPromptBuilder->buildForCliProvider($conversation, $providerType);
-        } else {
-            $systemPrompt = $systemPromptBuilder->build($conversation, $toolRegistry);
-        }
+        // Uses provider->getSystemPromptType() to determine tool injection strategy
+        $buildPromptStart = microtime(true);
+        $systemPrompt = $systemPromptBuilder->build(
+            $conversation,
+            $toolRegistry,
+            $provider->getSystemPromptType(),
+            $provider->getProviderType()
+        );
+        $buildPromptTime = (microtime(true) - $buildPromptStart) * 1000;
+        RequestFlowLogger::log('job.loop.system_prompt_built', 'System prompt built', [
+            'duration_ms' => round($buildPromptTime, 2),
+            'prompt_length' => strlen($systemPrompt),
+        ]);
 
         // Prepare provider options
+        $getToolDefsStart = microtime(true);
+        $toolDefinitions = $toolRegistry->getDefinitions();
+        $getToolDefsTime = (microtime(true) - $getToolDefsStart) * 1000;
+        RequestFlowLogger::log('job.loop.tool_definitions', 'Tool definitions retrieved', [
+            'duration_ms' => round($getToolDefsTime, 2),
+            'tool_count' => count($toolDefinitions),
+        ]);
+
         $providerOptions = array_merge($options, [
             'system' => $systemPrompt,
-            'tools' => $toolRegistry->getDefinitions(),
+            'tools' => $toolDefinitions,
             'interruption_reminder' => $combinedReminder,
         ]);
 
         // Track state for this turn
         $contentBlocks = [];
         $pendingToolUses = [];
-        $streamedToolResults = []; // Tool results from providers that execute tools internally (Claude Code, Codex)
+        $streamedToolResults = []; // Tool results from providers where executesToolsInternally() is true
         $pendingCompaction = null; // Compaction event to save after assistant message
         $inputTokens = 0;
         $outputTokens = 0;
@@ -289,6 +308,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $turnCost = 0.0;
         $stopReason = null;
         $currentToolInput = [];
+        // For CLI providers with multi-turn tool execution, track per-turn tokens for context tracking
+        // (cumulative tokens above are for billing, context tokens below are for context % calculation)
+        $contextInputTokens = null;
+        $contextOutputTokens = null;
 
         // Get the model for cost calculation
         $aiModel = $modelRepository->findByModelId($conversation->model);
@@ -299,120 +322,56 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             ]);
         }
 
+        // Enable inner-loop abort checking for CLI providers.
+        // This allows the CLI provider's read loop to detect aborts immediately (~100ms)
+        // instead of waiting for the next generator yield.
+        if ($provider instanceof AbstractCliProvider) {
+            $provider->setAbortChecker(fn() => $streamManager->checkAbortFlag($this->conversationUuid));
+        }
+
         // Stream from provider
         RequestFlowLogger::log('job.loop.streaming_start', 'Starting provider stream');
         $eventCount = 0;
+        $firstEventTime = null;
+        $firstTextTime = null;
         foreach ($provider->streamMessage($conversation, $providerOptions) as $event) {
             $eventCount++;
+
+            // Log timing for first event and first text content
+            if ($firstEventTime === null) {
+                $firstEventTime = microtime(true);
+                RequestFlowLogger::log('job.loop.first_event', 'First event received from provider', [
+                    'event_type' => $event->type,
+                ]);
+            }
+            if ($firstTextTime === null && ($event->type === StreamEvent::TEXT_START || $event->type === StreamEvent::TEXT_DELTA)) {
+                $firstTextTime = microtime(true);
+                RequestFlowLogger::log('job.loop.first_text', 'First text content received', [
+                    'event_type' => $event->type,
+                    'ms_since_first_event' => round(($firstTextTime - $firstEventTime) * 1000, 2),
+                ]);
+            }
 
             // Check abort flag BEFORE processing each event
             $isAborted = $streamManager->checkAbortFlag($this->conversationUuid);
             if ($isAborted) {
-                RequestFlowLogger::log('job.loop.abort_detected', 'Abort flag detected', [
+                RequestFlowLogger::log('job.loop.abort_detected', 'Abort flag detected in event loop', [
                     'event_count' => $eventCount,
                 ]);
-                Log::info('ProcessConversationStream: Abort requested', [
-                    'conversation' => $this->conversationUuid,
-                ]);
-
-                // Terminate the provider's stream
-                RequestFlowLogger::log('job.loop.abort_provider', 'Aborting provider stream');
-                $provider->abort();
-
-                try {
-                    // Save partial response - filter out incomplete blocks
-                    // 1. Remove thinking blocks without signatures (required for multi-turn)
-                    // 2. Remove incomplete tool_use blocks (empty input)
-                    $contentBlocks = array_values(array_filter($contentBlocks, function ($block) {
-                        $type = $block['type'] ?? '';
-
-                        // Filter out thinking blocks without signatures
-                        if ($type === 'thinking' && empty($block['signature'])) {
-                            return false;
-                        }
-
-                        // Filter out incomplete tool_use blocks (never received TOOL_USE_STOP)
-                        if ($type === 'tool_use') {
-                            $input = $block['input'] ?? null;
-                            // Check if input is an empty stdClass (has no properties)
-                            if ($input instanceof \stdClass && empty((array) $input)) {
-                                return false;
-                            }
-                        }
-
-                        // Keep all complete blocks
-                        return true;
-                    }));
-
-                    // Add an "interrupted" marker for UI display (filtered out when sent to API)
-                    $contentBlocks[] = [
-                        'type' => 'interrupted',
-                        'reason' => 'user_abort',
-                    ];
-
-                    $assistantMessage = null;
-                    $hasContentBlocks = !empty($contentBlocks);
-                    RequestFlowLogger::logDecision('job.loop.abort_has_content', 'Has content blocks to save', $hasContentBlocks, [
-                        'block_count' => count($contentBlocks),
-                    ]);
-
-                    if ($hasContentBlocks) {
-                        RequestFlowLogger::log('job.loop.abort_saving_message', 'Saving partial assistant message');
-                        $assistantMessage = $this->saveAssistantMessage(
-                            $conversation,
-                            $contentBlocks,
-                            $inputTokens,
-                            $outputTokens,
-                            $cacheCreationTokens,
-                            $cacheReadTokens,
-                            'aborted',
-                            $turnCost > 0 ? $turnCost : null
-                        );
-
-                        // Sync aborted message to provider's native storage (if applicable)
-                        // This allows CLI providers to maintain session continuity on next resume
-                        // BUT skip if the abort happened after tool execution completed
-                        // (in that case, CLI already has complete data)
-                        $shouldSkipSync = $streamManager->shouldSkipSyncOnAbort($this->conversationUuid);
-                        RequestFlowLogger::logDecision('job.loop.abort_skip_sync', 'Should skip sync', $shouldSkipSync);
-
-                        if (!$shouldSkipSync) {
-                            // Use the user message passed from handle() - no query needed
-                            // This avoids ordering issues with the messages() relationship
-                            if ($userMessage && $assistantMessage) {
-                                RequestFlowLogger::log('job.loop.abort_syncing', 'Syncing aborted message to provider');
-                                $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
-                            }
-                        } else {
-                            RequestFlowLogger::log('job.loop.abort_sync_skipped', 'Skipping sync (abort after tool completion)');
-                            Log::info('ProcessConversationStream: Skipping sync (abort after tool completion)', [
-                                'conversation' => $this->conversationUuid,
-                            ]);
-                        }
-                    }
-                } catch (\Throwable $e) {
-                    RequestFlowLogger::logError('job.loop.abort_save_error', 'Error during abort save', $e);
-                    Log::error('ProcessConversationStream: Error during abort save', [
-                        'conversation' => $this->conversationUuid,
-                        'error' => $e->getMessage(),
-                    ]);
-                } finally {
-                    RequestFlowLogger::log('job.loop.abort_finalizing', 'Finalizing abort');
-                    // Calculate turns while still locked (even for aborted streams)
-                    $this->calculateAndStoreTurns($conversation);
-
-                    // Always complete stream and cleanup, even if save failed
-                    $conversation->completeProcessing();
-                    $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
-                    $streamManager->completeStream($this->conversationUuid, 'aborted');
-                    $streamManager->clearAbortFlag($this->conversationUuid);
-
-                    // Dispatch async embedding job
-                    GenerateConversationEmbeddings::dispatch($conversation);
-                    RequestFlowLogger::log('job.loop.abort_complete', 'Abort handling complete');
+                // Signal process to stop immediately (non-blocking — avoids proc_close delay)
+                // Full cleanup (proc_close) happens in handleAbort's finally block via $provider->abort()
+                if ($provider instanceof AbstractCliProvider) {
+                    $provider->signalAbort();
                 }
-
-                return; // Exit the method entirely
+                // Inject partial tool input into content blocks before saving
+                $this->injectPartialToolInput($contentBlocks, $currentToolInput);
+                $this->handleAbort(
+                    $conversation, $provider, $streamManager, $contentBlocks,
+                    $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
+                    $turnCost, $userMessage, $contextInputTokens, $contextOutputTokens,
+                    $streamedToolResults,
+                );
+                return;
             }
 
             // For usage events, calculate cost and emit enriched event
@@ -421,6 +380,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 $outputTokens = $event->metadata['output_tokens'] ?? $outputTokens;
                 $cacheCreationTokens = $event->metadata['cache_creation_tokens'] ?? $cacheCreationTokens;
                 $cacheReadTokens = $event->metadata['cache_read_tokens'] ?? $cacheReadTokens;
+
+                // Extract context-specific tokens if provided (for CLI providers with multi-turn)
+                // These represent the LAST turn's usage for context percentage calculation
+                // Use same preserve-previous pattern as billing tokens for consistency
+                $contextInputTokens = $event->metadata['context_input_tokens'] ?? $contextInputTokens;
+                $contextOutputTokens = $event->metadata['context_output_tokens'] ?? $contextOutputTokens;
 
                 // Calculate cost using model pricing
                 $cost = null;
@@ -436,13 +401,16 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 }
 
                 // Emit enriched usage event with cost and context info
+                // Pass context-specific tokens if available for accurate percentage calculation
                 $enrichedEvent = StreamEvent::usage(
                     $inputTokens,
                     $outputTokens,
                     $cacheCreationTokens,
                     $cacheReadTokens,
                     $cost,
-                    $conversation->context_window_size
+                    $conversation->context_window_size,
+                    $contextInputTokens,
+                    $contextOutputTokens
                 );
                 $streamManager->appendEvent($this->conversationUuid, $enrichedEvent);
                 continue;
@@ -597,6 +565,20 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             'content_blocks' => count($contentBlocks),
         ]);
 
+        // Post-stream abort check: handles the case where the CLI provider's inner loop
+        // detected the abort and returned early from the generator.
+        if ($streamManager->checkAbortFlag($this->conversationUuid)) {
+            RequestFlowLogger::log('job.loop.abort_detected', 'Abort flag detected after stream completed');
+            $this->injectPartialToolInput($contentBlocks, $currentToolInput);
+            $this->handleAbort(
+                $conversation, $provider, $streamManager, $contentBlocks,
+                $inputTokens, $outputTokens, $cacheCreationTokens, $cacheReadTokens,
+                $turnCost, $userMessage, $contextInputTokens, $contextOutputTokens,
+                $streamedToolResults,
+            );
+            return;
+        }
+
         // Reindex content blocks
         $contentBlocks = array_values($contentBlocks);
 
@@ -639,7 +621,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $cacheCreationTokens,
             $cacheReadTokens,
             $stopReason,
-            $turnCost > 0 ? $turnCost : null
+            $turnCost > 0 ? $turnCost : null,
+            $contextInputTokens,
+            $contextOutputTokens
         );
 
         // Handle tool execution
@@ -732,7 +716,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ?int $cacheCreationTokens,
         ?int $cacheReadTokens,
         ?string $stopReason,
-        ?float $cost = null
+        ?float $cost = null,
+        ?int $contextInputTokens = null,
+        ?int $contextOutputTokens = null
     ): Message {
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -751,11 +737,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         $conversation->addTokenUsage($inputTokens, $outputTokens);
 
         // Update context window tracking
-        // Context estimate = input_tokens + output_tokens
-        // This slightly overestimates because thinking tokens (in output) are stripped
-        // from previous turns. But overestimating is safer than underestimating.
-        if ($inputTokens > 0) {
-            $conversation->updateContextUsage($inputTokens, $outputTokens);
+        // Use context-specific tokens if provided (for CLI providers with multi-turn),
+        // otherwise fall back to billing tokens (correct for API providers)
+        $ctxInput = $contextInputTokens ?? $inputTokens;
+        $ctxOutput = $contextOutputTokens ?? $outputTokens;
+        if ($ctxInput > 0) {
+            $conversation->updateContextUsage($ctxInput, $ctxOutput);
 
             // Ensure context_window_size is set (for existing conversations that don't have it)
             if (!$conversation->context_window_size) {
@@ -828,6 +815,200 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         }
 
         return $results;
+    }
+
+    /**
+     * Inject accumulated partial tool input into content blocks before abort save.
+     *
+     * During streaming, tool_use input JSON accumulates in $currentToolInput as
+     * a raw string, and only gets parsed into $contentBlocks on TOOL_USE_STOP.
+     * On abort, TOOL_USE_STOP never fires, so the content block has empty input.
+     * This method saves the partial raw string so the UI can display what was
+     * attempted before the interruption.
+     */
+    private function injectPartialToolInput(array &$contentBlocks, array $currentToolInput): void
+    {
+        foreach ($contentBlocks as $blockIndex => &$block) {
+            if (($block['type'] ?? '') !== 'tool_use') {
+                continue;
+            }
+
+            // Only inject if the block has empty/null input (TOOL_USE_STOP never fired)
+            $input = $block['input'] ?? null;
+            $isEmpty = $input === null || ($input instanceof \stdClass && empty((array) $input));
+            if (!$isEmpty) {
+                continue;
+            }
+
+            // Check if we have accumulated partial input for this block
+            if (!isset($currentToolInput[$blockIndex]) || $currentToolInput[$blockIndex] === '') {
+                continue;
+            }
+
+            $partialJson = $currentToolInput[$blockIndex];
+
+            // Try to parse it — it might actually be valid JSON if the stream was
+            // interrupted right after the last delta but before TOOL_USE_STOP
+            $parsed = json_decode($partialJson, true);
+            if ($parsed !== null && json_last_error() === JSON_ERROR_NONE) {
+                // Valid JSON — use it as the real input
+                $block['input'] = $parsed;
+            } else {
+                // Incomplete JSON — store as partial_input for display purposes
+                $block['partial_input'] = $partialJson;
+            }
+        }
+        unset($block);
+    }
+
+    /**
+     * Handle an abort: save partial content, sync to provider, clean up.
+     *
+     * Called both from the in-loop abort check and the post-loop abort check.
+     * Determines whether to sync to the CLI session based on content analysis
+     * (skips sync if complete tool_use blocks exist without results, since the
+     * CLI session may already have that data).
+     */
+    private function handleAbort(
+        Conversation $conversation,
+        AIProviderInterface $provider,
+        StreamManager $streamManager,
+        array $contentBlocks,
+        int $inputTokens,
+        int $outputTokens,
+        ?int $cacheCreationTokens,
+        ?int $cacheReadTokens,
+        float $turnCost,
+        ?Message $userMessage,
+        ?int $contextInputTokens,
+        ?int $contextOutputTokens,
+        array $streamedToolResults = [],
+    ): void {
+        Log::info('ProcessConversationStream: Abort requested', [
+            'conversation' => $this->conversationUuid,
+        ]);
+
+        // Build set of tool IDs that received results (completed before abort)
+        $completedToolIds = [];
+        foreach ($streamedToolResults as $result) {
+            if (!empty($result['tool_use_id'])) {
+                $completedToolIds[$result['tool_use_id']] = true;
+            }
+        }
+
+        try {
+            // Save partial response - filter out unsaveable blocks, mark interrupted ones
+            // 1. Remove thinking blocks without signatures (required for multi-turn)
+            // 2. Mark tool_use blocks as interrupted ONLY if they didn't get a tool_result
+            $contentBlocks = array_values(array_filter(array_map(function ($block) use ($completedToolIds) {
+                $type = $block['type'] ?? '';
+
+                // Filter out thinking blocks without signatures
+                if ($type === 'thinking' && empty($block['signature'])) {
+                    return null;
+                }
+
+                // Only mark tool_use blocks as interrupted if they didn't complete
+                // (no corresponding tool_result received before the abort)
+                if ($type === 'tool_use') {
+                    $toolId = $block['id'] ?? null;
+                    if (!$toolId || !isset($completedToolIds[$toolId])) {
+                        $block['interrupted'] = true;
+                    }
+                }
+
+                return $block;
+            }, $contentBlocks), fn($block) => $block !== null));
+
+            // Add an "interrupted" marker for UI display (filtered out when sent to API)
+            $contentBlocks[] = [
+                'type' => 'interrupted',
+                'reason' => 'user_abort',
+            ];
+
+            $assistantMessage = null;
+            $hasContentBlocks = !empty($contentBlocks);
+            RequestFlowLogger::logDecision('job.loop.abort_has_content', 'Has content blocks to save', $hasContentBlocks, [
+                'block_count' => count($contentBlocks),
+            ]);
+
+            if ($hasContentBlocks) {
+                RequestFlowLogger::log('job.loop.abort_saving_message', 'Saving partial assistant message');
+                $assistantMessage = $this->saveAssistantMessage(
+                    $conversation,
+                    $contentBlocks,
+                    $inputTokens,
+                    $outputTokens,
+                    $cacheCreationTokens,
+                    $cacheReadTokens,
+                    'aborted',
+                    $turnCost > 0 ? $turnCost : null,
+                    $contextInputTokens,
+                    $contextOutputTokens
+                );
+
+                // Determine whether to sync to CLI session based on content analysis.
+                // Skip sync if we have tool_use blocks with fully parsed input.
+                // buildAssistantSessionEntry filters out all tool_use blocks anyway (only
+                // text and signed thinking blocks are safe to sync), so syncing here would
+                // just trigger unnecessary file I/O with no useful content.
+                $hasCompleteToolUseBlocks = false;
+                foreach ($contentBlocks as $block) {
+                    if (($block['type'] ?? '') === 'tool_use') {
+                        $input = $block['input'] ?? null;
+                        $hasPartial = !empty($block['partial_input']);
+                        $isComplete = !$hasPartial && $input !== null && !($input instanceof \stdClass && empty((array) $input));
+                        if ($isComplete) {
+                            $hasCompleteToolUseBlocks = true;
+                            break;
+                        }
+                    }
+                }
+                $shouldSkipSync = $hasCompleteToolUseBlocks;
+                RequestFlowLogger::logDecision('job.loop.abort_skip_sync', 'Should skip sync', $shouldSkipSync, [
+                    'has_complete_tool_use_blocks' => $hasCompleteToolUseBlocks,
+                ]);
+
+                if (!$shouldSkipSync) {
+                    if ($userMessage && $assistantMessage) {
+                        RequestFlowLogger::log('job.loop.abort_syncing', 'Syncing aborted message to provider');
+                        $provider->syncAbortedMessage($conversation, $userMessage, $assistantMessage);
+                    }
+                } else {
+                    RequestFlowLogger::log('job.loop.abort_sync_skipped', 'Skipping sync (complete tool_use blocks present)');
+                    Log::info('ProcessConversationStream: Skipping sync (complete tool_use blocks present in aborted content)', [
+                        'conversation' => $this->conversationUuid,
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            RequestFlowLogger::logError('job.loop.abort_save_error', 'Error during abort save', $e);
+            Log::error('ProcessConversationStream: Error during abort save', [
+                'conversation' => $this->conversationUuid,
+                'error' => $e->getMessage(),
+            ]);
+        } finally {
+            RequestFlowLogger::log('job.loop.abort_finalizing', 'Finalizing abort');
+
+            // Calculate turns while still locked (even for aborted streams)
+            $this->calculateAndStoreTurns($conversation);
+
+            // Complete stream and cleanup FIRST, so the frontend sees the abort immediately.
+            // This must happen before $provider->abort() which may block on proc_close().
+            $conversation->completeProcessing();
+            $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
+            $streamManager->completeStream($this->conversationUuid, 'aborted');
+            $streamManager->clearAbortFlag($this->conversationUuid);
+
+            // Dispatch async embedding job
+            GenerateConversationEmbeddings::dispatch($conversation);
+            RequestFlowLogger::log('job.loop.abort_complete', 'Abort handling complete');
+
+            // Final cleanup: kill process group and close the process resource.
+            // This may block briefly on proc_close() but the stream is already marked
+            // as complete above, so the frontend won't be waiting.
+            $provider->abort();
+        }
     }
 
     /**

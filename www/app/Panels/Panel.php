@@ -11,9 +11,29 @@ abstract class Panel
     public string $name;
     public string $description = '';
     public string $icon = 'fa-solid fa-table-columns';  // FontAwesome icon
+    public string $category = 'other';  // Category for grouping in UI (default catch-all, always sorted last)
 
     // Parameter schema for validation/documentation
     public array $parameters = [];
+
+    // Additional CDN dependencies to load for this panel (full dep objects).
+    // Base dependencies (Tailwind, Alpine, Font Awesome) are always loaded from config.
+    // Example: [['type' => 'script', 'url' => 'https://cdn.example.com/lib.js', 'defer' => true]]
+    public array $panelDependencies = [];
+
+    // Workspace context set by PanelController before render/action/peek calls.
+    // Panels that need workspace-scoped data (e.g., credentials) can read this property.
+    protected ?string $workspaceId = null;
+
+    /**
+     * Set the workspace context for this panel instance.
+     */
+    public function setWorkspaceId(?string $workspaceId): static
+    {
+        $this->workspaceId = $workspaceId;
+
+        return $this;
+    }
 
     /**
      * Render the panel HTML.
@@ -88,6 +108,7 @@ abstract class Panel
             'description' => $this->description,
             'icon' => $this->icon,
             'parameters' => $this->parameters,
+            'category' => $this->category,
             'is_system' => true,
         ];
     }

@@ -49,9 +49,16 @@ if [ -z "$TARGET_USER" ]; then
 fi
 
 # Ensure CLI config directories exist and are owned by TARGET_UID:www-data
-mkdir -p "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
+mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
 chown -R "${TARGET_UID}:33" "$HOME" 2>/dev/null || true
-chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" 2>/dev/null || true
+chmod 775 "$HOME" "$HOME/.claude" "$HOME/.codex" "$HOME/.docker" 2>/dev/null || true
+
+# Fix SSH key permissions for www-data (PHP-FPM) panel access
+# More restrictive than other dirs: 750 for dir, 640 for private keys
+if [ -d "$HOME/.ssh" ]; then
+    chmod 750 "$HOME/.ssh" 2>/dev/null || true
+    find "$HOME/.ssh" -name "id_*" ! -name "*.pub" -exec chmod 640 {} \; 2>/dev/null || true
+fi
 
 # =============================================================================
 # DOCKER SOCKET ACCESS
@@ -197,6 +204,10 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     umask 002
 
     echo "Starting PHP-FPM (master as root, workers as www-data)..."
+
+    # Increase PHP-FPM worker pool for concurrent SSE streaming connections
+    # Default max_children=5 causes exhaustion with just 5 open conversation tabs
+    sed -i 's/^pm.max_children = .*/pm.max_children = 10/' /usr/local/etc/php-fpm.d/www.conf
 
     # Start PHP-FPM as root - pool workers will be www-data per www.conf
     exec php-fpm

@@ -70,16 +70,19 @@
                         // Listen for browser back button
                         const store = this;
                         this._popstateHandler = (event) => {
-                            if (window.debugLog) debugLog('popstate event', {
+                            // Ignore if no previews are open
+                            if (!store.isOpen) return;
+
+                            if (window.debugLog) debugLog('popstate event (filePreview)', {
                                 state: event.state,
                                 isOpen: store.isOpen,
                                 stackDepth: store.stack.length
                             });
-                            // Close preview if open (any back navigation while modal is open should close it)
-                            if (store.isOpen) {
-                                if (window.debugLog) debugLog('popstate: closing preview via back button');
-                                store._closeStack();
-                            }
+
+                            // Close preview when navigating back (regardless of state content)
+                            // The popstate event itself signals "go back"
+                            if (window.debugLog) debugLog('popstate: closing preview via back button');
+                            store._closeStack();
                         };
                         window.addEventListener('popstate', this._popstateHandler);
                     },
@@ -375,7 +378,53 @@
             // Global helper for opening file preview
             window.openFilePreview = (path) => Alpine.store('filePreview').open(path);
 
-            // Note: filePreview.init() is auto-called by Alpine when the store is registered
+            // Initialize filePreview store (sets up popstate listener for back button support)
+            // Note: Alpine only auto-calls init() for components (x-data), not stores
+            Alpine.store('filePreview').init();
+
+            // Simple modal back button support
+            // Pushes ONE history entry when first modal opens, closes ALL modals on back
+            Alpine.store('modalBackButton', {
+                count: 0,
+                _initialized: false,
+                _handledBackNavigation: false,  // Flag to prevent chatApp from also handling
+
+                init() {
+                    if (this._initialized) return;
+                    this._initialized = true;
+
+                    window.addEventListener('popstate', (event) => {
+                        // Only handle if we have modals open and this isn't another store's state
+                        if (this.count > 0 && !event.state?.filePreview) {
+                            // Set flag so chatApp popstate handler knows we handled this
+                            this._handledBackNavigation = true;
+                            // Back button pressed - close all modals
+                            window.dispatchEvent(new CustomEvent('close-all-modals'));
+                            this.count = 0;
+                        }
+                    });
+                },
+
+                opened() {
+                    const wasZero = this.count === 0;
+                    this.count++;
+                    if (wasZero) {
+                        // First modal - push one history entry as buffer
+                        history.pushState({ modalOpen: true }, '');
+                    }
+                },
+
+                closed() {
+                    if (this.count > 0) {
+                        this.count--;
+                        if (this.count === 0 && history.state?.modalOpen) {
+                            // Last modal closed via UI - clean up history entry
+                            history.back();
+                        }
+                    }
+                }
+            });
+            Alpine.store('modalBackButton').init();
 
             // File attachments store for managing uploaded files in chat
             Alpine.store('attachments', {
@@ -677,26 +726,21 @@
         }
 
         /* Custom horizontal scrollbar for screen tabs - dark theme */
-        #screen-tabs::-webkit-scrollbar,
-        #screen-tabs-mobile::-webkit-scrollbar {
+        #screen-tabs::-webkit-scrollbar {
             height: 6px;
         }
-        #screen-tabs::-webkit-scrollbar-track,
-        #screen-tabs-mobile::-webkit-scrollbar-track {
+        #screen-tabs::-webkit-scrollbar-track {
             background: transparent;
         }
-        #screen-tabs::-webkit-scrollbar-thumb,
-        #screen-tabs-mobile::-webkit-scrollbar-thumb {
+        #screen-tabs::-webkit-scrollbar-thumb {
             background: #4b5563;
             border-radius: 3px;
         }
-        #screen-tabs::-webkit-scrollbar-thumb:hover,
-        #screen-tabs-mobile::-webkit-scrollbar-thumb:hover {
+        #screen-tabs::-webkit-scrollbar-thumb:hover {
             background: #6b7280;
         }
         /* Firefox */
-        #screen-tabs,
-        #screen-tabs-mobile {
+        #screen-tabs {
             scrollbar-width: thin;
             scrollbar-color: #4b5563 transparent;
         }
@@ -732,23 +776,18 @@
             @include('partials.chat.mobile-layout')
         </div>
 
-        {{-- Mobile Screen Tabs (hidden on desktop) --}}
-        <div class="md:hidden">
-            @include('partials.chat.screen-tabs-mobile')
-        </div>
-
         {{-- Main Content Area --}}
         <div class="flex-1 flex flex-col min-h-0">
 
             {{-- Desktop Header (hidden on mobile) - fixed at top to match fixed #messages --}}
             <div class="hidden md:flex md:fixed md:top-0 md:left-64 md:right-0 md:z-10 bg-gray-800 border-b border-gray-700 p-2 items-center justify-between">
                 <div class="flex items-center gap-3 pl-2">
-                    <button @click="openRenameModal()"
-                            :disabled="!currentConversationUuid"
+                    <button @click="openSessionEditModal()"
+                            :disabled="!currentSession"
                             class="text-base font-semibold hover:text-blue-400 transition-colors max-w-[50ch] truncate disabled:cursor-default disabled:hover:text-white"
-                            :class="{ 'cursor-pointer': currentConversationUuid }"
-                            :title="currentConversationUuid ? 'Click to rename' : ''"
-                            x-text="currentConversationTitle || 'New Conversation'">
+                            :class="{ 'cursor-pointer': currentSession }"
+                            :title="currentSession ? 'Click to edit session' : ''"
+                            x-text="currentSession?.name || 'New Session'">
                     </button>
                     <button @click="showAgentSelector = true"
                             class="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 cursor-pointer"
@@ -767,7 +806,15 @@
                           class="inline-flex items-center justify-center w-4 h-4 rounded-sm cursor-help"
                           :class="getStatusColorClass(currentConversationStatus)"
                           :title="'Status: ' + currentConversationStatus">
-                        <i class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
+                        {{-- Processing: SVG spinner --}}
+                        <svg x-show="currentConversationStatus === 'processing'" x-cloak
+                             class="animate-spin text-white" style="width: 10px; height: 10px;"
+                             viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                        </svg>
+                        {{-- Other statuses: FA icons --}}
+                        <i x-show="currentConversationStatus !== 'processing'" class="text-white text-[10px]" :class="getStatusIconClass(currentConversationStatus)"></i>
                     </span>
                     {{-- Context window progress bar --}}
                     <x-chat.context-progress />
@@ -811,14 +858,6 @@
                             </a>
                             {{-- Session Section Header --}}
                             <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
-                            {{-- Rename Session --}}
-                            <button @click="openRenameSessionModal(); showConversationMenu = false"
-                                    :disabled="!currentSession"
-                                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600 cursor-pointer'"
-                                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
-                                <i class="fa-solid fa-pen w-4 text-center"></i>
-                                Rename session
-                            </button>
                             {{-- Archive/Restore Session --}}
                             <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
                                     :disabled="!currentSession"
@@ -865,8 +904,8 @@
                 </div>
             </div>
 
-            {{-- Screen Tabs (Desktop only) - fixed below header --}}
-            <div class="hidden md:block md:fixed md:top-[57px] md:left-64 md:right-0 md:z-10">
+            {{-- Screen Tabs - Unified responsive tabs, fixed below header --}}
+            <div class="fixed top-[57px] left-0 right-0 md:left-64 z-10">
                 @include('partials.chat.screen-tabs')
             </div>
 
@@ -886,11 +925,12 @@
                  class="relative md:flex-1 md:flex md:flex-col md:min-h-0">
 
                 {{-- Drop Overlay (Desktop only) - fixed position matching #messages --}}
-                {{-- Top offset: header (57px) + tabs (38px when visible) --}}
+                {{-- TODO: Extract magic numbers (108px, 110px, 57px) to computed properties.
+                     These are: header (57px) + tabs height (51px desktop / 53px mobile) --}}
                 <div x-cloak
                      class="fixed left-64 right-0 bg-blue-500/20 items-center justify-center z-10 pointer-events-none rounded-lg hidden"
                      :class="isDragging ? 'md:flex' : 'md:hidden'"
-                     :style="{ top: currentSession ? '95px' : '57px', bottom: desktopInputHeight + 'px' }">
+                     :style="{ top: currentSession ? '108px' : '57px', bottom: desktopInputHeight + 'px' }">
                     <div class="bg-gray-800 rounded-lg p-6 text-center shadow-xl border-2 border-dashed border-blue-400">
                         <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-400 mb-2"></i>
                         <p class="text-gray-200 font-medium">Drop files to attach</p>
@@ -908,7 +948,7 @@
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
                          class="fixed left-0 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         :style="{ top: (currentSession ? '105px' : '57px'), bottom: mobileInputHeight + 'px' }">
+                         :style="{ top: (currentSession ? '110px' : '57px'), bottom: mobileInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -931,7 +971,7 @@
                          x-transition:leave-start="opacity-100"
                          x-transition:leave-end="opacity-0"
                          class="fixed left-64 right-0 z-20 bg-gray-900/90 flex items-center justify-center backdrop-blur-sm"
-                         :style="{ top: currentSession ? '95px' : '57px', bottom: desktopInputHeight + 'px' }">
+                         :style="{ top: currentSession ? '108px' : '57px', bottom: desktopInputHeight + 'px' }">
                         <div class="flex flex-col items-center gap-3">
                             <svg class="w-8 h-8 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -950,7 +990,7 @@
                             md:left-64 md:pt-4 md:pb-4"
                      :class="[isDragging ? 'ring-2 ring-blue-500 ring-inset' : '', isSwiping ? 'swipe-active' : '']"
                      :style="{
-                         top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'),
+                         top: (currentSession ? (windowWidth >= 768 ? '108px' : '110px') : '57px'),
                          bottom: (windowWidth >= 768 ? desktopInputHeight : mobileInputHeight) + 'px',
                          transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
                          transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
@@ -996,7 +1036,7 @@
                         md:left-64"
                  :class="isSwiping ? 'swipe-active' : ''"
                  :style="{
-                     top: (currentSession ? (windowWidth >= 768 ? '95px' : '105px') : '57px'),
+                     top: (currentSession ? (windowWidth >= 768 ? '108px' : '110px') : '57px'),
                      bottom: '0px',
                      transform: isSwiping ? 'translateX(' + swipeDeltaX + 'px)' : 'translateX(0)',
                      transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
@@ -1034,14 +1074,14 @@
                         x-ref="iframeA"
                         x-show="activeIframeBuffer === 'A'"
                         class="w-full h-full border-0 bg-transparent"
-                        sandbox="allow-scripts allow-same-origin allow-forms"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
                         referrerpolicy="no-referrer"
                         title="Panel content"></iframe>
                 <iframe id="panel-content-container-b"
                         x-ref="iframeB"
                         x-show="activeIframeBuffer === 'B'"
                         class="w-full h-full border-0 bg-transparent"
-                        sandbox="allow-scripts allow-same-origin allow-forms"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
                         referrerpolicy="no-referrer"
                         title="Panel content"></iframe>
             </div>
@@ -1115,10 +1155,20 @@
                 currentConversationStatus: null, // Current conversation status (idle, processing, archived, failed)
                 showConversationMenu: false, // Dropdown menu visibility
                 conversationProvider: null, // Provider of current conversation (for mid-convo agent switch)
-                isStreaming: false,
-                _justCompletedStream: false,
-                _wasStreamingBeforeHidden: false, // True if we were streaming when tab went to background
-                _isReplaying: false, // True during page refresh stream replay (prevents duplicate screen refreshes)
+
+                // Stream state proxies (Sprint 3: delegate to _streamStore)
+                get isStreaming() { return this._streamStore?.isStreaming ?? false; },
+                set isStreaming(val) { if (this._streamStore) this._streamStore.isStreaming = val; },
+                get _streamState() { return this._streamStore?._streamState ?? {}; },
+                set _streamState(val) { if (this._streamStore) this._streamStore._streamState = val; },
+                get _isReplaying() { return this._streamStore?._isReplaying ?? false; },
+                set _isReplaying(val) { if (this._streamStore) this._streamStore._isReplaying = val; },
+                get _wasStreamingBeforeHidden() { return this._streamStore?._wasStreamingBeforeHidden ?? false; },
+                set _wasStreamingBeforeHidden(val) { if (this._streamStore) this._streamStore._wasStreamingBeforeHidden = val; },
+                get _justCompletedStream() { return this._streamStore?._justCompletedStream ?? false; },
+                set _justCompletedStream(val) { if (this._streamStore) this._streamStore._justCompletedStream = val; },
+                get lastEventIndex() { return this._streamStore?.lastEventIndex ?? 0; },
+                set lastEventIndex(val) { if (this._streamStore) this._streamStore.lastEventIndex = val; },
                 autoScrollEnabled: true, // Auto-scroll during streaming; disabled when user scrolls up manually
                 isAtBottom: true, // Track if user is at bottom of messages
                 ignoreScrollEvents: false, // Ignore scroll events during conversation loading
@@ -1181,6 +1231,26 @@
                     return this.sessions.filter(s =>
                         (s.name || '').toLowerCase().includes(query)
                     );
+                },
+
+                // Computed: panels grouped by category for dropdown display
+                // Categories are sorted alphabetically, with 'other' always last
+                get panelsByCategory() {
+                    const groups = {};
+
+                    this.availablePanels.forEach(panel => {
+                        const cat = panel.category || 'other';
+                        if (!groups[cat]) groups[cat] = { category: cat, panels: [] };
+                        groups[cat].panels.push(panel);
+                    });
+
+                    return Object.values(groups).sort((a, b) => {
+                        // 'other' always goes last
+                        if (a.category === 'other' && b.category !== 'other') return 1;
+                        if (b.category === 'other' && a.category !== 'other') return -1;
+                        // Otherwise alphabetical
+                        return a.category.localeCompare(b.category);
+                    });
                 },
 
                 // Computed: visible screen order (excludes screens with archived conversations)
@@ -1247,7 +1317,6 @@
                 showErrorModal: false,
                 showSearchModal: false,
                 showRenameModal: false,
-                showRenameSessionModal: false,
                 showSystemPromptPreview: false,
 
                 // Conversation title (rename)
@@ -1256,9 +1325,12 @@
                 renameTabLabel: '',
                 renameSaving: false,
 
-                // Session name (rename)
-                renameSessionName: '',
-                renameSessionSaving: false,
+                // Session edit modal (combined session name + chat labels)
+                showSessionEditModal: false,
+                sessionEditName: '',
+                sessionEditChats: [],  // Array of {screenId, chatNumber, label}
+                sessionEditSaving: false,
+
                 _systemPromptPreviewNonce: 0,
                 systemPromptPreview: {
                     loading: false,
@@ -1278,6 +1350,8 @@
                 workspacesLoading: false,
                 currentWorkspace: null,
                 currentWorkspaceId: null,
+                _workspaceSwitchVersion: 0,        // Guards against stale async operations on rapid switch
+                _lastSessionIdFromWorkspace: null, // Last session ID returned from workspace API (for init)
 
                 // Conversation search
                 showSearchInput: false,
@@ -1346,34 +1420,9 @@
                 anthropicKeyInput: '',
                 anthropicKeyConfigured: false,
 
-                // Stream reconnection state
-                lastEventIndex: 0,
-                lastEventId: null,  // Unique event ID for verification
-                streamAbortController: null,
-                _streamConnectNonce: 0,
-                _streamRetryTimeoutId: null,
-                // Connection health tracking (dead man's switch)
-                _lastKeepaliveAt: null,      // Timestamp of last keepalive received
-                _connectionHealthy: true,     // False if no keepalive for >45s
-                _keepaliveCheckInterval: null, // Interval ID for health check timer
-                // Stream phase tracking (for "processing context" indicator)
-                _streamPhase: 'idle',          // 'idle' | 'waiting' | 'tool_executing' | 'streaming'
-                _phaseChangedAt: null,         // Timestamp when phase last changed
-                _pendingResponseWarning: false, // True when waiting >15s without streaming
-                _streamState: {
-                    // Maps block_index -> message array index (for interleaved thinking support)
-                    thinkingBlocks: {},        // { blockIndex: { msgIndex, content, complete } }
-                    currentThinkingBlock: -1,  // Latest thinking block_index (for abort)
-                    textMsgIndex: -1,
-                    toolMsgIndex: -1,
-                    textContent: '',
-                    toolInput: '',
-                    turnCost: 0,
-                    toolInProgress: false,        // True while streaming tool parameters
-                    waitingForToolResults: new Set(), // Tool IDs waiting for execution results
-                    abortPending: false,
-                    abortSkipSync: false,         // If true, backend should skip syncing to CLI session
-                },
+                // === Store References (Sprint 3: Frontend Extraction) ===
+                _messageStore: null,
+                _streamStore: null,
 
                 async init() {
                     // Guard against double initialization
@@ -1383,6 +1432,94 @@
                     }
                     this._initDone = true;
                     this.debugLog('init() started');
+
+                    // === Initialize Stores (Sprint 3: Frontend Extraction) ===
+                    const self = this;
+
+                    // Create message store
+                    this._messageStore = window.createMessageStore({
+                        getCurrentModel: () => this.model,
+                        getCurrentAgent: () => this.currentAgent,
+                    });
+                    // Sync messages array reference for Blade template compatibility
+                    this.messages = this._messageStore.messages;
+
+                    // Create stream store with callbacks
+                    this._streamStore = window.createStreamStore({
+                        getConversationUuid: () => this.currentConversationUuid,
+                        getMessages: () => this.messages,
+                        messageStore: this._messageStore,
+                        scrollToBottom: () => this.scrollToBottom(),
+                        refreshSessionScreens: () => this.refreshSessionScreens(),
+                        dispatch: (event) => this.$dispatch(event),
+                        showError: (msg) => this.showError(msg),
+                        debugLog: (msg, data) => this.debugLog(msg, data),
+                        onStreamStart: () => {
+                            this.currentConversationStatus = 'processing';
+                        },
+                        onStreamEnd: (status) => {
+                            this.currentConversationStatus = status === 'failed' ? 'failed' : 'idle';
+                        },
+                        onAbortCleanup: (state) => {
+                            // Clean up in-progress streaming messages on abort
+                            const incompleteThinkingIndices = [];
+                            for (const blockIdx in state.thinkingBlocks) {
+                                const block = state.thinkingBlocks[blockIdx];
+                                if (block && !block.complete && block.msgIndex >= 0 && block.msgIndex < this.messages.length) {
+                                    incompleteThinkingIndices.push(block.msgIndex);
+                                }
+                            }
+                            incompleteThinkingIndices.sort((a, b) => b - a);
+                            for (const idx of incompleteThinkingIndices) {
+                                this.messages.splice(idx, 1);
+                                if (state.textMsgIndex > idx) state.textMsgIndex--;
+                                if (state.toolMsgIndex > idx) state.toolMsgIndex--;
+                            }
+                            // Remove empty text blocks
+                            if (state.textMsgIndex >= 0 && state.textMsgIndex < this.messages.length) {
+                                const textMsg = this.messages[state.textMsgIndex];
+                                if (!textMsg.content || textMsg.content.trim() === '') {
+                                    this.messages.splice(state.textMsgIndex, 1);
+                                }
+                            }
+                            // Mark any in-progress tool blocks as interrupted
+                            // so the amber/warning styling shows immediately (matches DB-loaded view)
+                            for (const msg of this.messages) {
+                                if (msg.role === 'tool' && state.waitingForToolResults.has(msg.toolId)) {
+                                    msg.toolInterrupted = true;
+                                    msg.collapsed = false; // Show expanded so user sees what was attempted
+                                    // Set toolPartialInput for tools still mid-streaming (before tool_use_stop)
+                                    // so they render via Case 2 (pre with wrapping) matching the DB-loaded view.
+                                    // Only when toolInProgress — tools that completed tool_use_stop have valid
+                                    // JSON in toolInput and should keep using formatToolContent (Case 3).
+                                    if (state.toolInProgress && msg.toolInput && typeof msg.toolInput === 'string') {
+                                        msg.toolPartialInput = msg.toolInput;
+                                    }
+                                }
+                            }
+                            // Add interrupted marker
+                            this.messages.push({
+                                id: 'msg-' + Date.now() + '-interrupted',
+                                role: 'interrupted',
+                                content: 'Response interrupted',
+                                timestamp: new Date().toISOString(),
+                            });
+                            this.scrollToBottom();
+                        },
+                        getModel: () => this.model,
+                        getCurrentAgent: () => this.currentAgent,
+                        updateContext: (data) => {
+                            if (data.contextWindowSize) this.contextWindowSize = data.contextWindowSize;
+                            if (data.contextPercentage !== undefined) {
+                                this.contextPercentage = data.contextPercentage;
+                                this.lastContextTokens = data.lastContextTokens || 0;
+                                this.updateContextWarningLevel();
+                            }
+                        },
+                        showClaudeCodeAuthModal: () => {
+                            this.showClaudeCodeAuthModal = true;
+                        },
+                    });
 
                     // Fetch pricing from database
                     await this.fetchPricing();
@@ -1491,11 +1628,45 @@
                     // Check URL for session ID and load if present
                     const urlSessionId = this.getSessionIdFromUrl();
                     if (urlSessionId) {
+                        // Ensure history state is set on page load/refresh
+                        // (browsers don't persist history.state across refreshes)
+                        if (!history.state?.sessionId) {
+                            history.replaceState({ sessionId: urlSessionId }, '', location.href);
+                        }
+
                         await this.loadSession(urlSessionId);
 
                         // Scroll to bottom if returning from settings
                         if (returningFromSettings) {
                             this.$nextTick(() => this.scrollToBottom());
+                        }
+                    } else if (this._lastSessionIdFromWorkspace) {
+                        // No URL session, but workspace has a last active session - restore it
+                        // Note: Session may not be in first page if it has old updated_at but is still "last active"
+                        let lastSession = this.sessions.find(s => s.id === this._lastSessionIdFromWorkspace);
+                        if (!lastSession) {
+                            // Fallback: fetch by ID (session may be past page 1 due to old updated_at)
+                            try {
+                                const resp = await fetch(`/api/sessions/${this._lastSessionIdFromWorkspace}`);
+                                if (resp.ok) {
+                                    lastSession = await resp.json();
+                                    this.sessions.unshift(lastSession); // Keep sidebar consistent
+                                }
+                            } catch (_) {}
+                        }
+                        if (lastSession && !lastSession.is_archived) {
+                            this.debugLog('Restoring last session from workspace', { sessionId: this._lastSessionIdFromWorkspace });
+                            await this.loadSession(this._lastSessionIdFromWorkspace);
+                        } else {
+                            // Session was deleted or archived - stay on home page
+                            if (!history.state) {
+                                history.replaceState({ home: true }, '', location.href);
+                            }
+                        }
+                    } else {
+                        // On home page, ensure we have a known state (not null)
+                        if (!history.state) {
+                            history.replaceState({ home: true }, '', location.href);
                         }
                     }
 
@@ -1503,6 +1674,14 @@
                     window.addEventListener('popstate', (event) => {
                         // Ignore filePreview history states (handled by filePreview store)
                         if (event.state?.filePreview) {
+                            return;
+                        }
+
+                        // If modals are open OR were just closed by back button, don't navigate
+                        const modalStore = Alpine.store('modalBackButton');
+                        if (modalStore && (modalStore.count > 0 || modalStore._handledBackNavigation)) {
+                            // Reset the flag for next time
+                            modalStore._handledBackNavigation = false;
                             return;
                         }
 
@@ -1517,7 +1696,7 @@
                             this.currentSession = null;
                             this.screens = [];
                             this.activeScreenId = null;
-                            this.messages = [];
+                            if (this._messageStore) this._messageStore.clearMessages();
                             this.currentConversationUuid = null;
                         }
                     });
@@ -1526,6 +1705,9 @@
                     window.addEventListener('resize', () => {
                         this.windowWidth = window.innerWidth;
                     });
+
+                    // Initialize panel iframe swipe listener for mobile tab switching
+                    this.initPanelSwipeListener();
 
                     // Handle visibility changes (phone standby, tab switching)
                     // Refresh session screens when page becomes visible again
@@ -1828,6 +2010,15 @@
                     return names[providerKey] || providerKey;
                 },
 
+                getModelDisplayLabel(providerKey, modelId) {
+                    const modelEntry = this.providers?.[providerKey]?.models?.[modelId];
+                    const displayName = typeof modelEntry === 'string' ? modelEntry : modelEntry?.name;
+                    if (displayName && displayName !== modelId) {
+                        return displayName + ' [' + modelId + ']';
+                    }
+                    return modelId;
+                },
+
                 getProviderColorClass(providerKey) {
                     const colors = {
                         'anthropic': 'bg-orange-500',
@@ -1850,9 +2041,9 @@
                 },
 
                 getStatusIconClass(status) {
+                    // Note: 'processing' status uses SVG spinner in templates, not this function
                     const icons = {
                         'idle': 'fa-solid fa-check',
-                        'processing': 'fa-solid fa-spinner fa-spin',
                         'archived': 'fa-solid fa-box-archive',
                         'failed': 'fa-solid fa-triangle-exclamation'
                     };
@@ -1940,14 +2131,17 @@
                     this.currentAgentId = agent.id;
                     this.provider = agent.provider;
                     this.model = agent.model;
+                    this.updateModels();
 
                     // Fetch skills for autocomplete
                     this.fetchSkills();
 
-                    // Load agent's reasoning settings
-                    this.anthropicThinkingBudget = agent.anthropic_thinking_budget || 0;
-                    this.openaiReasoningEffort = agent.openai_reasoning_effort || 'none';
-                    this.claudeCodeThinkingTokens = agent.claude_code_thinking_tokens || 0;
+                    // Load agent's reasoning settings from reasoning_config JSON
+                    const rc = agent.reasoning_config || {};
+                    this.anthropicThinkingBudget = rc.budget_tokens || 0;
+                    this.openaiReasoningEffort = rc.effort || 'none';
+                    this.openaiCompatibleReasoningEffort = rc.effort || 'none';
+                    this.claudeCodeThinkingTokens = rc.thinking_tokens || 0;
                     this.responseLevel = agent.response_level || 1;
 
                     // Load allowed tools
@@ -2097,9 +2291,11 @@
                             if (data.workspace) {
                                 this.currentWorkspace = data.workspace;
                                 this.currentWorkspaceId = data.workspace.id;
+                                // Store last session ID for init() to use when no URL session
+                                this._lastSessionIdFromWorkspace = data.last_session_id || null;
                                 // Check if workspace has a default session template
                                 this.workspaceHasDefaultTemplate = !!(data.workspace.default_session_template?.screen_order?.length);
-                                this.debugLog('Active workspace loaded', { workspace: data.workspace.name });
+                                this.debugLog('Active workspace loaded', { workspace: data.workspace.name, lastSessionId: data.last_session_id });
                             }
                         }
                     } catch (err) {
@@ -2122,6 +2318,9 @@
                         return;
                     }
 
+                    // Increment version to guard against stale async operations on rapid switch
+                    const switchVersion = ++this._workspaceSwitchVersion;
+
                     try {
                         const response = await fetch(`/api/workspaces/active/${workspace.id}`, {
                             method: 'POST',
@@ -2130,6 +2329,12 @@
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                             }
                         });
+
+                        // Abort if user switched to another workspace while we were fetching
+                        if (this._workspaceSwitchVersion !== switchVersion) {
+                            this.debugLog('Workspace switch aborted (stale)', { attempted: workspace.name, version: switchVersion });
+                            return;
+                        }
 
                         if (response.ok) {
                             const data = await response.json();
@@ -2140,7 +2345,9 @@
                             this.showWorkspaceSelector = false;
                             this.debugLog('Workspace switched', { workspace: workspace.name, lastSession: data.last_session_id });
 
-                            // Clear old workspace state before loading new data
+                            // Clear ALL old workspace state before loading new data
+                            // IMPORTANT: Include messages to prevent stale conversation content
+                            this._messageStore.clearMessages();
                             this.agents = [];
                             this.currentAgentId = null;
                             this.currentConversationUuid = null;
@@ -2150,15 +2357,19 @@
 
                             // Reload sessions and agents for the new workspace
                             await this.fetchSessions();
+                            if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
+
                             await this.fetchAgents();
+                            if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
 
                             // Restore last session for this workspace, or start new
                             if (data.last_session_id) {
-                                // Check if session still exists in the loaded list
-                                const lastSession = this.sessions.find(s => s.id === data.last_session_id);
-                                if (lastSession) {
+                                if (this._workspaceSwitchVersion !== switchVersion) return; // Stale
+                                // Try to load directly by ID - loadSession handles 404 gracefully
+                                try {
                                     await this.loadSession(data.last_session_id);
-                                } else {
+                                } catch {
+                                    // Session was deleted - create new
                                     await this.newSession();
                                 }
                             } else {
@@ -2381,14 +2592,19 @@
                 },
 
                 async newConversation() {
-                    // Disconnect from any active stream
-                    this.disconnectFromStream();
+                    // Reset all stream state before switching
+                    this._streamStore.prepareForConversationSwitch();
+                    this.isStreaming = false;
+                    // Invalidate any in-flight conversation loads so stale responses
+                    // fail their guard checks instead of restoring old state
+                    this.loadingConversation = false;
+                    this._loadingConversationUuid = null;
 
                     this.currentConversationUuid = null;
                     this.currentConversationStatus = null; // Reset status for new conversation
                     this.currentConversationTitle = null; // Reset title for new conversation
                     this.conversationProvider = null; // Reset for new conversation
-                    this.messages = [];
+                    this._messageStore.clearMessages();
 
                     // Clear session/screen state for new conversation
                     this.currentSession = null;
@@ -2401,8 +2617,6 @@
                     this.outputTokens = 0;
                     this.cacheCreationTokens = 0;
                     this.cacheReadTokens = 0;
-                    this.isStreaming = false;
-                    this.lastEventIndex = 0;
                     this.resetContextTracking();
 
                     // Clear URL to base path
@@ -2452,17 +2666,20 @@
                             this.currentConversationStatus = newStatus;
                         }
 
+                        // Find adjacent screen BEFORE updating status (visibleScreenOrder filters archived)
+                        // Only switch screens when archiving the ACTIVE screen
+                        const isArchivingActiveScreen = !isArchived && targetScreenId === this.activeScreenId;
+                        const adjacentScreen = isArchivingActiveScreen ? this.findAdjacentScreenId(targetScreenId) : null;
+
                         // Also update the screen's conversation status in local data
                         if (screen?.conversation) {
                             screen.conversation.status = newStatus;
                         }
 
-                        // If archiving, switch to another visible screen
+                        // If archiving the active screen, switch to adjacent visible screen (prefer left)
                         if (!isArchived) {
-                            // Find another visible screen to switch to
-                            const otherVisibleScreen = this.visibleScreenOrder.find(id => id !== targetScreenId);
-                            if (otherVisibleScreen) {
-                                this.activateScreen(otherVisibleScreen);
+                            if (adjacentScreen) {
+                                this.activateScreen(adjacentScreen);
                             }
                             this.showToast('Chat archived');
                         } else {
@@ -2562,54 +2779,113 @@
                     }
                 },
 
-                openRenameSessionModal() {
+                // Open the combined session edit modal (session name + chat labels)
+                openSessionEditModal() {
                     if (!this.currentSession) return;
-                    this.renameSessionName = this.currentSession.name || '';
-                    this.showRenameSessionModal = true;
-                    // Focus input after modal opens
-                    this.$nextTick(() => {
-                        this.$refs.renameSessionInput?.focus();
-                        this.$refs.renameSessionInput?.select();
-                    });
+
+                    this.sessionEditName = this.currentSession.name || '';
+
+                    // Build list of chat screens with their numbers and labels
+                    this.sessionEditChats = [];
+                    if (this.screens && this.visibleScreenOrder) {
+                        for (const screenId of this.visibleScreenOrder) {
+                            const screen = this.getScreen(screenId);
+                            if (screen?.type === 'chat') {
+                                this.sessionEditChats.push({
+                                    screenId: screenId,
+                                    chatNumber: screen.chat_number || '?',
+                                    label: screen.conversation?.tab_label || ''
+                                });
+                            }
+                        }
+                    }
+
+                    this.showSessionEditModal = true;
                 },
 
-                async saveSessionName() {
-                    if (!this.currentSession || !this.renameSessionName.trim()) return;
+                async saveSessionEdit() {
+                    if (!this.currentSession || !this.sessionEditName.trim()) return;
 
-                    // Enforce max character limit
-                    if (this.renameSessionName.trim().length > window.TITLE_MAX_LENGTH) {
+                    // Enforce max character limit for session name
+                    if (this.sessionEditName.trim().length > window.TITLE_MAX_LENGTH) {
                         this.showError(`Session name cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
                         return;
                     }
 
-                    this.renameSessionSaving = true;
+                    // Enforce tab label max length (6 chars)
+                    for (const chat of this.sessionEditChats) {
+                        if (chat.label.trim().length > 6) {
+                            this.showError('Tab label cannot exceed 6 characters');
+                            return;
+                        }
+                    }
+
+                    this.sessionEditSaving = true;
                     try {
-                        const response = await fetch(`/api/sessions/${this.currentSession.id}`, {
+                        // Save session name
+                        const sessionResponse = await fetch(`/api/sessions/${this.currentSession.id}`, {
                             method: 'PATCH',
                             headers: {
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                             },
-                            body: JSON.stringify({ name: this.renameSessionName.trim() })
+                            body: JSON.stringify({ name: this.sessionEditName.trim() })
                         });
 
-                        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                        if (!sessionResponse.ok) throw new Error(`HTTP ${sessionResponse.status}`);
 
-                        const data = await response.json();
-                        this.currentSession.name = data.name;
+                        const sessionData = await sessionResponse.json();
+                        this.currentSession.name = sessionData.name;
 
-                        // Also update the session in the sessions list for sidebar
-                        const sessionInList = this.filteredSessions.find(s => s.id === this.currentSession.id);
+                        // Update in sidebar (use this.sessions as source of truth, not filteredSessions)
+                        const sessionInList = this.sessions.find(s => s.id === this.currentSession.id);
                         if (sessionInList) {
-                            sessionInList.name = data.name;
+                            sessionInList.name = sessionData.name;
                         }
 
-                        this.showRenameSessionModal = false;
+                        // Save chat labels (update each conversation's tab_label)
+                        const failedLabels = [];
+                        for (const chat of this.sessionEditChats) {
+                            const screen = this.getScreen(chat.screenId);
+                            if (!screen?.conversation?.uuid) continue;
+
+                            const currentLabel = screen.conversation.tab_label || '';
+                            const newLabel = chat.label.trim();
+
+                            // Only update if changed
+                            if (currentLabel !== newLabel) {
+                                const convResponse = await fetch(`/api/conversations/${screen.conversation.uuid}/title`, {
+                                    method: 'PATCH',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                                    },
+                                    body: JSON.stringify({
+                                        title: screen.conversation.title || 'Chat',
+                                        tab_label: newLabel || null
+                                    })
+                                });
+
+                                if (convResponse.ok) {
+                                    // Update local state
+                                    screen.conversation.tab_label = newLabel || null;
+                                } else {
+                                    failedLabels.push(chat.chatNumber);
+                                }
+                            }
+                        }
+
+                        if (failedLabels.length > 0) {
+                            this.showError(`Failed to save label(s) for chat ${failedLabels.join(', ')}`);
+                            return;
+                        }
+
+                        this.showSessionEditModal = false;
                     } catch (err) {
-                        console.error('Failed to rename session:', err);
-                        this.showError('Failed to rename session');
+                        console.error('Failed to save session:', err);
+                        this.showError('Failed to save session');
                     } finally {
-                        this.renameSessionSaving = false;
+                        this.sessionEditSaving = false;
                     }
                 },
 
@@ -2623,8 +2899,8 @@
                     this.loadingConversation = true;
                     this._loadingConversationUuid = uuid;
 
-                    // Disconnect from any current stream before switching
-                    this.disconnectFromStream();
+                    // Reset all stream state before switching conversations
+                    this._streamStore.prepareForConversationSwitch();
 
                     try {
                         const response = await fetch(`/api/conversations/${uuid}`);
@@ -2703,7 +2979,7 @@
 
                         // Note: URL is session-based, so we don't update it when loading a conversation
                         // The session URL is set when loadSession() is called
-                        this.messages = [];
+                        this._messageStore.clearMessages();
                         this.isAtBottom = true; // Hide scroll button during load
                         // Only enable auto-scroll if not coming from search result
                         if (this.pendingScrollToTurn === null) {
@@ -2717,26 +2993,6 @@
                         this.cacheCreationTokens = 0;
                         this.cacheReadTokens = 0;
                         this.sessionCost = 0;
-                        this.lastEventIndex = 0;
-
-                        // Reset stream state for potential reconnection
-                        this._streamState = {
-                            thinkingBlocks: {},
-                            currentThinkingBlock: -1,
-                            textMsgIndex: -1,
-                            toolMsgIndex: -1,
-                            textContent: '',
-                            toolInput: '',
-                            turnCost: 0,
-                            turnInputTokens: 0,
-                            turnOutputTokens: 0,
-                            turnCacheCreationTokens: 0,
-                            turnCacheReadTokens: 0,
-                            toolInProgress: false,
-                            waitingForToolResults: new Set(),
-                            abortPending: false,
-                            abortSkipSync: false,
-                        };
 
                         // Calculate totals and sum costs from stored values
                         if (data.conversation?.messages) {
@@ -2861,12 +3117,13 @@
                             }
                         }
 
-                        // Load provider-specific reasoning settings from conversation
+                        // Load provider-specific reasoning settings from conversation's reasoning_config JSON
                         this.responseLevel = data.conversation?.response_level ?? 1;
-                        this.anthropicThinkingBudget = data.conversation?.anthropic_thinking_budget ?? 0;
-                        this.openaiReasoningEffort = data.conversation?.openai_reasoning_effort ?? 'none';
-                        this.openaiCompatibleReasoningEffort = data.conversation?.openai_compatible_reasoning_effort ?? 'none';
-                        this.claudeCodeThinkingTokens = data.conversation?.claude_code_thinking_tokens ?? 0;
+                        const convRc = data.conversation?.reasoning_config || {};
+                        this.anthropicThinkingBudget = convRc.budget_tokens ?? 0;
+                        this.openaiReasoningEffort = convRc.effort ?? 'none';
+                        this.openaiCompatibleReasoningEffort = convRc.effort ?? 'none';
+                        this.claudeCodeThinkingTokens = convRc.thinking_tokens ?? 0;
 
                         // Note: scrolling is handled inside loadMessagesProgressively
                         // Clear pendingScrollToTurn since it was passed to loadMessagesProgressively
@@ -2887,7 +3144,7 @@
                         this.showError('Failed to load conversation');
                         // Reset local state and clear URL without creating a back-button loop
                         this.currentConversationUuid = null;
-                        this.messages = [];
+                        this._messageStore.clearMessages();
                         this.updateSessionUrl(null, { replace: true });
                     }
                 },
@@ -2987,8 +3244,16 @@
                             this.updateSessionUrl(session.id);
                         }
 
-                        // Save as last session for this workspace (for returning from settings)
+                        // Save as last session for this workspace (for returning from settings - PHP session)
                         fetch(`/session/${sessionId}/last`, {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        }).catch(() => {}); // Fire and forget
+
+                        // Persist as last active session in database (survives PHP session expiry)
+                        fetch(`/api/sessions/${sessionId}/active`, {
                             method: 'POST',
                             headers: {
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
@@ -3073,7 +3338,7 @@
                 async loadConversationForScreen(uuid) {
                     this.loadingConversation = true;
                     this._loadingConversationUuid = uuid;
-                    this.disconnectFromStream();
+                    this._streamStore.prepareForConversationSwitch();
 
                     // Capture pendingScrollToTurn before loading (it will be cleared after use)
                     const targetTurn = this.pendingScrollToTurn;
@@ -3087,7 +3352,7 @@
 
                         this.currentConversationUuid = uuid;
                         // Note: Don't update URL here - URLs are session-based, not conversation-based
-                        this.messages = [];
+                        this._messageStore.clearMessages();
                         this.isAtBottom = true;
                         // Disable auto-scroll when targeting a specific turn (like loadConversation does)
                         this.autoScrollEnabled = targetTurn === null;
@@ -3340,6 +3605,13 @@
                     return this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
                 },
 
+                // Resolve panel display name from availablePanels (PanelRegistry source of truth)
+                getPanelName(screen) {
+                    const slug = screen.panel_slug || screen.panel?.slug;
+                    const panelInfo = this.availablePanels?.find(p => p.slug === slug);
+                    return panelInfo?.name || screen.panel?.name || screen.panel_slug || 'Panel';
+                },
+
                 // Get screen title for display (full title, used for tooltips)
                 getScreenTitle(screenId) {
                     const screen = this.getScreen(screenId);
@@ -3347,7 +3619,7 @@
                     if (screen.type === 'chat') {
                         return screen.conversation?.title || 'Chat';
                     }
-                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                    return this.getPanelName(screen);
                 },
 
                 // Get screen tab label for display (short form for tabs)
@@ -3355,16 +3627,16 @@
                     const screen = this.getScreen(screenId);
                     if (!screen) return 'Screen';
                     if (screen.type === 'chat') {
-                        // Use tab_label if set, otherwise derive from title
+                        // Use tab_label if set, otherwise show chat number
                         const tabLabel = screen.conversation?.tab_label;
                         if (tabLabel && tabLabel.trim()) {
                             return tabLabel;
                         }
-                        const title = screen.conversation?.title || 'Chat';
-                        return title.length > 5 ? title.slice(0, 5) + '...' : title;
+                        // Default: show chat number with dot (e.g., "1." or "3.")
+                        return (screen.chat_number || '?') + '.';
                     }
                     // For panels, use the full name (they're typically short already)
-                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                    return this.getPanelName(screen);
                 },
 
                 // Get screen type icon class
@@ -3393,6 +3665,21 @@
                     if (screen.type === 'panel') return 'bg-purple-600';
                     // Chat screen: show status badge color
                     return this.getStatusColorClass(this.getConversationStatus(screenId));
+                },
+
+                // Find the adjacent screen (prefer left, fallback to right)
+                // Used when closing/archiving a screen to focus the nearest neighbor
+                findAdjacentScreenId(screenId) {
+                    const order = this.visibleScreenOrder;
+                    const index = order.indexOf(screenId);
+                    if (index === -1) return order[0] || null;
+
+                    // Prefer the screen to the left
+                    if (index > 0) return order[index - 1];
+                    // Fallback to the screen to the right
+                    if (index < order.length - 1) return order[index + 1];
+                    // No other screens
+                    return null;
                 },
 
                 // Activate a screen (switch to it)
@@ -3560,7 +3847,7 @@
                     // Prevent vertical scrolling while swiping
                     e.preventDefault();
 
-                    const screenOrder = this.currentSession?.screen_order || [];
+                    const screenOrder = this.visibleScreenOrder;
                     const currentIndex = screenOrder.indexOf(this.activeScreenId);
                     const isAtStart = currentIndex === 0;
                     const isAtEnd = currentIndex === screenOrder.length - 1;
@@ -3581,7 +3868,7 @@
                         return;
                     }
 
-                    const screenOrder = this.currentSession?.screen_order || [];
+                    const screenOrder = this.visibleScreenOrder;
                     const currentIndex = screenOrder.indexOf(this.activeScreenId);
 
                     // Check if swipe exceeded threshold
@@ -3606,12 +3893,140 @@
                     this.isSwiping = false;
                 },
 
+                // Panel iframe swipe message handler
+                // Panels render in iframes, so touch events don't bubble to parent.
+                // The panel wrapper injects a script that posts messages to parent.
+                initPanelSwipeListener() {
+                    window.addEventListener('message', (event) => {
+                        // Validate message source identifier
+                        if (!event.data || event.data.source !== 'pocketdev-panel-swipe') {
+                            return;
+                        }
+
+                        // Validate event.source is from our panel iframes (defense-in-depth)
+                        // Note: We cannot validate event.origin because srcdoc iframes with
+                        // sandbox="allow-same-origin" send event.origin="null", not the parent origin
+                        const panelIframes = [
+                            this.$refs.iframeA?.contentWindow,
+                            this.$refs.iframeB?.contentWindow
+                        ].filter(Boolean);
+                        if (!panelIframes.includes(event.source)) {
+                            return;
+                        }
+
+                        // Only process if we're viewing a panel AND on mobile
+                        if (!this.isActiveScreenPanel || this.windowWidth >= 768) {
+                            return;
+                        }
+
+                        // Need multiple screens to swipe between
+                        if (this.screens.length <= 1) {
+                            return;
+                        }
+
+                        const { type, ...data } = event.data;
+
+                        switch (type) {
+                            case 'touchstart':
+                                this.handlePanelSwipeStart(data);
+                                break;
+                            case 'touchmove':
+                                this.handlePanelSwipeMove(data);
+                                break;
+                            case 'touchend':
+                                this.handlePanelSwipeEnd(data);
+                                break;
+                            case 'touchcancel':
+                                this.resetSwipeState();
+                                break;
+                        }
+                    });
+                },
+
+                handlePanelSwipeStart(data) {
+                    // If touch started in horizontal scroll area (code block, table), don't capture
+                    if (data.isInScrollArea) {
+                        return;
+                    }
+
+                    this.swipeStartX = data.clientX;
+                    this.swipeStartY = data.clientY;
+                    this.swipeCurrentX = data.clientX;
+                    this.swipeDeltaX = 0;
+                    this.isSwiping = false;
+                },
+
+                handlePanelSwipeMove(data) {
+                    // If in scroll area, let the panel handle the scroll
+                    if (data.isInScrollArea) {
+                        return;
+                    }
+
+                    if (this.swipeStartX === 0) return;
+
+                    // Wait until direction is determined
+                    if (!data.determinedDirection) return;
+
+                    // If vertical scroll, abort swipe
+                    if (!data.isHorizontal) {
+                        this.swipeStartX = 0;
+                        return;
+                    }
+
+                    // Start swiping
+                    if (!this.isSwiping) {
+                        this.isSwiping = true;
+                    }
+
+                    const screenOrder = this.visibleScreenOrder;
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+                    const isAtStart = currentIndex === 0;
+                    const isAtEnd = currentIndex === screenOrder.length - 1;
+
+                    // Apply edge resistance at boundaries
+                    let adjustedDelta = data.deltaX;
+                    if ((data.deltaX > 0 && isAtStart) || (data.deltaX < 0 && isAtEnd)) {
+                        adjustedDelta = data.deltaX * this.swipeEdgeResistance;
+                    }
+
+                    this.swipeDeltaX = adjustedDelta;
+                    this.swipeCurrentX = data.clientX;
+                },
+
+                handlePanelSwipeEnd(data) {
+                    if (!this.isSwiping) {
+                        this.resetSwipeState();
+                        return;
+                    }
+
+                    const screenOrder = this.visibleScreenOrder;
+                    const currentIndex = screenOrder.indexOf(this.activeScreenId);
+
+                    // Check if swipe exceeded threshold
+                    if (Math.abs(this.swipeDeltaX) > this.swipeThreshold) {
+                        if (this.swipeDeltaX > 0 && currentIndex > 0) {
+                            // Swipe right → previous screen
+                            this.activateScreen(screenOrder[currentIndex - 1]);
+                        } else if (this.swipeDeltaX < 0 && currentIndex < screenOrder.length - 1) {
+                            // Swipe left → next screen
+                            this.activateScreen(screenOrder[currentIndex + 1]);
+                        }
+                    }
+
+                    this.resetSwipeState();
+                },
+
                 // Close/remove a screen
                 async closeScreen(screenId) {
                     if (this.screens.length <= 1) return; // Don't close last screen
 
                     const screen = this.getScreen(screenId);
                     if (!screen) return;
+
+                    // Find adjacent screen BEFORE removing from order
+                    const adjacentScreenId = (this.activeScreenId === screenId)
+                        ? this.findAdjacentScreenId(screenId)
+                        : null;
 
                     try {
                         await fetch(`/api/screens/${screenId}`, { method: 'DELETE' });
@@ -3629,12 +4044,9 @@
                         }
                         delete this._screenMap[screenId];
 
-                        // If we closed the active screen, switch to another
-                        if (this.activeScreenId === screenId) {
-                            const nextScreen = this.screens[0];
-                            if (nextScreen) {
-                                await this.activateScreen(nextScreen.id);
-                            }
+                        // If we closed the active screen, switch to adjacent (prefer left)
+                        if (adjacentScreenId) {
+                            await this.activateScreen(adjacentScreenId);
                         }
                     } catch (err) {
                         console.error('Failed to close screen:', err);
@@ -3744,10 +4156,23 @@
                     }
 
                     try {
+                        // Pass workspace path for panels that use it (no fallback — let backend decide)
+                        const panelParams = {};
+                        if (['file-explorer', 'git-status'].includes(panelSlug)) {
+                            const workspacePath = this.currentWorkspace?.working_directory_path;
+                            if (workspacePath) {
+                                panelParams.path = workspacePath;
+                            }
+                        }
+
                         const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/panel`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ panel_slug: panelSlug, activate: true })
+                            body: JSON.stringify({
+                                panel_slug: panelSlug,
+                                parameters: Object.keys(panelParams).length > 0 ? panelParams : undefined,
+                                activate: true,
+                            })
                         });
 
                         if (!response.ok) {
@@ -4268,761 +4693,47 @@
 
                 // ===== End Sessions & Screens =====
 
+                // ===== Stream Methods (Sprint 3: delegate to _streamStore) =====
+
                 // Check for active stream and reconnect if found
                 async checkAndReconnectStream(uuid) {
-                    // Don't reconnect if we just finished streaming (prevents duplicate events)
-                    if (this._justCompletedStream) {
-                        return;
-                    }
-
-                    // Don't reconnect if existing connection is healthy
-                    // (prevents nonce superseding a working connection -- Issue #163 root cause #1)
-                    // Bypass guard on tab return: health checks skip while hidden, so
-                    // _connectionHealthy may be stale. Always probe the server after tab return.
-                    if (this.isStreaming && this.streamAbortController && !this.streamAbortController.signal.aborted && this._connectionHealthy && !this._wasStreamingBeforeHidden) {
-                        console.log('[Stream] Skipping reconnect - existing connection appears healthy');
-                        return;
-                    }
-
-                    try {
-                        const response = await fetch(`/api/conversations/${uuid}/stream-status`);
-                        const data = await response.json();
-
-                        if (data.is_streaming) {
-                            // Detect: page refresh vs timeout/tab-switch reconnect
-                            // Page refresh: messages array has no streaming content (only DB messages)
-                            // Timeout/tab reconnect: messages array still has streaming content in memory
-                            const isPageRefresh = !this._hasActiveStreamingContent();
-
-                            // Guard: distinguish actual page refresh from tab-switch return.
-                            // Tab-switch: we had streaming content before the tab went to background,
-                            // now _hasActiveStreamingContent() returns false because Alpine state
-                            // was preserved but we're checking it during the same session.
-                            // Key insight: on actual page refresh, sessionStorage will have stream state
-                            // but the in-memory messages array will NOT have streaming content IDs.
-                            // On tab return, the messages array still has the streaming content.
-                            const isTabReturn = this._wasStreamingBeforeHidden;
-
-                            let fromIndex;
-                            if (isPageRefresh && !isTabReturn) {
-                                // PAGE REFRESH: Fresh page load during active stream
-                                // Reset state and replay ALL events from 0 to rebuild UI
-                                this._resetStreamStateForReplay();
-                                this._isReplaying = true; // Prevent screen_created events from triggering refreshes during replay
-                                fromIndex = 0;
-
-                                // Strip DB-loaded messages from the current streaming run to prevent
-                                // duplication. The SSE replay from index 0 will reconstruct them.
-                                // Without this, completed turns saved to DB appear TWICE: once from
-                                // the DB load and again from the SSE replay.
-                                this._stripCurrentStreamMessages();
-
-                                console.log('[Stream] Page refresh reconnect - replaying all events from 0');
-                            } else {
-                                // TIMEOUT RECONNECT or TAB RETURN: Same session, connection dropped or tab switched
-                                // Restore state and continue from last index
-                                this._restoreStreamState(uuid);
-                                const savedIndex = sessionStorage.getItem(`stream_index_${uuid}`);
-                                fromIndex = savedIndex ? parseInt(savedIndex, 10) : this.lastEventIndex;
-                                console.log('[Stream] Timeout/tab reconnect:', { uuid, fromIndex, isTabReturn, eventCount: data.event_count });
-                            }
-
-                            // Seed in-memory tracker so timeout retries use the correct index
-                            this.lastEventIndex = fromIndex;
-
-                            // Connect to stream events
-                            await this.connectToStreamEvents(fromIndex);
-                        } else {
-                            // Stream is not active, clear any stale sessionStorage
-                            this._clearStreamStorage(uuid);
-                        }
-                    } catch (err) {
-                        // No active stream, that's fine
-                        console.debug('[Stream] No active stream for reconnection:', err.message);
-                    }
+                    return this._streamStore?.checkAndReconnectStream(uuid);
                 },
 
-                // Save stream state to sessionStorage for persistence across refresh
-                _saveStreamState(uuid) {
-                    if (!uuid) return;
-                    try {
-                        const state = {
-                            thinkingBlocks: Object.fromEntries(
-                                Object.entries(this._streamState.thinkingBlocks).map(([k, v]) => [k, {
-                                    msgIndex: v.msgIndex,
-                                    content: v.content,
-                                    complete: v.complete
-                                }])
-                            ),
-                            currentThinkingBlock: this._streamState.currentThinkingBlock,
-                            textMsgIndex: this._streamState.textMsgIndex,
-                            toolMsgIndex: this._streamState.toolMsgIndex,
-                            textContent: this._streamState.textContent,
-                            // Tool state for mid-tool refresh recovery
-                            toolInput: this._streamState.toolInput,
-                            toolInProgress: this._streamState.toolInProgress,
-                            waitingForToolResults: Array.from(this._streamState.waitingForToolResults || []), // Set → Array for JSON
-                            abortPending: this._streamState.abortPending,
-                            abortSkipSync: this._streamState.abortSkipSync,
-                            // Per-turn cost/token counters for usage display
-                            turnCost: this._streamState.turnCost,
-                            turnInputTokens: this._streamState.turnInputTokens,
-                            turnOutputTokens: this._streamState.turnOutputTokens,
-                            turnCacheCreationTokens: this._streamState.turnCacheCreationTokens,
-                            turnCacheReadTokens: this._streamState.turnCacheReadTokens,
-                            startedAt: this._streamState.startedAt,
-                        };
-                        sessionStorage.setItem(`stream_state_${uuid}`, JSON.stringify(state));
-                    } catch (e) {
-                        console.warn('[Stream] Failed to save stream state:', e);
-                    }
-                },
-
-                // Restore stream state from sessionStorage
-                _restoreStreamState(uuid) {
-                    if (!uuid) return;
-                    try {
-                        const saved = sessionStorage.getItem(`stream_state_${uuid}`);
-                        if (saved) {
-                            const state = JSON.parse(saved);
-                            // Restore relevant state properties
-                            if (state.thinkingBlocks) {
-                                this._streamState.thinkingBlocks = state.thinkingBlocks;
-                            }
-                            if (state.currentThinkingBlock !== undefined) {
-                                this._streamState.currentThinkingBlock = state.currentThinkingBlock;
-                            }
-                            if (state.textMsgIndex !== undefined) {
-                                this._streamState.textMsgIndex = state.textMsgIndex;
-                            }
-                            if (state.toolMsgIndex !== undefined) {
-                                this._streamState.toolMsgIndex = state.toolMsgIndex;
-                            }
-                            if (state.textContent !== undefined) {
-                                this._streamState.textContent = state.textContent;
-                            }
-                            // Restore tool state for mid-tool refresh recovery
-                            if (state.toolInput !== undefined) {
-                                this._streamState.toolInput = state.toolInput;
-                            }
-                            if (state.toolInProgress !== undefined) {
-                                this._streamState.toolInProgress = state.toolInProgress;
-                            }
-                            if (Array.isArray(state.waitingForToolResults)) {
-                                this._streamState.waitingForToolResults = new Set(state.waitingForToolResults);
-                            }
-                            if (state.abortPending !== undefined) {
-                                this._streamState.abortPending = state.abortPending;
-                            }
-                            if (state.abortSkipSync !== undefined) {
-                                this._streamState.abortSkipSync = state.abortSkipSync;
-                            }
-                            // Restore per-turn cost/token counters
-                            if (state.turnCost !== undefined) {
-                                this._streamState.turnCost = state.turnCost;
-                            }
-                            if (state.turnInputTokens !== undefined) {
-                                this._streamState.turnInputTokens = state.turnInputTokens;
-                            }
-                            if (state.turnOutputTokens !== undefined) {
-                                this._streamState.turnOutputTokens = state.turnOutputTokens;
-                            }
-                            if (state.turnCacheCreationTokens !== undefined) {
-                                this._streamState.turnCacheCreationTokens = state.turnCacheCreationTokens;
-                            }
-                            if (state.turnCacheReadTokens !== undefined) {
-                                this._streamState.turnCacheReadTokens = state.turnCacheReadTokens;
-                            }
-                            if (state.startedAt) {
-                                this._streamState.startedAt = state.startedAt;
-                            }
-                            console.log('[Stream] Restored stream state from sessionStorage:', state);
-                        }
-                    } catch (e) {
-                        console.warn('[Stream] Failed to restore stream state:', e);
-                    }
-                },
-
-                // Clear stream-related sessionStorage for a conversation
-                _clearStreamStorage(uuid) {
-                    if (!uuid) return;
-                    try {
-                        sessionStorage.removeItem(`stream_index_${uuid}`);
-                        sessionStorage.removeItem(`stream_state_${uuid}`);
-                    } catch (e) {
-                        // sessionStorage might not be available
-                    }
-                },
-
-                // Check if messages array has content from active streaming
-                // Used to distinguish page refresh (no streaming content) from timeout reconnect (has streaming content)
-                _hasActiveStreamingContent() {
-                    // Streaming messages have client-generated IDs: msg-{timestamp}-thinking, msg-{timestamp}-text, msg-{timestamp}-tool
-                    // DB-loaded messages have different ID patterns (numeric or UUID from database)
-                    return this.messages.some(msg => {
-                        if (msg.id && typeof msg.id === 'string') {
-                            return /^msg-\d+-(thinking|text|tool)/.test(msg.id);
-                        }
-                        return false;
-                    });
-                },
-
-                // Reset stream state for clean replay on page refresh
-                // Used when replaying all events from index 0 after a page refresh
-                _resetStreamStateForReplay() {
-                    // Preserve startedAt for accurate elapsed time display
-                    // On page refresh, memory is fresh (no startedAt), so read from sessionStorage
-                    const savedStartedAt = this._streamState.startedAt ?? (() => {
-                        if (!this.currentConversationUuid) return null;
-                        try {
-                            const saved = sessionStorage.getItem(`stream_state_${this.currentConversationUuid}`);
-                            return saved ? JSON.parse(saved).startedAt : null;
-                        } catch (_) {
-                            return null;
-                        }
-                    })();
-
-                    this._streamState = {
-                        thinkingBlocks: {},
-                        currentThinkingBlock: -1,
-                        textMsgIndex: -1,
-                        toolMsgIndex: -1,
-                        textContent: '',
-                        toolInput: '',
-                        turnCost: 0,
-                        turnInputTokens: 0,
-                        turnOutputTokens: 0,
-                        turnCacheCreationTokens: 0,
-                        turnCacheReadTokens: 0,
-                        toolInProgress: false,
-                        waitingForToolResults: new Set(),
-                        abortPending: false,
-                        abortSkipSync: false,
-                        startedAt: savedStartedAt,
-                    };
-
-                    // Reset event tracking for fresh replay
-                    this.lastEventIndex = 0;
-                    this.lastEventId = null;
-                },
-
-                // Strip messages created by the current streaming job from DB-loaded messages.
-                // On page refresh, the DB may contain completed turns from the active stream
-                // (the job saves each turn's assistant message + tool results progressively).
-                // Since we replay ALL SSE events from index 0, these DB messages would be
-                // duplicated. We remove them so only the SSE replay populates them.
-                //
-                // Strategy: Find the last user message with plain string content (the user's
-                // typed prompt). Everything after it was created by the streaming job.
-                // This works because:
-                // - User typed prompts are saved as strings via saveUserMessage()
-                // - Tool result "user" messages have array content ([{type: 'tool_result', ...}])
-                // - convertDbMessageToUi preserves these content types
-                _stripCurrentStreamMessages() {
-                    let lastUserPromptIndex = -1;
-                    for (let i = this.messages.length - 1; i >= 0; i--) {
-                        const msg = this.messages[i];
-                        if (msg.role === 'user' && typeof msg.content === 'string') {
-                            lastUserPromptIndex = i;
-                            break;
-                        }
-                    }
-
-                    if (lastUserPromptIndex >= 0 && lastUserPromptIndex < this.messages.length - 1) {
-                        // Collect messages to strip and subtract their token/cost contributions.
-                        // We subtract rather than recounting from this.messages because older messages
-                        // may still be asynchronously prepending (from loadMessagesProgressively).
-                        // The initial counters (set in loadConversation/loadConversationForScreen)
-                        // already include ALL DB messages, so subtracting the stripped ones is correct.
-                        const strippedMessages = this.messages.slice(lastUserPromptIndex + 1);
-                        const removedCount = strippedMessages.length;
-                        this.messages.splice(lastUserPromptIndex + 1);
-                        console.log('[Stream] Stripped', removedCount, 'DB messages after user prompt for SSE replay');
-
-                        // Subtract token/cost contributions of stripped messages to prevent
-                        // double-counting when SSE replay sends usage events for these turns.
-                        for (const msg of strippedMessages) {
-                            if (msg.inputTokens) this.inputTokens -= msg.inputTokens;
-                            if (msg.outputTokens) this.outputTokens -= msg.outputTokens;
-                            if (msg.cacheCreationTokens) this.cacheCreationTokens -= msg.cacheCreationTokens;
-                            if (msg.cacheReadTokens) this.cacheReadTokens -= msg.cacheReadTokens;
-                            if (msg.cost) this.sessionCost -= msg.cost;
-                        }
-                        // Floor at zero to prevent negative display values from timing mismatches
-                        this.inputTokens = Math.max(0, this.inputTokens);
-                        this.outputTokens = Math.max(0, this.outputTokens);
-                        this.cacheCreationTokens = Math.max(0, this.cacheCreationTokens);
-                        this.cacheReadTokens = Math.max(0, this.cacheReadTokens);
-                        this.sessionCost = Math.max(0, this.sessionCost);
-                        this.totalTokens = this.inputTokens + this.outputTokens;
-                    }
-                },
+                // ===== Message Methods (Sprint 3: delegate to _messageStore) =====
 
                 /**
-                 * Progressive message loading - renders priority messages first, then fills in the rest.
-                 * For normal load: shows last N messages immediately, then prepends older ones.
-                 * For search: shows messages around target turn first, then fills in.
-                 * @param {string} loadUuid - UUID of conversation being loaded (for race condition guard)
+                 * Progressive message loading - delegates to messageStore
                  */
                 async loadMessagesProgressively(dbMessages, targetTurn = null, loadUuid = null) {
-                    const INITIAL_BATCH = 100;  // Messages to show immediately
-                    const PREPEND_BATCH = 50;   // Messages per prepend batch
-
-                    // Convert all messages to UI format first
-                    const allUiMessages = [];
-                    // Track pending tool_results that need linking (tool_use in different db message)
-                    const pendingToolResults = [];
-
-                    for (const msg of dbMessages) {
-                        const converted = this.convertDbMessageToUi(msg, pendingToolResults);
-                        allUiMessages.push(...converted);
-                    }
-
-                    // Post-process: link any pending tool_results to their tool_use messages
-                    // This handles cases where tool_result is in a separate db message from tool_use
-                    for (const pending of pendingToolResults) {
-                        const toolMsgIndex = allUiMessages.findIndex(m => m.role === 'tool' && m.toolId === pending.tool_use_id);
-                        if (toolMsgIndex >= 0) {
-                            allUiMessages[toolMsgIndex] = {
-                                ...allUiMessages[toolMsgIndex],
-                                toolResult: pending.content
-                            };
+                    const self = this;
+                    return this._messageStore?.loadMessagesProgressively(dbMessages, targetTurn, loadUuid, {
+                        getCurrentUuid: () => this.currentConversationUuid,
+                        nextTick: (fn) => this.$nextTick(fn),
+                        scrollToTurn: (turn) => this.scrollToTurn(turn),
+                        scrollToBottom: () => this.scrollToBottom(),
+                        setLoadingConversation: (val) => {
+                            this.loadingConversation = val;
+                            if (!val) this._loadingConversationUuid = null;
                         }
-                    }
-
-                    if (allUiMessages.length === 0) {
-                        this.loadingConversation = false;
-                        this._loadingConversationUuid = null;
-                        return;
-                    }
-
-                    // Determine which messages to render first based on context
-                    let priorityStartIndex;
-                    if (targetTurn !== null) {
-                        // Search case: find messages around the target turn
-                        const targetIndex = allUiMessages.findIndex(m => m.turn_number === targetTurn);
-                        if (targetIndex !== -1) {
-                            // Center the initial batch around the target
-                            priorityStartIndex = Math.max(0, targetIndex - Math.floor(INITIAL_BATCH / 2));
-                        } else {
-                            // Target not found, fall back to end
-                            priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
-                        }
-                    } else {
-                        // Normal load: show last N messages first
-                        priorityStartIndex = Math.max(0, allUiMessages.length - INITIAL_BATCH);
-                    }
-
-                    // Split messages into priority (render first) and before (prepend later)
-                    const messagesBefore = allUiMessages.slice(0, priorityStartIndex);
-                    const priorityMessages = allUiMessages.slice(priorityStartIndex);
-
-                    // Guard: abort if user switched to different conversation during processing
-                    if (loadUuid && this.currentConversationUuid !== loadUuid) {
-                        return;
-                    }
-
-                    // Phase 1: Render priority messages immediately
-                    this.messages = priorityMessages;
-
-                    // Wait for initial render and scroll
-                    await new Promise(resolve => {
-                        this.$nextTick(() => {
-                            if (targetTurn !== null) {
-                                this.scrollToTurn(targetTurn);
-                            } else {
-                                this.scrollToBottom();
-                            }
-                            resolve();
-
-                            // Hide loading overlay AFTER scroll has painted
-                            requestAnimationFrame(() => {
-                                // Guard: only clear if still on same conversation
-                                if (!loadUuid || this.currentConversationUuid === loadUuid) {
-                                    this.loadingConversation = false;
-                                    this._loadingConversationUuid = null;
-                                }
-                            });
-                        });
                     });
-
-                    // Phase 2: Prepend older messages in batches (if any) - runs in background, don't await
-                    if (messagesBefore.length > 0) {
-                        this.prependMessagesInBatches(messagesBefore, PREPEND_BATCH, loadUuid);
-                    }
                 },
 
                 /**
-                 * Prepends messages in batches. Browser's scroll anchoring maintains scroll position.
-                 * @param {string} loadUuid - UUID of conversation being loaded (for race condition guard)
-                 */
-                async prependMessagesInBatches(messages, batchSize, loadUuid = null) {
-                    let remaining = [...messages];
-
-                    while (remaining.length > 0) {
-                        // Guard: abort if user switched to different conversation
-                        if (loadUuid && this.currentConversationUuid !== loadUuid) {
-                            return;
-                        }
-
-                        // Take a batch from the END (newest of the old messages)
-                        const batch = remaining.slice(-batchSize);
-                        remaining = remaining.slice(0, -batchSize);
-
-                        // Prepend batch to beginning of messages array
-                        this.messages.unshift(...batch);
-
-                        // Yield to main thread between batches (lets browser render and handle scroll anchoring)
-                        await new Promise(resolve => requestAnimationFrame(resolve));
-                    }
-                },
-
-                /**
-                 * Converts a DB message to UI format. Returns array (content blocks expand to multiple).
-                 * @param {Object} dbMsg - The database message to convert
-                 * @param {Array} pendingToolResults - Optional array to collect tool_results that couldn't be linked
-                 *                                     (because tool_use is in a different db message)
+                 * Converts a DB message to UI format - delegates to messageStore
                  */
                 convertDbMessageToUi(dbMsg, pendingToolResults = null) {
-                    const result = [];
-                    const content = dbMsg.content;
-                    const msgInputTokens = dbMsg.input_tokens || 0;
-                    const msgOutputTokens = dbMsg.output_tokens || 0;
-                    const msgCacheCreation = dbMsg.cache_creation_tokens || 0;
-                    const msgCacheRead = dbMsg.cache_read_tokens || 0;
-                    const msgModel = dbMsg.model || this.model;
-                    const msgCost = dbMsg.cost || null;
-
-                    // Handle compaction messages specially
-                    if (dbMsg.role === 'compaction') {
-                        const preTokens = content?.pre_tokens;
-                        const preTokensDisplay = preTokens != null ? preTokens.toLocaleString() : 'unknown';
-                        result.push({
-                            id: 'msg-' + Date.now() + '-' + Math.random(),
-                            role: 'compaction',
-                            content: content?.summary || '',
-                            preTokens: preTokens,
-                            preTokensDisplay: preTokensDisplay,
-                            trigger: content?.trigger ?? 'auto',
-                            timestamp: dbMsg.created_at,
-                            collapsed: true,
-                            turn_number: dbMsg.turn_number
-                        });
-                        return result;
-                    }
-
-                    if (typeof content === 'string') {
-                        result.push({
-                            id: 'msg-' + Date.now() + '-' + Math.random(),
-                            role: dbMsg.role,
-                            content: content,
-                            timestamp: dbMsg.created_at,
-                            collapsed: false,
-                            cost: msgCost,
-                            model: msgModel,
-                            inputTokens: msgInputTokens,
-                            outputTokens: msgOutputTokens,
-                            cacheCreationTokens: msgCacheCreation,
-                            cacheReadTokens: msgCacheRead,
-                            agent: dbMsg.agent,
-                            turn_number: dbMsg.turn_number
-                        });
-                    } else if (Array.isArray(content)) {
-                        if (content.length === 0) {
-                            if (msgCost && dbMsg.role === 'assistant') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'empty-response',
-                                    content: null,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: msgCost,
-                                    model: msgModel,
-                                    inputTokens: msgInputTokens,
-                                    outputTokens: msgOutputTokens,
-                                    cacheCreationTokens: msgCacheCreation,
-                                    cacheReadTokens: msgCacheRead,
-                                    agent: dbMsg.agent,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            }
-                            return result;
-                        }
-
-                        const lastBlockIndex = content.length - 1;
-
-                        for (let i = 0; i < content.length; i++) {
-                            const block = content[i];
-                            const isLast = (i === lastBlockIndex);
-
-                            if (block.type === 'text') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'assistant',
-                                    content: block.text,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'thinking') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'thinking',
-                                    content: block.thinking,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: true,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'tool_use') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'tool',
-                                    toolName: block.name,
-                                    toolId: block.id,
-                                    toolInput: block.input,
-                                    toolResult: null,
-                                    content: JSON.stringify(block.input, null, 2),
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: true,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'tool_result' && block.tool_use_id) {
-                                // Link result to the corresponding tool message in result array
-                                const toolMsgIndex = result.findIndex(m => m.role === 'tool' && m.toolId === block.tool_use_id);
-                                if (toolMsgIndex >= 0) {
-                                    result[toolMsgIndex] = {
-                                        ...result[toolMsgIndex],
-                                        toolResult: block.content
-                                    };
-                                } else if (pendingToolResults) {
-                                    // Tool not found in this message - collect for post-processing
-                                    // (tool_use is likely in a different db message)
-                                    pendingToolResults.push({
-                                        tool_use_id: block.tool_use_id,
-                                        content: block.content
-                                    });
-                                }
-                            } else if (block.type === 'interrupted') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'interrupted',
-                                    content: 'Response interrupted',
-                                    timestamp: dbMsg.created_at,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'error') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'error',
-                                    content: block.message || 'An unexpected error occurred',
-                                    timestamp: dbMsg.created_at,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'system') {
-                                result.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'system',
-                                    content: block.content,
-                                    subtype: block.subtype,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            }
-                        }
-                    }
-                    return result;
+                    return this._messageStore?.convertDbMessageToUi(dbMsg, pendingToolResults) ?? [];
                 },
 
+                /**
+                 * Add message from DB format - delegates to messageStore
+                 * (retained for backwards compatibility, uses convertDbMessageToUi internally)
+                 */
                 addMessageFromDb(dbMsg) {
-                    // Convert DB message format to UI format
-                    const content = dbMsg.content;
-
-                    // Get token counts and stored cost
-                    const msgInputTokens = dbMsg.input_tokens || 0;
-                    const msgOutputTokens = dbMsg.output_tokens || 0;
-                    const msgCacheCreation = dbMsg.cache_creation_tokens || 0;
-                    const msgCacheRead = dbMsg.cache_read_tokens || 0;
-                    const msgModel = dbMsg.model || this.model;
-
-                    // Use stored cost from server (no client-side calculation)
-                    const msgCost = dbMsg.cost || null;
-
-                    // Handle compaction messages specially
-                    if (dbMsg.role === 'compaction') {
-                        const preTokens = content?.pre_tokens;
-                        const preTokensDisplay = preTokens != null ? preTokens.toLocaleString() : 'unknown';
-                        this.messages.push({
-                            id: 'msg-' + Date.now() + '-' + Math.random(),
-                            role: 'compaction',
-                            content: content?.summary || '',
-                            preTokens: preTokens,
-                            preTokensDisplay: preTokensDisplay,
-                            trigger: content?.trigger ?? 'auto',
-                            timestamp: dbMsg.created_at,
-                            collapsed: true,
-                            turn_number: dbMsg.turn_number
-                        });
-                        return;
-                    }
-
-                    if (typeof content === 'string') {
-                        this.messages.push({
-                            id: 'msg-' + Date.now() + '-' + Math.random(),
-                            role: dbMsg.role,
-                            content: content,
-                            timestamp: dbMsg.created_at,
-                            collapsed: false,
-                            cost: msgCost,
-                            model: msgModel,
-                            inputTokens: msgInputTokens,
-                            outputTokens: msgOutputTokens,
-                            cacheCreationTokens: msgCacheCreation,
-                            cacheReadTokens: msgCacheRead,
-                            agent: dbMsg.agent,
-                            turn_number: dbMsg.turn_number
-                        });
-                    } else if (Array.isArray(content)) {
-                        // Handle empty content arrays (e.g., assistant stopped after tool call)
-                        // Only show if there's a cost to display
-                        if (content.length === 0) {
-                            if (msgCost && dbMsg.role === 'assistant') {
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'empty-response',
-                                    content: null,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: msgCost,
-                                    model: msgModel,
-                                    inputTokens: msgInputTokens,
-                                    outputTokens: msgOutputTokens,
-                                    cacheCreationTokens: msgCacheCreation,
-                                    cacheReadTokens: msgCacheRead,
-                                    agent: dbMsg.agent,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            }
-                            return;
-                        }
-
-                        // Cost goes on the LAST block of this turn (regardless of type)
-                        const lastBlockIndex = content.length - 1;
-
-                        // Handle content blocks - attach cost to the LAST block
-                        for (let i = 0; i < content.length; i++) {
-                            const block = content[i];
-                            const isLast = (i === lastBlockIndex);
-
-                            if (block.type === 'text') {
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'assistant',
-                                    content: block.text,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: false,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'thinking') {
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'thinking',
-                                    content: block.thinking,
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: true,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'tool_use') {
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'tool',
-                                    toolName: block.name,
-                                    toolId: block.id,
-                                    toolInput: block.input,
-                                    toolResult: null,
-                                    content: JSON.stringify(block.input, null, 2),
-                                    timestamp: dbMsg.created_at,
-                                    collapsed: true,
-                                    cost: isLast ? msgCost : null,
-                                    model: isLast ? msgModel : null,
-                                    inputTokens: isLast ? msgInputTokens : null,
-                                    outputTokens: isLast ? msgOutputTokens : null,
-                                    cacheCreationTokens: isLast ? msgCacheCreation : null,
-                                    cacheReadTokens: isLast ? msgCacheRead : null,
-                                    agent: isLast ? dbMsg.agent : null,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'tool_result' && block.tool_use_id) {
-                                // Link result to the corresponding tool message
-                                const toolMsgIndex = this.messages.findIndex(m => m.role === 'tool' && m.toolId === block.tool_use_id);
-                                if (toolMsgIndex >= 0) {
-                                    this.messages[toolMsgIndex] = {
-                                        ...this.messages[toolMsgIndex],
-                                        toolResult: block.content
-                                    };
-                                }
-                            } else if (block.type === 'interrupted') {
-                                // Interrupted marker - shown when response was aborted
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'interrupted',
-                                    content: 'Response interrupted',
-                                    timestamp: dbMsg.created_at,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            } else if (block.type === 'error') {
-                                // Error marker - shown when job failed unexpectedly
-                                this.messages.push({
-                                    id: 'msg-' + Date.now() + '-' + Math.random(),
-                                    role: 'error',
-                                    content: block.message || 'An unexpected error occurred',
-                                    timestamp: dbMsg.created_at,
-                                    turn_number: dbMsg.turn_number
-                                });
-                            }
-                        }
+                    const converted = this.convertDbMessageToUi(dbMsg);
+                    for (const msg of converted) {
+                        this.messages.push(msg);
                     }
                 },
 
@@ -5151,29 +4862,11 @@
                     this.autoScrollEnabled = true; // Re-enable auto-scroll on new message
                     this.scrollToBottom();
 
-                    // Reset stream state
+                    // Reset stream state for the new message stream
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
                     // Stream phase is set in connectToStreamEvents() after disconnectFromStream()
-                    this._streamState = {
-                        // Maps block_index -> { msgIndex, content, complete }
-                        thinkingBlocks: {},
-                        currentThinkingBlock: -1,
-                        textMsgIndex: -1,
-                        toolMsgIndex: -1,
-                        textContent: '',
-                        toolInput: '',
-                        turnCost: 0,
-                        turnInputTokens: 0,
-                        turnOutputTokens: 0,
-                        turnCacheCreationTokens: 0,
-                        turnCacheReadTokens: 0,
-                        toolInProgress: false,
-                        waitingForToolResults: new Set(),
-                        abortPending: false,
-                        abortSkipSync: false,
-                        startedAt: null, // Will be set from stream response
-                    };
+                    this._streamStore.resetStreamState();
 
                     try {
                         // Build stream request body
@@ -5218,761 +4911,29 @@
                     }
                 },
 
-                // Connect to stream events and handle reconnection
+                // Connect to stream events - delegates to _streamStore
                 async connectToStreamEvents(fromIndex = 0, startupRetryCount = 0, networkRetryCount = 0) {
-                    if (!this.currentConversationUuid) {
-                        return;
-                    }
-
-                    // Max retries for not_found status (job hasn't started yet)
-                    const maxStartupRetries = 15; // 15 * 200ms = 3 seconds max wait
-                    // Max retries for network errors (exponential backoff)
-                    const maxNetworkRetries = 5;
-
-                    // Abort any existing connection
-                    this.disconnectFromStream();
-
-                    // Increment nonce to invalidate any pending reconnection attempts
-                    const myNonce = ++this._streamConnectNonce;
-
-                    // Debug logging for connection state tracking
-                    console.log('[Stream] connectToStreamEvents:', {
-                        uuid: this.currentConversationUuid,
-                        fromIndex,
-                        startupRetryCount,
-                        networkRetryCount,
-                        nonce: myNonce,
-                        previousNonce: myNonce - 1,
-                        lastEventIndex: this.lastEventIndex,
-                        lastEventId: this.lastEventId,
-                    });
-
-                    this.isStreaming = true;
-                    this.currentConversationStatus = 'processing'; // Update status badge
-
-                    // Restore stream phase after disconnectFromStream() reset it.
-                    // 'waiting' = waiting for first response (triggers amber dot after 15s)
-                    if (this._streamPhase === 'idle') {
-                        this._streamPhase = 'waiting';
-                        this._phaseChangedAt = Date.now();
-                        this._pendingResponseWarning = false;
-                    }
-
-                    // Start connection health check (dead man's switch)
-                    this._lastKeepaliveAt = Date.now();
-                    this._connectionHealthy = true;
-                    if (this._keepaliveCheckInterval) clearInterval(this._keepaliveCheckInterval);
-                    this._keepaliveCheckInterval = setInterval(() => {
-                        // Skip health check when tab is hidden (browser throttles SSE
-                        // processing in background tabs, causing false amber indicators)
-                        if (document.hidden) return;
-
-                        // Connection health: no keepalive for >45s
-                        if (this._lastKeepaliveAt && Date.now() - this._lastKeepaliveAt > 45000) {
-                            this._connectionHealthy = false;
-                        }
-                        // Pending response warning: waiting >15s after tool results (likely compacting)
-                        if (this._streamPhase === 'waiting' && this._phaseChangedAt &&
-                            Date.now() - this._phaseChangedAt > 15000) {
-                            this._pendingResponseWarning = true;
-                        } else {
-                            this._pendingResponseWarning = false;
-                        }
-                    }, 5000);
-
-                    // Reset keepalive timer when tab becomes visible again to prevent
-                    // false amber indicator (browser doesn't process SSE while hidden)
-                    this._visibilityHandler = () => {
-                        if (!document.hidden && this._lastKeepaliveAt) {
-                            this._lastKeepaliveAt = Date.now();
-                            this._connectionHealthy = true;
-                        }
-                    };
-                    document.addEventListener('visibilitychange', this._visibilityHandler);
-
-                    this.streamAbortController = new AbortController();
-                    let pendingRetry = false;
-
-                    try {
-                        const url = `/api/conversations/${this.currentConversationUuid}/stream-events?from_index=${fromIndex}`;
-                        const response = await fetch(url, { signal: this.streamAbortController.signal });
-
-                        // Check if we've been superseded by a newer connection attempt
-                        if (myNonce !== this._streamConnectNonce) {
-                            console.log('[Stream] Connection superseded by newer attempt:', {
-                                myNonce,
-                                currentNonce: this._streamConnectNonce,
-                            });
-                            return;
-                        }
-
-                        const reader = response.body.getReader();
-                        const decoder = new TextDecoder();
-                        let buffer = '';
-
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-
-                            buffer += decoder.decode(value, { stream: true });
-                            const lines = buffer.split('\n');
-                            buffer = lines.pop();
-
-                            for (const line of lines) {
-                                if (!line.startsWith('data: ')) continue;
-
-                                try {
-                                    const event = JSON.parse(line.substring(6));
-
-                                    // Track event index and ID for reconnection (persist to sessionStorage for refresh survival)
-                                    if (event.index !== undefined) {
-                                        this.lastEventIndex = event.index + 1;
-                                        try {
-                                            sessionStorage.setItem(`stream_index_${this.currentConversationUuid}`, this.lastEventIndex);
-                                        } catch (e) {
-                                            // sessionStorage might not be available
-                                        }
-                                    }
-                                    // Track unique event ID for verification
-                                    if (event.event_id) {
-                                        this.lastEventId = event.event_id;
-                                    }
-
-                                    // Handle stream status events
-                                    if (event.type === 'stream_status') {
-                                        if (event.status === 'not_found') {
-                                            // Race condition: job hasn't started yet, retry
-                                            if (startupRetryCount < maxStartupRetries) {
-                                                // Check nonce before scheduling retry
-                                                if (myNonce === this._streamConnectNonce) {
-                                                    pendingRetry = true;
-                                                    this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(0, startupRetryCount + 1, 0), 200);
-                                                }
-                                                return;
-                                            } else {
-                                                this.isStreaming = false;
-                                                this.currentConversationStatus = 'failed'; // Update status badge
-                                                this.showError('Failed to connect to stream');
-                                                return;
-                                            }
-                                        }
-                                        if (event.status === 'completed' || event.status === 'failed') {
-                                            this.isStreaming = false;
-                                            this._isReplaying = false; // Clear replay flag
-                                            // Update status badge
-                                            this.currentConversationStatus = event.status === 'failed' ? 'failed' : 'idle';
-                                            // Prevent reconnection for a short period
-                                            this._justCompletedStream = true;
-                                            // Clear sessionStorage - stream is done, no longer need reconnection state
-                                            this._clearStreamStorage(this.currentConversationUuid);
-                                            // Clear flag after a delay (increased from 1s to 3s for safety)
-                                            setTimeout(() => { this._justCompletedStream = false; }, 3000);
-                                        }
-                                        continue;
-                                    }
-
-                                    if (event.type === 'timeout') {
-                                        // Reconnect from last known position (fresh connection, reset counters)
-                                        // Check nonce before scheduling retry
-                                        if (myNonce === this._streamConnectNonce) {
-                                            pendingRetry = true;
-                                            this._streamRetryTimeoutId = setTimeout(() => this.connectToStreamEvents(this.lastEventIndex, 0, 0), 100);
-                                        }
-                                        return;
-                                    }
-
-                                    // Track keepalive for connection health (don't pass to handleStreamEvent)
-                                    if (event.type === 'keepalive') {
-                                        this._lastKeepaliveAt = Date.now();
-                                        this._connectionHealthy = true;
-                                        continue;
-                                    }
-
-                                    // Handle regular stream events
-                                    // Also update keepalive timer on any data event
-                                    this._lastKeepaliveAt = Date.now();
-                                    this._connectionHealthy = true;
-                                    this.handleStreamEvent(event);
-
-                                } catch (parseErr) {
-                                    console.error('Parse error:', parseErr, line);
-                                }
-                            }
-                        }
-                    } catch (err) {
-                        if (err.name === 'AbortError') {
-                            console.log('Stream connection aborted');
-                        } else {
-                            console.error('Stream connection error:', err);
-                            // Network error retry with exponential backoff
-                            // Only retry if this connection hasn't been superseded
-                            if (networkRetryCount < maxNetworkRetries && myNonce === this._streamConnectNonce) {
-                                const delay = Math.min(1000 * Math.pow(2, networkRetryCount), 8000);
-                                console.log(`[Stream] Network error, retrying in ${delay}ms (attempt ${networkRetryCount + 1}/${maxNetworkRetries})`);
-                                this._streamRetryTimeoutId = setTimeout(
-                                    () => this.connectToStreamEvents(this.lastEventIndex, 0, networkRetryCount + 1),
-                                    delay
-                                );
-                                pendingRetry = true;
-                                return; // Don't set isStreaming = false -- we're retrying
-                            }
-                        }
-                    } finally {
-                        // Only set isStreaming false if:
-                        // - no pending retry scheduled
-                        // - we weren't aborted for reconnection
-                        // - this connection hasn't been superseded by a newer one (nonce check)
-                        if (!pendingRetry && !this.streamAbortController?.signal.aborted && myNonce === this._streamConnectNonce) {
-                            this.isStreaming = false;
-
-                            // Clean up keepalive health check to prevent stale intervals
-                            if (this._keepaliveCheckInterval) {
-                                clearInterval(this._keepaliveCheckInterval);
-                                this._keepaliveCheckInterval = null;
-                            }
-                            if (this._visibilityHandler) {
-                                document.removeEventListener('visibilitychange', this._visibilityHandler);
-                                this._visibilityHandler = null;
-                            }
-                            this._connectionHealthy = true;
-                            this._lastKeepaliveAt = null;
-                        }
-                    }
+                    return this._streamStore?.connectToStreamEvents(fromIndex, startupRetryCount, networkRetryCount);
                 },
 
-                // Disconnect from stream (for navigation or cleanup)
+                // Disconnect from stream - delegates to _streamStore
                 disconnectFromStream() {
-                    // Clear any pending retry timeout
-                    if (this._streamRetryTimeoutId) {
-                        clearTimeout(this._streamRetryTimeoutId);
-                        this._streamRetryTimeoutId = null;
-                    }
-
-                    // Stop keepalive health check
-                    if (this._keepaliveCheckInterval) {
-                        clearInterval(this._keepaliveCheckInterval);
-                        this._keepaliveCheckInterval = null;
-                    }
-                    if (this._visibilityHandler) {
-                        document.removeEventListener('visibilitychange', this._visibilityHandler);
-                        this._visibilityHandler = null;
-                    }
-                    this._connectionHealthy = true;
-                    this._lastKeepaliveAt = null;
-                    // Reset stream phase tracking
-                    this._streamPhase = 'idle';
-                    this._phaseChangedAt = null;
-                    this._pendingResponseWarning = false;
-
-                    if (this.streamAbortController) {
-                        this.streamAbortController.abort();
-                        this.streamAbortController = null;
-                    }
+                    return this._streamStore?.disconnectFromStream();
                 },
 
-                // Abort the current stream (user clicked stop button)
+                // Abort the current stream - delegates to _streamStore
                 async abortStream() {
-                    if (!this.isStreaming || !this.currentConversationUuid) {
-                        return;
-                    }
-
-                    const state = this._streamState;
-
-                    // If tool parameters are being streamed, wait for tool_use_stop
-                    if (state.toolInProgress) {
-                        console.log('Abort requested while streaming tool parameters - deferring until tool_use_stop');
-                        state.abortPending = true;
-                        return;
-                    }
-
-                    // If tools are waiting for execution results, wait for all tool_results
-                    // This ensures CLI providers have complete tool_use + tool_result in their session
-                    if (state.waitingForToolResults.size > 0) {
-                        console.log('Abort requested while waiting for tool results - deferring until all tools complete');
-                        state.abortPending = true;
-                        return;
-                    }
-
-                    // Determine if we should skip syncing to CLI session file
-                    // skipSync=true when aborting after tools completed (CLI already has complete data)
-                    const skipSync = state.abortSkipSync;
-
-                    try {
-                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/abort`, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                            },
-                            body: JSON.stringify({ skipSync }),
-                        });
-
-                        // Reset skipSync flag (even if request fails, don't carry over to next abort)
-                        state.abortSkipSync = false;
-
-                        if (!response.ok) {
-                            console.error('Failed to abort stream:', await response.text());
-                        }
-
-                        // Clean up in-progress streaming messages
-                        // (state was already captured at the start of abortStream)
-
-                        // Remove incomplete thinking blocks (ones without signatures)
-                        // Must iterate in reverse order to maintain correct indices when splicing
-                        const incompleteThinkingIndices = [];
-                        for (const blockIdx in state.thinkingBlocks) {
-                            const block = state.thinkingBlocks[blockIdx];
-                            if (block && !block.complete && block.msgIndex >= 0 && block.msgIndex < this.messages.length) {
-                                incompleteThinkingIndices.push(block.msgIndex);
-                            }
-                        }
-                        // Sort descending so we remove from end first
-                        incompleteThinkingIndices.sort((a, b) => b - a);
-                        for (const idx of incompleteThinkingIndices) {
-                            this.messages.splice(idx, 1);
-                            // Adjust text/tool indices if they come after
-                            if (state.textMsgIndex > idx) state.textMsgIndex--;
-                            if (state.toolMsgIndex > idx) state.toolMsgIndex--;
-                        }
-
-                        // Remove empty text blocks (keep partial text - it's still useful)
-                        if (state.textMsgIndex >= 0 && state.textMsgIndex < this.messages.length) {
-                            const textMsg = this.messages[state.textMsgIndex];
-                            if (!textMsg.content || textMsg.content.trim() === '') {
-                                this.messages.splice(state.textMsgIndex, 1);
-                            }
-                        }
-
-                        // Add interrupted marker
-                        this.messages.push({
-                            id: 'msg-' + Date.now() + '-interrupted',
-                            role: 'interrupted',
-                            content: 'Response interrupted',
-                            timestamp: new Date().toISOString(),
-                        });
-
-                        // Scroll to show the interrupted marker
-                        this.scrollToBottom();
-
-                        // Disconnect from SSE - the done event from abort will handle cleanup
-                        this.disconnectFromStream();
-                        this.isStreaming = false;
-
-                    } catch (err) {
-                        console.error('Error aborting stream:', err);
-                        this.isStreaming = false;
-                    }
+                    return this._streamStore?.abortStream();
                 },
 
-                // Handle a single stream event
+                // Handle a single stream event - delegates to _streamStore
                 handleStreamEvent(event) {
-                    // Validate event belongs to current conversation (prevents cross-talk)
-                    if (event.conversation_uuid && event.conversation_uuid !== this.currentConversationUuid) {
-                        console.debug('Ignoring event for different conversation:', event.conversation_uuid);
-                        return;
-                    }
-
-                    const state = this._streamState;
-
-                    // Debug: log all events except usage
-                    if (event.type !== 'usage') {
-                        console.log('SSE Event:', event.type, event.content ? String(event.content).substring(0, 50) : '(no content)');
-                    }
-
-                    switch (event.type) {
-                        case 'thinking_start':
-                            // Phase: response content arriving
-                            this._streamPhase = 'streaming';
-                            this._phaseChangedAt = Date.now();
-                            this._pendingResponseWarning = false;
-                            // Support interleaved thinking - track by block_index
-                            const thinkingBlockIndex = event.block_index ?? 0;
-                            state.currentThinkingBlock = thinkingBlockIndex;
-                            state.thinkingBlocks[thinkingBlockIndex] = {
-                                msgIndex: this.messages.length,
-                                content: '',
-                                complete: false
-                            };
-                            this.messages.push({
-                                id: 'msg-' + Date.now() + '-thinking-' + thinkingBlockIndex,
-                                role: 'thinking',
-                                content: '',
-                                timestamp: state.startedAt || new Date().toISOString(),
-                                collapsed: false
-                            });
-                            this.scrollToBottom();
-                            // Persist stream state for reconnection
-                            this._saveStreamState(this.currentConversationUuid);
-                            break;
-
-                        case 'thinking_delta':
-                            {
-                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
-                                const block = state.thinkingBlocks[blockIdx];
-                                if (block && event.content) {
-                                    block.content += event.content;
-                                    this.messages[block.msgIndex] = {
-                                        ...this.messages[block.msgIndex],
-                                        content: block.content
-                                    };
-                                    this.scrollToBottom();
-                                    // Persist accumulated content for reconnection
-                                    this._saveStreamState(this.currentConversationUuid);
-                                }
-                            }
-                            break;
-
-                        case 'thinking_signature':
-                            {
-                                // Mark thinking as complete (has signature, safe to keep on abort)
-                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
-                                if (state.thinkingBlocks[blockIdx]) {
-                                    state.thinkingBlocks[blockIdx].complete = true;
-                                }
-                            }
-                            break;
-
-                        case 'thinking_stop':
-                            {
-                                const blockIdx = event.block_index ?? state.currentThinkingBlock;
-                                const block = state.thinkingBlocks[blockIdx];
-                                if (block) {
-                                    this.messages[block.msgIndex] = {
-                                        ...this.messages[block.msgIndex],
-                                        collapsed: true
-                                    };
-                                }
-                            }
-                            break;
-
-                        case 'text_start':
-                            // Phase: response content arriving
-                            this._streamPhase = 'streaming';
-                            this._phaseChangedAt = Date.now();
-                            this._pendingResponseWarning = false;
-                            // Collapse all thinking blocks
-                            for (const blockIdx in state.thinkingBlocks) {
-                                const block = state.thinkingBlocks[blockIdx];
-                                if (block && block.msgIndex >= 0) {
-                                    this.messages[block.msgIndex] = {
-                                        ...this.messages[block.msgIndex],
-                                        collapsed: true
-                                    };
-                                }
-                            }
-                            state.textMsgIndex = this.messages.length;
-                            state.textContent = '';
-                            state.turnCost = 0;
-                            state.turnInputTokens = 0;
-                            state.turnOutputTokens = 0;
-                            state.turnCacheCreationTokens = 0;
-                            state.turnCacheReadTokens = 0;
-                            this.messages.push({
-                                id: 'msg-' + Date.now() + '-text',
-                                role: 'assistant',
-                                content: '',
-                                timestamp: state.startedAt || new Date().toISOString(),
-                                collapsed: false
-                            });
-                            this.scrollToBottom();
-                            // Persist stream state for reconnection
-                            this._saveStreamState(this.currentConversationUuid);
-                            break;
-
-                        case 'text_delta':
-                            if (state.textMsgIndex >= 0 && event.content) {
-                                state.textContent += event.content;
-                                this.messages[state.textMsgIndex] = {
-                                    ...this.messages[state.textMsgIndex],
-                                    content: state.textContent
-                                };
-                                this.scrollToBottom();
-                                // Persist accumulated content for reconnection
-                                this._saveStreamState(this.currentConversationUuid);
-                            }
-                            break;
-
-                        case 'text_stop':
-                            // Text block complete
-                            break;
-
-                        case 'tool_use_start':
-                            // Phase: tool executing (stays green)
-                            this._streamPhase = 'tool_executing';
-                            this._phaseChangedAt = Date.now();
-                            this._pendingResponseWarning = false;
-                            // Collapse all thinking blocks
-                            for (const blockIdx in state.thinkingBlocks) {
-                                const block = state.thinkingBlocks[blockIdx];
-                                if (block && block.msgIndex >= 0) {
-                                    this.messages[block.msgIndex] = {
-                                        ...this.messages[block.msgIndex],
-                                        collapsed: true
-                                    };
-                                }
-                            }
-                            state.toolInProgress = true;
-                            state.toolMsgIndex = this.messages.length;
-                            state.toolInput = '';
-                            // Track this tool as pending execution
-                            const toolId = event.metadata?.tool_id;
-                            if (toolId) {
-                                state.waitingForToolResults.add(toolId);
-                            } else {
-                                console.warn('tool_use_start event missing tool_id in metadata');
-                            }
-                            this.messages.push({
-                                id: 'msg-' + Date.now() + '-tool',
-                                role: 'tool',
-                                toolName: event.metadata?.tool_name || 'Tool',
-                                toolId: toolId,
-                                toolInput: '',
-                                toolResult: null,
-                                content: '',
-                                timestamp: state.startedAt || new Date().toISOString(),
-                                collapsed: false
-                            });
-                            this.scrollToBottom();
-                            // Persist stream state for reconnection
-                            this._saveStreamState(this.currentConversationUuid);
-                            break;
-
-                        case 'tool_use_delta':
-                            if (state.toolMsgIndex >= 0 && event.content) {
-                                state.toolInput += event.content;
-                                this.messages[state.toolMsgIndex] = {
-                                    ...this.messages[state.toolMsgIndex],
-                                    toolInput: state.toolInput,
-                                    content: state.toolInput
-                                };
-                                this.scrollToBottom();
-                                // Persist accumulated content for reconnection
-                                this._saveStreamState(this.currentConversationUuid);
-                            }
-                            break;
-
-                        case 'tool_use_stop':
-                            state.toolInProgress = false;
-                            if (state.toolMsgIndex >= 0) {
-                                this.messages[state.toolMsgIndex] = {
-                                    ...this.messages[state.toolMsgIndex],
-                                    collapsed: true
-                                };
-                                // Reset for next tool
-                                state.toolMsgIndex = -1;
-                                state.toolInput = '';
-                            }
-                            // Note: We do NOT trigger abort here anymore.
-                            // We wait for tool_result so the tool execution completes.
-                            // The abort will be triggered in tool_result handler.
-                            break;
-
-                        case 'tool_result':
-                            // Phase: tools done, waiting for next response (may compact)
-                            this._streamPhase = 'waiting';
-                            this._phaseChangedAt = Date.now();
-                            this._pendingResponseWarning = false;
-                            // Find the tool message with matching toolId and add the result
-                            const toolResultId = event.metadata?.tool_id;
-                            if (toolResultId) {
-                                const toolMsgIndex = this.messages.findIndex(m => m.role === 'tool' && m.toolId === toolResultId);
-                                if (toolMsgIndex >= 0) {
-                                    this.messages[toolMsgIndex] = {
-                                        ...this.messages[toolMsgIndex],
-                                        toolResult: event.content
-                                    };
-                                }
-                                // Remove from pending set - tool execution is complete
-                                state.waitingForToolResults.delete(toolResultId);
-
-                                // CLI PROVIDER PANEL DETECTION (Claude Code, Codex)
-                                // ================================================
-                                // CLI providers execute tools as subprocesses (php artisan tool:run),
-                                // which creates an ExecutionContext WITHOUT streamManager/conversationUuid.
-                                // This means ToolRunTool::openPanel() can never emit a screen_created
-                                // SSE event for CLI providers — the guard in openPanel() (line ~279)
-                                // requires both streamManager and conversationUuid to be set.
-                                //
-                                // This string-matching fallback is the ONLY mechanism that detects
-                                // new panels for CLI providers. Do NOT remove this without first
-                                // ensuring screen_created events work for CLI tool execution.
-                                //
-                                // For API providers (Anthropic API), the screen_created event handler
-                                // below handles panel detection — both may fire but refreshSessionScreens()
-                                // is idempotent so this is safe.
-                                if (!this._isReplaying) {
-                                    let panelOutput = event.content;
-                                    if (typeof panelOutput === 'string') {
-                                        try {
-                                            const parsed = JSON.parse(panelOutput);
-                                            if (parsed.output) {
-                                                panelOutput = parsed.output;
-                                            }
-                                        } catch (e) {
-                                            // Not JSON, use as-is
-                                        }
-                                    }
-                                    const outputStr = typeof panelOutput === 'string' ? panelOutput : '';
-                                    if (outputStr.startsWith("Opened panel '")) {
-                                        this.refreshSessionScreens();
-                                        this.$dispatch('screen-added');
-                                    }
-                                }
-                            } else {
-                                console.warn('tool_result event missing tool_id in metadata');
-                            }
-                            // Persist state after tool result (captures waitingForToolResults change)
-                            this._saveStreamState(this.currentConversationUuid);
-                            // If abort was deferred and all tools have results, trigger it now
-                            // Use skipSync=true since CLI already has the complete tool_use + tool_result
-                            if (state.abortPending && state.waitingForToolResults.size === 0 && !state.toolInProgress) {
-                                console.log('All pending tools complete - triggering deferred abort with skipSync');
-                                state.abortPending = false;
-                                state.abortSkipSync = true;
-                                this.abortStream();
-                            }
-                            break;
-
-                        case 'system_info':
-                            // System info from CLI commands like /context, /usage
-                            this.messages.push({
-                                id: 'msg-' + Date.now() + '-' + Math.random(),
-                                role: 'system',
-                                content: event.content,
-                                command: event.metadata?.command || null
-                            });
-                            this.scrollToBottom();
-                            break;
-
-                        case 'usage':
-                            if (event.metadata) {
-                                const input = event.metadata.input_tokens || 0;
-                                const output = event.metadata.output_tokens || 0;
-                                const cacheCreation = event.metadata.cache_creation_tokens || 0;
-                                const cacheRead = event.metadata.cache_read_tokens || 0;
-                                const cost = event.metadata.cost || 0;
-
-                                this.inputTokens += input;
-                                this.outputTokens += output;
-                                this.cacheCreationTokens += cacheCreation;
-                                this.cacheReadTokens += cacheRead;
-                                this.totalTokens += input + output;
-
-                                // Use server-calculated cost
-                                this.sessionCost += cost;
-
-                                // Update context window tracking
-                                if (event.metadata.context_window_size) {
-                                    this.contextWindowSize = event.metadata.context_window_size;
-                                }
-                                if (event.metadata.context_percentage !== undefined) {
-                                    this.contextPercentage = event.metadata.context_percentage;
-                                    this.lastContextTokens = input + output;
-                                    this.updateContextWarningLevel();
-                                }
-
-                                // Store in turn state for message update on done
-                                state.turnCost = cost;
-                                state.turnInputTokens = input;
-                                state.turnOutputTokens = output;
-                                state.turnCacheCreationTokens = cacheCreation;
-                                state.turnCacheReadTokens = cacheRead;
-                            }
-                            break;
-
-                        case 'context_compacted':
-                            // Legacy event - now replaced by compaction_summary
-                            // Keep for backwards compatibility with older conversations
-                            this.debugLog('Context compacted (legacy)', event.metadata);
-                            break;
-
-                        case 'compaction_summary':
-                            // Phase: compaction just completed, waiting for post-compaction response
-                            this._streamPhase = 'waiting';
-                            this._phaseChangedAt = Date.now();
-                            this._pendingResponseWarning = false;
-                            // Claude Code auto-compacted the conversation context
-                            // This event contains the full summary that Claude continues with
-                            this.debugLog('Compaction summary received', {
-                                contentLength: event.content?.length,
-                                preTokens: event.metadata?.pre_tokens,
-                                trigger: event.metadata?.trigger
-                            });
-                            const compactPreTokens = event.metadata?.pre_tokens;
-                            const compactPreTokensDisplay = compactPreTokens != null ? compactPreTokens.toLocaleString() : 'unknown';
-                            this.messages.push({
-                                id: 'msg-compaction-' + Date.now(),
-                                role: 'compaction',
-                                content: event.content || '',
-                                preTokens: compactPreTokens,
-                                preTokensDisplay: compactPreTokensDisplay,
-                                trigger: event.metadata?.trigger ?? 'auto',
-                                timestamp: event.timestamp || Date.now(),
-                                collapsed: true // Collapsed by default
-                            });
-                            this.scrollToBottom();
-                            break;
-
-                        case 'screen_created':
-                            // API PROVIDER PANEL DETECTION (Anthropic API)
-                            // =============================================
-                            // When API providers execute tools, ProcessConversationStream::executeTools()
-                            // creates an ExecutionContext WITH streamManager and conversationUuid.
-                            // ToolRunTool::openPanel() emits this screen_created event via SSE.
-                            //
-                            // NOTE: This event is NEVER emitted for CLI providers (Claude Code, Codex)
-                            // because CLI tools run as subprocesses without stream context.
-                            // CLI panel detection is handled by string-matching in the tool_result
-                            // handler above — do NOT remove that fallback.
-                            if (!this._isReplaying) {
-                                this.refreshSessionScreens();
-                                this.$dispatch('screen-added');
-                            }
-                            break;
-
-                        case 'done':
-                            // Phase: stream complete
-                            this._streamPhase = 'idle';
-                            this._phaseChangedAt = null;
-                            this._pendingResponseWarning = false;
-                            if (state.textMsgIndex >= 0) {
-                                this.messages[state.textMsgIndex] = {
-                                    ...this.messages[state.textMsgIndex],
-                                    cost: state.turnCost,
-                                    inputTokens: state.turnInputTokens,
-                                    outputTokens: state.turnOutputTokens,
-                                    cacheCreationTokens: state.turnCacheCreationTokens,
-                                    cacheReadTokens: state.turnCacheReadTokens,
-                                    model: this.model,
-                                    agent: this.currentAgent
-                                };
-                            }
-                            break;
-
-                        case 'error':
-                            // Check for Claude Code auth required error
-                            if (event.content && event.content.startsWith('CLAUDE_CODE_AUTH_REQUIRED:')) {
-                                this.showClaudeCodeAuthModal = true;
-                            } else {
-                                this.showError(event.content || 'Unknown error');
-                            }
-                            break;
-
-                        case 'debug':
-                            console.log('Debug from server:', event.content, event.metadata);
-                            break;
-
-                        default:
-                            console.log('Unknown event type:', event.type, event);
-                    }
+                    return this._streamStore?.handleStreamEvent(event);
                 },
 
-                // Connection indicator state: 'hidden' | 'connected' | 'processing' | 'disconnected'
+                // Connection indicator state - delegates to _streamStore
                 getIndicatorState() {
-                    if (!this.isStreaming) return 'hidden';
-                    if (!this._connectionHealthy) return 'disconnected';
-                    if (this._pendingResponseWarning) return 'processing';
-                    return 'connected';
+                    return this._streamStore?.getIndicatorState() ?? 'hidden';
                 },
 
                 // Get current provider's reasoning config from loaded providers data
@@ -6385,7 +5346,8 @@
 
                         return html;
                     } catch (e) {
-                        return `<pre class="text-xs">${this.escapeHtml(msg.content || '')}</pre>`;
+                        const rawToolContent = msg.toolPartialInput || msg.toolInput || msg.content || '';
+                        return `<pre class="whitespace-pre-wrap break-all text-xs">${this.escapeHtml(rawToolContent)}</pre>`;
                     }
                 },
 
@@ -6966,8 +5928,9 @@
                 },
 
                 get voiceButtonText() {
-                    if (this.isProcessing) return '<i class="fa-solid fa-spinner fa-spin"></i> Connecting...';
-                    if (this.waitingForFinalTranscript) return '<i class="fa-solid fa-spinner fa-spin"></i> Finishing...';
+                    const spinnerSvg = '<svg class="animate-spin" style="width: 1em; height: 1em;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>';
+                    if (this.isProcessing) return spinnerSvg + ' Connecting...';
+                    if (this.waitingForFinalTranscript) return spinnerSvg + ' Finishing...';
                     if (this.isRecording) return '<i class="fa-solid fa-stop"></i> Stop';
                     return '<i class="fa-solid fa-microphone"></i> Record';
                 },

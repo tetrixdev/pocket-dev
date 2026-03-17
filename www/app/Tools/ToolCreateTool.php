@@ -56,6 +56,21 @@ class ToolCreateTool extends Tool
                 'type' => 'object',
                 'description' => 'JSON Schema for named parameters (optional).',
             ],
+            'panel_dependencies' => [
+                'type' => 'array',
+                'items' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'type' => ['type' => 'string', 'enum' => ['script', 'stylesheet'], 'description' => 'script or stylesheet'],
+                        'url' => ['type' => 'string', 'description' => 'CDN URL'],
+                        'defer' => ['type' => 'boolean', 'description' => 'Defer loading (scripts only)'],
+                        'crossorigin' => ['type' => 'string', 'description' => 'Crossorigin attribute (e.g., "anonymous")'],
+                        'integrity' => ['type' => 'string', 'description' => 'SRI hash for integrity verification (e.g., "sha384-...")'],
+                    ],
+                    'required' => ['type', 'url'],
+                ],
+                'description' => 'Additional CDN dependencies to load for this panel. Base deps (Tailwind, Alpine, Font Awesome) are always loaded. Each entry needs at minimum type ("script" or "stylesheet") and url.',
+            ],
             'disabled' => [
                 'type' => 'boolean',
                 'description' => 'Create the tool in disabled state.',
@@ -110,6 +125,8 @@ Panels are interactive UI components. Required field: `blade_template`.
 2. Do NOT use `<script>` tags - they won't work with dynamic loading
 3. Use **Tailwind CSS** for styling
 4. Available variables: `$parameters`, `$state`, `$panelState`, `$panel`
+5. **Never use `:attr="$phpVar"` on regular HTML elements** — the `:` prefix is both Alpine.js shorthand (`x-bind:`) and Blade component syntax, but Blade ignores it on regular HTML. So `:disabled="$phpTrue"` passes the literal string `$phpTrue` to Alpine, which evaluates it as undefined JS. **Preferred:** inject PHP values into `x-data` via `@js()` (e.g., `items: @js($parameters['items'] ?? [])`). Alternative: use `x-bind:attr="{{ $var }}"` for one-off bindings.
+6. **Use `!!()` for boolean attribute expressions** — `x-bind:disabled` requires an explicit `true`/`false`. If the expression can return `undefined` (e.g., `actionLoading[id]` when the key doesn't exist), Alpine won't remove the attribute. Wrap in `!!()` to force a boolean: `x-bind:disabled="!!(!canWrite() || actionLoading[id])"`.
 
 **Correct pattern:**
 ```blade
@@ -249,11 +266,22 @@ syncState(immediate = false) {
 
 **Animations:** Use Alpine's `x-collapse` directive for smooth expand/collapse on tree nodes or collapsible sections.
 
+## Panel Dependencies
+
+Base dependencies (Tailwind, Alpine, Font Awesome) are always loaded for all panels.
+To add extra CDN libraries, use the `panel_dependencies` parameter with full dependency objects:
+```json
+{"panel_dependencies": [
+  {"type": "stylesheet", "url": "https://cdn.example.com/lib.css"},
+  {"type": "script", "url": "https://cdn.example.com/lib.js", "defer": true}
+]}
+```
+Each entry needs `type` ("script" or "stylesheet") and `url`. Optional: `defer`, `crossorigin`.
+
 ## Notes
 - Scripts have a 5-minute timeout
 - Panels can include an optional `script` field for peek and action handling
 - Use `tool:show <slug>` to inspect a tool's details
-- **Refer to the Panel Dependencies section for available CSS/JS libraries in panels**
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
@@ -321,6 +349,7 @@ API;
         $bladeTemplate = $input['blade_template'] ?? '';
         $category = $input['category'] ?? 'custom';
         $inputSchema = $input['input_schema'] ?? null;
+        $panelDependencies = $input['panel_dependencies'] ?? null;
         $disabled = $input['disabled'] ?? false;
 
         // Validate common required fields
@@ -373,6 +402,11 @@ API;
             return ToolResult::error('input_schema must be an object');
         }
 
+        // Validate panel_dependencies if provided
+        if ($panelDependencies !== null && !is_array($panelDependencies)) {
+            return ToolResult::error('panel_dependencies must be an array of dependency objects');
+        }
+
         try {
             $tool = PocketTool::create([
                 'slug' => $slug,
@@ -382,6 +416,7 @@ API;
                 'type' => $type,
                 'script' => $script ?: null,
                 'blade_template' => $bladeTemplate ?: null,
+                'panel_dependencies' => $panelDependencies,
                 'source' => PocketTool::SOURCE_USER,
                 'category' => $category,
                 'enabled' => !$disabled,

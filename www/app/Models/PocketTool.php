@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Panels\PanelRegistry;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -41,13 +42,32 @@ class PocketTool extends Model
         'input_schema',
         'script',
         'blade_template',
+        'panel_dependencies',
         'enabled',
     ];
 
     protected $casts = [
         'input_schema' => 'array',
+        'panel_dependencies' => 'array',
         'enabled' => 'boolean',
     ];
+
+    /**
+     * Override name for system panels to always use the Panel class value.
+     * This ensures renamed panels show the correct name without updating the DB.
+     */
+    public function getNameAttribute(string $value): string
+    {
+        if ($this->type === self::TYPE_PANEL && $this->slug) {
+            $registry = app(PanelRegistry::class);
+            $panel = $registry->get($this->slug);
+            if ($panel) {
+                return $panel->name;
+            }
+        }
+
+        return $value;
+    }
 
     /**
      * Scope to only enabled tools.

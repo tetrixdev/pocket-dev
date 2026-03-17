@@ -6,12 +6,12 @@
         </svg>
     </button>
     <div class="flex flex-col items-center">
-        <button @click="openRenameModal()"
-                :disabled="!currentConversationUuid"
+        <button @click="openSessionEditModal()"
+                :disabled="!currentSession"
                 class="text-base font-semibold leading-tight hover:text-blue-400 transition-colors max-w-[25ch] truncate disabled:cursor-default disabled:hover:text-white"
-                :class="{ 'cursor-pointer': currentConversationUuid }"
-                :title="currentConversationUuid ? 'Click to rename' : ''"
-                x-text="currentConversationTitle || 'New Conversation'">
+                :class="{ 'cursor-pointer': currentSession }"
+                :title="currentSession ? 'Click to edit session' : ''"
+                x-text="currentSession?.name || 'New Session'">
         </button>
         <div class="flex items-center gap-2">
             <button @click="showAgentSelector = true"
@@ -31,7 +31,10 @@
                   class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm"
                   :class="getStatusColorClass(currentConversationStatus)"
                   :title="'Status: ' + currentConversationStatus">
-                <i class="text-white text-[8px]" :class="getStatusIconClass(currentConversationStatus)"></i>
+                {{-- Processing: SVG spinner --}}
+                <x-spinner x-show="currentConversationStatus === 'processing'" x-cloak class="!w-2 !h-2 text-white" />
+                {{-- Other statuses: FA icons --}}
+                <i x-show="currentConversationStatus !== 'processing'" class="text-white text-[8px]" :class="getStatusIconClass(currentConversationStatus)"></i>
             </span>
             {{-- Context progress bar (compact) --}}
             <x-chat.context-progress :compact="true" />
@@ -84,15 +87,6 @@
             </a>
             {{-- Session Section Header --}}
             <div class="px-4 py-1.5 text-xs text-gray-500 uppercase tracking-wide border-t border-gray-600">Session</div>
-            {{-- Rename Session --}}
-            <button @click="openRenameSessionModal(); showConversationMenu = false"
-                    role="menuitem"
-                    :disabled="!currentSession"
-                    :class="!currentSession ? 'text-gray-500 cursor-not-allowed' : 'text-gray-200 hover:bg-gray-600'"
-                    class="flex items-center gap-2 px-4 py-2 text-sm w-full text-left">
-                <i class="fa-solid fa-pen w-4 text-center"></i>
-                Rename session
-            </button>
             {{-- Archive/Restore Session --}}
             <button @click="currentSession?.is_archived ? restoreSession(currentSession.id) : archiveSession(currentSession.id); showConversationMenu = false"
                     role="menuitem"
@@ -233,7 +227,10 @@
                 <div class="flex items-center gap-1.5">
                     <span class="inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm shrink-0"
                           :class="getStatusColorClass(_status)">
-                        <i class="text-white text-[8px]" :class="getStatusIconClass(_status)"></i>
+                        {{-- Processing: SVG spinner --}}
+                        <x-spinner x-show="_status === 'processing'" x-cloak class="!w-2 !h-2 text-white" />
+                        {{-- Other statuses: FA icons --}}
+                        <i x-show="_status !== 'processing'" class="text-white text-[8px]" :class="getStatusIconClass(_status)"></i>
                     </span>
                     <span class="text-xs text-gray-300 truncate flex-1" x-text="session.name || 'New Session'"></span>
                     {{-- Screen count badge --}}

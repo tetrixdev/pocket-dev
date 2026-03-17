@@ -2,11 +2,10 @@
 
 namespace App\Services\Providers;
 
-use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Services\AppSettingsService;
-use App\Services\Providers\Traits\InjectsInterruptionReminder;
+use App\Services\ModelRepository;
 use App\Streaming\StreamEvent;
 use Generator;
 use Illuminate\Support\Facades\Log;
@@ -25,10 +24,8 @@ use Illuminate\Support\Facades\Log;
  * Uses the standard Chat Completions API (/v1/chat/completions) instead of
  * OpenAI's proprietary Responses API.
  */
-class OpenAICompatibleProvider implements AIProviderInterface
+class OpenAICompatibleProvider extends AbstractApiProvider
 {
-    use InjectsInterruptionReminder;
-
     private ?string $apiKey;
     private string $baseUrl;
     private string $defaultModel;
@@ -37,8 +34,9 @@ class OpenAICompatibleProvider implements AIProviderInterface
     private AppSettingsService $settings;
     private ?\Psr\Http\Message\StreamInterface $activeStream = null;
 
-    public function __construct(AppSettingsService $settings)
+    public function __construct(ModelRepository $models, AppSettingsService $settings)
     {
+        parent::__construct($models);
         $this->settings = $settings;
         // Settings come from UI (stored in database via AppSettingsService)
         $this->baseUrl = $this->settings->getOpenAiCompatibleBaseUrl() ?? '';
@@ -60,6 +58,10 @@ class OpenAICompatibleProvider implements AIProviderInterface
         return !empty($this->baseUrl);
     }
 
+    /**
+     * Override base class: returns a single model entry based on configured model name.
+     * OpenAI-compatible providers don't use the model repository.
+     */
     public function getModels(): array
     {
         // Return a single model entry based on configured model name
@@ -75,6 +77,9 @@ class OpenAICompatibleProvider implements AIProviderInterface
         ];
     }
 
+    /**
+     * Override base class: context window is configured globally via UI settings.
+     */
     public function getContextWindow(string $model): int
     {
         // $model is unused - local LLMs don't expose per-model context windows via API.
@@ -501,18 +506,6 @@ class OpenAICompatibleProvider implements AIProviderInterface
             }
             $this->activeStream = null;
         }
-    }
-
-    /**
-     * Sync aborted message to native storage.
-     * No-op for API providers - they don't have local storage.
-     */
-    public function syncAbortedMessage(
-        Conversation $conversation,
-        Message $userMessage,
-        Message $assistantMessage
-    ): bool {
-        return true;
     }
 
     /**

@@ -32,6 +32,12 @@ Configuration files and environment variables for PocketDev.
 | `CLAUDE_MODEL` | `claude-sonnet-4-5-20250929` | Default model |
 | `CLAUDE_MAX_TURNS` | `100` | Max conversation turns |
 
+### Claude Code Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_CODE_OVERRIDE_MODEL` | *(empty)* | Force a specific model for all Claude Code conversations, overriding UI/agent selection. Accepts CLI aliases (`opus`, `sonnet`, `haiku`) or full model IDs (`claude-opus-4-5-20251101`). |
+
 ### File Upload Settings
 
 | Variable | Default | Description |
