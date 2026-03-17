@@ -100,6 +100,8 @@
                     get renderedContent() { return this.current.renderedContent || ''; },
                     get highlightedContent() { return this.current.highlightedContent || ''; },
                     get sanitizedHtml() { return this.current.sanitizedHtml || ''; },
+                    get isBinary() { return this.current.isBinary || false; },
+                    get isImage() { return this.current.isImage || false; },
                     get stackDepth() { return this.stack.length; },
 
                     async open(filePath) {
@@ -122,6 +124,8 @@
                             filename: filePath.split('/').pop(),
                             content: '',
                             error: null,
+                            isBinary: false,
+                            isImage: false,
                             isMarkdown: false,
                             isHtml: false,
                             sizeFormatted: '',
@@ -161,11 +165,16 @@
 
                             if (!data.exists) {
                                 updatedEntry.error = 'File not found';
+                            } else if (data.is_image) {
+                                updatedEntry.isImage = true;
+                                updatedEntry.filename = data.filename;
+                                updatedEntry.sizeFormatted = data.size_formatted;
                             } else if (data.too_large) {
                                 updatedEntry.error = data.error;
                                 updatedEntry.sizeFormatted = data.size_formatted;
                             } else if (data.binary) {
                                 updatedEntry.error = data.error;
+                                updatedEntry.isBinary = true;
                             } else if (data.error) {
                                 updatedEntry.error = data.error;
                             } else {

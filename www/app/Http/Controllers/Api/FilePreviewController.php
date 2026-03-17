@@ -51,6 +51,21 @@ class FilePreviewController extends Controller
         $extension = strtolower(pathinfo($realPath, PATHINFO_EXTENSION));
         $filename = basename($realPath);
 
+        // Detect image files by extension - render visually instead of as binary
+        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'avif', 'tiff', 'tif', 'svg'];
+        if (in_array($extension, $imageExtensions)) {
+            return response()->json([
+                'exists' => true,
+                'readable' => true,
+                'size' => $fileSize,
+                'size_formatted' => $this->formatBytes($fileSize),
+                'extension' => $extension,
+                'filename' => $filename,
+                'path' => $path,
+                'is_image' => true,
+            ]);
+        }
+
         // Check file size
         $maxFileSize = config('ai.file_preview.max_file_size', 2 * 1024 * 1024);
         if ($fileSize > $maxFileSize) {
