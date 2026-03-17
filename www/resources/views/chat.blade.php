@@ -283,7 +283,7 @@
 
                     downloadFile() {
                         if (!this.path) return;
-                        window.open('/api/file/download?path=' + encodeURIComponent(this.path), '_blank');
+                        window.open('/api/file/download?path=' + encodeURIComponent(this.path), '_blank', 'noopener,noreferrer');
                     },
 
                     async copyContent() {

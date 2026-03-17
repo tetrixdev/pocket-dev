@@ -216,8 +216,8 @@ class FilePreviewController extends Controller
 
         $realPath = $validation['realPath'];
 
-        if (is_dir($realPath)) {
-            return response()->json(['error' => 'Path is a directory, not a file'], 400);
+        if (!is_file($realPath)) {
+            return response()->json(['error' => 'Path is not a regular file'], 400);
         }
 
         if (!is_readable($realPath)) {

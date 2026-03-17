@@ -28,8 +28,10 @@
         <div class="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 shrink-0">
             <div class="flex items-center gap-3 min-w-0 flex-1">
                 {{-- File icon --}}
-                <i class="fa-regular fa-file-lines text-blue-400 shrink-0"
-                   :class="$store.filePreview.isImage && 'fa-regular fa-image text-purple-400'"></i>
+                <i :class="{
+                    'fa-regular fa-image text-purple-400 shrink-0': $store.filePreview.isImage,
+                    'fa-regular fa-file-lines text-blue-400 shrink-0': !$store.filePreview.isImage
+                }"></i>
 
                 {{-- Filename and path --}}
                 <div class="min-w-0 flex-1">
@@ -58,7 +60,7 @@
                         <button @click="$store.filePreview.copyContent()"
                                 class="hidden md:inline-flex p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Copy content"
-                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage">
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage && !$store.filePreview.isBinary">
                             <template x-if="!$store.filePreview.copied">
                                 <i class="fa-regular fa-copy"></i>
                             </template>
@@ -79,7 +81,7 @@
                         <button @click="$store.filePreview.startEditing()"
                                 class="hidden md:inline-flex p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Edit file"
-                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage">
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage && !$store.filePreview.isBinary">
                             <i class="fa-regular fa-pen-to-square"></i>
                         </button>
 
@@ -229,7 +231,7 @@
                 {{-- Copy button - text files only (not images, not binary) --}}
                 <button @click="$store.filePreview.copyContent()"
                         class="flex flex-col items-center gap-1 text-gray-400 active:text-white transition-colors"
-                        x-show="!$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage">
+                        x-show="!$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage && !$store.filePreview.isBinary">
                     <template x-if="!$store.filePreview.copied">
                         <i class="fa-regular fa-copy text-lg"></i>
                     </template>
@@ -250,7 +252,7 @@
                 {{-- Edit button - text files only (not images, not binary) --}}
                 <button @click="$store.filePreview.startEditing()"
                         class="flex flex-col items-center gap-1 text-gray-400 active:text-white transition-colors"
-                        x-show="!$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage">
+                        x-show="!$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage && !$store.filePreview.isBinary">
                     <i class="fa-regular fa-pen-to-square text-lg"></i>
                     <span class="text-xs">Edit</span>
                 </button>
