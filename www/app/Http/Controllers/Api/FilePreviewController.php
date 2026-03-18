@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\PathValidator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class FilePreviewController extends Controller
 {
@@ -49,6 +50,21 @@ class FilePreviewController extends Controller
         $fileSize = filesize($realPath);
         $extension = strtolower(pathinfo($realPath, PATHINFO_EXTENSION));
         $filename = basename($realPath);
+
+        // Detect image files by extension - render visually instead of as binary
+        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'ico', 'avif', 'tiff', 'tif', 'svg'];
+        if (in_array($extension, $imageExtensions)) {
+            return response()->json([
+                'exists' => true,
+                'readable' => true,
+                'size' => $fileSize,
+                'size_formatted' => $this->formatBytes($fileSize),
+                'extension' => $extension,
+                'filename' => $filename,
+                'path' => $path,
+                'is_image' => true,
+            ]);
+        }
 
         // Check file size
         $maxFileSize = config('ai.file_preview.max_file_size', 2 * 1024 * 1024);
@@ -180,6 +196,35 @@ class FilePreviewController extends Controller
             'bytes_written' => $result,
             'size_formatted' => $this->formatBytes($result),
         ]);
+    }
+
+    /**
+     * Download a file.
+     */
+    public function download(Request $request): BinaryFileResponse|JsonResponse
+    {
+        $request->validate([
+            'path' => 'required|string',
+        ]);
+
+        $path = $request->input('path');
+
+        $validation = $this->validatePath($path);
+        if ($validation['error']) {
+            return response()->json($validation['response'], $validation['status']);
+        }
+
+        $realPath = $validation['realPath'];
+
+        if (!is_file($realPath)) {
+            return response()->json(['error' => 'Path is not a regular file'], 400);
+        }
+
+        if (!is_readable($realPath)) {
+            return response()->json(['error' => 'Permission denied: cannot read file'], 403);
+        }
+
+        return response()->download($realPath);
     }
 
     /**

@@ -100,6 +100,9 @@
                     get renderedContent() { return this.current.renderedContent || ''; },
                     get highlightedContent() { return this.current.highlightedContent || ''; },
                     get sanitizedHtml() { return this.current.sanitizedHtml || ''; },
+                    get isBinary() { return this.current.isBinary || false; },
+                    get isImage() { return this.current.isImage || false; },
+                    get readable() { return this.current.readable || false; },
                     get stackDepth() { return this.stack.length; },
 
                     async open(filePath) {
@@ -122,6 +125,9 @@
                             filename: filePath.split('/').pop(),
                             content: '',
                             error: null,
+                            readable: false,
+                            isBinary: false,
+                            isImage: false,
                             isMarkdown: false,
                             isHtml: false,
                             sizeFormatted: '',
@@ -158,14 +164,20 @@
 
                             // Build the updated entry
                             const updatedEntry = { ...entry };
+                            updatedEntry.readable = !!data.readable;
 
                             if (!data.exists) {
                                 updatedEntry.error = 'File not found';
+                            } else if (data.is_image) {
+                                updatedEntry.isImage = true;
+                                updatedEntry.filename = data.filename;
+                                updatedEntry.sizeFormatted = data.size_formatted;
                             } else if (data.too_large) {
                                 updatedEntry.error = data.error;
                                 updatedEntry.sizeFormatted = data.size_formatted;
                             } else if (data.binary) {
                                 updatedEntry.error = data.error;
+                                updatedEntry.isBinary = true;
                             } else if (data.error) {
                                 updatedEntry.error = data.error;
                             } else {
@@ -270,6 +282,11 @@
                             // Go back through all preview history entries
                             history.go(-depth);
                         }
+                    },
+
+                    downloadFile() {
+                        if (!this.path) return;
+                        window.open('/api/file/download?path=' + encodeURIComponent(this.path), '_blank', 'noopener,noreferrer');
                     },
 
                     async copyContent() {
