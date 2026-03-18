@@ -102,6 +102,7 @@
                     get sanitizedHtml() { return this.current.sanitizedHtml || ''; },
                     get isBinary() { return this.current.isBinary || false; },
                     get isImage() { return this.current.isImage || false; },
+                    get readable() { return this.current.readable || false; },
                     get stackDepth() { return this.stack.length; },
 
                     async open(filePath) {
@@ -124,6 +125,7 @@
                             filename: filePath.split('/').pop(),
                             content: '',
                             error: null,
+                            readable: false,
                             isBinary: false,
                             isImage: false,
                             isMarkdown: false,
@@ -162,6 +164,7 @@
 
                             // Build the updated entry
                             const updatedEntry = { ...entry };
+                            updatedEntry.readable = !!data.readable;
 
                             if (!data.exists) {
                                 updatedEntry.error = 'File not found';

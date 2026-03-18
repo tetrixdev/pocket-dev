@@ -73,7 +73,7 @@
                         <button @click="$store.filePreview.downloadFile()"
                                 class="hidden md:inline-flex p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Download file"
-                                x-show="!$store.filePreview.loading && (!$store.filePreview.stack.at(-1)?.error || $store.filePreview.isBinary || $store.filePreview.isImage)">
+                                x-show="!$store.filePreview.loading && $store.filePreview.readable">
                             <i class="fa-solid fa-download"></i>
                         </button>
 
@@ -169,10 +169,18 @@
 
             {{-- Image preview --}}
             <template x-if="!$store.filePreview.loading && $store.filePreview.isImage">
-                <div class="flex items-center justify-center h-full p-4 bg-gray-950/50">
-                    <img :src="'/api/file/download?path=' + encodeURIComponent($store.filePreview.path)"
+                <div x-data="{ previewFailed: false }"
+                     class="flex items-center justify-center h-full p-4 bg-gray-950/50">
+                    <img x-show="!previewFailed"
+                         :src="'/api/file/download?path=' + encodeURIComponent($store.filePreview.path)"
                          :alt="$store.filePreview.filename"
+                         x-on:error="previewFailed = true"
                          class="max-w-full max-h-full object-contain rounded shadow-lg">
+                    <div x-show="previewFailed" x-cloak class="text-center text-gray-400">
+                        <i class="fa-regular fa-image text-3xl mb-3"></i>
+                        <div class="text-sm">Image preview unavailable.</div>
+                        <div class="text-xs text-gray-500 mt-1">Use Download to open the file.</div>
+                    </div>
                 </div>
             </template>
 
@@ -244,7 +252,7 @@
                 {{-- Download button - show for text files, binary files, AND images --}}
                 <button @click="$store.filePreview.downloadFile()"
                         class="flex flex-col items-center gap-1 text-gray-400 active:text-white transition-colors"
-                        x-show="!$store.filePreview.stack.at(-1)?.error || $store.filePreview.isBinary || $store.filePreview.isImage">
+                        x-show="$store.filePreview.readable">
                     <i class="fa-solid fa-download text-lg"></i>
                     <span class="text-xs">Download</span>
                 </button>
