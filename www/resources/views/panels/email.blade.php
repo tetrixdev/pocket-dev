@@ -451,11 +451,14 @@
         this.alwaysLoadImages = !this.alwaysLoadImages;
         // Sync to panel state for persistence
         try {
-            await fetch(`/api/panel/${this.panelStateId}/state`, {
+            const response = await fetch(`/api/panel/${this.panelStateId}/state`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ state: { alwaysLoadImages: this.alwaysLoadImages }, merge: true })
             });
+            if (!response.ok) {
+                throw new Error('Failed to save');
+            }
             this.showToast(this.alwaysLoadImages ? 'Always loading images' : 'Image blocking restored');
         } catch (e) {
             // Revert on failure
@@ -1222,13 +1225,17 @@ class="h-full flex flex-col text-sm relative"
                                     style="min-height: 300px; background: white;"
                                     x-init="$nextTick(() => {
                                         const iframe = $el;
+                                        let retries = 0;
+                                        const maxRetries = 40; // ~2 seconds max wait
                                         const fitAndResize = () => {
                                             try {
                                                 const doc = iframe.contentDocument;
                                                 const body = doc?.body;
                                                 if (!body) {
-                                                    // Body not ready yet, retry after a brief delay
-                                                    setTimeout(fitAndResize, 50);
+                                                    // Body not ready yet, retry after a brief delay (with limit)
+                                                    if (++retries < maxRetries) {
+                                                        setTimeout(fitAndResize, 50);
+                                                    }
                                                     return;
                                                 }
 
