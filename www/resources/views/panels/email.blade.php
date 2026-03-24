@@ -50,6 +50,7 @@
     showMobileSearch: false,
     showAttachments: false,
     allowRemoteImages: false,
+    alwaysLoadImages: @json($state['alwaysLoadImages'] ?? false),
     actionLoading: {},
     toast: null,
     toastTimeout: null,
@@ -284,10 +285,15 @@
 
         let html = body.content || '';
 
+        // Hide body initially to prevent flash of unscaled content during load
+        // The fitAndResize handler will set visibility:visible after applying zoom
+        const hideUntilScaled = '\x3cstyle\x3ebody{visibility:hidden}\x3c/style\x3e';
+        html = hideUntilScaled + html;
+
         // Block all remote resource loading when not explicitly allowed (privacy/tracking).
         // CSP img-src covers all image vectors: <img src>, srcset, CSS background-image, etc.
         // All tag/quote chars use JS hex escapes (\x3c \x3e \x22 \x27) to stay safe inside x-data.
-        if (!this.allowRemoteImages && html) {
+        if (!this.alwaysLoadImages && !this.allowRemoteImages && html) {
             const csp = '\x3cmeta http-equiv=\x22Content-Security-Policy\x22 content=\x22img-src data:; default-src \x27none\x27; style-src \x27unsafe-inline\x27;\x22\x3e';
             const headMatch = html.match(/\x3chead[\s>]/i);
             if (headMatch) {
@@ -382,7 +388,10 @@
         try {
             await this.doAction('archiveMessage', { messageId });
             this.messages = this.messages.filter(m => m.id !== messageId);
-            if (this.selectedMessage?.id === messageId) this.selectedMessage = null;
+            if (this.selectedMessage?.id === messageId) {
+                this.selectedMessage = null;
+                this.mobileView = 'list';
+            }
             this.showToast('Archived');
         } catch (e) {
             this.showToast('Archive failed: ' + e.message, 'error');
@@ -410,7 +419,10 @@
         try {
             await this.doAction('deleteMessage', { messageId });
             this.messages = this.messages.filter(m => m.id !== messageId);
-            if (this.selectedMessage?.id === messageId) this.selectedMessage = null;
+            if (this.selectedMessage?.id === messageId) {
+                this.selectedMessage = null;
+                this.mobileView = 'list';
+            }
             this.showToast('Deleted');
         } catch (e) {
             this.showToast('Delete failed: ' + e.message, 'error');
@@ -432,6 +444,23 @@
         } catch (e) {
             msg.isRead = !newRead;
             this.showToast('Failed to update read status', 'error');
+        }
+    },
+
+    async toggleAlwaysLoadImages() {
+        this.alwaysLoadImages = !this.alwaysLoadImages;
+        // Sync to panel state for persistence
+        try {
+            await fetch(`/api/panel/${this.panelStateId}/state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: { alwaysLoadImages: this.alwaysLoadImages }, merge: true })
+            });
+            this.showToast(this.alwaysLoadImages ? 'Always loading images' : 'Image blocking restored');
+        } catch (e) {
+            // Revert on failure
+            this.alwaysLoadImages = !this.alwaysLoadImages;
+            this.showToast('Failed to save preference', 'error');
         }
     },
 
@@ -1153,14 +1182,33 @@ class="h-full flex flex-col text-sm relative"
                                 </div>
                             </template>
 
-                            {{-- "Load remote images" banner --}}
-                            <template x-if="!messageLoading && selectedMessage?.body && !allowRemoteImages && hasRemoteResources()">
+                            {{-- "Load remote images" banner (only when images blocked and not always-loading) --}}
+                            <template x-if="!messageLoading && selectedMessage?.body && !alwaysLoadImages && !allowRemoteImages && hasRemoteResources()">
                                 <div class="flex items-center gap-2 px-3 py-1.5 bg-yellow-900/20 border-b border-yellow-700/30 text-xs text-yellow-300/80 shrink-0">
                                     <i class="fa-solid fa-shield-halved"></i>
                                     <span>Remote images are blocked for privacy.</span>
-                                    <button @click="allowRemoteImages = true"
-                                        class="ml-auto text-yellow-300 hover:text-yellow-200 underline cursor-pointer">
-                                        Load images
+                                    <div class="ml-auto flex items-center gap-2">
+                                        <button @click="allowRemoteImages = true"
+                                            class="text-yellow-300 hover:text-yellow-200 underline cursor-pointer">
+                                            Load images
+                                        </button>
+                                        <span class="text-yellow-700">|</span>
+                                        <button @click="toggleAlwaysLoadImages()"
+                                            class="text-yellow-300 hover:text-yellow-200 underline cursor-pointer">
+                                            Always
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+
+                            {{-- "Always loading" indicator (click to disable) --}}
+                            <template x-if="!messageLoading && selectedMessage?.body && alwaysLoadImages && hasRemoteResources()">
+                                <div class="flex items-center gap-2 px-3 py-1 bg-green-900/20 border-b border-green-700/30 text-xs text-green-300/70 shrink-0">
+                                    <i class="fa-solid fa-images"></i>
+                                    <span>Always loading remote images</span>
+                                    <button @click="toggleAlwaysLoadImages()"
+                                        class="ml-auto text-green-400 hover:text-green-300 underline cursor-pointer text-[11px]">
+                                        Disable
                                     </button>
                                 </div>
                             </template>
@@ -1169,18 +1217,56 @@ class="h-full flex flex-col text-sm relative"
                             <template x-if="!messageLoading && selectedMessage?.body">
                                 <iframe
                                     :srcdoc="getBodyHtml()"
-                                    sandbox=""
+                                    sandbox="allow-same-origin"
                                     class="w-full flex-1 border-0"
                                     style="min-height: 300px; background: white;"
                                     x-init="$nextTick(() => {
                                         const iframe = $el;
-                                        const resize = () => {
+                                        const fitAndResize = () => {
                                             try {
-                                                const h = iframe.contentDocument?.body?.scrollHeight || iframe.contentDocument?.documentElement?.scrollHeight;
+                                                const doc = iframe.contentDocument;
+                                                const body = doc?.body;
+                                                if (!body) {
+                                                    // Body not ready yet, retry after a brief delay
+                                                    setTimeout(fitAndResize, 50);
+                                                    return;
+                                                }
+
+                                                // Reset any previous zoom to measure true width
+                                                body.style.zoom = '1';
+
+                                                // Use max-content to measure true content width
+                                                // This forces body to expand to fit nested fixed-width tables
+                                                // Use setProperty with 'important' to override email CSS !important rules
+                                                const originalWidth = body.style.width;
+                                                body.style.setProperty('width', 'max-content', 'important');
+                                                const contentWidth = body.offsetWidth;
+                                                body.style.setProperty('width', originalWidth || '', 'important');
+
+                                                const iframeWidth = iframe.clientWidth;
+
+                                                // If content is wider than iframe, use CSS zoom to scale down
+                                                // Unlike transform:scale(), zoom actually changes layout
+                                                if (contentWidth > iframeWidth && iframeWidth > 0) {
+                                                    const scale = iframeWidth / contentWidth;
+                                                    body.style.zoom = scale;
+                                                }
+
+                                                // Set iframe height based on (possibly zoomed) content
+                                                const h = body.scrollHeight || doc.documentElement?.scrollHeight;
                                                 if (h) iframe.style.height = Math.min(h + 20, 2000) + 'px';
-                                            } catch(e) {}
+
+                                                // Show body now that scaling is applied (was hidden via injected CSS)
+                                                body.style.visibility = 'visible';
+                                            } catch(e) {
+                                                // On error, still try to show content rather than leave it blank
+                                                try {
+                                                    const doc = iframe.contentDocument;
+                                                    if (doc?.body) doc.body.style.visibility = 'visible';
+                                                } catch {}
+                                            }
                                         };
-                                        iframe.addEventListener('load', resize);
+                                        iframe.addEventListener('load', fitAndResize);
                                     })"
                                 ></iframe>
                             </template>
