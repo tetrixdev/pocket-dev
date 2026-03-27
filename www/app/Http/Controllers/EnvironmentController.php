@@ -186,7 +186,7 @@ class EnvironmentController extends Controller
             $package->delete();
 
             return redirect()->route('config.environment')
-                ->with('success', "Package '{$name}' removed from the list. Note: It is still installed in the current container but will not be installed in new containers.");
+                ->with('success', "Package '{$name}' removed. It remains installed until the next container restart.");
         } catch (\Exception $e) {
             Log::error('Failed to remove system package', ['error' => $e->getMessage()]);
             return redirect()->back()

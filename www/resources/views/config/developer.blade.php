@@ -51,8 +51,14 @@
         </form>
     </div>
 
-    <div class="text-gray-500 text-sm">
-        <p>This page is only available when <code class="bg-gray-900 px-2 py-1 rounded">APP_ENV=local</code></p>
+    <div class="bg-gray-800/50 rounded-lg p-4 text-sm text-gray-400">
+        <p class="font-medium text-gray-300 mb-2">✅ Data preserved during restart/rebuild:</p>
+        <ul class="list-disc list-inside space-y-1 ml-2">
+            <li>Sessions and login state</li>
+            <li>All conversations and settings</li>
+            <li>Workspace files</li>
+            <li>Memory databases</li>
+        </ul>
     </div>
 </div>
 
