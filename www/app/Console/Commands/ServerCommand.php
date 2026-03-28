@@ -399,10 +399,9 @@ class ServerCommand extends Command
             return Command::SUCCESS;
         }
 
-        // Create directory
-        if (!is_dir($keyDir)) {
-            mkdir($keyDir, 0700, true);
-        }
+        // Create directory structure with www-data ownership
+        // This ensures the web server can access keys for panel actions
+        $this->ensureSshDirectory($keyDir);
 
         // Generate key
         $comment = "pocketdev-{$workspace->slug}";
@@ -414,9 +413,11 @@ class ServerCommand extends Command
             return $this->errorResponse('Failed to generate SSH key: ' . $result->errorOutput());
         }
 
-        // Set permissions
+        // Set permissions and ownership for www-data (web server user)
         chmod($keyPath, 0600);
         chmod($pubKeyPath, 0644);
+        $this->ensureWwwDataAccess($keyPath);
+        $this->ensureWwwDataAccess($pubKeyPath);
 
         $publicKey = file_get_contents($pubKeyPath);
 
@@ -495,6 +496,61 @@ class ServerCommand extends Command
     private function getWorkspaceSshDir(string $workspaceId): string
     {
         return "/var/www/.pocketdev/ssh/{$workspaceId}";
+    }
+
+    /**
+     * Ensure SSH directory exists with correct ownership for www-data.
+     * Creates the full path: /var/www/.pocketdev/ssh/{workspaceId}
+     *
+     * Also fixes permissions on existing directories to ensure web server access.
+     */
+    private function ensureSshDirectory(string $keyDir): void
+    {
+        $baseDir = '/var/www/.pocketdev';
+        $sshDir = "{$baseDir}/ssh";
+
+        // Create and fix base .pocketdev directory
+        if (!is_dir($baseDir)) {
+            mkdir($baseDir, 0700, true);
+        }
+        $this->ensureWwwDataAccess($baseDir);
+
+        // Create and fix ssh subdirectory
+        if (!is_dir($sshDir)) {
+            mkdir($sshDir, 0700);
+        }
+        $this->ensureWwwDataAccess($sshDir);
+
+        // Create and fix workspace-specific directory
+        if (!is_dir($keyDir)) {
+            mkdir($keyDir, 0700);
+        }
+        $this->ensureWwwDataAccess($keyDir);
+    }
+
+    /**
+     * Ensure www-data can access a file/directory.
+     *
+     * This method handles both dev and prod environments:
+     * - In prod: /var/www is owned by www-data, so chown works
+     * - In dev: www-data is in group 33, files need proper group access
+     *
+     * We set ownership to www-data:www-data which works in both cases.
+     */
+    private function ensureWwwDataAccess(string $path): void
+    {
+        // Get www-data uid/gid (typically 33 on Debian/Ubuntu)
+        $wwwDataInfo = posix_getpwnam('www-data');
+        if ($wwwDataInfo === false) {
+            // Fallback to numeric IDs if posix functions unavailable
+            @chown($path, 33);
+            @chgrp($path, 33);
+            return;
+        }
+
+        @chown($path, $wwwDataInfo['uid']);
+        @chgrp($path, $wwwDataInfo['gid']);
+        @chmod($path, 0700);
     }
 
     private function invalidAction(string $action): int
