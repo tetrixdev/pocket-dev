@@ -52,7 +52,7 @@ class ServerAppCommand extends Command
         $serverId = $this->option('server');
 
         if (!$workspaceId && !$serverId) {
-            return $this->error('Either --workspace or --server is required');
+            return $this->errorResponse('Either --workspace or --server is required');
         }
 
         $query = ServerApplication::with('server');
@@ -105,29 +105,29 @@ class ServerAppCommand extends Command
         $name = $this->option('name');
 
         if (!$workspaceId) {
-            return $this->error('--workspace is required');
+            return $this->errorResponse('--workspace is required');
         }
         if (!$serverId) {
-            return $this->error('--server is required');
+            return $this->errorResponse('--server is required');
         }
         if (!$name) {
-            return $this->error('--name is required');
+            return $this->errorResponse('--name is required');
         }
 
         $server = ServerConnection::find($serverId);
         if (!$server) {
-            return $this->error('Server not found');
+            return $this->errorResponse('Server not found');
         }
 
         if ($server->workspace_id !== $workspaceId) {
-            return $this->error('Server does not belong to this workspace');
+            return $this->errorResponse('Server does not belong to this workspace');
         }
 
         $slug = $this->option('slug') ?: Str::slug($name);
 
         // Check if slug already exists on this server
         if (ServerApplication::where('server_connection_id', $serverId)->where('slug', $slug)->exists()) {
-            return $this->error("Application with slug '{$slug}' already exists on this server");
+            return $this->errorResponse("Application with slug '{$slug}' already exists on this server");
         }
 
         $composeContent = $this->option('compose');
@@ -179,7 +179,7 @@ class ServerAppCommand extends Command
         }
 
         if (!$app->compose_content) {
-            return $this->error('No compose.yml content configured. Use update with --compose first.');
+            return $this->errorResponse('No compose.yml content configured. Use update with --compose first.');
         }
 
         try {
@@ -187,7 +187,7 @@ class ServerAppCommand extends Command
 
             if (!$ssh->test()) {
                 $app->markFailed('Cannot connect to server');
-                return $this->error('Cannot connect to server');
+                return $this->errorResponse('Cannot connect to server');
             }
 
             $app->markDeploying();
@@ -231,7 +231,7 @@ class ServerAppCommand extends Command
             return Command::SUCCESS;
         } catch (\Exception $e) {
             $app->markFailed($e->getMessage());
-            return $this->error("Deployment failed: " . $e->getMessage());
+            return $this->errorResponse("Deployment failed: " . $e->getMessage());
         }
     }
 
@@ -276,7 +276,7 @@ class ServerAppCommand extends Command
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            return $this->error("{$action} failed: " . $e->getMessage());
+            return $this->errorResponse("{$action} failed: " . $e->getMessage());
         }
     }
 
@@ -302,7 +302,7 @@ class ServerAppCommand extends Command
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            return $this->error("Failed to get logs: " . $e->getMessage());
+            return $this->errorResponse("Failed to get logs: " . $e->getMessage());
         }
     }
 
@@ -332,7 +332,7 @@ class ServerAppCommand extends Command
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            return $this->error("Remove failed: " . $e->getMessage());
+            return $this->errorResponse("Remove failed: " . $e->getMessage());
         }
     }
 
@@ -345,7 +345,7 @@ class ServerAppCommand extends Command
 
         $envContent = $this->option('env');
         if (!$envContent) {
-            return $this->error('--env is required (path to file or content)');
+            return $this->errorResponse('--env is required (path to file or content)');
         }
 
         // Read from file if path is provided
@@ -392,7 +392,7 @@ class ServerAppCommand extends Command
         $redirect = $this->option('redirect');
 
         if (!$domain) {
-            return $this->error('--domain is required');
+            return $this->errorResponse('--domain is required');
         }
 
         // Add domain to app's domain list
@@ -414,7 +414,7 @@ class ServerAppCommand extends Command
                 $ssh = $this->getSshConnection($app->server);
                 $this->updateProxyConfig($ssh, $app, $domain, $redirect);
             } catch (\Exception $e) {
-                return $this->error("Failed to update proxy config: " . $e->getMessage());
+                return $this->errorResponse("Failed to update proxy config: " . $e->getMessage());
             }
         }
 
@@ -438,12 +438,12 @@ class ServerAppCommand extends Command
             // Use primary domain if not specified
             $domain = $app->primary_domain;
             if (!$domain) {
-                return $this->error('No domain configured. Add a domain first or specify --domain');
+                return $this->errorResponse('No domain configured. Add a domain first or specify --domain');
             }
         }
 
         if (!$app->server->has_proxy_nginx) {
-            return $this->error('Server does not have proxy-nginx installed');
+            return $this->errorResponse('Server does not have proxy-nginx installed');
         }
 
         try {
@@ -480,7 +480,7 @@ class ServerAppCommand extends Command
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            return $this->error("SSL request failed: " . $e->getMessage());
+            return $this->errorResponse("SSL request failed: " . $e->getMessage());
         }
     }
 
@@ -490,13 +490,13 @@ class ServerAppCommand extends Command
     {
         $id = $this->option('id');
         if (!$id) {
-            $this->error('--id is required');
+            $this->errorResponse('--id is required');
             return null;
         }
 
         $app = ServerApplication::with('server')->find($id);
         if (!$app) {
-            $this->error('Application not found');
+            $this->errorResponse('Application not found');
             return null;
         }
 
@@ -580,10 +580,10 @@ NGINX;
 
     private function invalidAction(string $action): int
     {
-        return $this->error("Invalid action '{$action}'. Valid: list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl");
+        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl");
     }
 
-    private function error(string $message): int
+    private function errorResponse(string $message): int
     {
         $this->outputJson([
             'output' => $message,

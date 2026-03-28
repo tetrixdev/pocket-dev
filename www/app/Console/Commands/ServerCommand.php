@@ -44,7 +44,7 @@ class ServerCommand extends Command
     {
         $workspaceId = $this->option('workspace');
         if (!$workspaceId) {
-            return $this->error('--workspace is required');
+            return $this->errorResponse('--workspace is required');
         }
 
         $servers = ServerConnection::forWorkspace($workspaceId)
@@ -92,23 +92,23 @@ class ServerCommand extends Command
         $host = $this->option('host');
 
         if (!$workspaceId) {
-            return $this->error('--workspace is required');
+            return $this->errorResponse('--workspace is required');
         }
         if (!$name) {
-            return $this->error('--name is required');
+            return $this->errorResponse('--name is required');
         }
         if (!$host) {
-            return $this->error('--host is required');
+            return $this->errorResponse('--host is required');
         }
 
         // Check workspace exists
         if (!Workspace::find($workspaceId)) {
-            return $this->error('Workspace not found');
+            return $this->errorResponse('Workspace not found');
         }
 
         // Check if host already exists in this workspace
         if (ServerConnection::findByHost($host, $workspaceId)) {
-            return $this->error("Server with host '{$host}' already exists in this workspace");
+            return $this->errorResponse("Server with host '{$host}' already exists in this workspace");
         }
 
         $server = ServerConnection::create([
@@ -159,7 +159,7 @@ class ServerCommand extends Command
             }
         } catch (\Exception $e) {
             $server->markConnectionFailed($e->getMessage());
-            return $this->error("Connection failed: " . $e->getMessage());
+            return $this->errorResponse("Connection failed: " . $e->getMessage());
         }
 
         return Command::SUCCESS;
@@ -178,7 +178,7 @@ class ServerCommand extends Command
             // Test connection first
             if (!$ssh->test()) {
                 $server->markConnectionFailed('Connection failed');
-                return $this->error('Cannot connect to server');
+                return $this->errorResponse('Cannot connect to server');
             }
 
             $server->markConnectionSuccess();
@@ -232,7 +232,7 @@ class ServerCommand extends Command
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            return $this->error("Detection failed: " . $e->getMessage());
+            return $this->errorResponse("Detection failed: " . $e->getMessage());
         }
     }
 
@@ -245,14 +245,14 @@ class ServerCommand extends Command
 
         $mode = $this->option('mode');
         if (!in_array($mode, ['public', 'private'])) {
-            return $this->error("Invalid mode '{$mode}'. Use 'public' or 'private'.");
+            return $this->errorResponse("Invalid mode '{$mode}'. Use 'public' or 'private'.");
         }
 
         try {
             $ssh = $this->getSshConnection($server);
 
             if (!$ssh->test()) {
-                return $this->error('Cannot connect to server');
+                return $this->errorResponse('Cannot connect to server');
             }
 
             // Download and run vps-setup
@@ -290,7 +290,7 @@ class ServerCommand extends Command
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            return $this->error("Installation failed: " . $e->getMessage());
+            return $this->errorResponse("Installation failed: " . $e->getMessage());
         }
     }
 
@@ -305,7 +305,7 @@ class ServerCommand extends Command
             $ssh = $this->getSshConnection($server);
 
             if (!$ssh->test()) {
-                return $this->error('Cannot connect to server');
+                return $this->errorResponse('Cannot connect to server');
             }
 
             // Run one-line installer
@@ -344,7 +344,7 @@ class ServerCommand extends Command
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            return $this->error("Installation failed: " . $e->getMessage());
+            return $this->errorResponse("Installation failed: " . $e->getMessage());
         }
     }
 
@@ -357,7 +357,7 @@ class ServerCommand extends Command
 
         $appCount = $server->applications()->count();
         if ($appCount > 0) {
-            return $this->error("Cannot remove server '{$server->name}': {$appCount} application(s) are deployed. Remove applications first.");
+            return $this->errorResponse("Cannot remove server '{$server->name}': {$appCount} application(s) are deployed. Remove applications first.");
         }
 
         $serverName = $server->name;
@@ -375,12 +375,12 @@ class ServerCommand extends Command
     {
         $workspaceId = $this->option('workspace');
         if (!$workspaceId) {
-            return $this->error('--workspace is required');
+            return $this->errorResponse('--workspace is required');
         }
 
         $workspace = Workspace::find($workspaceId);
         if (!$workspace) {
-            return $this->error('Workspace not found');
+            return $this->errorResponse('Workspace not found');
         }
 
         $keyDir = $this->getWorkspaceSshDir($workspaceId);
@@ -411,7 +411,7 @@ class ServerCommand extends Command
         );
 
         if ($result->failed()) {
-            return $this->error('Failed to generate SSH key: ' . $result->errorOutput());
+            return $this->errorResponse('Failed to generate SSH key: ' . $result->errorOutput());
         }
 
         // Set permissions
@@ -435,7 +435,7 @@ class ServerCommand extends Command
     {
         $workspaceId = $this->option('workspace');
         if (!$workspaceId) {
-            return $this->error('--workspace is required');
+            return $this->errorResponse('--workspace is required');
         }
 
         $keyDir = $this->getWorkspaceSshDir($workspaceId);
@@ -466,13 +466,13 @@ class ServerCommand extends Command
     {
         $id = $this->option('id');
         if (!$id) {
-            $this->error('--id is required');
+            $this->errorResponse('--id is required');
             return null;
         }
 
         $server = ServerConnection::find($id);
         if (!$server) {
-            $this->error('Server not found');
+            $this->errorResponse('Server not found');
             return null;
         }
 
@@ -499,10 +499,10 @@ class ServerCommand extends Command
 
     private function invalidAction(string $action): int
     {
-        return $this->error("Invalid action '{$action}'. Valid: list, add, test, detect, install-vps-setup, install-proxy, remove, ssh-keygen, show-public-key");
+        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, test, detect, install-vps-setup, install-proxy, remove, ssh-keygen, show-public-key");
     }
 
-    private function error(string $message): int
+    private function errorResponse(string $message): int
     {
         $this->outputJson([
             'output' => $message,
