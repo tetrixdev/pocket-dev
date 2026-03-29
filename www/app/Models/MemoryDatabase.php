@@ -129,7 +129,8 @@ class MemoryDatabase extends Model
      */
     public static function isValidSchemaName(string $name): bool
     {
-        // Must be lowercase, alphanumeric with underscores, max 55 chars (63 - 8 for "memory_" prefix)
-        return preg_match('/^[a-z][a-z0-9_]{0,54}$/', $name) === 1;
+        // Must be lowercase, alphanumeric with underscores, max 30 chars
+        // This ensures index names (idx_{schema}_{table}_{column}) stay under 63-byte PostgreSQL limit
+        return preg_match('/^[a-z][a-z0-9_]{0,29}$/', $name) === 1;
     }
 }
