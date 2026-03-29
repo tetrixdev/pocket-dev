@@ -206,9 +206,21 @@ pd server:app update-env-key --id=<app-id> --key=IMAGE_TAG --value=v0.2.0
 Before deploying, verify:
 
 1. **Repository**: Has `deploy/compose.yml` (use scan-repos to check)
-2. **GitHub Images**: A release exists with built Docker images on ghcr.io
-3. **Server Ready**: status=ready, has_vps_setup=true, has_proxy_nginx=true
-4. **DNS**: A record pointing domain to server IP
+2. **slim-docker-laravel-setup version**: Check `.slim-docker-version` file exists
+   - If missing: repo needs to be updated with `curl -sSL https://raw.githubusercontent.com/tetrixdev/slim-docker-laravel-setup/main/install.sh | bash`
+   - This is a **blocking issue** - do NOT proceed without updating
+3. **GitHub Images**: A release exists with built Docker images on ghcr.io
+4. **Server Ready**: status=ready, has_vps_setup=true, has_proxy_nginx=true
+5. **DNS**: A record pointing domain to server IP
+
+### Checking slim-docker-laravel-setup version
+```bash
+# Check if version file exists in repo
+gh api repos/<owner>/<repo>/contents/.slim-docker-version --jq '.content' | base64 -d
+
+# If missing or outdated, the repo maintainer must update by running in the repo:
+curl -sSL https://raw.githubusercontent.com/tetrixdev/slim-docker-laravel-setup/main/install.sh | bash
+```
 
 ## Important Rules
 - **NEVER manually SSH** - use the `server:app` commands
