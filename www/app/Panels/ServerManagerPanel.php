@@ -167,6 +167,40 @@ pd server:app add-domain --id=<app-id> --domain=example.com --upstream=app-name-
 pd server:app request-ssl --id=<app-id> --domain=example.com
 ```
 
+## Environment Variables - Smart Handling
+
+### Auto-derive these values (don't ask user):
+- `COMPOSE_PROJECT_NAME`: Use repo name as slug (e.g., "box-of-crumbs")
+- `GITHUB_REPOSITORY_OWNER`: Use repo owner (e.g., "jfbauer")
+- `IMAGE_TAG`: Use latest release tag (e.g., "v0.1.0")
+
+### Generate secure values (use bash, NOT LLM):
+```bash
+# Generate secure random password - write directly to .env, never read back
+openssl rand -base64 32
+```
+For DB_PASSWORD, APP_KEY, etc. - generate and write directly, never output to conversation.
+
+### Only ask user for:
+- Domain name
+- App-specific API keys they need to provide
+
+### After deployment, tell user:
+- Which values were auto-derived (so they can verify)
+- Which secrets were generated (don't show values)
+- Which fields still need manual input
+
+### Reading/updating env safely (for updates):
+```bash
+# Read a key (masks secrets by default - shows "abc...xyz")
+pd server:app read-env-key --id=<app-id> --key=IMAGE_TAG
+
+# Update a single key without reading the file
+pd server:app update-env-key --id=<app-id> --key=IMAGE_TAG --value=v0.2.0
+```
+
+**CRITICAL: Never use --full flag on secrets. The masked preview is for identifying which secret is set, not for reading secret values.**
+
 ## Deployment Prerequisites
 
 Before deploying, verify:
@@ -180,6 +214,7 @@ Before deploying, verify:
 - **NEVER manually SSH** - use the `server:app` commands
 - **NEVER skip prerequisites** - each step depends on previous ones
 - **Always verify** the repository has a release before deploying
+- **NEVER read full secret values** - use masked read-env-key for identification only
 - If any step fails or returns unexpected results, STOP and report the issue
 
 ## CLI Example

@@ -12,10 +12,10 @@ use Illuminate\Support\Str;
 class ServerAppCommand extends Command
 {
     protected $signature = 'server:app
-        {action : The action to perform (list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, scan-repos, get-deploy-config)}
-        {--workspace= : Workspace ID}
+        {action : The action to perform (list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, scan-repos, get-deploy-config, read-env-key, update-env-key)}
+        {--workspace= : Workspace ID or name}
         {--server= : Server ID (for list, add)}
-        {--id= : Application ID (for deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl)}
+        {--id= : Application ID (for deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, read-env-key, update-env-key)}
         {--name= : Application name (for add)}
         {--slug= : Application slug (for add, auto-generated from name if not provided)}
         {--compose= : Path to compose.yml file or content (for add, deploy)}
@@ -25,7 +25,10 @@ class ServerAppCommand extends Command
         {--redirect= : Redirect target URL (for add-domain with redirect type)}
         {--lines=100 : Number of log lines (for logs)}
         {--owner= : GitHub owner/org (for scan-repos, get-deploy-config)}
-        {--repo= : GitHub repo name (for get-deploy-config)}';
+        {--repo= : GitHub repo name (for get-deploy-config)}
+        {--key= : Environment variable key (for read-env-key, update-env-key)}
+        {--value= : New value (for update-env-key)}
+        {--full : Show full value instead of masked (for read-env-key - DO NOT use for secrets)}';
 
     protected $description = 'Manage applications on servers';
 
@@ -47,6 +50,8 @@ class ServerAppCommand extends Command
             'request-ssl' => $this->requestSsl(),
             'scan-repos' => $this->scanGitHubRepos(),
             'get-deploy-config' => $this->getDeployConfig(),
+            'read-env-key' => $this->readEnvKey(),
+            'update-env-key' => $this->updateEnvKey(),
             default => $this->invalidAction($action),
         };
     }
@@ -695,6 +700,144 @@ NGINX;
         return Command::SUCCESS;
     }
 
+    private function readEnvKey(): int
+    {
+        $app = $this->getApp();
+        if (!$app) {
+            return Command::FAILURE;
+        }
+
+        $key = $this->option('key');
+        if (!$key) {
+            return $this->errorResponse('--key is required');
+        }
+
+        $showFull = $this->option('full');
+
+        try {
+            $ssh = $this->getSshConnection($app->server);
+            $envPath = "{$app->full_deploy_path}/.env";
+
+            // Read just the specific key using grep
+            $result = $ssh->run("grep -E '^" . escapeshellarg($key) . "=' " . escapeshellarg($envPath) . " 2>/dev/null | head -1");
+
+            if (!$result->successful() || empty(trim($result->output()))) {
+                $this->outputJson([
+                    'output' => "Key '{$key}' not found in .env",
+                    'key' => $key,
+                    'found' => false,
+                ]);
+                return Command::SUCCESS;
+            }
+
+            $line = trim($result->output());
+            $value = '';
+            if (str_contains($line, '=')) {
+                [, $value] = explode('=', $line, 2);
+            }
+
+            // Determine if this looks like a secret
+            $secretPatterns = ['PASSWORD', 'SECRET', 'KEY', 'TOKEN', 'PRIVATE', 'CREDENTIAL', 'AUTH'];
+            $isLikelySecret = false;
+            foreach ($secretPatterns as $pattern) {
+                if (stripos($key, $pattern) !== false) {
+                    $isLikelySecret = true;
+                    break;
+                }
+            }
+
+            // Mask the value if it's likely a secret and --full wasn't specified
+            $displayValue = $value;
+            $masked = false;
+            if ($isLikelySecret && !$showFull && strlen($value) > 6) {
+                $displayValue = substr($value, 0, 3) . '...' . substr($value, -3);
+                $masked = true;
+            }
+
+            $this->outputJson([
+                'output' => $masked
+                    ? "Key '{$key}' value (masked - use --full to see complete value, but DO NOT use --full for secrets)"
+                    : "Key '{$key}' value:",
+                'key' => $key,
+                'value' => $displayValue,
+                'found' => true,
+                'masked' => $masked,
+                'is_likely_secret' => $isLikelySecret,
+            ]);
+
+            return Command::SUCCESS;
+        } catch (\Exception $e) {
+            return $this->errorResponse("Failed to read env key: " . $e->getMessage());
+        }
+    }
+
+    private function updateEnvKey(): int
+    {
+        $app = $this->getApp();
+        if (!$app) {
+            return Command::FAILURE;
+        }
+
+        $key = $this->option('key');
+        $value = $this->option('value');
+
+        if (!$key) {
+            return $this->errorResponse('--key is required');
+        }
+        if ($value === null) {
+            return $this->errorResponse('--value is required');
+        }
+
+        // Validate key format (alphanumeric and underscores only)
+        if (!preg_match('/^[A-Z][A-Z0-9_]*$/', $key)) {
+            return $this->errorResponse('Key must be uppercase alphanumeric with underscores (e.g., DB_PASSWORD)');
+        }
+
+        try {
+            $ssh = $this->getSshConnection($app->server);
+            $envPath = "{$app->full_deploy_path}/.env";
+
+            // Check if .env file exists
+            $checkResult = $ssh->run("test -f " . escapeshellarg($envPath) . " && echo 'exists'");
+            if (trim($checkResult->output()) !== 'exists') {
+                return $this->errorResponse('.env file does not exist on server. Deploy the app first.');
+            }
+
+            // Escape the value for sed (handle special characters)
+            $escapedValue = str_replace(['/', '&', '\n'], ['\/', '\&', '\\n'], $value);
+
+            // Check if key exists in file
+            $grepResult = $ssh->run("grep -q '^" . $key . "=' " . escapeshellarg($envPath) . " && echo 'found'");
+            $keyExists = trim($grepResult->output()) === 'found';
+
+            if ($keyExists) {
+                // Update existing key using sed
+                $sedCmd = "sed -i 's/^" . $key . "=.*/" . $key . "=" . $escapedValue . "/' " . escapeshellarg($envPath);
+            } else {
+                // Append new key
+                $sedCmd = "echo '" . $key . "=" . $value . "' >> " . escapeshellarg($envPath);
+            }
+
+            $result = $ssh->run($sedCmd);
+
+            if (!$result->successful()) {
+                return $this->errorResponse('Failed to update .env: ' . $result->errorOutput());
+            }
+
+            $this->outputJson([
+                'output' => $keyExists
+                    ? "Updated '{$key}' in .env"
+                    : "Added '{$key}' to .env",
+                'key' => $key,
+                'action' => $keyExists ? 'updated' : 'added',
+            ]);
+
+            return Command::SUCCESS;
+        } catch (\Exception $e) {
+            return $this->errorResponse("Failed to update env key: " . $e->getMessage());
+        }
+    }
+
     private function getGitHubToken(): ?string
     {
         $credential = \App\Models\Credential::findByEnvVar('GH_TOKEN');
@@ -731,7 +874,7 @@ NGINX;
 
     private function invalidAction(string $action): int
     {
-        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, scan-repos, get-deploy-config");
+        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, scan-repos, get-deploy-config, read-env-key, update-env-key");
     }
 
     private function errorResponse(string $message): int
