@@ -12,6 +12,28 @@ use Illuminate\Support\Facades\DB;
  * - version: PocketDev version that last updated the skill (for system skills)
  *
  * After adding columns, seeds system skills via SystemSkillSeeder.
+ *
+ * ## Adding or updating system skills in the future
+ *
+ * When you add new skills or modify existing ones in SystemSkillDefinitions:
+ *
+ * 1. Update `app/Skills/SystemSkillDefinitions.php` with the new/changed skill
+ * 2. Bump `SystemSkillDefinitions::VERSION`
+ * 3. Create a migration that calls the seeder:
+ *
+ *    ```php
+ *    // database/migrations/2026_XX_XX_update_system_skills.php
+ *    public function up(): void
+ *    {
+ *        Artisan::call('db:seed', [
+ *            '--class' => \Database\Seeders\SystemSkillSeeder::class,
+ *            '--force' => true,
+ *        ]);
+ *    }
+ *    ```
+ *
+ * This ensures skills are deployed automatically via `php artisan migrate`,
+ * and avoids embedding costs on regular deploys (seeder skips unchanged content).
  */
 return new class extends Migration
 {

@@ -12,10 +12,32 @@ use Illuminate\Support\Facades\Log;
  *
  * This seeder is idempotent - it uses upsert logic to:
  * - Insert new system skills
- * - Update existing system skills (only if source = 'system')
+ * - Update existing system skills (only if source = 'system' AND content changed)
  * - Never overwrite user-customized skills
+ * - Skip updates when content is identical (avoids unnecessary embedding regeneration)
  *
- * Run via: php artisan db:seed --class=SystemSkillSeeder
+ * ## When to run this seeder
+ *
+ * 1. **First install**: Called automatically from the migration that adds system skill columns
+ * 2. **Adding/updating skills**: Create a new migration that calls this seeder:
+ *
+ *    ```php
+ *    // database/migrations/2026_XX_XX_add_new_system_skill.php
+ *    public function up(): void
+ *    {
+ *        Artisan::call('db:seed', [
+ *            '--class' => \Database\Seeders\SystemSkillSeeder::class,
+ *            '--force' => true,
+ *        ]);
+ *    }
+ *    ```
+ *
+ * This pattern ensures:
+ * - Skills are automatically deployed on `php artisan migrate`
+ * - No embedding costs on regular deploys (only when skills actually change)
+ * - Changes are tracked in migration history
+ *
+ * Run manually via: php artisan db:seed --class=SystemSkillSeeder
  */
 class SystemSkillSeeder extends Seeder
 {
@@ -75,8 +97,9 @@ class SystemSkillSeeder extends Seeder
     {
         $tagsArray = $this->arrayToPgArray($skill['tags']);
 
-        // Use INSERT ... ON CONFLICT with WHERE clause to only update system skills
-        // This prevents overwriting user-customized skills
+        // Use INSERT ... ON CONFLICT with WHERE clause to:
+        // 1. Only update system skills (not user-customized)
+        // 2. Only update if content actually changed (avoids unnecessary embedding regeneration)
         DB::connection('pgsql')->statement("
             INSERT INTO {$schemaName}.skills
             (name, when_to_use, instructions, source, tags, version, created_at, updated_at)
@@ -88,6 +111,9 @@ class SystemSkillSeeder extends Seeder
                 version = EXCLUDED.version,
                 updated_at = NOW()
             WHERE {$schemaName}.skills.source = 'system'
+              AND ({$schemaName}.skills.when_to_use IS DISTINCT FROM EXCLUDED.when_to_use
+                   OR {$schemaName}.skills.instructions IS DISTINCT FROM EXCLUDED.instructions
+                   OR {$schemaName}.skills.tags IS DISTINCT FROM EXCLUDED.tags)
         ", [
             $skill['name'],
             $skill['when_to_use'],

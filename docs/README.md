@@ -48,6 +48,9 @@ What are you looking for?
 | **Configuration** | | |
 | Environment variables | `configuration/README.md` | .env file |
 | AI provider config | `configuration/README.md` | config/ai.php |
+| **Skills** | | |
+| System skills (built-in workflows) | `architecture/system-skills.md` | Adding/updating skills |
+| Skill tag filtering | `architecture/system-skills.md` | Workspace whitelist/blacklist |
 
 ---
 
@@ -64,6 +67,7 @@ What are you looking for?
 - `authentication.md` - Basic Auth, IP whitelist, Claude credential management
 - `technology-stack.md` - Laravel, Alpine.js, Docker, key dependencies
 - `file-permissions.md` - Cross-process file permissions (PHP-FPM vs queue workers)
+- `system-skills.md` - Built-in AI workflow skills, how to add/update them
 
 ### 📦 Modules (`modules/`)
 
