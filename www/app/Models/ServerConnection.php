@@ -217,11 +217,22 @@ class ServerConnection extends Model
     }
 
     /**
-     * Scope to servers that are ready (have both VPS setup and proxy).
+     * Scope to servers that are ready (have VPS setup + proxy, or private mode).
+     *
+     * TODO: Private-mode servers currently don't require proxy-nginx to be "ready",
+     * but there are edge cases to consider:
+     * - Private server that still wants domain routing via proxy
+     * - Private server that wants SSL termination
+     * - Hybrid setups where some apps are public, some private
+     * Consider adding a separate "wants_proxy" flag or more granular status.
+     * See: PR #210 CodeRabbit discussion
      */
     public function scopeReady($query)
     {
         return $query->where('has_vps_setup', true)
-                     ->where('has_proxy_nginx', true);
+                     ->where(function ($q) {
+                         $q->where('has_proxy_nginx', true)
+                           ->orWhere('vps_setup_mode', 'private');
+                     });
     }
 }

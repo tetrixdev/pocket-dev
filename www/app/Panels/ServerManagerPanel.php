@@ -348,7 +348,7 @@ PROMPT;
         @unlink($composeFile);
         @unlink($envFile);
 
-        return ['data' => $deployResult];
+        return $deployResult;
     }
 
     protected function addDomain(array $params): array

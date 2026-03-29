@@ -27,7 +27,7 @@ class MemoryDatabaseService
             return [
                 'success' => false,
                 'memory_database' => null,
-                'message' => 'Schema name must be lowercase, start with a letter, contain only letters/numbers/underscores, and be max 55 characters',
+                'message' => 'Schema name must be lowercase, start with a letter, contain only letters/numbers/underscores, and be max 30 characters',
             ];
         }
 

@@ -528,6 +528,12 @@ class ServerAppCommand extends Command
 
     private function updateProxyConfig(SshConnection $ssh, ServerApplication $app, string $domain, ?string $redirect): void
     {
+        // Validate domain format to prevent NGINX config injection
+        // Allows: example.com, sub.example.com, *.example.com, example.com:8080
+        if (!preg_match('/^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d+)?$/i', $domain)) {
+            throw new \InvalidArgumentException("Invalid domain format: {$domain}");
+        }
+
         $configPath = "/home/{$app->server->ssh_user}/docker-apps/proxy-nginx/default.conf";
         $upstream = $app->upstream_container ?: "{$app->slug}-nginx";
 
@@ -597,6 +603,9 @@ NGINX;
 
         // Get owners to scan - default to common org
         $ownerOption = $this->option('owner');
+        if ($ownerOption && !$this->isValidGitHubIdentifier($ownerOption)) {
+            return $this->errorResponse('Invalid owner format. Use only letters, numbers, hyphens, underscores, and dots.');
+        }
         $owners = $ownerOption ? [$ownerOption] : ['tetrixdev', 'jfbauer'];
         $apps = [];
 
@@ -644,6 +653,11 @@ NGINX;
 
         if (!$owner || !$repo) {
             return $this->errorResponse('--owner and --repo are required');
+        }
+
+        // Validate owner/repo format to prevent command injection
+        if (!$this->isValidGitHubIdentifier($owner) || !$this->isValidGitHubIdentifier($repo)) {
+            return $this->errorResponse('Invalid owner or repo format. Use only letters, numbers, hyphens, underscores, and dots.');
         }
 
         $ghToken = $this->getGitHubToken();
@@ -907,6 +921,16 @@ NGINX;
         $env = "GH_TOKEN=" . escapeshellarg($token) . " ";
         $output = shell_exec("{$env}gh {$command} 2>/dev/null");
         return $output ? trim($output) : null;
+    }
+
+    /**
+     * Validate GitHub owner/repo identifier format.
+     * Allows: letters, numbers, hyphens, underscores, dots (GitHub's allowed chars).
+     */
+    private function isValidGitHubIdentifier(string $value): bool
+    {
+        return preg_match('/^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/', $value) === 1
+            || preg_match('/^[a-zA-Z0-9]$/', $value) === 1; // Single char
     }
 
     /**
