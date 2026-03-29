@@ -230,4 +230,70 @@ class Workspace extends Model
     {
         return $query->where('owner_id', $ownerId);
     }
+
+    // =========================================================================
+    // Skill Tag Filtering
+    // =========================================================================
+
+    /**
+     * Check if skill tag filtering uses whitelist mode.
+     * Default is blacklist mode (false).
+     */
+    public function isSkillWhitelistMode(): bool
+    {
+        return $this->settings['skills']['whitelist_mode'] ?? false;
+    }
+
+    /**
+     * Get the list of skill tags for filtering.
+     * In blacklist mode: these tags are excluded.
+     * In whitelist mode: only these tags are included.
+     */
+    public function getSkillFilterTags(): array
+    {
+        return $this->settings['skills']['filter_tags'] ?? [];
+    }
+
+    /**
+     * Check if a skill with given tags should be included.
+     *
+     * @param array $skillTags The tags on the skill
+     * @return bool True if skill should be included
+     */
+    public function isSkillTagAllowed(array $skillTags): bool
+    {
+        $filterTags = $this->getSkillFilterTags();
+
+        // No filter tags = all skills allowed
+        if (empty($filterTags)) {
+            return true;
+        }
+
+        $hasOverlap = !empty(array_intersect($skillTags, $filterTags));
+
+        if ($this->isSkillWhitelistMode()) {
+            // Whitelist: skill must have at least one whitelisted tag
+            return $hasOverlap;
+        } else {
+            // Blacklist: skill must NOT have any blacklisted tags
+            return !$hasOverlap;
+        }
+    }
+
+    /**
+     * Update skill filter settings.
+     *
+     * @param bool $whitelistMode True for whitelist, false for blacklist
+     * @param array $filterTags Tags to filter by
+     */
+    public function setSkillFilterSettings(bool $whitelistMode, array $filterTags): void
+    {
+        $settings = $this->settings ?? [];
+        $settings['skills'] = [
+            'whitelist_mode' => $whitelistMode,
+            'filter_tags' => $filterTags,
+        ];
+        $this->settings = $settings;
+        $this->save();
+    }
 }

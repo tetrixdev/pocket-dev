@@ -117,126 +117,36 @@ Opens an interactive Server Manager panel for managing server connections and de
 ## Parameters
 - workspace_id (required): The workspace ID for server isolation
 
-## Key Commands
+## Features
+- Add/remove server connections
+- Test SSH connectivity
+- Detect installed software (VPS setup, proxy-nginx, Tailscale)
+- Install VPS setup script (public or private mode)
+- Install proxy-nginx
+- View deployed applications per server
+- Start/stop/restart applications
+- View application logs
+- SSH key management per workspace
 
-### List servers
+## Deployment
+
+**For deployment workflows**, retrieve and use the `/deploy` skill:
 ```bash
-pd server list --workspace=default
-```
-The `--workspace` parameter accepts either a UUID or workspace name (case-insensitive).
-Returns: servers with id, name, host, status, has_vps_setup, has_proxy_nginx
-
-### Discover deployable repositories
-```bash
-pd server:app scan-repos
-```
-Scans GitHub (tetrixdev, jfbauer orgs) for repos with `deploy/compose.yml`. Returns list of deployable apps.
-
-### Fetch deployment config from GitHub
-```bash
-pd server:app get-deploy-config --owner=<owner> --repo=<repo>
-```
-Fetches `deploy/compose.yml` and `deploy/.env.example` from the repository. Returns compose content and parsed env vars.
-
-### Full deployment workflow
-```bash
-# 1. Get compose.yml from GitHub
-pd server:app get-deploy-config --owner=jfbauer --repo=box-of-crumbs
-
-# 2. Write compose to temp file (use the compose content from step 1)
-cat > /tmp/compose.yml << 'EOF'
-<compose content here>
-EOF
-
-# 3. Write .env file with required values
-cat > /tmp/app.env << 'EOF'
-APP_NAME=...
-DB_PASSWORD=...
-EOF
-
-# 4. Add application (--workspace accepts name or UUID)
-pd server:app add --workspace=default --server=<server-id> --name="app-name" --compose=/tmp/compose.yml --env=/tmp/app.env
-
-# 5. Deploy
-pd server:app deploy --id=<app-id>
-
-# 6. Add domain (upstream is usually <slug>-nginx)
-pd server:app add-domain --id=<app-id> --domain=example.com --upstream=app-name-nginx
-
-# 7. Request SSL
-pd server:app request-ssl --id=<app-id> --domain=example.com
+pd memory:query --schema=<your-schema> --sql="SELECT instructions FROM memory_<your-schema>.skills WHERE name = 'deploy'"
 ```
 
-## Environment Variables - Smart Handling
-
-### Auto-derive these values (don't ask user):
-- `COMPOSE_PROJECT_NAME`: Use repo name as slug (e.g., "box-of-crumbs")
-- `GITHUB_REPOSITORY_OWNER`: Use repo owner (e.g., "jfbauer")
-- `IMAGE_TAG`: Use latest release tag (e.g., "v0.1.0")
-
-### Generate secure values (use bash, NOT LLM):
-```bash
-# Generate secure random password - write directly to .env, never read back
-openssl rand -base64 32
-```
-For DB_PASSWORD, APP_KEY, etc. - generate and write directly, never output to conversation.
-
-### Only ask user for:
-- Domain name
-- App-specific API keys they need to provide
-
-### After deployment, tell user:
-- Which values were auto-derived (so they can verify)
-- Which secrets were generated (don't show values)
-- Which fields still need manual input
-
-### Reading/updating env safely (for updates):
-```bash
-# Read a key (masks secrets by default - shows "abc...xyz")
-pd server:app read-env-key --id=<app-id> --key=IMAGE_TAG
-
-# Update a single key without reading the file
-pd server:app update-env-key --id=<app-id> --key=IMAGE_TAG --value=v0.2.0
-```
-
-**CRITICAL: Never use --full flag on secrets. The masked preview is for identifying which secret is set, not for reading secret values.**
-
-## Deployment Prerequisites
-
-Before deploying, verify:
-
-1. **Repository**: Has `deploy/compose.yml` (use scan-repos to check)
-2. **slim-docker-laravel-setup version**: Check `.slim-docker-version` file exists
-   - If missing: repo needs to be updated with `curl -sSL https://raw.githubusercontent.com/tetrixdev/slim-docker-laravel-setup/main/install.sh | bash`
-   - This is a **blocking issue** - do NOT proceed without updating
-3. **GitHub Images**: A release exists with built Docker images on ghcr.io
-4. **Server Ready**: status=ready, has_vps_setup=true, has_proxy_nginx=true
-5. **DNS**: A record pointing domain to server IP
-
-### Checking slim-docker-laravel-setup version
-```bash
-# Check if version file exists in repo (contains commit hash)
-gh api repos/<owner>/<repo>/contents/.slim-docker-version --jq '.content' | base64 -d
-
-# Check latest commit on slim-docker-laravel-setup main branch
-curl -s https://api.github.com/repos/tetrixdev/slim-docker-laravel-setup/commits/main | jq -r '.sha'
-
-# If file is missing OR hashes differ, the repo needs updating:
-curl -sSL https://raw.githubusercontent.com/tetrixdev/slim-docker-laravel-setup/main/install.sh | bash
-```
-
-## Important Rules
-- **NEVER manually SSH** - use the `server:app` commands
-- **NEVER skip prerequisites** - each step depends on previous ones
-- **Always verify** the repository has a release before deploying
-- **NEVER read full secret values** - use masked read-env-key for identification only
-- If any step fails or returns unexpected results, STOP and report the issue
+The deploy skill contains the complete, up-to-date deployment workflow including:
+- Step-by-step deployment process
+- Version checking and update handling
+- Environment variable best practices
+- Prerequisites checklist
 
 ## CLI Example
 ```bash
 pd tool:run server-manager -- --workspace_id=your-workspace-uuid
-pd panel:peek server-manager
 ```
+
+Use `pd panel:peek server-manager` to see current state after user interacts.
 PROMPT;
     }
 

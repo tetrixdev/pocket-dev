@@ -690,14 +690,63 @@ NGINX;
             }
         }
 
+        // Check slim-docker-laravel-setup version
+        $versionCheck = $this->checkSlimDockerVersion($owner, $repo, $ghToken);
+
+        $output = "Fetched deploy config for {$owner}/{$repo}.";
+        if ($versionCheck['warning']) {
+            $output .= "\n\n⚠️  WARNING: " . $versionCheck['warning'];
+        }
+
         $this->outputJson([
-            'output' => "Fetched deploy config for {$owner}/{$repo}.",
+            'output' => $output,
             'compose' => $compose,
             'env_example' => $envExample,
             'env_vars' => $envVars,
+            'slim_docker_version' => $versionCheck,
         ]);
 
         return Command::SUCCESS;
+    }
+
+    /**
+     * Check if repository's slim-docker-laravel-setup is up to date.
+     */
+    private function checkSlimDockerVersion(string $owner, string $repo, string $ghToken): array
+    {
+        $result = [
+            'current_version' => null,
+            'latest_version' => null,
+            'is_outdated' => false,
+            'warning' => null,
+        ];
+
+        // Fetch .slim-docker-version from the repo
+        $versionB64 = $this->runGh("api repos/{$owner}/{$repo}/contents/.slim-docker-version --jq '.content' 2>/dev/null", $ghToken);
+        if ($versionB64) {
+            $cleanB64 = str_replace(["\n", "\r", " "], '', trim($versionB64));
+            $decoded = base64_decode($cleanB64, true);
+            if ($decoded !== false) {
+                $result['current_version'] = trim($decoded);
+            }
+        }
+
+        // Fetch latest commit from slim-docker-laravel-setup main branch
+        $latestJson = $this->runGh("api repos/tetrixdev/slim-docker-laravel-setup/commits/main --jq '.sha'", $ghToken);
+        if ($latestJson) {
+            $result['latest_version'] = trim($latestJson);
+        }
+
+        // Determine if outdated
+        if (!$result['current_version']) {
+            $result['is_outdated'] = true;
+            $result['warning'] = "Repository is missing .slim-docker-version file, indicating it uses an older slim-docker-laravel-setup. Update required before deploying.";
+        } elseif ($result['latest_version'] && $result['current_version'] !== $result['latest_version']) {
+            $result['is_outdated'] = true;
+            $result['warning'] = "Repository's slim-docker-laravel-setup is outdated (current: " . substr($result['current_version'], 0, 7) . ", latest: " . substr($result['latest_version'], 0, 7) . "). Update required before deploying.";
+        }
+
+        return $result;
     }
 
     private function readEnvKey(): int

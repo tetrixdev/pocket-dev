@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\ServerApplication;
 use App\Models\ServerConnection;
 use App\Models\Workspace;
 use App\Support\SshConnection;
@@ -10,9 +11,10 @@ use Illuminate\Console\Command;
 class ServerCommand extends Command
 {
     protected $signature = 'server
-        {action : The action to perform (list, add, test, detect, install-vps-setup, install-proxy, remove, ssh-keygen, show-public-key)}
-        {--workspace= : Workspace ID (required for most actions)}
-        {--id= : Server ID (for test, detect, install-*, remove)}
+        {action : The action to perform (list, add, info, test, detect, install-vps-setup, install-proxy, remove, ssh-keygen, show-public-key)}
+        {--workspace= : Workspace ID or name (required for most actions)}
+        {--id= : Server ID (for test, detect, install-*, remove, info)}
+        {--server= : Server name lookup (alternative to --id for info)}
         {--name= : Server name (for add)}
         {--host= : Server IP or hostname (for add)}
         {--ssh_user=admin : SSH username (for add)}
@@ -29,6 +31,7 @@ class ServerCommand extends Command
         return match ($action) {
             'list' => $this->listServers(),
             'add' => $this->addServer(),
+            'info' => $this->serverInfo(),
             'test' => $this->testConnection(),
             'detect' => $this->detectSoftware(),
             'install-vps-setup' => $this->installVpsSetup(),
@@ -131,6 +134,134 @@ class ServerCommand extends Command
         ]);
 
         return Command::SUCCESS;
+    }
+
+    private function serverInfo(): int
+    {
+        $server = $this->getServerByIdOrName();
+        if (!$server) {
+            return Command::FAILURE;
+        }
+
+        $info = [
+            'server' => [
+                'id' => $server->id,
+                'name' => $server->name,
+                'host' => $server->host,
+                'ssh_user' => $server->ssh_user,
+                'ssh_port' => $server->ssh_port,
+                'status' => $server->status,
+                'status_label' => $server->status_label,
+                'has_vps_setup' => $server->has_vps_setup,
+                'vps_setup_mode' => $server->vps_setup_mode,
+                'has_proxy_nginx' => $server->has_proxy_nginx,
+                'proxy_nginx_version' => $server->proxy_nginx_version,
+                'last_checked_at' => $server->last_checked_at?->toIso8601String(),
+            ],
+            'applications' => [],
+            'containers' => [],
+            'proxy_domains' => [],
+        ];
+
+        // Get deployed applications
+        $apps = ServerApplication::where('server_connection_id', $server->id)->get();
+        foreach ($apps as $app) {
+            $info['applications'][] = [
+                'id' => $app->id,
+                'name' => $app->name,
+                'slug' => $app->slug,
+                'status' => $app->status,
+                'domains' => $app->domains ?? [],
+                'primary_domain' => $app->primary_domain,
+                'ssl_enabled' => $app->ssl_enabled,
+                'deploy_path' => $app->full_deploy_path,
+                'upstream_container' => $app->upstream_container,
+                'last_deployed_at' => $app->last_deployed_at?->toIso8601String(),
+            ];
+        }
+
+        // Try to get live Docker container info via SSH
+        try {
+            $ssh = $this->getSshConnection($server);
+            if ($ssh->test()) {
+                // Get running containers with ports
+                $dockerPs = $ssh->exec('docker ps --format "{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null');
+                if ($dockerPs) {
+                    foreach (explode("\n", trim($dockerPs)) as $line) {
+                        if (empty($line)) continue;
+                        $parts = explode("\t", $line);
+                        if (count($parts) >= 3) {
+                            $info['containers'][] = [
+                                'name' => $parts[0],
+                                'image' => $parts[1] ?? '',
+                                'status' => $parts[2] ?? '',
+                                'ports' => $parts[3] ?? '',
+                            ];
+                        }
+                    }
+                }
+
+                // Get proxy-nginx domain mappings if available
+                if ($server->has_proxy_nginx) {
+                    $nginxConf = $ssh->exec("grep -E 'server_name|proxy_pass|set \\\$upstream' ~/docker-apps/proxy-nginx/default.conf 2>/dev/null | head -100");
+                    if ($nginxConf) {
+                        $currentDomain = null;
+                        foreach (explode("\n", $nginxConf) as $line) {
+                            $line = trim($line);
+                            if (preg_match('/server_name\s+([^;]+);/', $line, $m)) {
+                                $currentDomain = trim($m[1]);
+                            } elseif ($currentDomain && preg_match('/set\s+\$upstream\s+https?:\/\/([^;]+);/', $line, $m)) {
+                                $info['proxy_domains'][] = [
+                                    'domain' => $currentDomain,
+                                    'upstream' => trim($m[1]),
+                                ];
+                                $currentDomain = null;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            $info['ssh_error'] = $e->getMessage();
+        }
+
+        $appCount = count($info['applications']);
+        $containerCount = count($info['containers']);
+
+        $this->outputJson([
+            'output' => "Server '{$server->name}' ({$server->host}): {$appCount} app(s), {$containerCount} container(s) running.",
+            ...$info,
+        ]);
+
+        return Command::SUCCESS;
+    }
+
+    /**
+     * Get server by --id or by --server (name lookup).
+     */
+    private function getServerByIdOrName(): ?ServerConnection
+    {
+        $id = $this->option('id');
+        $name = $this->option('server');
+
+        if (!$id && !$name) {
+            $this->errorResponse('--id or --server (name) is required');
+            return null;
+        }
+
+        if ($id) {
+            $server = ServerConnection::find($id);
+        } else {
+            // Look up by name (case-insensitive)
+            $server = ServerConnection::whereRaw('LOWER(name) = ?', [strtolower($name)])->first();
+        }
+
+        if (!$server) {
+            $this->errorResponse('Server not found');
+            return null;
+        }
+
+        return $server;
     }
 
     private function testConnection(): int
@@ -580,7 +711,7 @@ class ServerCommand extends Command
 
     private function invalidAction(string $action): int
     {
-        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, test, detect, install-vps-setup, install-proxy, remove, ssh-keygen, show-public-key");
+        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, info, test, detect, install-vps-setup, install-proxy, remove, ssh-keygen, show-public-key");
     }
 
     private function errorResponse(string $message): int

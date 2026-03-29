@@ -95,15 +95,24 @@ class MemoryDatabaseService
                         name TEXT NOT NULL,
                         when_to_use TEXT NOT NULL,
                         instructions TEXT NOT NULL,
+                        source VARCHAR(20) DEFAULT 'user' NOT NULL,
+                        tags TEXT[] DEFAULT '{}',
+                        version VARCHAR(20) DEFAULT NULL,
                         created_at TIMESTAMP DEFAULT NOW(),
                         updated_at TIMESTAMP DEFAULT NOW(),
                         CONSTRAINT skills_name_unique UNIQUE (name)
                     )
                 ");
 
-                // Create index for skills name lookups
+                // Create indexes for skills
                 DB::connection('pgsql')->statement("
                     CREATE INDEX idx_{$schemaName}_skills_name ON {$fullSchemaName}.skills(name)
+                ");
+                DB::connection('pgsql')->statement("
+                    CREATE INDEX idx_{$schemaName}_skills_source ON {$fullSchemaName}.skills(source)
+                ");
+                DB::connection('pgsql')->statement("
+                    CREATE INDEX idx_{$schemaName}_skills_tags ON {$fullSchemaName}.skills USING GIN (tags)
                 ");
 
                 // Add column comments for AI-consumable documentation
@@ -115,6 +124,15 @@ class MemoryDatabaseService
                 ");
                 DB::connection('pgsql')->statement("
                     COMMENT ON COLUMN {$fullSchemaName}.skills.instructions IS 'Full skill instructions in markdown format'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.source IS 'Origin: ''system'' for PocketDev-shipped skills, ''user'' for user-created'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.tags IS 'Grouping labels for filtering, e.g., {\"system\",\"deployment\"}'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.version IS 'PocketDev version that last updated this skill (system skills only)'
                 ");
 
                 // Register skills in schema_registry with proper description format
