@@ -215,10 +215,13 @@ Before deploying, verify:
 
 ### Checking slim-docker-laravel-setup version
 ```bash
-# Check if version file exists in repo
+# Check if version file exists in repo (contains commit hash)
 gh api repos/<owner>/<repo>/contents/.slim-docker-version --jq '.content' | base64 -d
 
-# If missing or outdated, the repo maintainer must update by running in the repo:
+# Check latest commit on slim-docker-laravel-setup main branch
+curl -s https://api.github.com/repos/tetrixdev/slim-docker-laravel-setup/commits/main | jq -r '.sha'
+
+# If file is missing OR hashes differ, the repo needs updating:
 curl -sSL https://raw.githubusercontent.com/tetrixdev/slim-docker-laravel-setup/main/install.sh | bash
 ```
 
