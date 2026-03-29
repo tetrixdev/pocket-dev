@@ -117,55 +117,75 @@ Opens an interactive Server Manager panel for managing server connections and de
 ## Parameters
 - workspace_id (required): The workspace ID for server isolation
 
-## Features
-- Add/remove server connections
-- Test SSH connectivity
-- Detect installed software (VPS setup, proxy-nginx, Tailscale)
-- Install VPS setup script (public or private mode)
-- Install proxy-nginx
-- View deployed applications per server
-- Start/stop/restart applications
-- View application logs
-- SSH key management per workspace
+## Key Commands
 
-## Deployment Prerequisites Checklist
+### List servers
+```bash
+pd server list --workspace=<workspace-id>
+```
+Returns: servers with id, name, host, status, has_vps_setup, has_proxy_nginx
 
-Before deploying an application, verify ALL of these prerequisites. Do NOT proceed until each is confirmed:
+### Discover deployable repositories
+```bash
+pd server:app scan-repos
+```
+Scans GitHub (tetrixdev, jfbauer orgs) for repos with `deploy/compose.yml`. Returns list of deployable apps.
 
-### 1. Repository Setup
-- [ ] Repository uses slim-docker-laravel-setup (check for `deploy/compose.yml`)
-- [ ] GitHub Actions workflow exists (`.github/workflows/docker-laravel.yml`)
-- [ ] A release exists with built Docker images on ghcr.io
-- [ ] `www/bootstrap/app.php` has `trustProxies` middleware configured
+### Fetch deployment config from GitHub
+```bash
+pd server:app get-deploy-config --owner=<owner> --repo=<repo>
+```
+Fetches `deploy/compose.yml` and `deploy/.env.example` from the repository. Returns compose content and parsed env vars.
 
-### 2. Server Setup
-- [ ] Server added to Server Manager (use panel or `server:connection add`)
-- [ ] VPS setup installed (`has_vps_setup = true`)
-- [ ] proxy-nginx installed (`has_proxy_nginx = true`)
-- [ ] SSH connection working (`status = ready`)
-- [ ] main-network exists (`docker network create main-network`)
+### Full deployment workflow
+```bash
+# 1. Get compose.yml from GitHub
+pd server:app get-deploy-config --owner=jfbauer --repo=box-of-crumbs
 
-### 3. DNS
-- [ ] A record pointing domain to server IP (use your DNS provider's tools or manual configuration)
+# 2. Write compose to temp file (use the compose content from step 1)
+cat > /tmp/compose.yml << 'EOF'
+<compose content here>
+EOF
 
-### 4. Application Deployment (in order)
-1. `server:app add --name="App" --compose=path/to/compose.yml --env=path/to/.env`
-2. `server:app deploy --id=<app-id>`
-3. `server:app add-domain --id=<app-id> --domain=example.com --upstream=appname-nginx`
-4. `server:app request-ssl --id=<app-id> --domain=example.com`
+# 3. Write .env file with required values
+cat > /tmp/app.env << 'EOF'
+APP_NAME=...
+DB_PASSWORD=...
+EOF
+
+# 4. Add application
+pd server:app add --workspace=<id> --server=<server-id> --name="app-name" --compose=/tmp/compose.yml --env=/tmp/app.env
+
+# 5. Deploy
+pd server:app deploy --id=<app-id>
+
+# 6. Add domain (upstream is usually <slug>-nginx)
+pd server:app add-domain --id=<app-id> --domain=example.com --upstream=app-name-nginx
+
+# 7. Request SSL
+pd server:app request-ssl --id=<app-id> --domain=example.com
+```
+
+## Deployment Prerequisites
+
+Before deploying, verify:
+
+1. **Repository**: Has `deploy/compose.yml` (use scan-repos to check)
+2. **GitHub Images**: A release exists with built Docker images on ghcr.io
+3. **Server Ready**: status=ready, has_vps_setup=true, has_proxy_nginx=true
+4. **DNS**: A record pointing domain to server IP
 
 ## Important Rules
-- **NEVER manually SSH** to configure things - use the `server:app` commands
+- **NEVER manually SSH** - use the `server:app` commands
 - **NEVER skip prerequisites** - each step depends on previous ones
-- **Always verify** the repository has a recent release before deploying
-- **Always use tools** - if a tool exists for the task, use it instead of manual commands
+- **Always verify** the repository has a release before deploying
+- If any step fails or returns unexpected results, STOP and report the issue
 
 ## CLI Example
 ```bash
 pd tool:run server-manager -- --workspace_id=your-workspace-uuid
+pd panel:peek server-manager
 ```
-
-Use `pd panel:peek server-manager` to see current state after user interacts.
 PROMPT;
     }
 
