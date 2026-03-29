@@ -413,8 +413,10 @@ class ServerCommand extends Command
             return $this->errorResponse('Failed to generate SSH key: ' . $result->errorOutput());
         }
 
-        // Set permissions and ownership for www-data (web server user)
-        chmod($keyPath, 0600);
+        // Set permissions and ownership (TARGET_UID:www-data pattern)
+        // Private key: 640 allows group (www-data) to read, which is needed for PHP-FPM
+        // SSH only requires that "others" cannot read (last digit must be 0)
+        chmod($keyPath, 0640);
         chmod($pubKeyPath, 0644);
         $this->ensureWwwDataAccess($keyPath);
         $this->ensureWwwDataAccess($pubKeyPath);
@@ -529,28 +531,30 @@ class ServerCommand extends Command
     }
 
     /**
-     * Ensure www-data can access a file/directory.
+     * Ensure both appuser and www-data can access a file/directory.
      *
-     * This method handles both dev and prod environments:
-     * - In prod: /var/www is owned by www-data, so chown works
-     * - In dev: www-data is in group 33, files need proper group access
+     * Uses the PocketDev cross-group ownership model:
+     * - Owner: TARGET_UID (appuser in dev, can vary in prod)
+     * - Group: 33 (www-data) - allows PHP-FPM access
+     * - Directories: 750 (owner rwx, group rx)
+     * - Files: preserves existing mode (set before calling this)
      *
-     * We set ownership to www-data:www-data which works in both cases.
+     * This pattern matches .claude directory permissions and works
+     * across local dev and production environments.
      */
     private function ensureWwwDataAccess(string $path): void
     {
-        // Get www-data uid/gid (typically 33 on Debian/Ubuntu)
-        $wwwDataInfo = posix_getpwnam('www-data');
-        if ($wwwDataInfo === false) {
-            // Fallback to numeric IDs if posix functions unavailable
-            @chown($path, 33);
-            @chgrp($path, 33);
-            return;
-        }
+        // Get target UID from environment (set by entrypoint) or fallback to current user
+        $targetUid = (int) ($_ENV['PD_USER_ID'] ?? $_ENV['PD_TARGET_UID'] ?? getmyuid());
+        $wwwDataGid = 33; // www-data group ID (standard on Debian/Ubuntu)
 
-        @chown($path, $wwwDataInfo['uid']);
-        @chgrp($path, $wwwDataInfo['gid']);
-        @chmod($path, 0700);
+        @chown($path, $targetUid);
+        @chgrp($path, $wwwDataGid);
+
+        // Only set directory permissions - file permissions are set by caller
+        if (is_dir($path)) {
+            @chmod($path, 0750);
+        }
     }
 
     private function invalidAction(string $action): int

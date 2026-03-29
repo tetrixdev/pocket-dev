@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 class ServerAppCommand extends Command
 {
     protected $signature = 'server:app
-        {action : The action to perform (list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl)}
+        {action : The action to perform (list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, scan-repos, get-deploy-config)}
         {--workspace= : Workspace ID}
         {--server= : Server ID (for list, add)}
         {--id= : Application ID (for deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl)}
@@ -22,7 +22,9 @@ class ServerAppCommand extends Command
         {--domain= : Domain name (for add-domain, request-ssl)}
         {--upstream= : Upstream container name for proxy (for add-domain)}
         {--redirect= : Redirect target URL (for add-domain with redirect type)}
-        {--lines=100 : Number of log lines (for logs)}';
+        {--lines=100 : Number of log lines (for logs)}
+        {--owner= : GitHub owner/org (for scan-repos, get-deploy-config)}
+        {--repo= : GitHub repo name (for get-deploy-config)}';
 
     protected $description = 'Manage applications on servers';
 
@@ -42,6 +44,8 @@ class ServerAppCommand extends Command
             'update-env' => $this->updateEnv(),
             'add-domain' => $this->addDomain(),
             'request-ssl' => $this->requestSsl(),
+            'scan-repos' => $this->scanGitHubRepos(),
+            'get-deploy-config' => $this->getDeployConfig(),
             default => $this->invalidAction($action),
         };
     }
@@ -578,9 +582,134 @@ NGINX;
         $ssh->run("docker exec proxy-nginx nginx -s reload");
     }
 
+    private function scanGitHubRepos(): int
+    {
+        $ghToken = $this->getGitHubToken();
+        if (!$ghToken) {
+            return $this->errorResponse('GH_TOKEN credential not configured. Add it in Settings > Credentials.');
+        }
+
+        // Get owners to scan - default to common org
+        $ownerOption = $this->option('owner');
+        $owners = $ownerOption ? [$ownerOption] : ['tetrixdev', 'jfbauer'];
+        $apps = [];
+
+        foreach ($owners as $owner) {
+            $reposJson = $this->runGh("repo list {$owner} --json name,description,updatedAt,visibility --limit 100", $ghToken);
+            if (!$reposJson) {
+                continue;
+            }
+
+            $repos = json_decode($reposJson, true) ?: [];
+
+            foreach ($repos as $repo) {
+                $repoName = $repo['name'];
+                $fullName = "{$owner}/{$repoName}";
+
+                // Check for slim-docker-laravel-setup structure (deploy/compose.yml)
+                $checkOutput = $this->runGh("api repos/{$fullName}/contents/deploy --jq '.[].name' 2>/dev/null", $ghToken);
+
+                if ($checkOutput && str_contains($checkOutput, 'compose.yml')) {
+                    $apps[] = [
+                        'owner' => $owner,
+                        'repo' => $repoName,
+                        'full_name' => $fullName,
+                        'description' => $repo['description'] ?? '',
+                        'updated_at' => $repo['updatedAt'] ?? null,
+                        'visibility' => $repo['visibility'] ?? 'private',
+                    ];
+                }
+            }
+        }
+
+        $this->outputJson([
+            'output' => 'Found ' . count($apps) . ' deployable repository(s).',
+            'apps' => $apps,
+            'count' => count($apps),
+        ]);
+
+        return Command::SUCCESS;
+    }
+
+    private function getDeployConfig(): int
+    {
+        $owner = $this->option('owner');
+        $repo = $this->option('repo');
+
+        if (!$owner || !$repo) {
+            return $this->errorResponse('--owner and --repo are required');
+        }
+
+        $ghToken = $this->getGitHubToken();
+        if (!$ghToken) {
+            return $this->errorResponse('GH_TOKEN credential not configured. Add it in Settings > Credentials.');
+        }
+
+        // Fetch deploy/compose.yml
+        $composeB64 = $this->runGh("api repos/{$owner}/{$repo}/contents/deploy/compose.yml --jq '.content'", $ghToken);
+        if (!$composeB64) {
+            return $this->errorResponse('Could not fetch deploy/compose.yml from repository');
+        }
+        // GitHub API returns base64 with newlines, need to clean before decode
+        $cleanB64 = str_replace(["\n", "\r", " "], '', trim($composeB64));
+        $compose = base64_decode($cleanB64, true); // strict mode
+        if ($compose === false) {
+            return $this->errorResponse('Failed to decode compose.yml content');
+        }
+
+        // Fetch deploy/.env.example (optional)
+        $envB64 = $this->runGh("api repos/{$owner}/{$repo}/contents/deploy/.env.example --jq '.content' 2>/dev/null", $ghToken);
+        $envExample = '';
+        if ($envB64) {
+            // GitHub API returns base64 with newlines, need to clean before decode
+            $cleanB64 = str_replace(["\n", "\r", " "], '', trim($envB64));
+            $decoded = base64_decode($cleanB64, true); // strict mode
+            if ($decoded !== false && mb_check_encoding($decoded, 'UTF-8')) {
+                $envExample = $decoded;
+            }
+        }
+
+        // Parse env vars from .env.example
+        $envVars = [];
+        if ($envExample) {
+            foreach (explode("\n", $envExample) as $line) {
+                $line = trim($line);
+                if (empty($line) || str_starts_with($line, '#')) {
+                    continue;
+                }
+                if (str_contains($line, '=')) {
+                    [$key, $value] = explode('=', $line, 2);
+                    $envVars[trim($key)] = trim($value);
+                }
+            }
+        }
+
+        $this->outputJson([
+            'output' => "Fetched deploy config for {$owner}/{$repo}.",
+            'compose' => $compose,
+            'env_example' => $envExample,
+            'env_vars' => $envVars,
+        ]);
+
+        return Command::SUCCESS;
+    }
+
+    private function getGitHubToken(): ?string
+    {
+        $credential = \App\Models\Credential::findByEnvVar('GH_TOKEN');
+        return $credential?->getValue();
+    }
+
+    private function runGh(string $command, string $token): ?string
+    {
+        $env = "GH_TOKEN=" . escapeshellarg($token) . " ";
+        $output = shell_exec("{$env}gh {$command} 2>/dev/null");
+        return $output ? trim($output) : null;
+    }
+
     private function invalidAction(string $action): int
     {
-        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl");
+        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, scan-repos, get-deploy-config");
     }
 
     private function errorResponse(string $message): int
@@ -595,6 +724,7 @@ NGINX;
     private function outputJson(array $data): void
     {
         $data['is_error'] = $data['is_error'] ?? false;
-        $this->output->writeln(json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $this->output->writeln($json ?: '{"is_error": true, "output": "JSON encoding failed"}');
     }
 }

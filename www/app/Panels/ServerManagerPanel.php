@@ -2,11 +2,7 @@
 
 namespace App\Panels;
 
-use App\Models\Credential;
-use App\Models\ServerApplication;
 use App\Models\ServerConnection;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Log;
 
 class ServerManagerPanel extends Panel
 {
@@ -297,47 +293,8 @@ PROMPT;
 
     protected function scanGitHubApps(): array
     {
-        $ghToken = $this->getGitHubToken();
-        if (!$ghToken) {
-            return ['error' => 'GH_TOKEN credential not configured. Add it in Settings > Credentials.'];
-        }
-
-        $owners = ['tetrixdev', 'jfbauer'];
-        $apps = [];
-
-        foreach ($owners as $owner) {
-            $repos = $this->runGh("repo list {$owner} --json name,description,updatedAt,visibility --limit 100", $ghToken);
-            if (!$repos) {
-                continue;
-            }
-
-            foreach ($repos as $repo) {
-                $repoName = $repo['name'];
-                $fullName = "{$owner}/{$repoName}";
-
-                // Check for docker-laravel structure
-                $env = "GH_TOKEN=" . escapeshellarg($ghToken) . " ";
-                $checkCmd = "{$env}gh api repos/{$fullName}/contents/docker-laravel 2>/dev/null | jq -r '.[].name' 2>/dev/null";
-                $dirContents = shell_exec($checkCmd);
-
-                if ($dirContents &&
-                    str_contains($dirContents, 'local') &&
-                    str_contains($dirContents, 'production') &&
-                    str_contains($dirContents, 'shared')) {
-
-                    $apps[] = [
-                        'owner' => $owner,
-                        'repo' => $repoName,
-                        'full_name' => $fullName,
-                        'description' => $repo['description'] ?? '',
-                        'updated_at' => $repo['updatedAt'] ?? null,
-                        'visibility' => $repo['visibility'] ?? 'private',
-                    ];
-                }
-            }
-        }
-
-        return ['data' => ['apps' => $apps, 'count' => count($apps)]];
+        // Delegate to artisan command - keeps logic in one place for AI and panel
+        return $this->runArtisan("server:app scan-repos");
     }
 
     protected function getDeployConfig(?string $owner, ?string $repo): array
@@ -346,42 +303,8 @@ PROMPT;
             return ['error' => 'owner and repo are required'];
         }
 
-        $ghToken = $this->getGitHubToken();
-        $env = $ghToken ? "GH_TOKEN=" . escapeshellarg($ghToken) . " " : "";
-
-        // Fetch production compose.yml
-        $composeB64 = shell_exec("{$env}gh api repos/{$owner}/{$repo}/contents/docker-laravel/production/compose.yml --jq '.content' 2>/dev/null");
-        if (!$composeB64) {
-            return ['error' => 'Could not fetch deployment config'];
-        }
-        $compose = base64_decode(trim($composeB64));
-
-        // Fetch .env.example
-        $envB64 = shell_exec("{$env}gh api repos/{$owner}/{$repo}/contents/docker-laravel/production/.env.example --jq '.content' 2>/dev/null");
-        $envExample = $envB64 ? base64_decode(trim($envB64)) : '';
-
-        // Parse env vars from .env.example
-        $envVars = [];
-        if ($envExample) {
-            foreach (explode("\n", $envExample) as $line) {
-                $line = trim($line);
-                if (empty($line) || $line[0] === '#') {
-                    continue;
-                }
-                if (str_contains($line, '=')) {
-                    [$key, $value] = explode('=', $line, 2);
-                    $envVars[trim($key)] = trim($value);
-                }
-            }
-        }
-
-        return [
-            'data' => [
-                'compose' => $compose,
-                'env_example' => $envExample,
-                'env_vars' => $envVars,
-            ],
-        ];
+        // Delegate to artisan command
+        return $this->runArtisan("server:app get-deploy-config --owner=" . escapeshellarg($owner) . " --repo=" . escapeshellarg($repo));
     }
 
     protected function deployApp(?string $workspaceId, array $params): array
@@ -396,9 +319,7 @@ PROMPT;
             return ['error' => 'workspace_id, server_id, and repo are required'];
         }
 
-        $ghToken = $this->getGitHubToken();
-
-        // Fetch compose.yml from GitHub
+        // Fetch compose.yml from GitHub (via artisan command)
         $configResult = $this->getDeployConfig($owner, $repo);
         if (isset($configResult['error']) || !isset($configResult['data']['compose'])) {
             return ['error' => 'Could not fetch compose.yml from GitHub'];
@@ -500,22 +421,7 @@ PROMPT;
         if ($result === null && !empty($json)) {
             return ['error' => $json, 'raw' => true];
         }
-        return $result ?: [];
-    }
-
-    protected function runGh(string $command, string $token): ?array
-    {
-        $env = $token ? "GH_TOKEN=" . escapeshellarg($token) . " " : "";
-        $output = shell_exec("{$env}gh {$command} 2>/dev/null");
-        if (!$output) {
-            return null;
-        }
-        return json_decode($output, true);
-    }
-
-    protected function getGitHubToken(): ?string
-    {
-        $credential = Credential::findByEnvVar('GH_TOKEN');
-        return $credential?->getValue();
+        // Wrap in 'data' key for PanelController response format
+        return ['data' => $result ?: []];
     }
 }
