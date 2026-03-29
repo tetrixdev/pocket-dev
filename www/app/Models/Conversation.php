@@ -312,7 +312,7 @@ class Conversation extends Model
             'openai' => array_merge(['effort' => 'none'], $config),
             'openai_compatible' => array_merge(['effort' => 'none'], $config),
             'claude_code' => array_merge(['thinking_tokens' => 0], $config),
-            'codex' => array_merge(['effort' => 'minimal'], $config),
+            'codex' => array_merge(['effort' => 'medium'], $config),
             default => $config,
         };
     }
