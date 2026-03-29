@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\ServerApplication;
 use App\Models\ServerConnection;
+use App\Models\Workspace;
 use App\Support\SshConnection;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -52,11 +53,11 @@ class ServerAppCommand extends Command
 
     private function listApps(): int
     {
-        $workspaceId = $this->option('workspace');
+        $workspaceId = $this->resolveWorkspaceId($this->option('workspace'));
         $serverId = $this->option('server');
 
         if (!$workspaceId && !$serverId) {
-            return $this->errorResponse('Either --workspace or --server is required');
+            return $this->errorResponse('Either --workspace (UUID or name) or --server is required');
         }
 
         $query = ServerApplication::with('server');
@@ -104,12 +105,12 @@ class ServerAppCommand extends Command
 
     private function addApp(): int
     {
-        $workspaceId = $this->option('workspace');
+        $workspaceId = $this->resolveWorkspaceId($this->option('workspace'));
         $serverId = $this->option('server');
         $name = $this->option('name');
 
         if (!$workspaceId) {
-            return $this->errorResponse('--workspace is required');
+            return $this->errorResponse('--workspace is required (UUID or name like "default")');
         }
         if (!$serverId) {
             return $this->errorResponse('--server is required');
@@ -705,6 +706,27 @@ NGINX;
         $env = "GH_TOKEN=" . escapeshellarg($token) . " ";
         $output = shell_exec("{$env}gh {$command} 2>/dev/null");
         return $output ? trim($output) : null;
+    }
+
+    /**
+     * Resolve workspace option to UUID.
+     *
+     * Accepts either a UUID or a workspace name (case-insensitive).
+     */
+    private function resolveWorkspaceId(?string $input): ?string
+    {
+        if (!$input) {
+            return null;
+        }
+
+        // Check if it's already a valid UUID format
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $input)) {
+            return $input;
+        }
+
+        // Try to find workspace by name (case-insensitive)
+        $workspace = Workspace::whereRaw('LOWER(name) = ?', [strtolower($input)])->first();
+        return $workspace?->id;
     }
 
     private function invalidAction(string $action): int

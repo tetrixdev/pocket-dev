@@ -42,9 +42,9 @@ class ServerCommand extends Command
 
     private function listServers(): int
     {
-        $workspaceId = $this->option('workspace');
+        $workspaceId = $this->resolveWorkspaceId($this->option('workspace'));
         if (!$workspaceId) {
-            return $this->errorResponse('--workspace is required');
+            return $this->errorResponse('--workspace is required (UUID or name like "default")');
         }
 
         $servers = ServerConnection::forWorkspace($workspaceId)
@@ -87,12 +87,12 @@ class ServerCommand extends Command
 
     private function addServer(): int
     {
-        $workspaceId = $this->option('workspace');
+        $workspaceId = $this->resolveWorkspaceId($this->option('workspace'));
         $name = $this->option('name');
         $host = $this->option('host');
 
         if (!$workspaceId) {
-            return $this->errorResponse('--workspace is required');
+            return $this->errorResponse('--workspace is required (UUID or name like "default")');
         }
         if (!$name) {
             return $this->errorResponse('--name is required');
@@ -373,9 +373,9 @@ class ServerCommand extends Command
 
     private function generateSshKey(): int
     {
-        $workspaceId = $this->option('workspace');
+        $workspaceId = $this->resolveWorkspaceId($this->option('workspace'));
         if (!$workspaceId) {
-            return $this->errorResponse('--workspace is required');
+            return $this->errorResponse('--workspace is required (UUID or name like "default")');
         }
 
         $workspace = Workspace::find($workspaceId);
@@ -436,9 +436,9 @@ class ServerCommand extends Command
 
     private function showPublicKey(): int
     {
-        $workspaceId = $this->option('workspace');
+        $workspaceId = $this->resolveWorkspaceId($this->option('workspace'));
         if (!$workspaceId) {
-            return $this->errorResponse('--workspace is required');
+            return $this->errorResponse('--workspace is required (UUID or name like "default")');
         }
 
         $keyDir = $this->getWorkspaceSshDir($workspaceId);
@@ -555,6 +555,27 @@ class ServerCommand extends Command
         if (is_dir($path)) {
             @chmod($path, 0750);
         }
+    }
+
+    /**
+     * Resolve workspace option to UUID.
+     *
+     * Accepts either a UUID or a workspace name (case-insensitive).
+     */
+    private function resolveWorkspaceId(?string $input): ?string
+    {
+        if (!$input) {
+            return null;
+        }
+
+        // Check if it's already a valid UUID format
+        if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $input)) {
+            return $input;
+        }
+
+        // Try to find workspace by name (case-insensitive)
+        $workspace = Workspace::whereRaw('LOWER(name) = ?', [strtolower($input)])->first();
+        return $workspace?->id;
     }
 
     private function invalidAction(string $action): int
