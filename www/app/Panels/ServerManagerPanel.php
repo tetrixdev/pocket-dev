@@ -44,8 +44,6 @@ class ServerManagerPanel extends Panel
             return "Server Manager: No servers configured.";
         }
 
-        $output = "Found {$servers->count()} server(s).\n\n";
-
         $serverData = [];
         foreach ($servers as $server) {
             $serverInfo = [
@@ -324,13 +322,13 @@ PROMPT;
         }
         $result = $this->runArtisan($cmd);
 
-        if (isset($result['is_error']) && $result['is_error']) {
+        if (isset($result['data']['is_error']) && $result['data']['is_error']) {
             @unlink($composeFile);
             @unlink($envFile);
-            return ['data' => $result];
+            return $result;
         }
 
-        $appId = $result['application']['id'] ?? null;
+        $appId = $result['data']['application']['id'] ?? null;
         if (!$appId) {
             @unlink($composeFile);
             @unlink($envFile);
@@ -341,7 +339,7 @@ PROMPT;
         $deployResult = $this->runArtisan("server:app deploy --id={$appId}");
 
         // Add domain if provided
-        if ($domain && !($deployResult['is_error'] ?? false)) {
+        if ($domain && !($deployResult['data']['is_error'] ?? false)) {
             $upstream = "{$repo}-nginx";
             $this->runArtisan("server:app add-domain --id={$appId} --domain=" . escapeshellarg($domain) . " --upstream=" . escapeshellarg($upstream));
         }

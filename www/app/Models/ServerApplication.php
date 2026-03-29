@@ -17,6 +17,17 @@ class ServerApplication extends Model
 
     /**
      * The attributes that are mass assignable.
+     *
+     * TODO: Consider adding composite FK constraint or model validation to ensure
+     * workspace_id consistency. Currently, workspace_id exists on both ServerApplication
+     * and ServerConnection, creating a potential integrity issue:
+     * - If server_connection.workspace_id differs from server_application.workspace_id,
+     *   the app would appear in a workspace but belong to a server in another workspace.
+     * Options:
+     * 1. Add CHECK constraint or trigger at database level
+     * 2. Add model validation in boot() to verify consistency
+     * 3. Remove workspace_id from ServerApplication and derive from server relationship
+     * See: PR #210 CodeRabbit review comment
      */
     protected $fillable = [
         'workspace_id',
@@ -105,11 +116,23 @@ class ServerApplication extends Model
     }
 
     /**
+     * Mutator to ensure env_content is always encrypted.
+     * This ensures encryption even with mass assignment (create/fill/update).
+     */
+    public function setEnvContentAttribute(?string $value): void
+    {
+        $this->attributes['env_content'] = $value === null
+            ? null
+            : Crypt::encryptString($value);
+    }
+
+    /**
      * Set the .env content (encrypts before storing).
+     * @deprecated Use direct assignment: $app->env_content = $content
      */
     public function setEnvContent(string $content): self
     {
-        $this->env_content = Crypt::encryptString($content);
+        $this->env_content = $content; // Will go through setEnvContentAttribute
         return $this;
     }
 
@@ -179,7 +202,13 @@ class ServerApplication extends Model
      */
     public function getFullDeployPathAttribute(): string
     {
-        return $this->deploy_path ?: "/home/admin/docker-apps/{$this->slug}";
+        if ($this->deploy_path) {
+            return $this->deploy_path;
+        }
+
+        // Derive home directory from server's SSH user
+        $sshUser = $this->server?->ssh_user ?? 'admin';
+        return "/home/{$sshUser}/docker-apps/{$this->slug}";
     }
 
     /**

@@ -779,7 +779,7 @@ GUIDE;
                             SELECT 1 FROM information_schema.columns
                             WHERE table_schema = ? AND table_name = 'skills' AND column_name = 'source'
                         ) as exists
-                    ", [str_replace('memory_', '', $fullSchemaName)]);
+                    ", [$fullSchemaName]);
 
                 $hasSource = (bool) ($hasSourceColumn->exists ?? false);
 

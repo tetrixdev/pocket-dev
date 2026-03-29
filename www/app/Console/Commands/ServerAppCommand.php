@@ -761,14 +761,19 @@ NGINX;
             return $this->errorResponse('--key is required');
         }
 
+        // Validate key format to prevent regex injection and ensure valid env key
+        if (!preg_match('/^[A-Z][A-Z0-9_]*$/i', $key)) {
+            return $this->errorResponse('Key must start with a letter and contain only letters, numbers, and underscores');
+        }
+
         $showFull = $this->option('full');
 
         try {
             $ssh = $this->getSshConnection($app->server);
             $envPath = "{$app->full_deploy_path}/.env";
 
-            // Read just the specific key using grep
-            $result = $ssh->run("grep -E '^" . escapeshellarg($key) . "=' " . escapeshellarg($envPath) . " 2>/dev/null | head -1");
+            // Read just the specific key using grep -F for fixed string match (safer than regex)
+            $result = $ssh->run("grep -F '" . $key . "=' " . escapeshellarg($envPath) . " 2>/dev/null | grep -E '^" . $key . "=' | head -1");
 
             if (!$result->successful() || empty(trim($result->output()))) {
                 $this->outputJson([
@@ -852,22 +857,26 @@ NGINX;
                 return $this->errorResponse('.env file does not exist on server. Deploy the app first.');
             }
 
-            // Escape the value for sed (handle special characters)
-            $escapedValue = str_replace(['/', '&', '\n'], ['\/', '\&', '\\n'], $value);
-
             // Check if key exists in file
             $grepResult = $ssh->run("grep -q '^" . $key . "=' " . escapeshellarg($envPath) . " && echo 'found'");
             $keyExists = trim($grepResult->output()) === 'found';
 
+            // Use base64 encoding to safely transmit value (avoids shell escaping issues)
+            $line = $key . '=' . $value;
+            $encoded = base64_encode($line);
+
             if ($keyExists) {
-                // Update existing key using sed
-                $sedCmd = "sed -i 's/^" . $key . "=.*/" . $key . "=" . $escapedValue . "/' " . escapeshellarg($envPath);
+                // Read current file, decode, update line, re-encode, write back
+                // This is safer than sed which has escaping issues with special chars
+                $cmd = "grep -v '^" . $key . "=' " . escapeshellarg($envPath) . " > " . escapeshellarg($envPath) . ".tmp && " .
+                       "echo " . escapeshellarg($encoded) . " | base64 -d >> " . escapeshellarg($envPath) . ".tmp && " .
+                       "mv " . escapeshellarg($envPath) . ".tmp " . escapeshellarg($envPath);
             } else {
-                // Append new key
-                $sedCmd = "echo '" . $key . "=" . $value . "' >> " . escapeshellarg($envPath);
+                // Append new key using base64
+                $cmd = "echo " . escapeshellarg($encoded) . " | base64 -d >> " . escapeshellarg($envPath);
             }
 
-            $result = $ssh->run($sedCmd);
+            $result = $ssh->run($cmd);
 
             if (!$result->successful()) {
                 return $this->errorResponse('Failed to update .env: ' . $result->errorOutput());

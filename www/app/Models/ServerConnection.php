@@ -60,11 +60,13 @@ class ServerConnection extends Model
             return 'unchecked';
         }
 
-        if ($this->has_vps_setup === false) {
+        // Treat null as "not installed" (needs setup)
+        if (!$this->has_vps_setup) {
             return 'needs_vps_setup';
         }
 
-        if ($this->has_proxy_nginx === false) {
+        // Only public mode servers need proxy-nginx
+        if ($this->vps_setup_mode !== 'private' && !$this->has_proxy_nginx) {
             return 'needs_proxy';
         }
 

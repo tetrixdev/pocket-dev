@@ -57,11 +57,11 @@ class SystemSkillSeeder extends Seeder
         ");
 
         if (empty($schemas)) {
-            $this->command->info('No memory schemas found. System skills will be seeded when schemas are created.');
+            $this->command?->info('No memory schemas found. System skills will be seeded when schemas are created.');
             return;
         }
 
-        $this->command->info("Seeding " . count($skills) . " system skill(s) into " . count($schemas) . " schema(s)...");
+        $this->command?->info("Seeding " . count($skills) . " system skill(s) into " . count($schemas) . " schema(s)...");
 
         foreach ($schemas as $schema) {
             $schemaName = $schema->schema_name;
@@ -75,7 +75,7 @@ class SystemSkillSeeder extends Seeder
             ", [$schemaName]);
 
             if ((int) $hasSourceColumn->exists !== 1) {
-                $this->command->warn("Schema {$schemaName} does not have updated skills table. Run migrations first.");
+                $this->command?->warn("Schema {$schemaName} does not have updated skills table. Run migrations first.");
                 continue;
             }
 
@@ -83,11 +83,11 @@ class SystemSkillSeeder extends Seeder
                 $this->seedSkill($schemaName, $skill, $version);
             }
 
-            $this->command->info("  Seeded skills into {$schemaName}");
+            $this->command?->info("  Seeded skills into {$schemaName}");
         }
 
-        $this->command->info('System skills seeded successfully.');
-        $this->command->warn('Note: Embeddings will be generated when skills are first accessed or via manual embedding regeneration.');
+        $this->command?->info('System skills seeded successfully.');
+        $this->command?->warn('Note: Embeddings will be generated when skills are first accessed or via manual embedding regeneration.');
     }
 
     /**

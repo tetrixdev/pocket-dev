@@ -83,7 +83,7 @@ This fetches compose.yml and checks the slim-docker-laravel-setup version.
 
 4. **PROCEED BASED ON RESPONSE**:
    - **User agrees** → Perform the update:
-     1. Clone/pull the repo to /workspace/default/
+     1. Clone/pull the repo to the current workspace directory
      2. Run `curl -sSL https://raw.githubusercontent.com/tetrixdev/slim-docker-laravel-setup/main/install.sh | bash`
      3. Commit changes with message "Update slim-docker-laravel-setup"
      4. Push to origin

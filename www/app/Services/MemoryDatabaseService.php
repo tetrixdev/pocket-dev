@@ -177,6 +177,9 @@ class MemoryDatabaseService
                 ]);
             });
 
+            // Seed system skills into the new schema
+            $this->seedSystemSkills($fullSchemaName);
+
             Log::info('Memory database created', [
                 'id' => $memoryDb->id,
                 'name' => $name,
@@ -356,5 +359,51 @@ class MemoryDatabaseService
             'tables' => (int) ($tableCount->count ?? 0),
             'embeddings' => (int) ($embeddingCount->count ?? 0),
         ];
+    }
+
+    /**
+     * Seed system skills into a specific schema.
+     * This inserts the built-in skills like /deploy.
+     */
+    private function seedSystemSkills(string $fullSchemaName): void
+    {
+        $skills = \App\Skills\SystemSkillDefinitions::all();
+        $version = \App\Skills\SystemSkillDefinitions::VERSION;
+
+        foreach ($skills as $skill) {
+            $tagsArray = $this->arrayToPgArray($skill['tags']);
+
+            DB::connection('pgsql')->statement("
+                INSERT INTO {$fullSchemaName}.skills
+                (name, when_to_use, instructions, source, tags, version, created_at, updated_at)
+                VALUES (?, ?, ?, 'system', ?, ?, NOW(), NOW())
+                ON CONFLICT (name) DO NOTHING
+            ", [
+                $skill['name'],
+                $skill['when_to_use'],
+                $skill['instructions'],
+                $tagsArray,
+                $version,
+            ]);
+        }
+
+        Log::info('Seeded system skills into new schema', [
+            'schema' => $fullSchemaName,
+            'skill_count' => count($skills),
+        ]);
+    }
+
+    /**
+     * Convert PHP array to PostgreSQL array literal.
+     */
+    private function arrayToPgArray(array $values): string
+    {
+        $escaped = array_map(function ($v) {
+            $v = str_replace('\\', '\\\\', $v);
+            $v = str_replace('"', '\\"', $v);
+            return '"' . $v . '"';
+        }, $values);
+
+        return '{' . implode(',', $escaped) . '}';
     }
 }
