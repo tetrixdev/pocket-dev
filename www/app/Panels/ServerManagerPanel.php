@@ -121,8 +121,9 @@ Opens an interactive Server Manager panel for managing server connections and de
 
 ### List servers
 ```bash
-pd server list --workspace=<workspace-id>
+pd server list --workspace=default
 ```
+The `--workspace` parameter accepts either a UUID or workspace name (case-insensitive).
 Returns: servers with id, name, host, status, has_vps_setup, has_proxy_nginx
 
 ### Discover deployable repositories
@@ -153,8 +154,8 @@ APP_NAME=...
 DB_PASSWORD=...
 EOF
 
-# 4. Add application
-pd server:app add --workspace=<id> --server=<server-id> --name="app-name" --compose=/tmp/compose.yml --env=/tmp/app.env
+# 4. Add application (--workspace accepts name or UUID)
+pd server:app add --workspace=default --server=<server-id> --name="app-name" --compose=/tmp/compose.yml --env=/tmp/app.env
 
 # 5. Deploy
 pd server:app deploy --id=<app-id>
