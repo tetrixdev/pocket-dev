@@ -1,6 +1,8 @@
 <?php
 
+use Database\Seeders\SystemSkillSeeder;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -8,6 +10,8 @@ use Illuminate\Support\Facades\DB;
  * - source: 'system' or 'user' to distinguish origin
  * - tags: array of grouping labels for filtering
  * - version: PocketDev version that last updated the skill (for system skills)
+ *
+ * After adding columns, seeds system skills via SystemSkillSeeder.
  */
 return new class extends Migration
 {
@@ -88,6 +92,12 @@ return new class extends Migration
                 CREATE INDEX IF NOT EXISTS idx_{$schemaName}_skills_tags ON {$schemaName}.skills USING GIN (tags)
             ");
         }
+
+        // Seed system skills into all schemas
+        Artisan::call('db:seed', [
+            '--class' => SystemSkillSeeder::class,
+            '--force' => true,
+        ]);
     }
 
     /**
