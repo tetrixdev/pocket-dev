@@ -10,6 +10,7 @@ use App\Models\MemoryDatabase;
 use App\Models\Screen;
 use App\Models\SystemPackage;
 use App\Models\Workspace;
+use Illuminate\Support\Str;
 
 /**
  * Builds the system prompt for AI providers.
@@ -92,6 +93,11 @@ class SystemPromptBuilder
         // 3. Memory section (separate from tools)
         if ($memorySection = $this->toolSelector->buildMemorySection($agent)) {
             $sections[] = $memorySection;
+        }
+
+        // 3b. Available agents section (for SubAgent tool)
+        if ($agentsSection = $this->buildAvailableAgentsSection($workspace)) {
+            $sections[] = $agentsSection;
         }
 
         // 4. Skills section (slash commands)
@@ -462,6 +468,52 @@ pd panel:peek <panel-slug>
 pd panel:peek <panel-slug> --id=<panel-id>
 ```
 PROMPT;
+    }
+
+    /**
+     * Build the Available Agents section for the SubAgent tool.
+     * Only included when agents exist in the workspace.
+     */
+    private function buildAvailableAgentsSection(?Workspace $workspace): ?string
+    {
+        if (!$workspace) {
+            return null;
+        }
+
+        $agents = Agent::where('workspace_id', $workspace->id)
+            ->where('enabled', true)
+            ->orderBy('name')
+            ->get(['slug', 'name', 'provider', 'model', 'description']);
+
+        if ($agents->isEmpty()) {
+            return null;
+        }
+
+        $lines = ["# Available Agents\n"];
+        $lines[] = "Use these agent slugs with the SubAgent tool (`pd subagent:run --agent=<slug>`).\n";
+        $lines[] = "| Slug | Provider | Model | Description |";
+        $lines[] = "|------|----------|-------|-------------|";
+
+        $escapeCell = static function (?string $value): string {
+            $value = preg_replace('/\s+/', ' ', trim((string) $value)) ?? '';
+            return str_replace('|', '\|', $value === '' ? '-' : $value);
+        };
+
+        foreach ($agents as $agent) {
+            $desc = $agent->description
+                ? Str::limit(preg_replace('/\s+/', ' ', trim($agent->description)) ?? '', 60)
+                : '-';
+
+            $lines[] = sprintf(
+                '| %s | %s | %s | %s |',
+                $escapeCell($agent->slug),
+                $escapeCell($agent->provider),
+                $escapeCell($agent->model),
+                $escapeCell($desc),
+            );
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

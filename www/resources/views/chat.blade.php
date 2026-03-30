@@ -41,6 +41,8 @@
                     stack: [],
                     loading: false,
                     copied: false,
+                    copiedPath: false,
+                    _copiedPathTimer: null,
 
                     // Edit mode state
                     editing: false,
@@ -113,6 +115,8 @@
                         }
                         this.loading = true;
                         this.copied = false;
+                        if (this._copiedPathTimer) { clearTimeout(this._copiedPathTimer); this._copiedPathTimer = null; }
+                        this.copiedPath = false;
 
                         // Generate unique ID for this entry to handle race conditions
                         // (if user opens/closes files while fetch is in-flight)
@@ -246,6 +250,8 @@
                         }
                         this.stack.pop();
                         this.copied = false;
+                        if (this._copiedPathTimer) { clearTimeout(this._copiedPathTimer); this._copiedPathTimer = null; }
+                        this.copiedPath = false;
                         if (window.debugLog) debugLog('filePreview._closeStack()', { remainingStack: this.stack.length });
                     },
 
@@ -277,6 +283,8 @@
                         }
                         this.stack = [];
                         this.copied = false;
+                        if (this._copiedPathTimer) { clearTimeout(this._copiedPathTimer); this._copiedPathTimer = null; }
+                        this.copiedPath = false;
                         if (window.debugLog) debugLog('filePreview.closeAll()');
                         if (history.state?.filePreview) {
                             // Go back through all preview history entries
@@ -297,6 +305,21 @@
                             setTimeout(() => { this.copied = false; }, 1500);
                         } catch (err) {
                             console.error('Copy failed:', err);
+                        }
+                    },
+
+                    async copyPath() {
+                        if (!this.path) return;
+                        try {
+                            await navigator.clipboard.writeText(this.path);
+                            if (this._copiedPathTimer) clearTimeout(this._copiedPathTimer);
+                            this.copiedPath = true;
+                            this._copiedPathTimer = setTimeout(() => {
+                                this.copiedPath = false;
+                                this._copiedPathTimer = null;
+                            }, 1500);
+                        } catch (err) {
+                            console.error('Copy path failed:', err);
                         }
                     },
 
