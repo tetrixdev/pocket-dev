@@ -268,23 +268,15 @@ class StreamManager
     /**
      * Set the abort flag for a stream.
      * The job will check this flag and terminate if set.
-     *
-     * @param string $conversationUuid
-     * @param bool $skipSync If true, the job should skip syncing to CLI session files
-     *                       (used when aborting after tool execution completed)
      */
-    public function setAbortFlag(string $conversationUuid, bool $skipSync = false): void
+    public function setAbortFlag(string $conversationUuid): void
     {
         RequestFlowLogger::log('stream.abort_flag_set', 'Setting abort flag', [
             'conversation_uuid' => $conversationUuid,
-            'skip_sync' => $skipSync,
         ]);
 
         $key = $this->key($conversationUuid);
         Redis::set("{$key}:abort", 'true', 'EX', self::TTL_STREAMING);
-        if ($skipSync) {
-            Redis::set("{$key}:abort_skip_sync", 'true', 'EX', self::TTL_STREAMING);
-        }
     }
 
     /**
@@ -296,15 +288,6 @@ class StreamManager
     }
 
     /**
-     * Check if sync should be skipped when aborting.
-     * This is true when abort happened after tool execution completed.
-     */
-    public function shouldSkipSyncOnAbort(string $conversationUuid): bool
-    {
-        return Redis::get($this->key($conversationUuid) . ':abort_skip_sync') === 'true';
-    }
-
-    /**
      * Clear the abort flag for a stream.
      */
     public function clearAbortFlag(string $conversationUuid): void
@@ -313,8 +296,7 @@ class StreamManager
             'conversation_uuid' => $conversationUuid,
         ]);
 
-        $key = $this->key($conversationUuid);
-        Redis::del("{$key}:abort", "{$key}:abort_skip_sync");
+        Redis::del($this->key($conversationUuid) . ':abort');
     }
 
     /**
@@ -323,7 +305,7 @@ class StreamManager
     public function cleanup(string $conversationUuid): void
     {
         $key = $this->key($conversationUuid);
-        Redis::del("{$key}:events", "{$key}:status", "{$key}:metadata", "{$key}:abort", "{$key}:abort_skip_sync");
+        Redis::del("{$key}:events", "{$key}:status", "{$key}:metadata", "{$key}:abort");
     }
 
     /**

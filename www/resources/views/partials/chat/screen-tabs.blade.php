@@ -84,8 +84,8 @@
                  x-transition:leave="transition ease-in duration-75"
                  x-transition:leave-start="opacity-100 scale-100"
                  x-transition:leave-end="opacity-0 scale-95"
-                 class="fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-[100]"
-                 :style="{ top: menuPos.top + 'px', left: menuPos.left + 'px' }">
+                 class="fixed w-48 bg-gray-700 rounded-lg shadow-lg border border-gray-600 py-1 z-[100] max-h-[70vh] overflow-y-auto"
+                 :style="{ top: menuPos.top + 'px', left: Math.min(menuPos.left, window.innerWidth - 200) + 'px' }">
                 {{-- New Chat --}}
                 <button @click="addChatScreen(); showAddMenu = false"
                         class="flex items-center gap-2 px-4 py-3 md:py-2 text-sm text-gray-200 hover:bg-gray-600 w-full text-left cursor-pointer min-h-[44px] md:min-h-0">

@@ -843,18 +843,12 @@ class ClaudeCodeProvider extends AbstractCliProvider
         string $model
     ): array {
         $content = is_array($message->content) ? $message->content : [];
+        // Filter out interrupted markers and any tool_use blocks (which may be
+        // incomplete after an immediate abort). Only text and signed thinking
+        // blocks are safe to sync to the CLI session file.
         $content = array_values(array_filter($content, fn($block) =>
-            ($block['type'] ?? '') !== 'interrupted'
+            !in_array($block['type'] ?? '', ['interrupted', 'tool_use'])
         ));
-
-        foreach ($content as $block) {
-            if (($block['type'] ?? '') === 'tool_use') {
-                throw new \RuntimeException(
-                    'BUG: Attempting to sync tool_use block without tool_result. ' .
-                    'This should never happen - abort should wait for tool completion or skip sync.'
-                );
-            }
-        }
 
         return [
             'parentUuid' => $parentUuid,

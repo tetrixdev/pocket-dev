@@ -197,7 +197,7 @@ chmod 666 /dev/stdout /dev/stderr 2>/dev/null || true
 # Ensure supervisord log/pid files are writable by TARGET_USER
 # /tmp is a shared volume - files may exist from previous runs with different ownership
 # Guard against symlink traversal (same pattern as /tmp/pocketdev*)
-for f in /tmp/supervisord.log /tmp/supervisord.pid; do
+for f in /tmp/supervisord.log /tmp/supervisord.pid /tmp/supervisor.sock; do
     if [ -L "$f" ]; then
         echo "WARN: $f is a symlink; removing before recreation" >&2
         rm -f "$f" 2>/dev/null || true
@@ -207,8 +207,8 @@ for f in /tmp/supervisord.log /tmp/supervisord.pid; do
 done
 
 # Ensure queue worker log files are writable by TARGET_USER
-# Supervisor creates 10 workers (00-09) with stdout and stderr logs each
-for i in $(seq -f '%02g' 0 9); do
+# Supervisor creates 20 workers (00-19) with stdout and stderr logs each
+for i in $(seq -f '%02g' 0 19); do
     for f in "/tmp/queue-worker-${i}.log" "/tmp/queue-worker-${i}-error.log"; do
         if [ -L "$f" ]; then
             echo "WARN: $f is a symlink; removing before recreation" >&2

@@ -100,6 +100,9 @@
                     get renderedContent() { return this.current.renderedContent || ''; },
                     get highlightedContent() { return this.current.highlightedContent || ''; },
                     get sanitizedHtml() { return this.current.sanitizedHtml || ''; },
+                    get isBinary() { return this.current.isBinary || false; },
+                    get isImage() { return this.current.isImage || false; },
+                    get readable() { return this.current.readable || false; },
                     get stackDepth() { return this.stack.length; },
 
                     async open(filePath) {
@@ -122,6 +125,9 @@
                             filename: filePath.split('/').pop(),
                             content: '',
                             error: null,
+                            readable: false,
+                            isBinary: false,
+                            isImage: false,
                             isMarkdown: false,
                             isHtml: false,
                             sizeFormatted: '',
@@ -158,14 +164,20 @@
 
                             // Build the updated entry
                             const updatedEntry = { ...entry };
+                            updatedEntry.readable = !!data.readable;
 
                             if (!data.exists) {
                                 updatedEntry.error = 'File not found';
+                            } else if (data.is_image) {
+                                updatedEntry.isImage = true;
+                                updatedEntry.filename = data.filename;
+                                updatedEntry.sizeFormatted = data.size_formatted;
                             } else if (data.too_large) {
                                 updatedEntry.error = data.error;
                                 updatedEntry.sizeFormatted = data.size_formatted;
                             } else if (data.binary) {
                                 updatedEntry.error = data.error;
+                                updatedEntry.isBinary = true;
                             } else if (data.error) {
                                 updatedEntry.error = data.error;
                             } else {
@@ -270,6 +282,11 @@
                             // Go back through all preview history entries
                             history.go(-depth);
                         }
+                    },
+
+                    downloadFile() {
+                        if (!this.path) return;
+                        window.open('/api/file/download?path=' + encodeURIComponent(this.path), '_blank', 'noopener,noreferrer');
                     },
 
                     async copyContent() {
@@ -1477,6 +1494,21 @@
                                     this.messages.splice(state.textMsgIndex, 1);
                                 }
                             }
+                            // Mark any in-progress tool blocks as interrupted
+                            // so the amber/warning styling shows immediately (matches DB-loaded view)
+                            for (const msg of this.messages) {
+                                if (msg.role === 'tool' && state.waitingForToolResults.has(msg.toolId)) {
+                                    msg.toolInterrupted = true;
+                                    msg.collapsed = false; // Show expanded so user sees what was attempted
+                                    // Set toolPartialInput for tools still mid-streaming (before tool_use_stop)
+                                    // so they render via Case 2 (pre with wrapping) matching the DB-loaded view.
+                                    // Only when toolInProgress — tools that completed tool_use_stop have valid
+                                    // JSON in toolInput and should keep using formatToolContent (Case 3).
+                                    if (state.toolInProgress && msg.toolInput && typeof msg.toolInput === 'string') {
+                                        msg.toolPartialInput = msg.toolInput;
+                                    }
+                                }
+                            }
                             // Add interrupted marker
                             this.messages.push({
                                 id: 'msg-' + Date.now() + '-interrupted',
@@ -2572,8 +2604,13 @@
                 },
 
                 async newConversation() {
-                    // Disconnect from any active stream
-                    this.disconnectFromStream();
+                    // Reset all stream state before switching
+                    this._streamStore.prepareForConversationSwitch();
+                    this.isStreaming = false;
+                    // Invalidate any in-flight conversation loads so stale responses
+                    // fail their guard checks instead of restoring old state
+                    this.loadingConversation = false;
+                    this._loadingConversationUuid = null;
 
                     this.currentConversationUuid = null;
                     this.currentConversationStatus = null; // Reset status for new conversation
@@ -2592,8 +2629,6 @@
                     this.outputTokens = 0;
                     this.cacheCreationTokens = 0;
                     this.cacheReadTokens = 0;
-                    this.isStreaming = false;
-                    this.lastEventIndex = 0;
                     this.resetContextTracking();
 
                     // Clear URL to base path
@@ -2876,8 +2911,8 @@
                     this.loadingConversation = true;
                     this._loadingConversationUuid = uuid;
 
-                    // Disconnect from any current stream before switching
-                    this.disconnectFromStream();
+                    // Reset all stream state before switching conversations
+                    this._streamStore.prepareForConversationSwitch();
 
                     try {
                         const response = await fetch(`/api/conversations/${uuid}`);
@@ -2970,26 +3005,6 @@
                         this.cacheCreationTokens = 0;
                         this.cacheReadTokens = 0;
                         this.sessionCost = 0;
-                        this.lastEventIndex = 0;
-
-                        // Reset stream state for potential reconnection
-                        this._streamState = {
-                            thinkingBlocks: {},
-                            currentThinkingBlock: -1,
-                            textMsgIndex: -1,
-                            toolMsgIndex: -1,
-                            textContent: '',
-                            toolInput: '',
-                            turnCost: 0,
-                            turnInputTokens: 0,
-                            turnOutputTokens: 0,
-                            turnCacheCreationTokens: 0,
-                            turnCacheReadTokens: 0,
-                            toolInProgress: false,
-                            waitingForToolResults: new Set(),
-                            abortPending: false,
-                            abortSkipSync: false,
-                        };
 
                         // Calculate totals and sum costs from stored values
                         if (data.conversation?.messages) {
@@ -3335,7 +3350,7 @@
                 async loadConversationForScreen(uuid) {
                     this.loadingConversation = true;
                     this._loadingConversationUuid = uuid;
-                    this.disconnectFromStream();
+                    this._streamStore.prepareForConversationSwitch();
 
                     // Capture pendingScrollToTurn before loading (it will be cleared after use)
                     const targetTurn = this.pendingScrollToTurn;
@@ -3602,6 +3617,13 @@
                     return this._screenMap?.[screenId] || this.screens.find(s => s.id === screenId);
                 },
 
+                // Resolve panel display name from availablePanels (PanelRegistry source of truth)
+                getPanelName(screen) {
+                    const slug = screen.panel_slug || screen.panel?.slug;
+                    const panelInfo = this.availablePanels?.find(p => p.slug === slug);
+                    return panelInfo?.name || screen.panel?.name || screen.panel_slug || 'Panel';
+                },
+
                 // Get screen title for display (full title, used for tooltips)
                 getScreenTitle(screenId) {
                     const screen = this.getScreen(screenId);
@@ -3609,7 +3631,7 @@
                     if (screen.type === 'chat') {
                         return screen.conversation?.title || 'Chat';
                     }
-                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                    return this.getPanelName(screen);
                 },
 
                 // Get screen tab label for display (short form for tabs)
@@ -3626,7 +3648,7 @@
                         return (screen.chat_number || '?') + '.';
                     }
                     // For panels, use the full name (they're typically short already)
-                    return screen.panel?.name || screen.panel_slug || 'Panel';
+                    return this.getPanelName(screen);
                 },
 
                 // Get screen type icon class
@@ -4146,13 +4168,16 @@
                     }
 
                     try {
-                        // Pass workspace path for panels that use it (no fallback — let backend decide)
+                        // Pass workspace path/id for panels that use it (no fallback — let backend decide)
                         const panelParams = {};
                         if (['file-explorer', 'git-status'].includes(panelSlug)) {
                             const workspacePath = this.currentWorkspace?.working_directory_path;
                             if (workspacePath) {
                                 panelParams.path = workspacePath;
                             }
+                        }
+                        if (panelSlug === 'server-manager' && this.currentWorkspaceId) {
+                            panelParams.workspace_id = this.currentWorkspaceId;
                         }
 
                         const response = await fetch(`/api/sessions/${this.currentSession.id}/screens/panel`, {
@@ -4852,29 +4877,11 @@
                     this.autoScrollEnabled = true; // Re-enable auto-scroll on new message
                     this.scrollToBottom();
 
-                    // Reset stream state
+                    // Reset stream state for the new message stream
                     this.lastEventIndex = 0;
                     this._justCompletedStream = false;
                     // Stream phase is set in connectToStreamEvents() after disconnectFromStream()
-                    this._streamState = {
-                        // Maps block_index -> { msgIndex, content, complete }
-                        thinkingBlocks: {},
-                        currentThinkingBlock: -1,
-                        textMsgIndex: -1,
-                        toolMsgIndex: -1,
-                        textContent: '',
-                        toolInput: '',
-                        turnCost: 0,
-                        turnInputTokens: 0,
-                        turnOutputTokens: 0,
-                        turnCacheCreationTokens: 0,
-                        turnCacheReadTokens: 0,
-                        toolInProgress: false,
-                        waitingForToolResults: new Set(),
-                        abortPending: false,
-                        abortSkipSync: false,
-                        startedAt: null, // Will be set from stream response
-                    };
+                    this._streamStore.resetStreamState();
 
                     try {
                         // Build stream request body
@@ -5354,7 +5361,8 @@
 
                         return html;
                     } catch (e) {
-                        return `<pre class="text-xs">${this.escapeHtml(msg.content || '')}</pre>`;
+                        const rawToolContent = msg.toolPartialInput || msg.toolInput || msg.content || '';
+                        return `<pre class="whitespace-pre-wrap break-all text-xs">${this.escapeHtml(rawToolContent)}</pre>`;
                     }
                 },
 

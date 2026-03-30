@@ -21,6 +21,20 @@ abstract class Panel
     // Example: [['type' => 'script', 'url' => 'https://cdn.example.com/lib.js', 'defer' => true]]
     public array $panelDependencies = [];
 
+    // Workspace context set by PanelController before render/action/peek calls.
+    // Panels that need workspace-scoped data (e.g., credentials) can read this property.
+    protected ?string $workspaceId = null;
+
+    /**
+     * Set the workspace context for this panel instance.
+     */
+    public function setWorkspaceId(?string $workspaceId): static
+    {
+        $this->workspaceId = $workspaceId;
+
+        return $this;
+    }
+
     /**
      * Render the panel HTML.
      *

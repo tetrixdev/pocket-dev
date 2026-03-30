@@ -133,12 +133,12 @@ class TranscriptionService
             ->post($this->baseUrl . '/v1/audio/transcriptions', [
                 'model' => 'gpt-4o-transcribe',
                 'response_format' => 'text',
-                'language' => 'en', // Force English to avoid detection issues on short segments
-                'temperature' => 0.2, // Lower temperature for more consistent transcription
+                'language' => 'en',
+                'temperature' => 0.2,
                 // Anti-truncation prompt: gpt-4o-transcribe has a known tendency to truncate
-                // the final sentence. This prompt significantly reduces that behavior.
+                // the final sentence. This aggressive prompt significantly reduces that behavior.
                 // See: https://community.openai.com/t/persistent-truncation-issues-with-gpt-4o-transcribe
-                'prompt' => 'Transcribe completely. Do NOT omit, summarize, or truncate any speech. Output every word as spoken, including the final sentence.',
+                'prompt' => 'CRITICAL MANDATORY RULES – VIOLATION IS UNACCEPTABLE: 1. Transcribe EVERY SINGLE WORD without exception. 2. The FINAL WORDS are the MOST IMPORTANT – NEVER cut off the ending. 3. If audio ends mid-sentence, you MUST transcribe the incomplete sentence. 4. NEVER stop transcribing early. Continue until the ABSOLUTE END of all audio. 5. Include ALL filler words (um, uh, like, you know, so, well). 6. Do NOT summarize, paraphrase, or clean up. VERBATIM ONLY. 7. Even if audio quality degrades at the end, transcribe what you hear. 8. ZERO tolerance for omitting ANY words, especially at the END. 9. Transcribe in Dutch ONLY. Do NOT translate.',
             ]);
 
             if (!$response->successful()) {

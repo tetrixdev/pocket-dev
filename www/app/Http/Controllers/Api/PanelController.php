@@ -218,6 +218,7 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $html = $systemPanel->render($params, $state, $panelState->id);
                 $deps = $systemPanel->panelDependencies;
                 return response($this->wrapPanelHtml($html, $deps))->header('Content-Type', 'text/html');
@@ -339,6 +340,7 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $panelParams = $panelState->parameters ?? [];
                 $result = $systemPanel->handleAction($action, $params, $state, $panelParams);
 
@@ -481,6 +483,7 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $markdown = $systemPanel->peek($params, $state);
                 return response($markdown)->header('Content-Type', 'text/markdown');
             } catch (\Throwable $e) {
@@ -592,6 +595,14 @@ HTML;
         $output .= "\n*No peek script defined for this panel.*\n";
 
         return $output;
+    }
+
+    /**
+     * Extract workspace ID from a panel state via its screen → session chain.
+     */
+    private function getWorkspaceId(PanelState $panelState): ?string
+    {
+        return $panelState->screen?->session?->workspace_id;
     }
 
     /**

@@ -32,6 +32,15 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
     /** @var resource|null */
     protected $activeProcess = null;
 
+    /** @var int|null PID of the active process (for process group signaling) */
+    protected ?int $activeProcessPid = null;
+
+    /** @var callable|null Callback that returns true if abort has been requested */
+    protected $abortChecker = null;
+
+    /** @var bool Whether signalProcessGroup has already been called (prevents redundant 200ms sleeps) */
+    protected bool $processSignaled = false;
+
     // Phase-aware timeout constants (seconds) - overridable by subclasses
     protected const TIMEOUT_INITIAL = 1800;
     protected const TIMEOUT_STREAMING = 1800;
@@ -41,6 +50,16 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
     public function __construct(ModelRepository $models)
     {
         $this->models = $models;
+    }
+
+    /**
+     * Set an abort check callback.
+     * The callback should return true if abort has been requested.
+     * This enables the inner read loop to detect aborts without depending on StreamManager.
+     */
+    public function setAbortChecker(?callable $checker): void
+    {
+        $this->abortChecker = $checker;
     }
 
     // ========================================================================
@@ -335,6 +354,8 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
         ?float $streamStartTime = null
     ): Generator {
         $processInput = $this->prepareProcessInput($command, $userMessage);
+        // The shell and claude CLI share the same process group (inherited from proc_open).
+        // posix_kill(-$shellPid) sends signals to the entire group, killing the full tree.
         $fullCommand = $processInput['command'] . ' 2>&1';
         $stdinContent = $processInput['stdin'];
 
@@ -375,6 +396,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
         ]);
 
         $this->activeProcess = $process;
+        $this->activeProcessPid = proc_get_status($process)['pid'] ?? null;
 
         // Initialize per-conversation stream logger
         $debugLogging = config('app.debug') && $this->supportsStreamLogging();
@@ -407,6 +429,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             $phase = 'initial';
             $lastOutputTime = microtime(true);
             $timedOut = false;
+            $loopIterations = 0;
 
             while (true) {
                 $status = proc_get_status($process);
@@ -511,13 +534,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                         'conversation_uuid' => $uuid,
                     ]);
 
-                    // Graceful shutdown: SIGINT -> 200ms -> SIGKILL
-                    proc_terminate($process, 2);
-                    usleep(200000);
-                    $procStatus = proc_get_status($process);
-                    if ($procStatus['running']) {
-                        proc_terminate($process, 9);
-                    }
+                    $this->killProcessGroup($process);
 
                     $timedOut = true;
                     yield StreamEvent::error(
@@ -527,6 +544,31 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                 }
 
                 usleep(1000); // 1ms sleep to prevent CPU spinning
+
+                // Check abort flag every ~100ms (every 100 iterations of the 1ms loop)
+                // This enables responsive abort even when the CLI is executing long-running tools
+                $loopIterations++;
+                if ($loopIterations % 100 === 0 && $this->abortChecker !== null && ($this->abortChecker)()) {
+                    Log::channel('api')->info($this->getProviderType() . ': Abort detected in inner read loop', [
+                        'conversation_uuid' => $uuid,
+                        'phase' => $phase,
+                        'loop_iterations' => $loopIterations,
+                    ]);
+
+                    // Close pipes FIRST to unblock any pipe reads
+                    if (is_resource($pipes[1])) fclose($pipes[1]);
+                    if (is_resource($pipes[2])) fclose($pipes[2]);
+
+                    // Signal the process group to terminate (non-blocking — avoids proc_close which blocks)
+                    // The process resource will be cleaned up when the generator is garbage collected
+                    $this->signalProcessGroup($process);
+
+                    // Close any open streaming blocks so the outer handler has clean content
+                    yield from $this->closeOpenBlocks($state);
+                    yield from $this->emitUsage($state);
+
+                    return; // Generator ends — outer loop in ProcessConversationStream handles abort
+                }
             }
 
             // Drain any remaining data from the pipe after process exit
@@ -575,6 +617,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
 
             $exitCode = proc_close($process);
             $this->activeProcess = null;
+            $this->activeProcessPid = null;
 
             // Subclass cleanup hook
             $this->onProcessComplete($conversation, $state, $exitCode);
@@ -615,49 +658,136 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
 
             yield StreamEvent::error($e->getMessage());
 
-            // Clean up safely - use consistent SIGINT→SIGKILL sequence
+            // Clean up safely - kill the process group
             if (is_resource($pipes[1])) fclose($pipes[1]);
             if (is_resource($pipes[2])) fclose($pipes[2]);
             if (is_resource($process)) {
-                proc_terminate($process, 2); // SIGINT first
-                usleep(200000);
-                $procStatus = proc_get_status($process);
-                if ($procStatus['running']) {
-                    proc_terminate($process, 9); // SIGKILL if still running
-                }
-                proc_close($process); // Release process resource (prevents zombie)
+                $this->killProcessGroup($process);
             }
-            $this->activeProcess = null;
         }
     }
 
     /**
-     * Abort the current streaming operation.
+     * Signal the current process to stop (non-blocking).
+     * Sends SIGINT → SIGKILL but does NOT call proc_close().
+     * Use this for fast abort when you need to return control immediately.
+     * Call abort() later for full cleanup including proc_close().
+     */
+    public function signalAbort(): void
+    {
+        if ($this->activeProcess !== null && is_resource($this->activeProcess)) {
+            $this->signalProcessGroup($this->activeProcess);
+        }
+    }
+
+    /**
+     * Abort the current streaming operation (blocking).
+     * Sends SIGINT → SIGKILL AND calls proc_close() for full cleanup.
+     * This may block briefly while proc_close() waits for the process to exit.
      * Default: SIGINT -> 200ms -> SIGKILL (matches Claude Code behavior).
      * Subclasses can override if different signal handling is needed.
      */
     public function abort(): void
     {
         if ($this->activeProcess !== null && is_resource($this->activeProcess)) {
-            // SIGINT first (like Ctrl+C)
-            proc_terminate($this->activeProcess, 2);
-            usleep(200000);
-
-            $status = proc_get_status($this->activeProcess);
-            if ($status['running']) {
-                proc_terminate($this->activeProcess, 9); // SIGKILL
-            }
-
-            try {
-                proc_close($this->activeProcess);
-            } catch (\Exception $e) {
-                Log::warning($this->getProviderType() . ': Error closing process', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            $this->activeProcess = null;
+            $this->killProcessGroup($this->activeProcess);
         }
+    }
+
+    /**
+     * Send kill signals to the entire process group (SIGINT → SIGKILL).
+     * This is fast and non-blocking — it does NOT call proc_close().
+     * Use this when you need to stop the process quickly (e.g., inner loop abort).
+     *
+     * @param resource $process The process resource from proc_open
+     */
+    protected function signalProcessGroup($process): void
+    {
+        // Only signal once — subsequent calls are no-ops (avoids redundant 200ms sleeps
+        // when both inner loop, outer loop, and finally block all call this)
+        if ($this->processSignaled) return;
+        $this->processSignaled = true;
+
+        $pid = $this->activeProcessPid ?? (proc_get_status($process)['pid'] ?? null);
+        if (!$pid || $pid <= 0) return;
+
+        // Send SIGINT to the entire process tree for graceful shutdown
+        $this->signalProcessTree($pid, 2); // SIGINT
+        usleep(200000); // 200ms grace period
+
+        $status = proc_get_status($process);
+        if ($status['running']) {
+            // Force kill the entire tree
+            $this->signalProcessTree($pid, 9); // SIGKILL
+        }
+    }
+
+    /**
+     * Send a signal to a process and all its descendants.
+     * Uses pgrep to find children by parent PID — this works regardless of
+     * process groups (child processes inherit the queue worker's group, so
+     * posix_kill with negative PID doesn't reach them).
+     */
+    protected function signalProcessTree(int $pid, int $signal): void
+    {
+        if ($pid <= 0) return;
+
+        // Find all descendant PIDs recursively (children, grandchildren, etc.)
+        $descendants = $this->getDescendantPids($pid);
+
+        // Kill descendants first (deepest first), then the root process
+        foreach (array_reverse($descendants) as $descendantPid) {
+            @posix_kill($descendantPid, $signal);
+        }
+        @posix_kill($pid, $signal);
+    }
+
+    /**
+     * Get all descendant PIDs of a process recursively via pgrep.
+     *
+     * @return int[]
+     */
+    protected function getDescendantPids(int $pid): array
+    {
+        if ($pid <= 0) return [];
+
+        $output = trim(shell_exec("pgrep -P $pid 2>/dev/null") ?? '');
+        if ($output === '') return [];
+
+        $descendants = [];
+        foreach (explode("\n", $output) as $line) {
+            $childPid = intval(trim($line));
+            if ($childPid > 0) {
+                $descendants[] = $childPid;
+                // Recurse to find grandchildren
+                $descendants = array_merge($descendants, $this->getDescendantPids($childPid));
+            }
+        }
+        return $descendants;
+    }
+
+    /**
+     * Kill the entire process group AND close the process resource.
+     * This may block briefly while proc_close() drains pipes and waits for exit.
+     * Use this for final cleanup (abort() method, timeout handling, error cleanup).
+     *
+     * @param resource $process The process resource from proc_open
+     */
+    protected function killProcessGroup($process): void
+    {
+        $this->signalProcessGroup($process);
+
+        try {
+            proc_close($process);
+        } catch (\Exception $e) {
+            Log::warning($this->getProviderType() . ': Error closing process', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $this->activeProcess = null;
+        $this->activeProcessPid = null;
+        $this->processSignaled = false;
     }
 
     /**
