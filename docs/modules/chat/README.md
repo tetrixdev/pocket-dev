@@ -13,6 +13,7 @@ The chat module provides a web interface for multi-provider AI conversations.
 **Controller:** `app/Http/Controllers/Api/ConversationController.php`
 
 **Routes:**
+
 - `/` - Chat interface (default)
 - `/chat/{uuid}` - Conversation-specific view
 - `/api/conversations` - Conversation CRUD
@@ -23,7 +24,7 @@ The chat module provides a web interface for multi-provider AI conversations.
 
 The chat system uses a multi-provider architecture:
 
-```
+```text
 Frontend (Alpine.js)          Backend                      Providers
 ────────────────────          ───────                      ─────────
 POST /api/conversations/      ConversationController
@@ -113,6 +114,7 @@ Voice transcription uses OpenAI Whisper:
 5. Optional auto-send after transcription
 
 **Requirements:**
+
 - OpenAI API key configured
 - Secure context (HTTPS or localhost)
 
@@ -131,6 +133,7 @@ The chat uses Alpine.js for reactive state management. Key state includes:
 ### Quick Settings Modal
 
 Configures per-conversation settings:
+
 - Model selection (provider-specific)
 - Thinking/reasoning level
 - Response verbosity level
@@ -150,9 +153,14 @@ Configures per-conversation settings:
 | `Ctrl+Space` | Toggle voice recording |
 | `Ctrl+?` | Show shortcuts modal |
 
+Input behavior:
+
+- Desktop: `Enter` sends, `Shift+Enter` inserts a new line.
+- Mobile: `Enter` inserts a new line (send via send button).
+
 ## File Structure
 
-```
+```text
 resources/views/
 ├── chat.blade.php                 # Main chat view
 └── partials/chat/

@@ -13,6 +13,14 @@
             this.attachments.addFile(file);
         }
         event.target.value = ''; // Reset input for re-selection
+        this.focusVisiblePromptInput();
+    },
+    focusVisiblePromptInput() {
+        this.$nextTick(() => {
+            const promptInputs = Array.from(document.querySelectorAll('textarea[x-ref=\"promptInput\"]'));
+            const visiblePromptInput = promptInputs.find((input) => input.offsetParent !== null);
+            visiblePromptInput?.focus();
+        });
     },
     handleFabClick() {
         if (this.hasAnyFiles) {
