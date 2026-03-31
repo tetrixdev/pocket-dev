@@ -1,7 +1,8 @@
 {{-- Floating Action Button for File Attachments (Mobile) --}}
 <div x-data="{
-    showModal: false,
     get attachments() { return Alpine.store('attachments'); },
+    get showModal() { return this.attachments.showModal; },
+    set showModal(val) { this.attachments.showModal = val; },
     get hasAnyFiles() { return this.attachments.files.length > 0; },
     get isUploading() { return this.attachments.isUploading; },
     openFilePicker() {

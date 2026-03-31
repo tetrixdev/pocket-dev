@@ -40,12 +40,12 @@ Configuration files and environment variables for PocketDev.
 
 ### File Upload Settings
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PD_MAX_UPLOAD_SIZE_MB` | `2048` | Max file upload size for chat attachments (MB). Hard limit: 2048 MB (2GB). Also controls the nginx proxy `client_max_body_size`. |
+| Setting | Value | Description |
+|---------|-------|-------------|
+| Max upload size | 2GB | Maximum file size for chat attachments. Hardcoded across all layers (app, nginx proxy, PHP). |
 | `PD_MAX_PREVIEW_SIZE_MB` | `25` | Max file size for browser preview modal (MB). |
 
-**Note:** The default upload limit is 2GB. The nginx proxy `client_max_body_size` is automatically derived from `PD_MAX_UPLOAD_SIZE_MB`, keeping all layers in sync. The PHP/nginx infrastructure hard limit is also 2GB.
+**Note:** The upload limit is hardcoded to 2GB across all layers (Laravel validation, nginx proxy, PHP). This is the infrastructure ceiling.
 
 ## Configuration Files
 

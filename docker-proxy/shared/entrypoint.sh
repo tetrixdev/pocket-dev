@@ -53,10 +53,9 @@ export IP_ALLOWED
 export DOMAIN_NAME=$PD_DOMAIN_NAME
 export DEFAULT_SERVER
 
-# Derive nginx max body size from PD_MAX_UPLOAD_SIZE_MB (default 2048MB = 2GB)
-PD_MAX_UPLOAD_SIZE_MB=${PD_MAX_UPLOAD_SIZE_MB:-2048}
-export PD_NGINX_MAX_BODY_SIZE="${PD_MAX_UPLOAD_SIZE_MB}m"
-echo "   - Max upload size: ${PD_MAX_UPLOAD_SIZE_MB}MB"
+# Max upload size hardcoded to 250MB for testing - will be raised to 2GB after verification
+export PD_NGINX_MAX_BODY_SIZE="250m"
+echo "   - Max upload size: 250MB"
 
 envsubst '${AUTH_ENABLED} ${IP_ALLOWED} ${DOMAIN_NAME} ${DEFAULT_SERVER} ${PD_NGINX_MAX_BODY_SIZE}' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf
 
