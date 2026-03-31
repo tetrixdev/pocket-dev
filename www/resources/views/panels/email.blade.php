@@ -1235,6 +1235,11 @@ class="h-full flex flex-col text-sm relative"
                                                     // Body not ready yet, retry after a brief delay (with limit)
                                                     if (++retries < maxRetries) {
                                                         setTimeout(fitAndResize, 50);
+                                                    } else {
+                                                        // Max retries reached - restore visibility so content isn't left hidden
+                                                        try {
+                                                            if (doc?.body) doc.body.style.visibility = 'visible';
+                                                        } catch {}
                                                     }
                                                     return;
                                                 }
