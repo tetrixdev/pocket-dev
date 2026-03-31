@@ -42,10 +42,10 @@ Configuration files and environment variables for PocketDev.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PD_MAX_UPLOAD_SIZE_MB` | `250` | Max file upload size for chat attachments (MB). Hard limit: 2048 MB (2GB). |
+| `PD_MAX_UPLOAD_SIZE_MB` | `2048` | Max file upload size for chat attachments (MB). Hard limit: 2048 MB (2GB). Also controls the nginx proxy `client_max_body_size`. |
 | `PD_MAX_PREVIEW_SIZE_MB` | `25` | Max file size for browser preview modal (MB). |
 
-**Note:** The infrastructure (Nginx/PHP) supports up to 2GB uploads. The application defaults are more conservative but can be increased via these environment variables.
+**Note:** The default upload limit is 2GB. The nginx proxy `client_max_body_size` is automatically derived from `PD_MAX_UPLOAD_SIZE_MB`, keeping all layers in sync. The PHP/nginx infrastructure hard limit is also 2GB.
 
 ## Configuration Files
 
@@ -65,6 +65,7 @@ return [
 ### Nginx Proxy (`docker-proxy/shared/nginx.conf.template`)
 
 Reverse proxy configuration with:
+
 - Basic auth enforcement
 - IP whitelist support
 - SSE streaming (`proxy_buffering off`)
@@ -74,6 +75,7 @@ Reverse proxy configuration with:
 ### Docker Compose (`compose.yml`)
 
 Container orchestration with:
+
 - Service definitions
 - Volume mounts
 - Network configuration
@@ -91,6 +93,7 @@ Project instructions for Claude CLI. Editable via `/config/claude`.
 ### settings.json
 
 Claude settings including:
+
 - Default model
 - Allowed tools
 - Hooks configuration
@@ -153,12 +156,14 @@ DB_USERNAME=pocket-dev
 ## Sensitive Files
 
 **Never commit:**
+
 - `.env` (use `.env.example` as template)
 - `.credentials.json` (Claude OAuth tokens)
 - Any API keys
 
 **Git ignore:**
-```
+
+```text
 .env
 *.credentials.json
 ```

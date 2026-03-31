@@ -16,9 +16,9 @@ return [
     */
 
     // Maximum file size for chat attachments (in MB)
-    // Default: 250MB, Max: 2048MB (2GB)
+    // Default: 2048MB (2GB), Max: 2048MB (2GB)
     'max_size_mb' => min(
-        (int) env('PD_MAX_UPLOAD_SIZE_MB', 250),
+        (int) env('PD_MAX_UPLOAD_SIZE_MB', 2048),
         2048 // Hard limit - infrastructure ceiling
     ),
 
