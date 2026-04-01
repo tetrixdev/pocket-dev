@@ -7,19 +7,20 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
 
 BLOCKED=0
 
-# Strategy: extract only the first "statement" from the command (up to the first
-# newline, pipe, semicolon, &&, ||) to check if it's a bare env-dump command.
-# This avoids false positives from multiline content (e.g. heredoc bodies) that
-# contain words like "env" in prose.
-#
-# For chained commands (cmd1; cmd2), we check each statement individually.
+# Truncate at the first heredoc marker — everything after << is data, not commands.
+COMMAND=$(echo "$COMMAND" | python3 -c "
+import sys, re
+text = sys.stdin.read()
+m = re.search(r'<<', text)
+if m:
+    text = text[:m.start()]
+print(text)
+" 2>/dev/null || echo "$COMMAND")
 
-# Split on statement separators and check each segment
-# We use a Python one-liner for reliable multi-statement splitting
+# Split on statement separators into individual segments
 STATEMENTS=$(echo "$COMMAND" | python3 -c "
 import sys, re
 text = sys.stdin.read()
-# Split on ; && || newline (not inside quotes - simplified)
 parts = re.split(r'[;\n]|&&|\|\|', text)
 for p in parts:
     print(p.strip())
@@ -27,37 +28,34 @@ for p in parts:
 
 check_statement() {
     local stmt="$1"
-    # Get the first word (the command name), stripping leading whitespace
     local first_word
     first_word=$(echo "$stmt" | awk '{print $1}')
 
     case "$first_word" in
         env)
-            # Block bare "env" or "env | ..." but not "env VAR=val cmd"
-            # If second token contains '=', it's env VAR=val cmd — allow
+            # Allow "env VAR=val cmd" (sets env for a command)
+            # Block bare "env" with no args or piped
             local second_word
             second_word=$(echo "$stmt" | awk '{print $2}')
-            if [ -z "$second_word" ] || echo "$stmt" | grep -qE '^\s*env\s*\|'; then
+            if [ -z "$second_word" ]; then
                 BLOCKED=1
             elif ! echo "$second_word" | grep -q '='; then
-                # Second word has no '=', so it's not VAR=val — could be just "env somecommand"
-                # That's fine (runs somecommand with current env), allow it
-                :
+                : # "env somecommand" — fine
             fi
             ;;
         printenv)
             BLOCKED=1
             ;;
         export)
-            # Block bare "export" with no assignment argument
+            # Block bare "export" (dumps all vars); allow "export VAR=val"
             local rest
             rest=$(echo "$stmt" | awk '{$1=""; print $0}' | xargs)
-            if [ -z "$rest" ] || echo "$rest" | grep -qE '^\|'; then
+            if [ -z "$rest" ]; then
                 BLOCKED=1
             fi
             ;;
         declare|typeset)
-            # Block declare -x, declare -p, declare -xp etc.
+            # Block declare -x / -p / -xp (dumps exported/all vars)
             local flags
             flags=$(echo "$stmt" | awk '{print $2}')
             if echo "$flags" | grep -qE '^-[a-zA-Z]*[xXpP]'; then
@@ -72,18 +70,19 @@ check_statement() {
                 BLOCKED=1
             fi
             ;;
+        cat|less|more|head|tail|strings|xxd|od|hexdump)
+            # Block reading /proc/*/environ via file-reading commands only
+            local args
+            args=$(echo "$stmt" | awk '{$1=""; print $0}')
+            if echo "$args" | grep -qE '/proc/(self|[0-9]+)/environ'; then
+                BLOCKED=1
+            fi
+            ;;
     esac
-
-    # Check for /proc/*/environ anywhere in the statement
-    if echo "$stmt" | grep -qE '/proc/(self|[0-9]+)/environ'; then
-        BLOCKED=1
-    fi
 }
 
-# Check each pipe segment and statement
 while IFS= read -r stmt; do
     [ -z "$stmt" ] && continue
-    # Also split on pipes within each statement
     while IFS= read -r seg; do
         [ -z "$seg" ] && continue
         check_statement "$seg"
