@@ -54,7 +54,7 @@ http {
         listen 80${DEFAULT_SERVER};
         server_name ${DOMAIN_NAME};
 
-        # Allow large file uploads (250MB for testing, will be 2GB in production)
+        # Allow large file uploads (2GB - matches infrastructure ceiling)
         client_max_body_size ${PD_NGINX_MAX_BODY_SIZE};
 
         # Security variables (set by entrypoint)

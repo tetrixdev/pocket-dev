@@ -13,8 +13,8 @@ return [
     */
 
     // Maximum file size for chat attachments (in MB)
-    // Hardcoded to 250MB for testing - will be raised to 2GB after verification
-    'max_size_mb' => 250,
+    // Hardcoded to 2GB - matches infrastructure ceiling
+    'max_size_mb' => 2048,
 
     // Upload directory (shared across containers via pocket-dev-shared-tmp volume)
     'directory' => env('PD_UPLOAD_DIR', '/tmp/pocketdev-uploads'),
