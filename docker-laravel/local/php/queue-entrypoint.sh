@@ -73,12 +73,53 @@ fi
 # Set up default Claude Code permissions.deny to protect .env files
 # This is read by Claude Code CLI via --settings flag in ClaudeCodeProvider
 CLAUDE_SETTINGS="/home/appuser/.claude/settings.json"
+CLAUDE_HOOKS_DIR="/home/appuser/.claude/hooks"
+
+# Create hooks directory and install default hooks
+if [ ! -d "$CLAUDE_HOOKS_DIR" ]; then
+    mkdir -p "$CLAUDE_HOOKS_DIR"
+    chown "${TARGET_UID}:33" "$CLAUDE_HOOKS_DIR"
+    chmod 775 "$CLAUDE_HOOKS_DIR"
+fi
+
+# Install/update the env-dump protection hook
+# In local dev, the project root is mounted at /pocketdev-source
+HOOK_SRC="/pocketdev-source/docker-laravel/shared/hooks/block-env-dump.sh"
+HOOK_DEST="$CLAUDE_HOOKS_DIR/block-env-dump.sh"
+if [ -f "$HOOK_SRC" ] && [ ! -f "$HOOK_DEST" ]; then
+    cp "$HOOK_SRC" "$HOOK_DEST"
+    chown "${TARGET_UID}:33" "$HOOK_DEST"
+    chmod 755 "$HOOK_DEST"
+    echo "Installed env-dump protection hook"
+fi
+
 if [ ! -f "$CLAUDE_SETTINGS" ]; then
-    # Create minimal settings with default deny patterns
-    echo '{"permissions":{"deny":["Read(**/.env)"]}}' > "$CLAUDE_SETTINGS"
+    cat > "$CLAUDE_SETTINGS" << 'SETTINGS_EOF'
+{
+  "permissions": {
+    "deny": [
+      "Read(**/.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/appuser/.claude/hooks/block-env-dump.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+SETTINGS_EOF
     chown "${TARGET_UID}:33" "$CLAUDE_SETTINGS"
     chmod 664 "$CLAUDE_SETTINGS"
-    echo "Created default Claude settings with .env protection"
+    echo "Created default Claude settings with .env and env-dump protection"
 fi
 
 # Ensure workspace directory is writable by target user

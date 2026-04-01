@@ -124,6 +124,10 @@ RUN chmod +x /usr/local/bin/install-system-packages
 COPY docker-laravel/shared/scripts/load-credentials.sh /usr/local/bin/load-credentials
 RUN chmod +x /usr/local/bin/load-credentials
 
+# Install Claude Code hooks (seeded into /home/appuser/.claude/hooks/ at container startup)
+COPY docker-laravel/shared/hooks/ /usr/local/share/claude-hooks/
+RUN chmod +x /usr/local/share/claude-hooks/*.sh
+
 # Set working directory
 WORKDIR /var/www
 
