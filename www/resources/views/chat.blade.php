@@ -442,6 +442,7 @@
             Alpine.store('attachments', {
                 files: [],           // Array of { id, path, filename, size, sizeFormatted, uploading, error }
                 maxFileSizeMb: {{ config('uploads.max_size_mb', 250) }},  // From server config
+                showModal: false,    // Global modal state - can be triggered from drag-and-drop
 
                 get count() {
                     return this.files.filter(f => !f.error && !f.uploading).length;
@@ -477,6 +478,8 @@
                             error: `File too large. Maximum size is ${this.maxFileSizeMb}MB.`,
                         };
                         this.files.push(entry);
+                        // Auto-open modal to show the error (especially for drag-and-drop)
+                        this.showModal = true;
                         return;
                     }
 
@@ -562,6 +565,8 @@
                                 uploading: false,
                                 error: err.message,
                             };
+                            // Auto-open modal to show the error
+                            this.showModal = true;
                         }
                     }
                 },
