@@ -111,6 +111,55 @@ docker run --rm -d \
 3. Update documentation if needed
 4. Use conventional commit messages
 
+## GitHub Project Workflow
+
+We track all work in the [PocketDev GitHub Project](https://github.com/orgs/tetrixdev/projects/2). Every issue moves through these statuses:
+
+### Status Definitions
+
+| Status | Description | Assignee |
+|--------|-------------|----------|
+| **Todo** | Rough idea or bug report. Not fully fleshed out yet - just capturing the concept. | Unassigned (anyone can pick it up to flesh out) |
+| **Ready for Plan Review** | Fully detailed with: (1) high-level description of what we're achieving, (2) what problem it solves, (3) plan of attack for implementation. | Assign to the **other team member** for review |
+| **Ready for Development** | Plan has been reviewed and approved. Ready to be picked up. | Unassigned (anyone can pick it up) |
+| **In Progress** | Actively being worked on. **Move here immediately when you start** to prevent duplicate work. | The person working on it |
+| **Done** | Merged AND released. Only mark done after the release is published. | N/A |
+
+### Workflow Rules
+
+1. **Creating new items**: Start in "Todo" with a rough description. Don't overthink it - just capture the idea.
+
+2. **Fleshing out an item**: When you fully detail an item (description + plan), move it to "Ready for Plan Review" and assign the other team member.
+
+3. **Reviewing a plan**: Read the description and plan. If it makes sense, move to "Ready for Development" and remove the assignee. If changes needed, comment and leave in review status.
+
+4. **Starting work**: Before coding, move the item to "In Progress" and assign yourself. This is critical - it prevents two people working on the same thing.
+
+5. **Completing work**: Only move to "Done" after:
+   - PR is merged
+   - Release is created and published
+
+### Plan Structure (Ready for Plan Review)
+
+When moving an item to "Ready for Plan Review", ensure it contains:
+
+```markdown
+## Goal
+[1-2 sentences: What are we trying to achieve?]
+
+## Problem
+[What issue does this solve? Why does it matter?]
+
+## Plan
+[Step-by-step approach to implementation]
+
+## Files Involved
+[Key files that will be modified]
+
+## Effort Estimate
+[Small / Medium / Large]
+```
+
 ## Troubleshooting
 
 **Container won't start?**
