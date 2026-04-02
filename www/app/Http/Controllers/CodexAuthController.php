@@ -79,7 +79,7 @@ class CodexAuthController extends Controller
 
             // Save the file
             file_put_contents($this->credentialsPath, json_encode($data, JSON_PRETTY_PRINT));
-            chmod($this->credentialsPath, 0660);
+            chmod($this->credentialsPath, 0600);
 
             Log::info("[Codex Auth] Credentials saved from JSON input");
 
@@ -168,40 +168,24 @@ class CodexAuthController extends Controller
                 ];
             }
 
-            // Check for OAuth format (tokens.access_token indicates OAuth login)
-            if (isset($data["tokens"]["access_token"])) {
-                $lastRefresh = $data["last_refresh"] ?? null;
-                // Codex source uses TOKEN_REFRESH_INTERVAL = 8 days (codex-rs/core/src/auth.rs)
-                $refreshIntervalDays = (int) config('ai.providers.codex.token_refresh_days', 8);
+            // Check for OAuth format (accessToken indicates OAuth login)
+            if (isset($data["accessToken"])) {
+                $expiresAt = $data["expiresAt"] ?? null;
+                $now = time() * 1000; // Convert to milliseconds
 
-                if ($lastRefresh) {
-                    $refreshDate = new \DateTime($lastRefresh);
-                    $now = new \DateTime();
-                    $expiryDate = (clone $refreshDate)->modify("+{$refreshIntervalDays} days");
-
-                    if ($now > $expiryDate) {
-                        return [
-                            "authenticated" => false,
-                            "message" => "Token expired",
-                            "expired_at" => $expiryDate->format("Y-m-d H:i:s"),
-                        ];
-                    }
-
-                    $daysUntilExpiry = round(($expiryDate->getTimestamp() - $now->getTimestamp()) / 86400, 1);
-
+                if ($expiresAt && $expiresAt < $now) {
                     return [
-                        "authenticated" => true,
-                        "auth_type" => "subscription",
-                        "expires_at" => $expiryDate->format("Y-m-d H:i:s"),
-                        "days_until_expiry" => $daysUntilExpiry,
+                        "authenticated" => false,
+                        "message" => "Token expired",
+                        "expired_at" => date("Y-m-d H:i:s", $expiresAt / 1000),
                     ];
                 }
 
                 return [
                     "authenticated" => true,
                     "auth_type" => "subscription",
-                    "expires_at" => null,
-                    "days_until_expiry" => null,
+                    "expires_at" => $expiresAt ? date("Y-m-d H:i:s", $expiresAt / 1000) : null,
+                    "days_until_expiry" => $expiresAt ? round(($expiresAt - $now) / (1000 * 60 * 60 * 24), 1) : null,
                 ];
             }
 
@@ -233,8 +217,8 @@ class CodexAuthController extends Controller
             return true;
         }
 
-        // Valid if has tokens.access_token (OAuth format)
-        if (isset($data["tokens"]["access_token"]) && !empty($data["tokens"]["access_token"])) {
+        // Valid if has accessToken (OAuth format)
+        if (isset($data["accessToken"]) && !empty($data["accessToken"])) {
             return true;
         }
 
@@ -280,7 +264,7 @@ class CodexAuthController extends Controller
                 'description' => 'Default Codex agent',
                 'provider' => 'codex',
                 'model' => config('ai.providers.codex.default_model', 'gpt-5.3-codex'),
-                'reasoning_config' => ['effort' => 'medium'],
+                'reasoning_config' => ['effort' => 'minimal'],
                 'response_level' => 1,
                 'enabled' => true,
                 'is_default' => true,

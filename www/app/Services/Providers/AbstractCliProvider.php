@@ -192,12 +192,6 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             $env['POCKETDEV_SESSION_ID'] = $sessionId;
         }
 
-        // Inject conversation UUID and workspace ID for sub-agent spawning
-        $env['POCKETDEV_CONVERSATION_UUID'] = $conversation->uuid;
-        if ($conversation->workspace_id) {
-            $env['POCKETDEV_WORKSPACE_ID'] = $conversation->workspace_id;
-        }
-
         return $env;
     }
 
