@@ -1253,24 +1253,24 @@ class="h-full flex flex-col text-sm relative"
                                                     return;
                                                 }
 
-                                                // Reset any previous zoom to measure true width
+                                                // Reset any previous zoom
                                                 body.style.zoom = '1';
-
-                                                // Use max-content to measure true content width
-                                                // This forces body to expand to fit nested fixed-width tables
-                                                // Use setProperty with 'important' to override email CSS !important rules
-                                                const originalWidth = body.style.width;
-                                                body.style.setProperty('width', 'max-content', 'important');
-                                                const contentWidth = body.offsetWidth;
-                                                body.style.setProperty('width', originalWidth || '', 'important');
-
                                                 const iframeWidth = iframe.clientWidth;
 
-                                                // If content is wider than iframe, use CSS zoom to scale down
-                                                // Unlike transform:scale(), zoom actually changes layout
-                                                if (contentWidth > iframeWidth && iframeWidth > 0) {
-                                                    const scale = iframeWidth / contentWidth;
+                                                // Only scale if there's ACTUAL horizontal overflow
+                                                // (fixed-width tables, large images, etc.)
+                                                // Text content wraps naturally and doesn't need scaling.
+                                                if (body.scrollWidth > iframeWidth + 5 && iframeWidth > 0) {
+                                                    // Measure true unwrapped content width using max-content
+                                                    const originalWidth = body.style.width;
+                                                    body.style.setProperty('width', 'max-content', 'important');
+                                                    const contentWidth = body.offsetWidth;
+                                                    body.style.setProperty('width', originalWidth || '', 'important');
+
+                                                    // Apply zoom with minimum 0.5 to keep text readable
+                                                    const scale = Math.max(0.5, iframeWidth / contentWidth);
                                                     body.style.zoom = scale;
+                                                    console.log('[email iframe] Applied zoom:', scale, 'contentWidth:', contentWidth, 'iframeWidth:', iframeWidth);
                                                 }
 
                                                 // Set iframe height based on (possibly zoomed) content
