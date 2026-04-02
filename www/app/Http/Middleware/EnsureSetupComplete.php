@@ -19,7 +19,7 @@ class EnsureSetupComplete
     public function handle(Request $request, Closure $next): Response
     {
         // Skip for setup routes and API routes
-        if ($request->is('setup*') || $request->is('api/*') || $request->is('claude/auth*') || $request->is('codex/auth*')) {
+        if ($request->is('setup*') || $request->is('api/*') || $request->is('claude/auth*')) {
             return $next($request);
         }
 
