@@ -425,7 +425,7 @@ class ConfigController extends Controller
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
-                'extended_context' => 'nullable|boolean',
+                'extended_context' => 'nullable|in:0,1',
             ]);
 
             // Check for duplicate slug within workspace
@@ -466,7 +466,7 @@ class ConfigController extends Controller
                     'system_prompt' => $validated['system_prompt'] ?? null,
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
-                    'extended_context' => $validated['extended_context'] ?? true,
+                    'extended_context' => ($validated['extended_context'] ?? '1') === '1',
                 ]);
 
                 // Sync memory schemas (only if not inheriting)
@@ -531,7 +531,7 @@ class ConfigController extends Controller
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
-                'extended_context' => 'nullable|boolean',
+                'extended_context' => 'nullable|in:0,1',
             ]);
 
             // Check for duplicate slug within workspace (excluding current agent)
@@ -572,7 +572,7 @@ class ConfigController extends Controller
                     'system_prompt' => $validated['system_prompt'] ?? null,
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
-                    'extended_context' => $validated['extended_context'] ?? true,
+                    'extended_context' => ($validated['extended_context'] ?? '1') === '1',
                 ]);
 
                 // Sync memory schemas (only if not inheriting)

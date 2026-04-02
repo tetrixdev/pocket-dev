@@ -220,10 +220,10 @@
                     </label>
 
                     <label x-show="modelSupportsExtendedContext" x-cloak class="flex items-center gap-2 cursor-pointer">
+                        {{-- Hidden input ensures the field is always submitted (unchecked checkboxes submit nothing) --}}
+                        <input type="hidden" name="extended_context" :value="extendedContext ? '1' : '0'">
                         <input
                             type="checkbox"
-                            name="extended_context"
-                            value="1"
                             x-model="extendedContext"
                             class="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
                         >

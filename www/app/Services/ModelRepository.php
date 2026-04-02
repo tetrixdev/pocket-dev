@@ -126,13 +126,14 @@ class ModelRepository
      * Get the maximum supported context window for a model.
      * Returns max_context_window if defined, otherwise falls back to context_window.
      * For models like Claude 4.6, this may be 1M tokens vs the default 200K.
+     * Returns 0 if the model is not found (e.g. custom openai_compatible model IDs).
      */
     public function getMaxContextWindow(string $modelId): int
     {
         $model = $this->findByModelId($modelId);
 
         if (!$model) {
-            throw new \InvalidArgumentException("Model not found: {$modelId}");
+            return 0;
         }
 
         return $model['max_context_window'] ?? $model['context_window'];
