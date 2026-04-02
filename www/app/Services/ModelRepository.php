@@ -123,6 +123,22 @@ class ModelRepository
     }
 
     /**
+     * Get the maximum supported context window for a model.
+     * Returns max_context_window if defined, otherwise falls back to context_window.
+     * For models like Claude 4.6, this may be 1M tokens vs the default 200K.
+     */
+    public function getMaxContextWindow(string $modelId): int
+    {
+        $model = $this->findByModelId($modelId);
+
+        if (!$model) {
+            throw new \InvalidArgumentException("Model not found: {$modelId}");
+        }
+
+        return $model['max_context_window'] ?? $model['context_window'];
+    }
+
+    /**
      * Calculate cost for token usage on a model.
      */
     public function calculateCost(
