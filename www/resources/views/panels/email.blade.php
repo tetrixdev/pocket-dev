@@ -51,6 +51,7 @@
     showAttachments: false,
     allowRemoteImages: false,
     alwaysLoadImages: @json($state['alwaysLoadImages'] ?? false),
+    savedMessageId: @json($state['savedMessageId'] ?? null),
     actionLoading: {},
     toast: null,
     toastTimeout: null,
@@ -71,13 +72,23 @@
     messageAbort: null,
     listAbort: null,
 
-    init() {
+    async init() {
         if (!this.selectedAccount && this.accounts.length > 0) {
             this.selectedAccount = this.accounts[0].name;
         }
         if (this.selectedAccount) {
             this.fetchFolders();
-            this.fetchMessages();
+            await this.fetchMessages();
+            // Restore previously selected message if saved
+            if (this.savedMessageId) {
+                const msg = this.messages.find(m => m.id === this.savedMessageId);
+                if (msg) {
+                    this.selectMessage(msg);
+                } else {
+                    // Message not in current list, clear saved state
+                    this.clearSavedMessage();
+                }
+            }
         }
     },
 
@@ -106,6 +117,33 @@
         this.toastTimeout = setTimeout(() => { this.toast = null; }, 3000);
     },
 
+    async saveSelectedMessage(messageId) {
+        this.savedMessageId = messageId;
+        try {
+            await fetch(`/api/panel/${this.panelStateId}/state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: { savedMessageId: messageId }, merge: true })
+            });
+        } catch (e) {
+            // Silent fail - not critical
+        }
+    },
+
+    async clearSavedMessage() {
+        if (!this.savedMessageId) return;
+        this.savedMessageId = null;
+        try {
+            await fetch(`/api/panel/${this.panelStateId}/state`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: { savedMessageId: null }, merge: true })
+            });
+        } catch (e) {
+            // Silent fail - not critical
+        }
+    },
+
     // =========================================================================
     // Account switching
     // =========================================================================
@@ -115,6 +153,7 @@
         this.selectedFolderId = 'inbox';
         this.selectedFolderName = 'Inbox';
         this.selectedMessage = null;
+        this.clearSavedMessage();
         this.messages = [];
         this.searchQuery = '';
         this.activeSearch = '';
@@ -158,6 +197,7 @@
         this.selectedFolderId = folder.id;
         this.selectedFolderName = folder.displayName;
         this.selectedMessage = null;
+        this.clearSavedMessage();
         this.messages = [];
         this.currentSkip = 0;
         this.mobileView = 'list';
@@ -265,6 +305,9 @@
                 const idx = this.messages.findIndex(m => m.id === msg.id);
                 if (idx !== -1) this.messages[idx].isRead = true;
             }
+
+            // Persist selected message for page refresh
+            this.saveSelectedMessage(msg.id);
         } catch (e) {
             if (e.name === 'AbortError') return;
             this.showToast('Failed to load message', 'error');
@@ -392,6 +435,7 @@
             this.messages = this.messages.filter(m => m.id !== messageId);
             if (this.selectedMessage?.id === messageId) {
                 this.selectedMessage = null;
+                this.clearSavedMessage();
                 this.mobileView = 'list';
             }
             this.showToast('Archived');
@@ -423,6 +467,7 @@
             this.messages = this.messages.filter(m => m.id !== messageId);
             if (this.selectedMessage?.id === messageId) {
                 this.selectedMessage = null;
+                this.clearSavedMessage();
                 this.mobileView = 'list';
             }
             this.showToast('Deleted');
