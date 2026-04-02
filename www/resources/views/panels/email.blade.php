@@ -285,16 +285,18 @@
 
         let html = body.content || '';
 
-        // Hide body initially to prevent flash of unscaled content during load
-        // The fitAndResize handler will set visibility:visible after applying zoom
-        const hideUntilScaled = '\x3cstyle\x3ebody{visibility:hidden}\x3c/style\x3e';
+        // Hide body initially to prevent flash of unscaled content during load.
+        // The fitAndResize handler will set visibility:visible after applying zoom.
+        // Use !important to override any email CSS that might interfere.
+        const hideUntilScaled = '\x3cstyle\x3ebody{visibility:hidden!important}\x3c/style\x3e';
         html = hideUntilScaled + html;
 
-        // Block all remote resource loading when not explicitly allowed (privacy/tracking).
-        // CSP img-src covers all image vectors: <img src>, srcset, CSS background-image, etc.
+        // Block remote images when not explicitly allowed (privacy/tracking protection).
+        // We use a targeted CSP that ONLY blocks images, allowing other resources
+        // (fonts, stylesheets) to load normally - this prevents layout breakage.
         // All tag/quote chars use JS hex escapes (\x3c \x3e \x22 \x27) to stay safe inside x-data.
         if (!this.alwaysLoadImages && !this.allowRemoteImages && html) {
-            const csp = '\x3cmeta http-equiv=\x22Content-Security-Policy\x22 content=\x22img-src data:; default-src \x27none\x27; style-src \x27unsafe-inline\x27;\x22\x3e';
+            const csp = '\x3cmeta http-equiv=\x22Content-Security-Policy\x22 content=\x22img-src data:;\x22\x3e';
             const headMatch = html.match(/\x3chead[\s>]/i);
             if (headMatch) {
                 html = html.replace(/\x3chead(?:\s[^>]*)?\x3e/i, '$&' + csp);
@@ -1219,6 +1221,7 @@ class="h-full flex flex-col text-sm relative"
                             {{-- Email body iframe --}}
                             <template x-if="!messageLoading && selectedMessage?.body">
                                 <iframe
+                                    :key="selectedMessage?.id + '-' + allowRemoteImages + '-' + alwaysLoadImages"
                                     :srcdoc="getBodyHtml()"
                                     sandbox="allow-same-origin"
                                     class="w-full flex-1 border-0"
@@ -1227,41 +1230,47 @@ class="h-full flex flex-col text-sm relative"
                                         const iframe = $el;
                                         let retries = 0;
                                         const maxRetries = 40; // ~2 seconds max wait
-                                        const fitAndResize = () => {
+                                        const fitAndResize = (source) => {
+                                            console.log('[email iframe] fitAndResize called from:', source, 'retries:', retries);
                                             try {
                                                 const doc = iframe.contentDocument;
                                                 const body = doc?.body;
-                                                if (!body) {
-                                                    // Body not ready yet, retry after a brief delay (with limit)
+                                                // Check if this is the actual srcdoc content or just about:blank
+                                                const docUrl = doc?.URL || '';
+                                                const isRealContent = docUrl.includes('srcdoc') || (body && body.innerHTML.length > 50);
+                                                console.log('[email iframe] doc:', !!doc, 'body:', !!body, 'url:', docUrl, 'isRealContent:', isRealContent);
+                                                if (!body || !isRealContent) {
+                                                    // Body not ready or still showing about:blank, retry
                                                     if (++retries < maxRetries) {
-                                                        setTimeout(fitAndResize, 50);
+                                                        setTimeout(() => fitAndResize('retry'), 50);
                                                     } else {
+                                                        console.log('[email iframe] Max retries reached, body:', !!body, 'isRealContent:', isRealContent);
                                                         // Max retries reached - restore visibility so content isn't left hidden
                                                         try {
-                                                            if (doc?.body) doc.body.style.visibility = 'visible';
+                                                            if (doc?.body) doc.body.style.setProperty('visibility', 'visible', 'important');
                                                         } catch {}
                                                     }
                                                     return;
                                                 }
 
-                                                // Reset any previous zoom to measure true width
+                                                // Reset any previous zoom
                                                 body.style.zoom = '1';
-
-                                                // Use max-content to measure true content width
-                                                // This forces body to expand to fit nested fixed-width tables
-                                                // Use setProperty with 'important' to override email CSS !important rules
-                                                const originalWidth = body.style.width;
-                                                body.style.setProperty('width', 'max-content', 'important');
-                                                const contentWidth = body.offsetWidth;
-                                                body.style.setProperty('width', originalWidth || '', 'important');
-
                                                 const iframeWidth = iframe.clientWidth;
 
-                                                // If content is wider than iframe, use CSS zoom to scale down
-                                                // Unlike transform:scale(), zoom actually changes layout
-                                                if (contentWidth > iframeWidth && iframeWidth > 0) {
-                                                    const scale = iframeWidth / contentWidth;
+                                                // Only scale if there's ACTUAL horizontal overflow
+                                                // (fixed-width tables, large images, etc.)
+                                                // Text content wraps naturally and doesn't need scaling.
+                                                if (body.scrollWidth > iframeWidth + 5 && iframeWidth > 0) {
+                                                    // Measure true unwrapped content width using max-content
+                                                    const originalWidth = body.style.width;
+                                                    body.style.setProperty('width', 'max-content', 'important');
+                                                    const contentWidth = body.offsetWidth;
+                                                    body.style.setProperty('width', originalWidth || '', 'important');
+
+                                                    // Apply zoom with minimum 0.5 to keep text readable
+                                                    const scale = Math.max(0.5, iframeWidth / contentWidth);
                                                     body.style.zoom = scale;
+                                                    console.log('[email iframe] Applied zoom:', scale, 'contentWidth:', contentWidth, 'iframeWidth:', iframeWidth);
                                                 }
 
                                                 // Set iframe height based on (possibly zoomed) content
@@ -1269,16 +1278,39 @@ class="h-full flex flex-col text-sm relative"
                                                 if (h) iframe.style.height = Math.min(h + 20, 2000) + 'px';
 
                                                 // Show body now that scaling is applied (was hidden via injected CSS)
-                                                body.style.visibility = 'visible';
+                                                // Use setProperty with !important to override any email CSS
+                                                body.style.setProperty('visibility', 'visible', 'important');
+                                                console.log('[email iframe] Successfully made body visible');
                                             } catch(e) {
+                                                console.log('[email iframe] Error in fitAndResize:', e.message);
                                                 // On error, still try to show content rather than leave it blank
                                                 try {
                                                     const doc = iframe.contentDocument;
-                                                    if (doc?.body) doc.body.style.visibility = 'visible';
+                                                    if (doc?.body) doc.body.style.setProperty('visibility', 'visible', 'important');
                                                 } catch {}
                                             }
                                         };
-                                        iframe.addEventListener('load', fitAndResize);
+                                        iframe.addEventListener('load', () => {
+                                            console.log('[email iframe] load event fired');
+                                            fitAndResize('load');
+                                        });
+                                        // Short fallback: the load event may not fire reliably when srcdoc is set
+                                        // via Alpine's reactive binding. Try after a brief delay.
+                                        setTimeout(() => {
+                                            console.log('[email iframe] 150ms fallback triggered');
+                                            fitAndResize('short-fallback');
+                                        }, 150);
+                                        // Long fallback: ensure visibility even if everything else fails
+                                        setTimeout(() => {
+                                            console.log('[email iframe] 3s fallback triggered');
+                                            try {
+                                                const doc = iframe.contentDocument;
+                                                console.log('[email iframe] fallback - doc:', !!doc, 'body:', !!doc?.body);
+                                                if (doc?.body) doc.body.style.setProperty('visibility', 'visible', 'important');
+                                            } catch(e) {
+                                                console.log('[email iframe] fallback error:', e.message);
+                                            }
+                                        }, 3000);
                                     })"
                                 ></iframe>
                             </template>
