@@ -316,19 +316,39 @@ return [
             ],
         ],
 
-        // Claude Code models (aliases supported by CLI)
+        // Claude Code models (aliases + full model IDs supported by CLI)
         // Pricing is null since Claude Code uses subscription credits
-        // NOTE: max_context_window is kept at 200K for CLI aliases until we verify
-        // that Claude Code CLI actually supports 1M context. The underlying models
-        // (claude-opus-4-6, claude-sonnet-4-6) support 1M via the Anthropic API, but
-        // the CLI may impose its own limits. Update after testing with large contexts.
+        // Full model IDs (claude-opus-4-6, claude-sonnet-4-6) support 1M context.
+        // Aliases (opus, sonnet) are kept at 200K until CLI 1M support is confirmed.
         // See: https://github.com/tetrixdev/pocket-dev/issues/238
         'claude_code' => [
+            [
+                'model_id'                      => 'claude-opus-4-6',
+                'display_name'                  => 'Claude Opus 4.6 (via CLI)',
+                'context_window'                => 200000,
+                'max_context_window'            => 1000000,
+                'max_output_tokens'             => 128000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            [
+                'model_id'                      => 'claude-sonnet-4-6',
+                'display_name'                  => 'Claude Sonnet 4.6 (via CLI)',
+                'context_window'                => 200000,
+                'max_context_window'            => 1000000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
             [
                 'model_id'                      => 'opus',
                 'display_name'                  => 'Claude Opus (via CLI)',
                 'context_window'                => 200000,
-                'max_context_window'            => 200000, // TODO: raise to 1000000 after verifying CLI support
+                'max_context_window'            => 200000,
                 'max_output_tokens'             => 128000,
                 'input_price_per_million'       => null,
                 'output_price_per_million'      => null,
@@ -339,7 +359,7 @@ return [
                 'model_id'                      => 'sonnet',
                 'display_name'                  => 'Claude Sonnet (via CLI)',
                 'context_window'                => 200000,
-                'max_context_window'            => 200000, // TODO: raise to 1000000 after verifying CLI support
+                'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,
                 'input_price_per_million'       => null,
                 'output_price_per_million'      => null,
