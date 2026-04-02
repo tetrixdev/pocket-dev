@@ -19,8 +19,7 @@
             @keydown.escape="showRenameModal = false"
             placeholder="e.g. Debug"
             label="Tab Label (optional)"
-            hint="Max 6 characters. Shown in screen tabs."
-            maxlength="6"
+            hint="Shown in screen tabs."
         />
 
         {{-- Tab preview --}}
