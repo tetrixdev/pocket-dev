@@ -2813,11 +2813,17 @@
 
                     this.showSessionEditModal = true;
 
-                    // Auto-focus session name input on desktop only
+                    // Auto-focus and select session name input on desktop only
+                    // Use setTimeout to wait for modal transition (200ms) to complete
+                    // Note: Can't use $refs because modal has its own x-data scope
                     if (this.windowWidth >= 768) {
-                        this.$nextTick(() => {
-                            this.$refs.sessionEditNameInput?.focus();
-                        });
+                        setTimeout(() => {
+                            const input = document.getElementById('session-edit-name-input');
+                            if (input) {
+                                input.focus();
+                                input.select();
+                            }
+                        }, 250);
                     }
                 },
 
