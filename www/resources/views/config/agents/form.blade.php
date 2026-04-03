@@ -218,6 +218,20 @@
                         >
                         <span class="text-sm">Default for provider</span>
                     </label>
+
+                    <label x-show="modelSupportsExtendedContext" x-cloak class="flex items-center gap-2 cursor-pointer">
+                        {{-- Hidden input ensures the field is always submitted (unchecked checkboxes submit nothing) --}}
+                        <input type="hidden" name="extended_context" :value="extendedContext ? '1' : '0'">
+                        <input
+                            type="checkbox"
+                            x-model="extendedContext"
+                            class="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                        >
+                        <span class="text-sm">
+                            Extended context
+                            <span class="text-gray-400 text-xs" x-text="'(' + (selectedModelMaxContext / 1000).toLocaleString() + 'K tokens)'"></span>
+                        </span>
+                    </label>
                 </div>
             </div>
 
@@ -746,6 +760,10 @@
             expandedSections: {}, // Track which sections are expanded by index
             rawViewSections: {}, // Track which sections show raw markdown vs rendered
 
+            // Extended context (1M token window)
+            extendedContext: @js(old('extended_context', $agent->extended_context ?? ($sourceAgent->extended_context ?? true))),
+            maxContextPerProvider: @js($maxContextPerProvider),
+
             // modelsPerProvider is now { provider: { model_id: display_name, ... } }
             get availableModelIds() {
                 const models = this.modelsPerProvider[this.provider] || {};
@@ -766,6 +784,14 @@
                     return this.manualModel || '';
                 }
                 return this.model;
+            },
+
+            get selectedModelMaxContext() {
+                return (this.maxContextPerProvider[this.provider] || {})[this.effectiveModel] || 0;
+            },
+
+            get modelSupportsExtendedContext() {
+                return this.selectedModelMaxContext > 200000;
             },
 
             async init() {

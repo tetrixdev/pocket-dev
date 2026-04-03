@@ -288,6 +288,13 @@ class ConfigController extends Controller
             ->toArray();
     }
 
+    protected function getMaxContextPerProvider(string $provider): array
+    {
+        return collect(config("ai.models.{$provider}", []))
+            ->mapWithKeys(fn ($m) => [$m['model_id'] => $m['max_context_window'] ?? $m['context_window']])
+            ->toArray();
+    }
+
     /**
      * List all agents grouped by workspace
      */
@@ -324,6 +331,9 @@ class ConfigController extends Controller
             'providers' => Agent::getProviders(),
             'modelsPerProvider' => collect(Agent::getProviders())
                 ->mapWithKeys(fn ($p) => [$p => $this->getModelsForProvider($p)])
+                ->toArray(),
+            'maxContextPerProvider' => collect(Agent::getProviders())
+                ->mapWithKeys(fn ($p) => [$p => $this->getMaxContextPerProvider($p)])
                 ->toArray(),
             'workspaces' => Workspace::orderBy('name')->get(),
             'selectedWorkspaceId' => $request->query('workspace_id'),
@@ -415,6 +425,7 @@ class ConfigController extends Controller
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
+                'extended_context' => 'nullable|in:0,1',
             ]);
 
             // Check for duplicate slug within workspace
@@ -455,6 +466,7 @@ class ConfigController extends Controller
                     'system_prompt' => $validated['system_prompt'] ?? null,
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
+                    'extended_context' => ($validated['extended_context'] ?? '1') === '1',
                 ]);
 
                 // Sync memory schemas (only if not inheriting)
@@ -487,6 +499,9 @@ class ConfigController extends Controller
             'modelsPerProvider' => collect(Agent::getProviders())
                 ->mapWithKeys(fn ($p) => [$p => $this->getModelsForProvider($p)])
                 ->toArray(),
+            'maxContextPerProvider' => collect(Agent::getProviders())
+                ->mapWithKeys(fn ($p) => [$p => $this->getMaxContextPerProvider($p)])
+                ->toArray(),
         ]);
     }
 
@@ -516,6 +531,7 @@ class ConfigController extends Controller
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
+                'extended_context' => 'nullable|in:0,1',
             ]);
 
             // Check for duplicate slug within workspace (excluding current agent)
@@ -556,6 +572,7 @@ class ConfigController extends Controller
                     'system_prompt' => $validated['system_prompt'] ?? null,
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
+                    'extended_context' => ($validated['extended_context'] ?? '1') === '1',
                 ]);
 
                 // Sync memory schemas (only if not inheriting)
