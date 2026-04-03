@@ -187,6 +187,12 @@ class ClaudeCodeProvider extends AbstractCliProvider
         // Enable tool_progress heartbeats during tool execution
         $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
 
+        // Disable CLI auto-compaction — PocketDev manages compaction via context_window_size.
+        // The CLI's internal threshold is based on ~200K regardless of model, so for 1M
+        // context conversations it would compact far too early. We suppress it here and
+        // let PocketDev trigger compaction at the correct percentage instead.
+        $env['CLAUDE_AUTOCOMPACT_PCT_OVERRIDE'] = '100';
+
         return $env;
     }
 
