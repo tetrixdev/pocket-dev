@@ -175,23 +175,6 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     fi
 
     # =============================================================================
-    # CREDENTIAL LOADING (requires DB ready)
-    # =============================================================================
-    # Export user-configured credentials as environment variables.
-    # These will be inherited by all worker processes.
-    if [ -x /usr/local/bin/load-credentials ]; then
-        if ! cred_output=$(/usr/local/bin/load-credentials 2>&1); then
-            echo "Credential loading failed - aborting startup"
-            echo "$cred_output"
-            exit 1
-        fi
-        cred_exports=$(echo "$cred_output" | grep '^export ' || true)
-        if [ -n "$cred_exports" ]; then
-            eval "$cred_exports"
-        fi
-    fi
-
-    # =============================================================================
     # PHASE 3: START PHP-FPM AS ROOT (standard Docker practice)
     # =============================================================================
 

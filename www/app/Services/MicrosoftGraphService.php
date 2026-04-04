@@ -25,12 +25,9 @@ class MicrosoftGraphService
      */
     public static function discoverAccounts(?string $workspaceId = null): array
     {
-        // When no workspace specified, get ALL credentials (matches database panel behavior).
-        // getEnvArrayForWorkspace(null) only returns global creds, but most users store
-        // credentials at the workspace level.
-        $credentials = $workspaceId
-            ? Credential::getEnvArrayForWorkspace($workspaceId)
-            : Credential::getAllAsEnvArray();
+        // Get workspace-specific credentials (if provided) merged with global credentials.
+        // If workspaceId is null, only global credentials are returned.
+        $credentials = Credential::getEnvArrayForWorkspace($workspaceId);
         $accounts = [];
         $found = [];
 
