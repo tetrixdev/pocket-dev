@@ -84,6 +84,16 @@ class VersionService
 
         $data = json_decode(file_get_contents($versionFile), true);
 
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return [
+                'mode' => 'production',
+                'tag' => null,
+                'commit' => null,
+                'build_date' => null,
+                'error' => 'Invalid version.json format: ' . json_last_error_msg(),
+            ];
+        }
+
         return [
             'mode' => 'production',
             'tag' => $data['tag'] ?? null,
@@ -256,12 +266,22 @@ class VersionService
             ];
         }
 
-        // Pull from main
-        $output = shell_exec("cd {$projectPath} && git pull origin main 2>&1");
+        // Pull from main and capture exit code
+        $output = [];
+        $exitCode = 0;
+        exec("cd {$projectPath} && git pull origin main 2>&1", $output, $exitCode);
+        $outputStr = implode("\n", $output);
+
+        if ($exitCode !== 0) {
+            return [
+                'success' => false,
+                'error' => 'Git pull failed: ' . $outputStr,
+            ];
+        }
 
         return [
             'success' => true,
-            'output' => $output,
+            'output' => $outputStr,
         ];
     }
 
