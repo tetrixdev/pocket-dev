@@ -7,6 +7,7 @@ use App\Models\PocketTool;
 use App\Models\Workspace;
 use App\Services\NativeToolService;
 use App\Services\ToolSelector;
+use App\Services\VersionService;
 use App\Tools\Tool;
 use App\Tools\UserTool;
 use Illuminate\Http\Request;
@@ -2299,24 +2300,103 @@ class ConfigController extends Controller
     // =========================================================================
 
     /**
-     * Show developer tools page
+     * Show system management page
      */
-    public function showDeveloper(Request $request)
+    public function showSystem(Request $request, VersionService $versionService)
     {
-        $request->session()->put('config_last_section', 'developer');
+        $request->session()->put('config_last_section', 'system');
 
         // Check for any conversations currently processing
         $processingCount = \App\Models\Conversation::where('status', \App\Models\Conversation::STATUS_PROCESSING)->count();
 
-        return view('config.developer', [
+        // Get version information
+        $version = $versionService->getCurrentVersion();
+
+        // Get cached update info (don't fetch on page load - use explicit check button)
+        $updateInfo = $versionService->checkForUpdates(forceRefresh: false);
+
+        return view('config.system', [
             'processingCount' => $processingCount,
+            'version' => $version,
+            'updateInfo' => $updateInfo,
         ]);
     }
 
     /**
-     * Force recreate all Docker containers
+     * Check for updates (refresh cache)
      */
-    public function forceRecreate(Request $request)
+    public function checkUpdate(Request $request, VersionService $versionService)
+    {
+        $versionService->checkForUpdates(forceRefresh: true);
+
+        return redirect()->route('config.system')->with('success', 'Update check complete.');
+    }
+
+    /**
+     * Apply update (production: pull latest images; local: git pull)
+     */
+    public function applyUpdate(Request $request, VersionService $versionService)
+    {
+        try {
+            $hostProjectPath = config('backup.host_project_path');
+
+            if (empty($hostProjectPath)) {
+                throw new \RuntimeException('PD_HOST_PROJECT_PATH environment variable is not set');
+            }
+
+            // Production: pull latest images and recreate
+            // Spawn a helper container that survives container restarts
+            $command = sprintf(
+                'docker run --rm -d ' .
+                '-v /var/run/docker.sock:/var/run/docker.sock ' .
+                '-v "%s:%s" ' .
+                '-w "%s" ' .
+                'docker:27-cli ' .
+                'sh -c "docker compose pull && docker compose up -d --force-recreate" 2>&1',
+                $hostProjectPath,
+                $hostProjectPath,
+                $hostProjectPath
+            );
+
+            exec($command, $output, $returnCode);
+
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
+            }
+
+            // Clear update cache so next page load shows fresh status
+            \Illuminate\Support\Facades\Cache::forget('pocketdev:latest_release');
+            \Illuminate\Support\Facades\Cache::forget('pocketdev:update_available');
+
+            return redirect()->route('config.system')->with('success', 'Update initiated. PocketDev will restart with the new version shortly.');
+        } catch (\Exception $e) {
+            Log::error('Failed to apply update', ['error' => $e->getMessage()]);
+            return redirect()->route('config.system')->with('error', 'Failed to apply update: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Pull latest changes from main branch (local development only)
+     */
+    public function pullFromMain(Request $request, VersionService $versionService)
+    {
+        if (!app()->environment('local')) {
+            return redirect()->route('config.system')->with('error', 'This action is only available in local development.');
+        }
+
+        $result = $versionService->pullFromMain();
+
+        if ($result['success']) {
+            return redirect()->route('config.system')->with('success', 'Pulled latest changes from main. Restart containers to apply.');
+        } else {
+            return redirect()->route('config.system')->with('error', $result['error'] ?? 'Failed to pull from main.');
+        }
+    }
+
+    /**
+     * Restart all Docker containers (force recreate)
+     */
+    public function restartContainers(Request $request)
     {
         try {
             $hostProjectPath = config('backup.host_project_path');
@@ -2344,16 +2424,17 @@ class ConfigController extends Controller
                 throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
             }
 
-            return redirect()->back()->with('success', 'Force recreate initiated. Containers will restart shortly.');
+            return redirect()->back()->with('success', 'Restart initiated. Containers will restart shortly.');
         } catch (\Exception $e) {
-            Log::error('Failed to force recreate containers', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to force recreate: ' . $e->getMessage());
+            Log::error('Failed to restart containers', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to restart: ' . $e->getMessage());
         }
     }
 
     /**
      * Rebuild all Docker containers (down + build + up)
      * Use this when Dockerfiles or entrypoint scripts have changed.
+     * Only available in local development.
      */
     public function rebuildContainers(Request $request)
     {
