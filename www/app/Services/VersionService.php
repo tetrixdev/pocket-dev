@@ -266,6 +266,24 @@ class VersionService
     }
 
     /**
+     * Get a short version label for display (branch name or version tag).
+     */
+    public function getVersionLabel(): string
+    {
+        $version = $this->getCurrentVersion();
+
+        if ($this->isLocalEnvironment()) {
+            $label = $version['branch'] ?? 'unknown';
+            if ($version['has_changes'] ?? false) {
+                $label .= '*';
+            }
+            return $label;
+        }
+
+        return $version['tag'] ?? 'unknown';
+    }
+
+    /**
      * Check if update is available (cached, for badge display).
      */
     public function isUpdateAvailable(): bool

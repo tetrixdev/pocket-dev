@@ -147,14 +147,15 @@
             </div>
         </div>
         <div>Working Dir: <span x-text="currentWorkspace?.working_directory_path || '/workspace'"></span></div>
+        <div class="text-gray-500" style="font-size: 10px;">Version: {{ app(\App\Services\VersionService::class)->getVersionLabel() }}</div>
         <div class="flex flex-wrap gap-2 mt-2">
-            <a href="{{ route('config.index') }}" class="text-blue-400 hover:text-blue-300">Settings</a>
             <button @click="showShortcutsModal = true" class="text-blue-400 hover:text-blue-300 cursor-pointer">Shortcuts</button>
             <button @click="copyConversationToClipboard()"
                     :disabled="messages.length === 0"
                     :class="messages.length === 0 ? 'text-gray-600 cursor-not-allowed' : 'text-blue-400 hover:text-blue-300 cursor-pointer'"
                     x-text="copyingConversation ? 'Copied!' : 'Copy Chat'">
             </button>
+            <button @click="$store.debug.toggle()" class="text-blue-400 hover:text-blue-300 cursor-pointer">Debug Log</button>
         </div>
     </div>
 </div>
