@@ -386,8 +386,9 @@ HTML;
         // If panel has a script, run it with action context
         if ($panel->hasScript()) {
             try {
-                // Get credentials for environment injection
-                $credentials = \App\Models\Credential::getAllAsEnvArray();
+                // Get credentials for environment injection (workspace-specific + global)
+                $workspaceId = $this->getWorkspaceId($panelState);
+                $credentials = \App\Models\Credential::getEnvArrayForWorkspace($workspaceId);
 
                 $env = array_merge($credentials, [
                     'PANEL_ACTION' => $action,
@@ -517,8 +518,9 @@ HTML;
         }
 
         try {
-            // Get credentials for environment injection
-            $credentials = \App\Models\Credential::getAllAsEnvArray();
+            // Get credentials for environment injection (workspace-specific + global)
+            $workspaceId = $this->getWorkspaceId($panelState);
+            $credentials = \App\Models\Credential::getEnvArrayForWorkspace($workspaceId);
 
             // Set environment variables for the peek script
             $env = array_merge($credentials, [

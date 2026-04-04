@@ -177,23 +177,6 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
         /usr/local/bin/install-system-packages || echo "Warning: System package installation had errors"
     fi
 
-    # =============================================================================
-    # CREDENTIAL LOADING (requires DB ready)
-    # =============================================================================
-    # Export user-configured credentials as environment variables.
-    # These will be inherited by all worker processes.
-    if [ -x /usr/local/bin/load-credentials ]; then
-        if ! cred_output=$(/usr/local/bin/load-credentials 2>&1); then
-            echo "Credential loading failed - aborting startup"
-            echo "$cred_output"
-            exit 1
-        fi
-        cred_exports=$(echo "$cred_output" | grep '^export ' || true)
-        if [ -n "$cred_exports" ]; then
-            eval "$cred_exports"
-        fi
-    fi
-
     echo "Laravel application ready for production"
 
     # PHP-FPM master runs as root, pool workers run as www-data (via www.conf)
