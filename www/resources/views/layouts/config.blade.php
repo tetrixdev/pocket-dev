@@ -207,15 +207,13 @@
                     </a>
                 </div>
 
-                @if(app()->environment('local'))
-                <!-- Developer Tools (Local Only) -->
+                <!-- System Management -->
                 <div class="border-b border-gray-700">
-                    <a href="{{ route('config.developer') }}"
-                       class="category-button w-full block {{ Route::currentRouteName() == 'config.developer' ? 'active' : '' }}">
-                        🔧 Developer
+                    <a href="{{ route('config.system') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.system' ? 'active' : '' }}">
+                        ⚙️ System
                     </a>
                 </div>
-                @endif
 
             </div>
         </div>
@@ -429,16 +427,14 @@
                 </a>
             </div>
 
-            @if(app()->environment('local'))
-            <!-- Developer Tools (Local Only) -->
+            <!-- System Management -->
             <div class="border-b border-gray-700">
-                <a href="{{ route('config.developer') }}"
+                <a href="{{ route('config.system') }}"
                    @click="showMobileDrawer = false"
-                   class="category-button w-full block {{ Route::currentRouteName() == 'config.developer' ? 'active' : '' }}">
-                    🔧 Developer
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.system' ? 'active' : '' }}">
+                    ⚙️ System
                 </a>
             </div>
-            @endif
 
             <!-- Footer with Back to Chat -->
             <div class="p-4 border-t border-gray-700 mt-auto">
