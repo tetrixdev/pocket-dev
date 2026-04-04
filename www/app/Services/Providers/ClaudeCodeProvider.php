@@ -98,6 +98,16 @@ class ClaudeCodeProvider extends AbstractCliProvider
             ?: $conversation->model
             ?: config('ai.providers.claude_code.default_model', 'opus');
 
+        // Append [1m] suffix for extended context agents so the CLI knows to use the 1M
+        // context window. The CLI strips this suffix before sending to the Anthropic API,
+        // but uses it internally to set the auto-compaction threshold to 1M instead of 200K.
+        if ($conversation->agent?->extended_context && !str_contains($model, '[1m]')) {
+            $maxContextWindow = $this->models->getMaxContextWindow($model);
+            if ($maxContextWindow > 200000) {
+                $model .= '[1m]';
+            }
+        }
+
         // Get global allowed tools setting (Setting::get already decodes JSON)
         $globalAllowedTools = \App\Models\Setting::get('chat.claude_code_allowed_tools', []);
         if (!is_array($globalAllowedTools)) {
