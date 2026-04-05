@@ -14,7 +14,7 @@ class SystemSkillDefinitions
      * Current version of system skill definitions.
      * Increment when skills are updated.
      */
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.1.0';
 
     /**
      * Get all system skill definitions.
@@ -123,6 +123,20 @@ pd server:app deploy --id=<app-id>
 ```bash
 pd server:app add-domain --id=<app-id> --domain=<domain> --upstream=<slug>-nginx
 pd server:app request-ssl --id=<app-id> --domain=<domain>
+```
+
+### Advanced domain options (optional):
+```bash
+# IP whitelist (Tailscale-only access)
+pd server:app add-domain --id=<app-id> --domain=<domain> --upstream=<slug>-nginx \
+  --whitelist="100.64.0.0/10"
+
+# Custom body size and timeout (for file upload apps)
+pd server:app add-domain --id=<app-id> --domain=<domain> --upstream=<slug>-nginx \
+  --max-body-size=1G --websocket-timeout=3600s
+
+# Remove a domain
+pd server:app remove-domain --id=<app-id> --domain=<domain>
 ```
 
 ## Environment Variables - Smart Handling
