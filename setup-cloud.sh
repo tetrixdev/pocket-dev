@@ -527,15 +527,28 @@ EOF
 )
 
 # Create server
-CREATE_RESPONSE=$(curl -sf -X POST \
+CREATE_RESULT=$(curl -s -w "\n%{http_code}" -X POST \
     -H "Authorization: Bearer $HETZNER_TOKEN" \
     -H "Content-Type: application/json" \
     -d "$CREATE_REQUEST" \
-    "$HETZNER_API/servers") || {
-    log_error "Failed to create server"
-    echo "$CREATE_RESPONSE"
+    "$HETZNER_API/servers")
+
+CREATE_HTTP_CODE=$(echo "$CREATE_RESULT" | tail -n1)
+CREATE_RESPONSE=$(echo "$CREATE_RESULT" | sed '$d')
+
+if [ "$CREATE_HTTP_CODE" != "201" ]; then
+    log_error "Failed to create server (HTTP $CREATE_HTTP_CODE)"
+    echo ""
+    # Try to extract error message from response
+    ERROR_MSG=$(echo "$CREATE_RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4)
+    if [ -n "$ERROR_MSG" ]; then
+        echo "  Error: $ERROR_MSG"
+    else
+        echo "  Response: $CREATE_RESPONSE"
+    fi
+    echo ""
     exit 1
-}
+fi
 
 # Extract server details
 SERVER_ID=$(echo "$CREATE_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
