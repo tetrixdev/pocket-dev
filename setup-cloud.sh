@@ -125,7 +125,7 @@ log_step "Step 1/6: Hetzner Cloud Setup"
 echo ""
 echo "You'll need a Hetzner Cloud API token with read/write permissions."
 echo ""
-echo "Create one at: ${CYAN}https://console.hetzner.cloud/projects → Select project → Security → API tokens${NC}"
+echo -e "Create one at: ${CYAN}https://console.hetzner.cloud/projects → Select project → Security → API tokens${NC}"
 echo ""
 
 read -p "Enter your Hetzner API token: " HETZNER_TOKEN < /dev/tty
@@ -152,11 +152,11 @@ log_step "Step 2/6: Server Configuration"
 echo ""
 echo "Select server size:"
 echo ""
-echo "  ${BOLD}xs${NC} - Extremely Small (1 vCPU, 2GB)  - ~4 EUR/mo  - For 1-2 small apps"
-echo "  ${BOLD}s${NC}  - Small            (2 vCPU, 4GB)  - ~8 EUR/mo  - For 3-5 apps"
-echo "  ${BOLD}m${NC}  - Medium           (4 vCPU, 8GB)  - ~15 EUR/mo - For 5-10 apps"
-echo "  ${BOLD}l${NC}  - Large            (8 vCPU, 16GB) - ~29 EUR/mo - For 10-20 apps"
-echo "  ${BOLD}xl${NC} - Extremely Large  (16 vCPU, 32GB)- ~57 EUR/mo - For 20+ apps"
+echo -e "  ${BOLD}xs${NC} - Extremely Small (1 vCPU, 2GB)  - ~4 EUR/mo  - For 1-2 small apps"
+echo -e "  ${BOLD}s${NC}  - Small            (2 vCPU, 4GB)  - ~8 EUR/mo  - For 3-5 apps"
+echo -e "  ${BOLD}m${NC}  - Medium           (4 vCPU, 8GB)  - ~15 EUR/mo - For 5-10 apps"
+echo -e "  ${BOLD}l${NC}  - Large            (8 vCPU, 16GB) - ~29 EUR/mo - For 10-20 apps"
+echo -e "  ${BOLD}xl${NC} - Extremely Large  (16 vCPU, 32GB)- ~57 EUR/mo - For 20+ apps"
 echo ""
 
 read -p "Server size [s]: " SERVER_SIZE < /dev/tty
@@ -182,11 +182,11 @@ log_info "Selected: $SERVER_SIZE ($SERVER_TYPE)"
 echo ""
 echo "Select server location:"
 echo ""
-echo "  ${BOLD}fsn1${NC} - Falkenstein, Germany"
-echo "  ${BOLD}nbg1${NC} - Nuremberg, Germany"
-echo "  ${BOLD}hel1${NC} - Helsinki, Finland"
-echo "  ${BOLD}ash${NC}  - Ashburn, USA (East Coast)"
-echo "  ${BOLD}hil${NC}  - Hillsboro, USA (West Coast)"
+echo -e "  ${BOLD}fsn1${NC} - Falkenstein, Germany"
+echo -e "  ${BOLD}nbg1${NC} - Nuremberg, Germany"
+echo -e "  ${BOLD}hel1${NC} - Helsinki, Finland"
+echo -e "  ${BOLD}ash${NC}  - Ashburn, USA (East Coast)"
+echo -e "  ${BOLD}hil${NC}  - Hillsboro, USA (West Coast)"
 echo ""
 
 read -p "Location [fsn1]: " LOCATION < /dev/tty
@@ -249,8 +249,8 @@ fi
 echo ""
 echo "How would you like to configure DNS?"
 echo ""
-echo "  ${BOLD}1${NC} - TransIP (automatic DNS configuration)"
-echo "  ${BOLD}2${NC} - Manual (I'll configure DNS myself)"
+echo -e "  ${BOLD}1${NC} - TransIP (automatic DNS configuration)"
+echo -e "  ${BOLD}2${NC} - Manual (I'll configure DNS myself)"
 echo ""
 
 read -p "DNS method [2]: " DNS_METHOD < /dev/tty
@@ -260,7 +260,7 @@ TRANSIP_TOKEN=""
 if [ "$DNS_METHOD" = "1" ]; then
     echo ""
     echo "TransIP API setup:"
-    echo "Create an API token at: ${CYAN}https://www.transip.nl/cp/account/api/${NC}"
+    echo -e "Create an API token at: ${CYAN}https://www.transip.nl/cp/account/api/${NC}"
     echo ""
     read -p "Enter TransIP API token: " TRANSIP_TOKEN < /dev/tty
 

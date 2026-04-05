@@ -123,8 +123,8 @@ fi
 echo ""
 echo "How would you like to configure DNS?"
 echo ""
-echo "  ${BOLD}1${NC} - TransIP (automatic DNS configuration)"
-echo "  ${BOLD}2${NC} - Manual (I'll configure DNS myself)"
+echo -e "  ${BOLD}1${NC} - TransIP (automatic DNS configuration)"
+echo -e "  ${BOLD}2${NC} - Manual (I'll configure DNS myself)"
 echo ""
 
 read -p "DNS method [2]: " DNS_METHOD < /dev/tty
@@ -140,7 +140,7 @@ fi
 if [ "$DNS_METHOD" = "1" ]; then
     echo ""
     echo "TransIP API setup:"
-    echo "Create an API token at: ${CYAN}https://www.transip.nl/cp/account/api/${NC}"
+    echo -e "Create an API token at: ${CYAN}https://www.transip.nl/cp/account/api/${NC}"
     echo ""
     read -p "Enter TransIP API token: " TRANSIP_TOKEN < /dev/tty
 
