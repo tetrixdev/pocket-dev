@@ -4,6 +4,8 @@ AI-powered development environment with Claude Code integration. Run Claude Code
 
 ## Quick Start
 
+### Local Development (Docker)
+
 **Prerequisites**: Docker and Docker Compose
 
 ```bash
@@ -15,6 +17,20 @@ chmod +x setup.sh && ./setup.sh
 ```
 
 Then open http://localhost (or your configured port) and follow the setup wizard.
+
+### Production Deployment (VPS)
+
+For a secure production deployment on a VPS with SSL and Tailscale:
+
+```bash
+# 1. Run vps-setup (Docker, proxy-nginx, SSH hardening, Tailscale)
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/vps-setup/main/setup.sh | bash
+
+# 2. Install PocketDev (prompts for domain, configures SSL)
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash
+```
+
+See [vps-setup](https://github.com/tetrixdev/vps-setup) for details on server hardening.
 
 ## Features
 
@@ -41,7 +57,12 @@ docker compose pull && docker compose up -d
 
 ## Deploy to a Server
 
-Want to run PocketDev on a VPS instead of locally? See the [Secure Server Setup Guide](docs/deployment/secure-server-setup.md) for a Tailscale-based deployment that keeps your instance private and invisible to the public internet.
+Want to run PocketDev on a VPS? Use the [vps-setup](https://github.com/tetrixdev/vps-setup) + install.sh combo shown in Quick Start above. This provides:
+
+- **Tailscale** - SSH access only via your private Tailscale network
+- **proxy-nginx** - Reverse proxy with automatic SSL certificates
+- **Docker hardening** - Containers isolated from public network
+- **Automatic updates** - Security patches applied automatically
 
 ## Troubleshooting
 
