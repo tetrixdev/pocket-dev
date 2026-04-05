@@ -281,7 +281,7 @@ elif [ "$WRITE_HTTP_CODE" = "401" ] || [ "$WRITE_HTTP_CODE" = "403" ]; then
     echo ""
     log_error "API token has read-only permissions"
     echo ""
-    echo "This script needs a token with ${BOLD}Read & Write${NC} access to create servers."
+    echo -e "This script needs a token with ${BOLD}Read & Write${NC} access to create servers."
     echo ""
     echo "To create a new token with write access:"
     echo "  1. Go to https://console.hetzner.cloud/projects"
