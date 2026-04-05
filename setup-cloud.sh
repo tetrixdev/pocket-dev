@@ -182,29 +182,49 @@ MANUAL_SSH=false
 check_dependencies
 
 # =============================================================================
-# HEADER
+# STEP 1: Welcome & Platform Check
 # =============================================================================
 clear
 echo -e "${CYAN}"
 echo "============================================================================="
-echo "  PocketDev Setup"
+echo "  PocketDev Cloud Setup"
 echo "============================================================================="
 echo -e "${NC}"
-echo "This script will create a fully configured PocketDev instance with:"
-echo "  - Hetzner Cloud server"
-echo "  - Tailscale (secure SSH access)"
-echo "  - proxy-nginx (reverse proxy with SSL)"
-echo "  - PocketDev (AI development environment)"
+log_step "Step 1/7: Welcome"
+echo ""
+echo "This script creates a fully configured PocketDev instance on a fresh"
+echo "Hetzner Cloud server. It handles everything automatically:"
+echo ""
+echo "  • Creates a Hetzner Cloud VPS"
+echo "  • Configures DNS (automatic with TransIP, or manual)"
+echo "  • Installs Docker, proxy-nginx, Tailscale, SSH hardening"
+echo "  • Deploys PocketDev with wildcard SSL"
 echo ""
 echo "Time required: ~10-15 minutes"
 echo ""
+echo -e "${CYAN}Supported platforms:${NC}"
+echo "  • macOS (Terminal)"
+echo "  • Linux (Ubuntu, Debian, Fedora)"
+echo "  • Windows (WSL only)"
+echo ""
+echo -e "${YELLOW}Windows users:${NC} You must run this from inside WSL, not from CMD or PowerShell."
+echo "  If you're in CMD/PowerShell, type 'wsl' first to enter WSL, then run this script."
+echo "  Or open Windows Terminal and select 'Ubuntu' from the dropdown."
+echo ""
 echo -e "${YELLOW}Already have a server?${NC} Press Ctrl+C and run setup-server.sh instead."
+echo ""
+read -p "Press Y to proceed (if you cannot respond, you're likely not in WSL): " PROCEED < /dev/tty
+if [[ ! "$PROCEED" =~ ^[Yy]$ ]]; then
+    echo ""
+    log_error "Setup cancelled."
+    exit 1
+fi
 echo ""
 
 # =============================================================================
-# STEP 1: Hetzner API Token
+# STEP 2: Hetzner API Token
 # =============================================================================
-log_step "Step 1/6: Hetzner Cloud Setup"
+log_step "Step 2/7: Hetzner Cloud Setup"
 
 echo ""
 echo "You'll need a Hetzner Cloud API token with read/write permissions."
@@ -229,9 +249,9 @@ VERIFY_RESPONSE=$(curl -sf -H "Authorization: Bearer $HETZNER_TOKEN" "$HETZNER_A
 log_info "API token verified!"
 
 # =============================================================================
-# STEP 2: Server Configuration
+# STEP 3: Server Configuration
 # =============================================================================
-log_step "Step 2/6: Server Configuration"
+log_step "Step 3/7: Server Configuration"
 
 echo ""
 echo "Select server size:"
@@ -313,9 +333,9 @@ case "$ENABLE_BACKUPS" in
 esac
 
 # =============================================================================
-# STEP 3: Domain Configuration
+# STEP 4: Domain Configuration
 # =============================================================================
-log_step "Step 3/6: Domain Configuration"
+log_step "Step 4/7: Domain Configuration"
 
 echo ""
 echo "Enter the BASE domain for PocketDev (e.g., dev.example.com)"
@@ -439,9 +459,9 @@ if [ "$DNS_METHOD" = "1" ]; then
 fi
 
 # =============================================================================
-# STEP 4: Create Server
+# STEP 5: Create Server
 # =============================================================================
-log_step "Step 4/6: Creating Hetzner Server"
+log_step "Step 5/7: Creating Hetzner Server"
 
 echo ""
 log_info "Creating server '$SERVER_NAME' ($SERVER_TYPE in $LOCATION)..."
@@ -506,9 +526,9 @@ chmod 600 "$CREDENTIALS_FILE"
 log_info "Credentials saved to: $CREDENTIALS_FILE"
 
 # =============================================================================
-# STEP 5: Configure DNS
+# STEP 6: Configure DNS
 # =============================================================================
-log_step "Step 5/6: DNS Configuration"
+log_step "Step 6/7: DNS Configuration"
 
 if [ "$USE_TRANSIP" = true ]; then
     log_info "TransIP credentials will be passed to server setup."
@@ -565,9 +585,9 @@ if [ "$USE_TRANSIP" = false ]; then
 fi
 
 # =============================================================================
-# STEP 6: Setup Server
+# STEP 7: Setup Server
 # =============================================================================
-log_step "Step 6/6: Server Setup"
+log_step "Step 7/7: Server Setup"
 
 # Wait for server to be ready
 log_info "Waiting for server to be ready..."
