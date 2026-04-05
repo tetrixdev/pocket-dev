@@ -43,41 +43,6 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} ${1:-}"; }
 log_error() { echo -e "${RED}[ERROR]${NC} ${1:-}"; }
 log_step() { echo -e "\n${BLUE}==>${NC} ${BOLD}${1:-}${NC}"; }
 
-# -----------------------------------------------------------------------------
-# TTY Check (detect broken terminal, e.g., Windows CMD -> WSL pipe)
-# -----------------------------------------------------------------------------
-check_tty() {
-    # Test if we can actually read from /dev/tty
-    # This fails when running via "curl | bash" from Windows CMD into WSL
-    if ! timeout 1 bash -c 'echo -n' < /dev/tty 2>/dev/null; then
-        echo ""
-        echo -e "${RED}[ERROR]${NC} Interactive terminal not available"
-        echo ""
-        echo "This script requires interactive input but cannot read from the terminal."
-        echo ""
-        if [[ "$(uname -r)" == *microsoft* ]] || [[ "$(uname -r)" == *Microsoft* ]]; then
-            echo -e "${YELLOW}Windows detected:${NC} You appear to be running this from Windows CMD/PowerShell."
-            echo ""
-            echo "The terminal passthrough doesn't work properly this way."
-            echo ""
-            echo -e "${CYAN}Solution - run from inside WSL instead:${NC}"
-            echo ""
-            echo "  Option 1: Open Windows Terminal, click the dropdown arrow, select 'Ubuntu'"
-            echo ""
-            echo "  Option 2: Open CMD/PowerShell and type:"
-            echo "            wsl"
-            echo ""
-            echo "  Then run this script again from the WSL prompt."
-        else
-            echo "Please run this script from an interactive terminal."
-        fi
-        echo ""
-        exit 1
-    fi
-}
-
-# Run TTY check immediately
-check_tty
 
 # -----------------------------------------------------------------------------
 # Configuration
