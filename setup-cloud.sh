@@ -70,27 +70,105 @@ check_dependencies() {
         log_warn "sshpass is not installed"
         echo ""
         echo "sshpass enables automated SSH login with the server's root password."
-        echo "Without it, you'll need to complete the final setup steps manually."
         echo ""
-        echo "Install sshpass:"
-        echo ""
-        echo "  macOS:       brew install hudochenkov/sshpass/sshpass"
-        echo "  Ubuntu/WSL:  sudo apt install sshpass"
-        echo "  Fedora:      sudo dnf install sshpass"
-        echo ""
-        echo -e "${YELLOW}Windows users: Run this script in WSL (Windows Subsystem for Linux).${NC}"
-        echo -e "${YELLOW}               Native Windows/Git Bash is not supported.${NC}"
-        echo ""
-        echo "Alternatively, continue without sshpass and complete setup manually."
-        echo ""
-        read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS < /dev/tty
-        case "$CONTINUE_NO_SSHPASS" in
-            [Yy]*) MANUAL_SSH=true ;;
-            *)
-                echo "Please install sshpass and try again."
-                exit 1
-                ;;
-        esac
+
+        # Detect platform and try to auto-install
+        PLATFORM="unknown"
+        CAN_AUTO_INSTALL=false
+
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            PLATFORM="macos"
+            if command -v brew &>/dev/null; then
+                CAN_AUTO_INSTALL=true
+            fi
+        elif [[ "$(uname -s)" == "Linux" ]]; then
+            if [[ "$(uname -r)" == *microsoft* ]] || [[ "$(uname -r)" == *Microsoft* ]]; then
+                PLATFORM="wsl"
+            elif [ -f /etc/os-release ]; then
+                . /etc/os-release
+                case "$ID" in
+                    ubuntu|debian) PLATFORM="debian" ;;
+                    fedora|rhel|centos) PLATFORM="fedora" ;;
+                esac
+            fi
+            # Check if we can use sudo
+            if [ "$PLATFORM" != "unknown" ] && command -v sudo &>/dev/null; then
+                CAN_AUTO_INSTALL=true
+            fi
+        elif [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
+            PLATFORM="gitbash"
+        fi
+
+        if [ "$CAN_AUTO_INSTALL" = true ]; then
+            echo -e "Detected platform: ${CYAN}$PLATFORM${NC}"
+            echo ""
+            read -p "Install sshpass automatically? [Y/n]: " AUTO_INSTALL < /dev/tty
+            AUTO_INSTALL=${AUTO_INSTALL:-Y}
+
+            if [[ "$AUTO_INSTALL" =~ ^[Yy] ]]; then
+                log_info "Installing sshpass..."
+                case "$PLATFORM" in
+                    macos)
+                        brew install hudochenkov/sshpass/sshpass
+                        ;;
+                    debian|wsl)
+                        sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+                        ;;
+                    fedora)
+                        sudo dnf install -y -q sshpass
+                        ;;
+                esac
+
+                if command -v sshpass &>/dev/null; then
+                    log_info "sshpass installed successfully!"
+                else
+                    log_error "Failed to install sshpass"
+                    MANUAL_SSH=true
+                fi
+            else
+                MANUAL_SSH=true
+            fi
+        elif [ "$PLATFORM" = "gitbash" ]; then
+            echo -e "${RED}Git Bash detected - this environment is not supported.${NC}"
+            echo ""
+            echo -e "${YELLOW}Windows users: Please use WSL (Windows Subsystem for Linux) instead.${NC}"
+            echo ""
+            echo "To set up WSL:"
+            echo "  1. Open PowerShell as Administrator"
+            echo "  2. Run: wsl --install -d Ubuntu-24.04"
+            echo "  3. Restart your computer"
+            echo "  4. Open 'Ubuntu' from Start menu and create a user"
+            echo "  5. Run this script again inside Ubuntu/WSL"
+            echo ""
+            exit 1
+        elif [ "$PLATFORM" = "macos" ]; then
+            echo "Homebrew is required to install sshpass on macOS."
+            echo ""
+            echo "Install Homebrew first:"
+            echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+            echo ""
+            echo "Then run this script again, or continue without sshpass."
+            echo ""
+            read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS < /dev/tty
+            case "$CONTINUE_NO_SSHPASS" in
+                [Yy]*) MANUAL_SSH=true ;;
+                *) exit 1 ;;
+            esac
+        else
+            echo "Could not detect your platform for automatic installation."
+            echo ""
+            echo "Install sshpass manually:"
+            echo ""
+            echo "  macOS:       brew install hudochenkov/sshpass/sshpass"
+            echo "  Ubuntu/WSL:  sudo apt install sshpass"
+            echo "  Fedora:      sudo dnf install sshpass"
+            echo ""
+            read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS < /dev/tty
+            case "$CONTINUE_NO_SSHPASS" in
+                [Yy]*) MANUAL_SSH=true ;;
+                *) exit 1 ;;
+            esac
+        fi
     fi
 
     if [ ${#missing[@]} -gt 0 ]; then
