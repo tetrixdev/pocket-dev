@@ -78,7 +78,7 @@ check_dependencies() {
         echo ""
         echo "Alternatively, you can complete the final steps manually."
         echo ""
-        read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS
+        read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS < /dev/tty
         case "$CONTINUE_NO_SSHPASS" in
             [Yy]*) MANUAL_SSH=true ;;
             *)
@@ -128,7 +128,7 @@ echo ""
 echo "Create one at: ${CYAN}https://console.hetzner.cloud/projects → Select project → Security → API tokens${NC}"
 echo ""
 
-read -p "Enter your Hetzner API token: " HETZNER_TOKEN
+read -p "Enter your Hetzner API token: " HETZNER_TOKEN < /dev/tty
 
 if [ -z "$HETZNER_TOKEN" ]; then
     log_error "API token is required"
@@ -159,7 +159,7 @@ echo "  ${BOLD}l${NC}  - Large            (8 vCPU, 16GB) - ~29 EUR/mo - For 10-2
 echo "  ${BOLD}xl${NC} - Extremely Large  (16 vCPU, 32GB)- ~57 EUR/mo - For 20+ apps"
 echo ""
 
-read -p "Server size [s]: " SERVER_SIZE
+read -p "Server size [s]: " SERVER_SIZE < /dev/tty
 SERVER_SIZE=${SERVER_SIZE:-s}
 
 # Validate and get server type
@@ -189,7 +189,7 @@ echo "  ${BOLD}ash${NC}  - Ashburn, USA (East Coast)"
 echo "  ${BOLD}hil${NC}  - Hillsboro, USA (West Coast)"
 echo ""
 
-read -p "Location [fsn1]: " LOCATION
+read -p "Location [fsn1]: " LOCATION < /dev/tty
 LOCATION=${LOCATION:-fsn1}
 
 # Validate location
@@ -205,7 +205,7 @@ log_info "Selected location: $LOCATION"
 
 # Server name
 echo ""
-read -p "Server name [pocketdev]: " SERVER_NAME
+read -p "Server name [pocketdev]: " SERVER_NAME < /dev/tty
 SERVER_NAME=${SERVER_NAME:-pocketdev}
 SERVER_NAME=$(echo "$SERVER_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g')
 
@@ -216,7 +216,7 @@ echo ""
 echo -e "${YELLOW}Recommended:${NC} Enable automatic backups (+20% of server cost)"
 echo "Backups protect against data loss and allow easy recovery."
 echo ""
-read -p "Enable backups? [Y/n]: " ENABLE_BACKUPS
+read -p "Enable backups? [Y/n]: " ENABLE_BACKUPS < /dev/tty
 case "$ENABLE_BACKUPS" in
     [Nn]*)
         BACKUPS_ENABLED=false
@@ -238,7 +238,7 @@ echo "Enter the domain name for PocketDev (e.g., pocketdev.example.com)"
 echo "This domain must be pointed to your server's IP after creation."
 echo ""
 
-read -p "Domain name: " DOMAIN_NAME
+read -p "Domain name: " DOMAIN_NAME < /dev/tty
 
 if [ -z "$DOMAIN_NAME" ]; then
     log_error "Domain name is required"
@@ -253,7 +253,7 @@ echo "  ${BOLD}1${NC} - TransIP (automatic DNS configuration)"
 echo "  ${BOLD}2${NC} - Manual (I'll configure DNS myself)"
 echo ""
 
-read -p "DNS method [2]: " DNS_METHOD
+read -p "DNS method [2]: " DNS_METHOD < /dev/tty
 DNS_METHOD=${DNS_METHOD:-2}
 
 TRANSIP_TOKEN=""
@@ -262,7 +262,7 @@ if [ "$DNS_METHOD" = "1" ]; then
     echo "TransIP API setup:"
     echo "Create an API token at: ${CYAN}https://www.transip.nl/cp/account/api/${NC}"
     echo ""
-    read -p "Enter TransIP API token: " TRANSIP_TOKEN
+    read -p "Enter TransIP API token: " TRANSIP_TOKEN < /dev/tty
 
     if [ -z "$TRANSIP_TOKEN" ]; then
         log_warn "No TransIP token provided, falling back to manual DNS"
@@ -366,7 +366,7 @@ if [ "$DNS_METHOD" = "1" ] && [ -n "$TRANSIP_TOKEN" ]; then
     echo "  Value:  $SERVER_IP"
     echo "  TTL:    300"
     echo ""
-    read -p "Press Enter once DNS is configured..."
+    read -p "Press Enter once DNS is configured..." < /dev/tty
 else
     echo ""
     echo "Please configure DNS with your provider:"
@@ -382,7 +382,7 @@ else
     echo "  - TransIP: Domains → $ROOT_DOMAIN → DNS → Add A record"
     echo "  - GoDaddy: DNS → Add → A → $SUBDOMAIN → $SERVER_IP"
     echo ""
-    read -p "Press Enter once DNS is configured..."
+    read -p "Press Enter once DNS is configured..." < /dev/tty
 fi
 
 # Wait for DNS propagation (simple check)

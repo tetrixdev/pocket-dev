@@ -109,7 +109,7 @@ if [ -z "$DOMAIN_NAME" ]; then
     echo "This domain must be pointed to this server's IP: $SERVER_IP"
     echo ""
 
-    read -p "Domain name: " DOMAIN_NAME
+    read -p "Domain name: " DOMAIN_NAME < /dev/tty
 
     if [ -z "$DOMAIN_NAME" ]; then
         log_error "Domain name is required"
@@ -127,7 +127,7 @@ echo "  ${BOLD}1${NC} - TransIP (automatic DNS configuration)"
 echo "  ${BOLD}2${NC} - Manual (I'll configure DNS myself)"
 echo ""
 
-read -p "DNS method [2]: " DNS_METHOD
+read -p "DNS method [2]: " DNS_METHOD < /dev/tty
 DNS_METHOD=${DNS_METHOD:-2}
 
 # Extract root domain from full domain
@@ -142,7 +142,7 @@ if [ "$DNS_METHOD" = "1" ]; then
     echo "TransIP API setup:"
     echo "Create an API token at: ${CYAN}https://www.transip.nl/cp/account/api/${NC}"
     echo ""
-    read -p "Enter TransIP API token: " TRANSIP_TOKEN
+    read -p "Enter TransIP API token: " TRANSIP_TOKEN < /dev/tty
 
     if [ -z "$TRANSIP_TOKEN" ]; then
         log_warn "No TransIP token provided, falling back to manual DNS"
@@ -157,7 +157,7 @@ if [ "$DNS_METHOD" = "1" ]; then
         echo "  Value:  $SERVER_IP"
         echo "  TTL:    300"
         echo ""
-        read -p "Press Enter once DNS is configured..."
+        read -p "Press Enter once DNS is configured..." < /dev/tty
     fi
 fi
 
@@ -176,7 +176,7 @@ if [ "$DNS_METHOD" = "2" ]; then
     echo "  - TransIP: Domains → $ROOT_DOMAIN → DNS → Add A record"
     echo "  - GoDaddy: DNS → Add → A → $SUBDOMAIN → $SERVER_IP"
     echo ""
-    read -p "Press Enter once DNS is configured..."
+    read -p "Press Enter once DNS is configured..." < /dev/tty
 fi
 
 # Check DNS propagation
@@ -208,7 +208,7 @@ echo ""
 echo -e "${YELLOW}IMPORTANT: You will need to authenticate with Tailscale.${NC}"
 echo "When prompted, open the URL in your browser to authenticate."
 echo ""
-read -p "Press Enter to continue..."
+read -p "Press Enter to continue..." < /dev/tty
 
 # Download and run vps-setup
 curl -fsSL "$VPS_SETUP_URL/setup.sh" | bash
