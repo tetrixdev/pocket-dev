@@ -65,116 +65,123 @@ check_dependencies() {
     command -v curl &>/dev/null || missing+=("curl")
     command -v dig &>/dev/null || missing+=("dig (dnsutils)")
 
-    # Optional but needed for automated setup: sshpass
-    if ! command -v sshpass &>/dev/null; then
+    # Check for Git Bash early (unsupported)
+    if [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
+        echo -e "${RED}Git Bash detected - this environment is not supported.${NC}"
         echo ""
-        log_warn "sshpass is not installed"
+        echo -e "${YELLOW}Windows users: Please use WSL (Windows Subsystem for Linux) instead.${NC}"
         echo ""
-        echo "sshpass enables automated SSH login with the server's root password."
+        echo "To set up WSL:"
+        echo "  1. Open PowerShell as Administrator"
+        echo "  2. Run: wsl --install -d Ubuntu-24.04"
+        echo "  3. Restart your computer"
+        echo "  4. Open 'Ubuntu' from Start menu and create a user"
+        echo "  5. Run this script again inside Ubuntu/WSL"
         echo ""
-
-        # Detect platform and try to auto-install
-        PLATFORM="unknown"
-        CAN_AUTO_INSTALL=false
-
-        if [[ "$(uname -s)" == "Darwin" ]]; then
-            PLATFORM="macos"
-            if command -v brew &>/dev/null; then
-                CAN_AUTO_INSTALL=true
-            fi
-        elif [[ "$(uname -s)" == "Linux" ]]; then
-            if [[ "$(uname -r)" == *microsoft* ]] || [[ "$(uname -r)" == *Microsoft* ]]; then
-                PLATFORM="wsl"
-            elif [ -f /etc/os-release ]; then
-                . /etc/os-release
-                case "$ID" in
-                    ubuntu|debian) PLATFORM="debian" ;;
-                    fedora|rhel|centos) PLATFORM="fedora" ;;
-                esac
-            fi
-            # Check if we can use sudo
-            if [ "$PLATFORM" != "unknown" ] && command -v sudo &>/dev/null; then
-                CAN_AUTO_INSTALL=true
-            fi
-        elif [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
-            PLATFORM="gitbash"
-        fi
-
-        if [ "$CAN_AUTO_INSTALL" = true ]; then
-            echo -e "Detected platform: ${CYAN}$PLATFORM${NC}"
-            echo ""
-            read -p "Install sshpass automatically? [Y/n]: " AUTO_INSTALL < /dev/tty
-            AUTO_INSTALL=${AUTO_INSTALL:-Y}
-
-            if [[ "$AUTO_INSTALL" =~ ^[Yy] ]]; then
-                log_info "Installing sshpass..."
-                case "$PLATFORM" in
-                    macos)
-                        brew install hudochenkov/sshpass/sshpass
-                        ;;
-                    debian|wsl)
-                        sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
-                        ;;
-                    fedora)
-                        sudo dnf install -y -q sshpass
-                        ;;
-                esac
-
-                if command -v sshpass &>/dev/null; then
-                    log_info "sshpass installed successfully!"
-                else
-                    log_error "Failed to install sshpass"
-                    MANUAL_SSH=true
-                fi
-            else
-                MANUAL_SSH=true
-            fi
-        elif [ "$PLATFORM" = "gitbash" ]; then
-            echo -e "${RED}Git Bash detected - this environment is not supported.${NC}"
-            echo ""
-            echo -e "${YELLOW}Windows users: Please use WSL (Windows Subsystem for Linux) instead.${NC}"
-            echo ""
-            echo "To set up WSL:"
-            echo "  1. Open PowerShell as Administrator"
-            echo "  2. Run: wsl --install -d Ubuntu-24.04"
-            echo "  3. Restart your computer"
-            echo "  4. Open 'Ubuntu' from Start menu and create a user"
-            echo "  5. Run this script again inside Ubuntu/WSL"
-            echo ""
-            exit 1
-        elif [ "$PLATFORM" = "macos" ]; then
-            echo "Homebrew is required to install sshpass on macOS."
-            echo ""
-            echo "Install Homebrew first:"
-            echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-            echo ""
-            echo "Then run this script again, or continue without sshpass."
-            echo ""
-            read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS < /dev/tty
-            case "$CONTINUE_NO_SSHPASS" in
-                [Yy]*) MANUAL_SSH=true ;;
-                *) exit 1 ;;
-            esac
-        else
-            echo "Could not detect your platform for automatic installation."
-            echo ""
-            echo "Install sshpass manually:"
-            echo ""
-            echo "  macOS:       brew install hudochenkov/sshpass/sshpass"
-            echo "  Ubuntu/WSL:  sudo apt install sshpass"
-            echo "  Fedora:      sudo dnf install sshpass"
-            echo ""
-            read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS < /dev/tty
-            case "$CONTINUE_NO_SSHPASS" in
-                [Yy]*) MANUAL_SSH=true ;;
-                *) exit 1 ;;
-            esac
-        fi
+        exit 1
     fi
 
     if [ ${#missing[@]} -gt 0 ]; then
         log_error "Missing required dependencies: ${missing[*]}"
         exit 1
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Install sshpass if needed (called as Step 2)
+# -----------------------------------------------------------------------------
+install_sshpass_if_needed() {
+    # If already installed, skip this step entirely
+    if command -v sshpass &>/dev/null; then
+        return 0
+    fi
+
+    log_step "Step 2/8: Installing sshpass"
+    echo ""
+    echo "sshpass enables automated SSH login with the server's root password."
+    echo "Without it, you'll need to manually enter the password during setup."
+    echo ""
+
+    # Detect platform
+    PLATFORM="unknown"
+    CAN_AUTO_INSTALL=false
+
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        PLATFORM="macos"
+        if command -v brew &>/dev/null; then
+            CAN_AUTO_INSTALL=true
+        fi
+    elif [[ "$(uname -s)" == "Linux" ]]; then
+        if [[ "$(uname -r)" == *microsoft* ]] || [[ "$(uname -r)" == *Microsoft* ]]; then
+            PLATFORM="wsl"
+        elif [ -f /etc/os-release ]; then
+            . /etc/os-release
+            case "$ID" in
+                ubuntu|debian) PLATFORM="debian" ;;
+                fedora|rhel|centos) PLATFORM="fedora" ;;
+            esac
+        fi
+        if [ "$PLATFORM" != "unknown" ] && command -v sudo &>/dev/null; then
+            CAN_AUTO_INSTALL=true
+        fi
+    fi
+
+    if [ "$CAN_AUTO_INSTALL" = true ]; then
+        echo -e "Detected platform: ${CYAN}$PLATFORM${NC}"
+        echo ""
+        read -p "Install sshpass automatically? [Y/n]: " AUTO_INSTALL < /dev/tty
+        AUTO_INSTALL=${AUTO_INSTALL:-Y}
+
+        if [[ "$AUTO_INSTALL" =~ ^[Yy] ]]; then
+            log_info "Installing sshpass..."
+            case "$PLATFORM" in
+                macos)
+                    brew install hudochenkov/sshpass/sshpass
+                    ;;
+                debian|wsl)
+                    sudo apt-get update -qq && sudo apt-get install -y -qq sshpass
+                    ;;
+                fedora)
+                    sudo dnf install -y -q sshpass
+                    ;;
+            esac
+
+            if command -v sshpass &>/dev/null; then
+                log_info "sshpass installed successfully!"
+            else
+                log_error "Failed to install sshpass"
+                MANUAL_SSH=true
+            fi
+        else
+            MANUAL_SSH=true
+        fi
+    elif [ "$PLATFORM" = "macos" ]; then
+        echo "Homebrew is required to install sshpass on macOS."
+        echo ""
+        echo "Install Homebrew first:"
+        echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+        echo ""
+        echo "Then run this script again, or continue without sshpass."
+        echo ""
+        read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS < /dev/tty
+        case "$CONTINUE_NO_SSHPASS" in
+            [Yy]*) MANUAL_SSH=true ;;
+            *) exit 1 ;;
+        esac
+    else
+        echo "Could not detect your platform for automatic installation."
+        echo ""
+        echo "Install sshpass manually:"
+        echo ""
+        echo "  macOS:       brew install hudochenkov/sshpass/sshpass"
+        echo "  Ubuntu/WSL:  sudo apt install sshpass"
+        echo "  Fedora:      sudo dnf install sshpass"
+        echo ""
+        read -p "Continue without sshpass? [y/N]: " CONTINUE_NO_SSHPASS < /dev/tty
+        case "$CONTINUE_NO_SSHPASS" in
+            [Yy]*) MANUAL_SSH=true ;;
+            *) exit 1 ;;
+        esac
     fi
 }
 
@@ -190,7 +197,7 @@ echo "==========================================================================
 echo "  PocketDev Cloud Setup"
 echo "============================================================================="
 echo -e "${NC}"
-log_step "Step 1/7: Welcome"
+log_step "Step 1/8: Welcome"
 echo ""
 echo "This script creates a fully configured PocketDev instance on a fresh"
 echo "Hetzner Cloud server. It handles everything automatically:"
@@ -213,7 +220,7 @@ echo "  Or open Windows Terminal and select 'Ubuntu' from the dropdown."
 echo ""
 echo -e "${YELLOW}Already have a server?${NC} Press Ctrl+C and run setup-server.sh instead."
 echo ""
-read -p "Press Y to proceed (if you cannot respond, you're likely not in WSL): " PROCEED < /dev/tty
+read -p "Press Y to proceed (if you cannot respond, you're likely in CMD on Windows): " PROCEED < /dev/tty
 if [[ ! "$PROCEED" =~ ^[Yy]$ ]]; then
     echo ""
     log_error "Setup cancelled."
@@ -222,9 +229,14 @@ fi
 echo ""
 
 # =============================================================================
-# STEP 2: Hetzner API Token
+# STEP 2: Install sshpass (if needed)
 # =============================================================================
-log_step "Step 2/7: Hetzner Cloud Setup"
+install_sshpass_if_needed
+
+# =============================================================================
+# STEP 3: Hetzner API Token
+# =============================================================================
+log_step "Step 3/8: Hetzner Cloud Setup"
 
 echo ""
 echo "You'll need a Hetzner Cloud API token with read/write permissions."
@@ -249,9 +261,9 @@ VERIFY_RESPONSE=$(curl -sf -H "Authorization: Bearer $HETZNER_TOKEN" "$HETZNER_A
 log_info "API token verified!"
 
 # =============================================================================
-# STEP 3: Server Configuration
+# STEP 4: Server Configuration
 # =============================================================================
-log_step "Step 3/7: Server Configuration"
+log_step "Step 4/8: Server Configuration"
 
 echo ""
 echo "Select server size:"
@@ -333,9 +345,9 @@ case "$ENABLE_BACKUPS" in
 esac
 
 # =============================================================================
-# STEP 4: Domain Configuration
+# STEP 5: Domain Configuration
 # =============================================================================
-log_step "Step 4/7: Domain Configuration"
+log_step "Step 5/8: Domain Configuration"
 
 echo ""
 echo "Enter the BASE domain for PocketDev (e.g., dev.example.com)"
@@ -459,9 +471,9 @@ if [ "$DNS_METHOD" = "1" ]; then
 fi
 
 # =============================================================================
-# STEP 5: Create Server
+# STEP 6: Create Server
 # =============================================================================
-log_step "Step 5/7: Creating Hetzner Server"
+log_step "Step 6/8: Creating Hetzner Server"
 
 echo ""
 log_info "Creating server '$SERVER_NAME' ($SERVER_TYPE in $LOCATION)..."
@@ -526,9 +538,9 @@ chmod 600 "$CREDENTIALS_FILE"
 log_info "Credentials saved to: $CREDENTIALS_FILE"
 
 # =============================================================================
-# STEP 6: Configure DNS
+# STEP 7: Configure DNS
 # =============================================================================
-log_step "Step 6/7: DNS Configuration"
+log_step "Step 7/8: DNS Configuration"
 
 if [ "$USE_TRANSIP" = true ]; then
     log_info "TransIP credentials will be passed to server setup."
@@ -585,9 +597,9 @@ if [ "$USE_TRANSIP" = false ]; then
 fi
 
 # =============================================================================
-# STEP 7: Setup Server
+# STEP 8: Setup Server
 # =============================================================================
-log_step "Step 7/7: Server Setup"
+log_step "Step 8/8: Server Setup"
 
 # Wait for server to be ready
 log_info "Waiting for server to be ready..."
