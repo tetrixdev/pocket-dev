@@ -13,15 +13,15 @@
 #   PD_DOMAIN=pocketdev.example.com curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/setup-server.sh | bash
 #
 # WHAT IT DOES:
-#   1. Configures DNS (TransIP or manual)
+#   1. Configures DNS (TransIP automated or manual)
 #   2. Runs vps-setup (Docker, proxy-nginx, Tailscale, SSH hardening)
-#   3. Installs PocketDev with SSL
+#   3. Installs PocketDev with wildcard SSL certificate
 #
 # REQUIREMENTS:
 #   - Fresh Ubuntu/Debian server
 #   - Root access
 #   - Tailscale account (free at tailscale.com)
-#   - Domain name pointed to this server
+#   - Domain name (TransIP strongly recommended for automatic SSL renewal)
 #
 # DON'T HAVE A SERVER YET? Use setup-cloud.sh instead:
 #   curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/setup-cloud.sh | bash
@@ -57,6 +57,19 @@ POCKETDEV_URL="https://raw.githubusercontent.com/tetrixdev/pocket-dev/$POCKETDEV
 
 # Domain can be pre-set via environment variable
 DOMAIN_NAME="${PD_DOMAIN:-}"
+
+# TransIP credentials (can be pre-set by setup-cloud.sh)
+TRANSIP_LOGIN=""
+TRANSIP_PRIVATE_KEY=""
+USE_TRANSIP=false
+
+# Check if credentials were pre-transferred by setup-cloud.sh
+if [ "${PD_USE_TRANSIP:-}" = "1" ] && [ -f /etc/pocketdev/transip_login ] && [ -f /etc/pocketdev/transip_key ]; then
+    TRANSIP_LOGIN=$(cat /etc/pocketdev/transip_login)
+    TRANSIP_PRIVATE_KEY=$(cat /etc/pocketdev/transip_key)
+    USE_TRANSIP=true
+    log_info "Using pre-configured TransIP credentials"
+fi
 
 # =============================================================================
 # Pre-flight checks
@@ -101,15 +114,17 @@ echo ""
 # =============================================================================
 # STEP 1: Domain Configuration
 # =============================================================================
-log_step "Step 1/4: Domain Configuration"
+log_step "Step 1/5: Domain Configuration"
 
 if [ -z "$DOMAIN_NAME" ]; then
     echo ""
-    echo "Enter the domain name for PocketDev (e.g., pocketdev.example.com)"
-    echo "This domain must be pointed to this server's IP: $SERVER_IP"
+    echo "Enter the BASE domain for this server (e.g., dev.example.com)"
+    echo ""
+    echo "This will be used for PocketDev and any future apps you deploy."
+    echo "All subdomains (*.dev.example.com) will also point to this server."
     echo ""
 
-    read -p "Domain name: " DOMAIN_NAME < /dev/tty
+    read -p "Base domain: " DOMAIN_NAME < /dev/tty
 
     if [ -z "$DOMAIN_NAME" ]; then
         log_error "Domain name is required"
@@ -119,68 +134,139 @@ else
     log_info "Using domain from environment: $DOMAIN_NAME"
 fi
 
-# DNS automation option
-echo ""
-echo "How would you like to configure DNS?"
-echo ""
-echo -e "  ${BOLD}1${NC} - TransIP (automatic DNS configuration)"
-echo -e "  ${BOLD}2${NC} - Manual (I'll configure DNS myself)"
-echo ""
-
-read -p "DNS method [2]: " DNS_METHOD < /dev/tty
-DNS_METHOD=${DNS_METHOD:-2}
-
 # Extract root domain from full domain
 ROOT_DOMAIN=$(echo "$DOMAIN_NAME" | rev | cut -d. -f1-2 | rev)
 SUBDOMAIN=$(echo "$DOMAIN_NAME" | sed "s/\.$ROOT_DOMAIN$//")
 if [ "$SUBDOMAIN" = "$DOMAIN_NAME" ]; then
     SUBDOMAIN="@"
 fi
+WILDCARD_SUBDOMAIN="*.$SUBDOMAIN"
+if [ "$SUBDOMAIN" = "@" ]; then
+    WILDCARD_SUBDOMAIN="*"
+fi
+
+# =============================================================================
+# STEP 2: DNS Provider Selection
+# =============================================================================
+log_step "Step 2/5: DNS & SSL Configuration"
+
+# Skip this section if TransIP is already configured
+if [ "$USE_TRANSIP" = true ]; then
+    log_info "TransIP credentials already configured"
+else
+
+echo ""
+echo -e "${YELLOW}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${YELLOW}║  IMPORTANT: SSL Certificate Renewal                                        ║${NC}"
+echo -e "${YELLOW}╠════════════════════════════════════════════════════════════════════════════╣${NC}"
+echo -e "${YELLOW}║                                                                            ║${NC}"
+echo -e "${YELLOW}║  SSL certificates expire every 60-90 days and must be renewed.            ║${NC}"
+echo -e "${YELLOW}║                                                                            ║${NC}"
+echo -e "${YELLOW}║  • With TransIP: Fully automatic renewal (recommended)                    ║${NC}"
+echo -e "${YELLOW}║  • Without TransIP: You must manually update DNS TXT records              ║${NC}"
+echo -e "${YELLOW}║    every ~60 days, or your SSL will expire and HTTPS will break.          ║${NC}"
+echo -e "${YELLOW}║                                                                            ║${NC}"
+echo -e "${YELLOW}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo "How would you like to configure DNS and SSL?"
+echo ""
+echo -e "  ${BOLD}${GREEN}1${NC} - ${GREEN}TransIP (RECOMMENDED)${NC}"
+echo "       • Requires domain registered/managed at TransIP"
+echo "       • Automatic DNS record creation"
+echo "       • Automatic wildcard SSL certificate"
+echo "       • Automatic SSL renewal (zero maintenance)"
+echo ""
+echo -e "  ${BOLD}2${NC} - Manual DNS"
+echo "       • You configure DNS records yourself"
+echo "       • You must update TXT records every ~60 days for SSL renewal"
+echo "       • Not recommended for production use"
+echo ""
+
+read -p "DNS method [1]: " DNS_METHOD < /dev/tty
+DNS_METHOD=${DNS_METHOD:-1}
 
 if [ "$DNS_METHOD" = "1" ]; then
     echo ""
-    echo "TransIP API setup:"
-    echo -e "Create an API token at: ${CYAN}https://www.transip.nl/cp/account/api/${NC}"
+    echo -e "${CYAN}TransIP API Setup${NC}"
     echo ""
-    read -p "Enter TransIP API token: " TRANSIP_TOKEN < /dev/tty
+    echo -e "${YELLOW}Requirement: Your domain must be registered or have DNS managed at TransIP.${NC}"
+    echo -e "${YELLOW}             If your domain is elsewhere, choose option 2 (Manual DNS).${NC}"
+    echo ""
+    echo "You need TWO things from TransIP:"
+    echo -e "  1. Your TransIP ${BOLD}login username${NC}"
+    echo -e "  2. An ${BOLD}API private key${NC} (generate at TransIP control panel)"
+    echo ""
+    echo -e "Generate your API key at: ${CYAN}https://www.transip.nl/cp/account/api/${NC}"
+    echo ""
+    echo -e "${YELLOW}Steps: Enable 'Allow API access' → Generate new key pair → Copy PRIVATE KEY${NC}"
+    echo -e "${YELLOW}       (The private key starts with -----BEGIN PRIVATE KEY-----)${NC}"
+    echo ""
 
-    if [ -z "$TRANSIP_TOKEN" ]; then
-        log_warn "No TransIP token provided, falling back to manual DNS"
+    read -p "TransIP login username: " TRANSIP_LOGIN < /dev/tty
+
+    if [ -z "$TRANSIP_LOGIN" ]; then
+        log_warn "No TransIP login provided, falling back to manual DNS"
         DNS_METHOD="2"
     else
-        log_info "TransIP auto-configuration not yet implemented"
-        log_warn "Please add this DNS record manually in TransIP:"
         echo ""
-        echo "  Domain: $ROOT_DOMAIN"
-        echo "  Type:   A"
-        echo "  Name:   $SUBDOMAIN"
-        echo "  Value:  $SERVER_IP"
-        echo "  TTL:    300"
+        echo "Paste your TransIP private key below."
+        echo "It should start with '-----BEGIN PRIVATE KEY-----'"
+        echo "Press Enter twice when done:"
         echo ""
-        read -p "Press Enter once DNS is configured..." < /dev/tty
+
+        TRANSIP_PRIVATE_KEY=""
+        while IFS= read -r line < /dev/tty; do
+            [ -z "$line" ] && break
+            TRANSIP_PRIVATE_KEY="${TRANSIP_PRIVATE_KEY}${line}"$'\n'
+        done
+
+        if [ -z "$TRANSIP_PRIVATE_KEY" ] || [[ ! "$TRANSIP_PRIVATE_KEY" =~ "BEGIN PRIVATE KEY" ]]; then
+            log_warn "Invalid or empty private key, falling back to manual DNS"
+            DNS_METHOD="2"
+        else
+            USE_TRANSIP=true
+            log_info "TransIP credentials saved"
+        fi
     fi
 fi
 
-if [ "$DNS_METHOD" = "2" ]; then
+fi  # End of "if not already configured" block
+
+# =============================================================================
+# DNS Configuration (TransIP or Manual)
+# =============================================================================
+if [ "$USE_TRANSIP" = true ]; then
+    log_info "TransIP will be configured after Docker/proxy-nginx is installed."
+    log_info "DNS TXT records will be managed automatically during SSL certificate request."
+else
+    # Manual DNS
     echo ""
-    echo "Please configure DNS with your provider:"
+    echo -e "${YELLOW}Manual DNS Configuration Required${NC}"
     echo ""
-    echo "  Domain: $ROOT_DOMAIN"
-    echo "  Type:   A"
-    echo "  Name:   $SUBDOMAIN"
-    echo "  Value:  $SERVER_IP"
-    echo "  TTL:    300"
+    echo "Please add these DNS records with your provider:"
     echo ""
-    echo "Example for common providers:"
-    echo "  - Cloudflare: DNS → Add record → A → $SUBDOMAIN → $SERVER_IP"
-    echo "  - TransIP: Domains → $ROOT_DOMAIN → DNS → Add A record"
-    echo "  - GoDaddy: DNS → Add → A → $SUBDOMAIN → $SERVER_IP"
+    echo -e "  ${BOLD}Record 1 (Base domain):${NC}"
+    echo "    Domain: $ROOT_DOMAIN"
+    echo "    Type:   A"
+    echo "    Name:   $SUBDOMAIN"
+    echo "    Value:  $SERVER_IP"
+    echo "    TTL:    300"
     echo ""
-    read -p "Press Enter once DNS is configured..." < /dev/tty
+    echo -e "  ${BOLD}Record 2 (Wildcard for subdomains):${NC}"
+    echo "    Domain: $ROOT_DOMAIN"
+    echo "    Type:   A"
+    echo "    Name:   $WILDCARD_SUBDOMAIN"
+    echo "    Value:  $SERVER_IP"
+    echo "    TTL:    300"
+    echo ""
+    echo "Example for TransIP:"
+    echo "  Domains → $ROOT_DOMAIN → DNS → Add two A records as shown above"
+    echo ""
+    read -p "Press Enter once BOTH DNS records are configured..." < /dev/tty
 fi
 
-# Check DNS propagation
-log_info "Checking DNS propagation..."
+# Check DNS propagation for base domain
+log_info "Checking DNS propagation for $DOMAIN_NAME..."
 DNS_OK=false
 for i in {1..30}; do
     RESOLVED_IP=$(dig +short "$DOMAIN_NAME" 2>/dev/null | head -1)
@@ -194,15 +280,15 @@ for i in {1..30}; do
 done
 echo ""
 
-if [ "$DNS_OK" = false ]; then
+if [ "$DNS_OK" = false ] && [ "$USE_TRANSIP" = false ]; then
     log_warn "DNS not yet propagated. SSL certificate request may fail."
-    log_warn "You can request SSL later with: docker exec -it proxy-nginx certbot --nginx -d $DOMAIN_NAME"
+    log_warn "Continuing anyway - you can request SSL later."
 fi
 
 # =============================================================================
-# STEP 2: Run VPS Setup
+# STEP 3: Run VPS Setup
 # =============================================================================
-log_step "Step 2/4: VPS Setup (Docker, proxy-nginx, Tailscale)"
+log_step "Step 3/5: VPS Setup (Docker, proxy-nginx, Tailscale)"
 
 echo ""
 echo -e "${YELLOW}IMPORTANT: You will need to authenticate with Tailscale.${NC}"
@@ -214,29 +300,101 @@ read -p "Press Enter to continue..." < /dev/tty
 curl -fsSL "$VPS_SETUP_URL/setup.sh" | bash
 
 # =============================================================================
-# STEP 3: Install PocketDev
+# STEP 4: Configure TransIP credentials (if enabled)
 # =============================================================================
-log_step "Step 3/4: Installing PocketDev"
+if [ "$USE_TRANSIP" = true ]; then
+    log_step "Step 4/5: Configuring TransIP in proxy-nginx"
+
+    # Save the private key to a temp file for the setup script
+    echo "$TRANSIP_PRIVATE_KEY" > /tmp/transip-key.pem
+    chmod 600 /tmp/transip-key.pem
+
+    # Copy key into proxy-nginx container and configure credentials
+    log_info "Setting up TransIP credentials in proxy-nginx..."
+    docker cp /tmp/transip-key.pem proxy-nginx:/tmp/transip-key.pem
+    docker exec proxy-nginx /scripts/transip-setup.sh setup \
+        --login="$TRANSIP_LOGIN" \
+        --key-file=/tmp/transip-key.pem
+
+    # Clean up temp file
+    rm -f /tmp/transip-key.pem
+    docker exec proxy-nginx rm -f /tmp/transip-key.pem
+
+    log_info "TransIP credentials configured in proxy-nginx"
+else
+    log_step "Step 4/5: DNS Configuration"
+    log_info "Skipping TransIP DNS setup (manual mode)"
+fi
+
+# =============================================================================
+# STEP 5: Install PocketDev
+# =============================================================================
+log_step "Step 5/5: Installing PocketDev"
 
 # Run PocketDev installer
 PD_DOMAIN="$DOMAIN_NAME" curl -fsSL "$POCKETDEV_URL/install.sh" | bash
 
 # =============================================================================
-# STEP 4: Request SSL Certificate
+# SSL Certificate Request
 # =============================================================================
-log_step "Step 4/4: SSL Certificate"
+log_step "SSL Certificate Setup"
 
-if [ "$DNS_OK" = true ]; then
-    log_info "Requesting SSL certificate for $DOMAIN_NAME..."
+if [ "$USE_TRANSIP" = true ]; then
+    log_info "Requesting wildcard SSL certificate via DNS-01 challenge..."
+    echo ""
+    echo "This will:"
+    echo "  1. Request wildcard SSL certificate from Let's Encrypt"
+    echo "  2. Automatically create/remove DNS TXT records via TransIP"
+    echo "  3. Set up automatic renewal (handled by proxy-nginx's certbot cron)"
+    echo ""
+    echo -e "${YELLOW}Note: DNS propagation may take up to 2 minutes...${NC}"
+    echo ""
+
+    # Request wildcard certificate using proxy-nginx's built-in TransIP plugin
+    docker exec proxy-nginx /scripts/transip-setup.sh wildcard --domain="$DOMAIN_NAME" || {
+        log_warn "Wildcard SSL request failed. You can retry manually:"
+        echo "  docker exec proxy-nginx /scripts/transip-setup.sh wildcard --domain=$DOMAIN_NAME"
+    }
+
+    # Automatic renewal is handled by proxy-nginx's existing certbot cron job
+    # (runs twice daily: 0 0,12 * * * certbot renew --quiet --deploy-hook 'nginx -s reload')
+    log_info "Automatic SSL renewal is handled by proxy-nginx's built-in cron job"
+
+elif [ "$DNS_OK" = true ]; then
+    log_info "Requesting SSL certificate for $DOMAIN_NAME (HTTP-01 challenge)..."
+    echo ""
+    echo -e "${YELLOW}Note: This is a single-domain certificate.${NC}"
+    echo "For additional subdomains, you'll need to request certificates manually."
+    echo ""
+
     docker exec -it proxy-nginx certbot --nginx -d "$DOMAIN_NAME" --non-interactive --agree-tos --register-unsafely-without-email || {
         log_warn "Automatic SSL failed. You can request manually:"
         echo "  docker exec -it proxy-nginx certbot --nginx -d $DOMAIN_NAME"
     }
+
+    echo ""
+    echo -e "${YELLOW}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  REMINDER: Manual SSL Renewal Required                                     ║${NC}"
+    echo -e "${YELLOW}╠════════════════════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "${YELLOW}║                                                                            ║${NC}"
+    echo -e "${YELLOW}║  Your SSL certificate will expire in ~90 days.                            ║${NC}"
+    echo -e "${YELLOW}║  You chose manual DNS, so automatic renewal is NOT possible.              ║${NC}"
+    echo -e "${YELLOW}║                                                                            ║${NC}"
+    echo -e "${YELLOW}║  To renew, you must:                                                       ║${NC}"
+    echo -e "${YELLOW}║  1. Add a TXT record when prompted by certbot                             ║${NC}"
+    echo -e "${YELLOW}║  2. Run: docker exec -it proxy-nginx certbot renew                        ║${NC}"
+    echo -e "${YELLOW}║                                                                            ║${NC}"
+    echo -e "${YELLOW}║  Consider switching to TransIP for automatic renewal.                     ║${NC}"
+    echo -e "${YELLOW}║                                                                            ║${NC}"
+    echo -e "${YELLOW}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
 else
     log_warn "Skipping SSL - DNS not yet propagated"
     echo ""
     echo "Once DNS is configured, request SSL with:"
     echo "  docker exec -it proxy-nginx certbot --nginx -d $DOMAIN_NAME"
+    echo ""
+    echo -e "${YELLOW}Note: Without TransIP, you'll need to manually renew SSL every ~60 days.${NC}"
 fi
 
 # =============================================================================
@@ -249,19 +407,27 @@ echo -e "${GREEN}===============================================================
 echo ""
 echo "Your PocketDev instance is ready at:"
 echo ""
-if [ "$DNS_OK" = true ]; then
-    echo -e "  ${CYAN}https://$DOMAIN_NAME${NC}"
-else
-    echo -e "  ${CYAN}http://$DOMAIN_NAME${NC}  (SSL pending DNS propagation)"
+echo -e "  ${CYAN}https://$DOMAIN_NAME${NC}"
+echo ""
+if [ "$USE_TRANSIP" = true ]; then
+    echo -e "${GREEN}✓ Wildcard SSL configured${NC} - All subdomains (*.$DOMAIN_NAME) are covered"
+    echo -e "${GREEN}✓ Automatic renewal enabled${NC} - SSL will renew automatically"
 fi
 echo ""
 echo "Server details:"
 echo "  IP Address: $SERVER_IP"
+echo "  Base domain: $DOMAIN_NAME"
+echo "  Wildcard: *.$DOMAIN_NAME"
 echo "  SSH: ssh admin@<tailscale-ip>"
 echo ""
 echo "Next steps:"
-echo "  1. Open the URL above in your browser"
+echo "  1. Open https://$DOMAIN_NAME in your browser"
 echo "  2. Follow the setup wizard to configure AI providers"
 echo "  3. Start building!"
 echo ""
+if [ "$USE_TRANSIP" = false ]; then
+    echo -e "${YELLOW}Remember: SSL renewal requires manual DNS updates every ~60 days.${NC}"
+    echo -e "${YELLOW}Consider switching to TransIP for automatic renewal.${NC}"
+    echo ""
+fi
 echo -e "${GREEN}=============================================================================${NC}"
