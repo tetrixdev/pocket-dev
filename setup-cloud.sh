@@ -540,12 +540,16 @@ if [ "$CREATE_HTTP_CODE" != "201" ]; then
     log_error "Failed to create server (HTTP $CREATE_HTTP_CODE)"
     echo ""
     # Try to extract error message from response
-    ERROR_MSG=$(echo "$CREATE_RESPONSE" | grep -o '"message":"[^"]*"' | cut -d'"' -f4)
+    ERROR_MSG=$(echo "$CREATE_RESPONSE" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4)
+    ERROR_CODE=$(echo "$CREATE_RESPONSE" | grep -o '"code":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [ -n "$ERROR_MSG" ]; then
         echo "  Error: $ERROR_MSG"
-    else
-        echo "  Response: $CREATE_RESPONSE"
+        [ -n "$ERROR_CODE" ] && echo "  Code: $ERROR_CODE"
     fi
+    # Always show raw response for debugging
+    echo ""
+    echo "  Raw response:"
+    echo "  $CREATE_RESPONSE"
     echo ""
     exit 1
 fi
