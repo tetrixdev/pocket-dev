@@ -412,20 +412,7 @@ class ServerAppCommand extends Command
             return $this->errorResponse('--domain is required');
         }
 
-        // Add domain to app's domain list
-        $domains = $app->domains ?? [];
-        if (!in_array($domain, $domains)) {
-            $domains[] = $domain;
-            $app->domains = $domains;
-        }
-
-        if ($upstream && !$app->upstream_container) {
-            $app->upstream_container = $upstream;
-        }
-
-        $app->save();
-
-        // If server has proxy-nginx, update the config
+        // If server has proxy-nginx, update the config FIRST (before saving to DB)
         if ($app->server->has_proxy_nginx) {
             try {
                 $ssh = $this->getSshConnection($app->server);
@@ -439,6 +426,19 @@ class ServerAppCommand extends Command
                 return $this->errorResponse("Failed to update proxy config: " . $e->getMessage());
             }
         }
+
+        // Only persist to DB after remote config succeeded
+        $domains = $app->domains ?? [];
+        if (!in_array($domain, $domains)) {
+            $domains[] = $domain;
+            $app->domains = $domains;
+        }
+
+        if ($upstream && !$app->upstream_container) {
+            $app->upstream_container = $upstream;
+        }
+
+        $app->save();
 
         $this->outputJson([
             'output' => "Domain '{$domain}' added to '{$app->name}'. Run 'server:app request-ssl' to enable HTTPS.",
