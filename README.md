@@ -20,17 +20,24 @@ Then open http://localhost (or your configured port) and follow the setup wizard
 
 ### Production Deployment (VPS)
 
-For a secure production deployment on a VPS with SSL and Tailscale:
+**Don't have a server yet?** Run this from your local machine:
 
 ```bash
-# 1. Run vps-setup (Docker, proxy-nginx, SSH hardening, Tailscale)
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/vps-setup/main/setup.sh | bash
-
-# 2. Install PocketDev (prompts for domain, configures SSL)
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/setup-cloud.sh | bash
 ```
 
-See [vps-setup](https://github.com/tetrixdev/vps-setup) for details on server hardening.
+This creates a Hetzner Cloud server and configures everything automatically.
+
+**Already have a server?** SSH into it and run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/setup-server.sh | bash
+```
+
+Both scripts will:
+- Install Docker, proxy-nginx, and Tailscale
+- Configure SSL certificates
+- Set up PocketDev with your domain
 
 ## Features
 
@@ -57,12 +64,15 @@ docker compose pull && docker compose up -d
 
 ## Deploy to a Server
 
-Want to run PocketDev on a VPS? Use the [vps-setup](https://github.com/tetrixdev/vps-setup) + install.sh combo shown in Quick Start above. This provides:
+Use the one-liners in Quick Start above. The setup provides:
 
-- **Tailscale** - SSH access only via your private Tailscale network
+- **Hetzner Cloud** - One-click server creation with backup option
+- **Tailscale** - SSH access only via your private network
 - **proxy-nginx** - Reverse proxy with automatic SSL certificates
 - **Docker hardening** - Containers isolated from public network
 - **Automatic updates** - Security patches applied automatically
+
+See [vps-setup](https://github.com/tetrixdev/vps-setup) for details on server hardening.
 
 ## Troubleshooting
 
