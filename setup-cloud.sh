@@ -251,14 +251,48 @@ if [ -z "$HETZNER_TOKEN" ]; then
     exit 1
 fi
 
-# Verify token
+# Verify token (read access)
 log_info "Verifying API token..."
 VERIFY_RESPONSE=$(curl -sf -H "Authorization: Bearer $HETZNER_TOKEN" "$HETZNER_API/servers" 2>&1) || {
     log_error "Invalid API token or network error"
     exit 1
 }
 
-log_info "API token verified!"
+# Verify write permissions by trying to create a test SSH key
+log_info "Checking write permissions..."
+TEST_KEY_NAME="pocketdev-permission-test-$(date +%s)"
+WRITE_TEST=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer $HETZNER_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"$TEST_KEY_NAME\",\"public_key\":\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest pocketdev-test\"}" \
+    "$HETZNER_API/ssh_keys")
+
+WRITE_HTTP_CODE=$(echo "$WRITE_TEST" | tail -n1)
+WRITE_BODY=$(echo "$WRITE_TEST" | sed '$d')
+
+if [ "$WRITE_HTTP_CODE" = "201" ]; then
+    # Success - delete the test key
+    TEST_KEY_ID=$(echo "$WRITE_BODY" | grep -o '"id":[0-9]*' | head -1 | cut -d: -f2)
+    if [ -n "$TEST_KEY_ID" ]; then
+        curl -sf -X DELETE -H "Authorization: Bearer $HETZNER_TOKEN" "$HETZNER_API/ssh_keys/$TEST_KEY_ID" >/dev/null 2>&1
+    fi
+    log_info "API token verified with read/write access!"
+elif [ "$WRITE_HTTP_CODE" = "401" ] || [ "$WRITE_HTTP_CODE" = "403" ]; then
+    echo ""
+    log_error "API token has read-only permissions"
+    echo ""
+    echo "This script needs a token with ${BOLD}Read & Write${NC} access to create servers."
+    echo ""
+    echo "To create a new token with write access:"
+    echo "  1. Go to https://console.hetzner.cloud/projects"
+    echo "  2. Select your project → Security → API tokens"
+    echo "  3. Generate API token → Select 'Read & Write'"
+    echo ""
+    exit 1
+else
+    # Other response (e.g., 422 validation error) means we have write access
+    log_info "API token verified with read/write access!"
+fi
 
 # =============================================================================
 # STEP 4: Server Configuration
