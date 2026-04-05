@@ -539,9 +539,9 @@ CREATE_RESPONSE=$(echo "$CREATE_RESULT" | sed '$d')
 if [ "$CREATE_HTTP_CODE" != "201" ]; then
     log_error "Failed to create server (HTTP $CREATE_HTTP_CODE)"
     echo ""
-    # Try to extract error message from response
-    ERROR_MSG=$(echo "$CREATE_RESPONSE" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4)
-    ERROR_CODE=$(echo "$CREATE_RESPONSE" | grep -o '"code":"[^"]*"' | head -1 | cut -d'"' -f4)
+    # Try to extract error message from response (|| true prevents set -e from exiting on no match)
+    ERROR_MSG=$(echo "$CREATE_RESPONSE" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+    ERROR_CODE=$(echo "$CREATE_RESPONSE" | grep -o '"code":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
     if [ -n "$ERROR_MSG" ]; then
         echo "  Error: $ERROR_MSG"
         [ -n "$ERROR_CODE" ] && echo "  Code: $ERROR_CODE"
