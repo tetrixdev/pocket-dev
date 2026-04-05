@@ -101,6 +101,11 @@ check_dependencies() {
 
         if [ "$CAN_AUTO_INSTALL" = true ]; then
             echo -e "Detected platform: ${CYAN}$PLATFORM${NC}"
+            if [ "$PLATFORM" = "wsl" ]; then
+                echo ""
+                echo -e "${YELLOW}Note:${NC} Running in WSL (Windows Subsystem for Linux)."
+                echo "If you ran this from Windows CMD/PowerShell, that's expected - bash invokes WSL."
+            fi
             echo ""
             read -p "Install sshpass automatically? [Y/n]: " AUTO_INSTALL < /dev/tty
             AUTO_INSTALL=${AUTO_INSTALL:-Y}
