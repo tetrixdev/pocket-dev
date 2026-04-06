@@ -71,8 +71,8 @@ fi
 # Detect current user's UID/GID for file ownership
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
-sedi "s|PD_USER_ID=|PD_USER_ID=$USER_ID|" .env
-sedi "s|PD_GROUP_ID=|PD_GROUP_ID=$GROUP_ID|" .env
+sedi "s|PD_USER_ID=.*|PD_USER_ID=$USER_ID|" .env
+sedi "s|PD_GROUP_ID=.*|PD_GROUP_ID=$GROUP_ID|" .env
 echo "Detected PD_USER_ID=$USER_ID, PD_GROUP_ID=$GROUP_ID"
 
 # Ask for NGINX_PORT
