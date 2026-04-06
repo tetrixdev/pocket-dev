@@ -135,6 +135,13 @@ class ConfigController extends Controller
     public function index(Request $request)
     {
         $lastSection = $request->session()->get('config_last_section', 'system-prompt');
+
+        // If last section was nginx but it's no longer available, reset to system-prompt
+        if ($lastSection === 'nginx' && !isset($this->getConfigs()['nginx'])) {
+            $lastSection = 'system-prompt';
+            $request->session()->put('config_last_section', $lastSection);
+        }
+
         return redirect()->route('config.' . $lastSection);
     }
 
@@ -231,13 +238,15 @@ class ConfigController extends Controller
      */
     public function showNginx(Request $request)
     {
-        $request->session()->put('config_last_section', 'nginx');
-
         $configs = $this->getConfigs();
         if (!isset($configs['nginx'])) {
             // Nginx proxy config not available (production with proxy-nginx)
+            // Reset session to prevent stuck redirects
+            $request->session()->put('config_last_section', 'system-prompt');
             abort(404, 'Nginx proxy config is not available in this deployment mode.');
         }
+
+        $request->session()->put('config_last_section', 'nginx');
 
         try {
             $config = $configs['nginx'];
