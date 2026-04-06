@@ -59,6 +59,7 @@ The installer supports both interactive mode and CLI parameters for automation:
 | `--local` | Local mode - skip domain/SSL setup |
 | `--port=PORT` | Port for local mode (default: 80) |
 | `--skip-dns-check` | Skip DNS verification |
+| `-h, --help` | Show help message |
 
 ### Prerequisites
 
@@ -85,7 +86,7 @@ All configuration is done through the web UI.
 ## Updating
 
 ```bash
-docker compose pull && docker compose up -d
+cd /docker-apps/pocket-dev && docker compose pull && docker compose up -d
 ```
 
 ## Security Architecture

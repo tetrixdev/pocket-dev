@@ -1,15 +1,15 @@
 #!/bin/bash
 # =============================================================================
-# PocketDev Installation Script
+# PocketDev Developer Installation Script
 # =============================================================================
 #
-# Installs PocketDev on a server. Run vps-setup first for a properly configured
-# server with Docker and proxy-nginx.
+# Installs PocketDev from source for development and contribution.
+# This clones the git repository - use install.sh for production deployments.
 #
 # USAGE:
-#   ./install.sh                           # Interactive mode (recommended)
-#   ./install.sh --domain=DOMAIN           # With domain
-#   ./install.sh --local                   # Local mode (no domain/SSL)
+#   ./install-dev.sh                        # Interactive mode (recommended)
+#   ./install-dev.sh --domain=DOMAIN        # With domain
+#   ./install-dev.sh --local                # Local mode (no domain/SSL)
 #
 # OPTIONS:
 #   --domain=DOMAIN         Domain for PocketDev (e.g., pocketdev.example.com)
@@ -18,20 +18,21 @@
 #   --local                 Local mode - skip domain/SSL setup
 #   --port=PORT             Port for local mode (default: 80)
 #   --skip-dns-check        Skip DNS verification
+#   --branch=BRANCH         Git branch to checkout (default: main)
 #   -h, --help              Show this help message
 #
 # EXAMPLES:
 #   # Interactive installation
-#   curl -fsSL https://pocketdev.io/install | bash
+#   ./install-dev.sh
 #
 #   # With domain and Tailscale restriction
-#   ./install.sh --domain=pocketdev.example.com --restriction=tailscale
-#
-#   # With domain and IP whitelist
-#   ./install.sh --domain=pocketdev.example.com --restriction=whitelist --ips="1.2.3.4"
+#   ./install-dev.sh --domain=pocketdev.example.com --restriction=tailscale
 #
 #   # Local development (no domain/SSL)
-#   ./install.sh --local --port=8080
+#   ./install-dev.sh --local --port=8080
+#
+#   # Install specific branch
+#   ./install-dev.sh --local --branch=feature/my-feature
 #
 # =============================================================================
 
@@ -40,8 +41,8 @@ set -euo pipefail
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-POCKETDEV_DIR="${POCKETDEV_DIR:-/docker-apps/pocket-dev}"
-REPO="tetrixdev/pocket-dev"
+POCKETDEV_DIR="${POCKETDEV_DIR:-/repositories/pocket-dev}"
+REPO_URL="https://github.com/tetrixdev/pocket-dev.git"
 
 # CLI arguments (empty = interactive)
 ARG_DOMAIN=""
@@ -50,6 +51,7 @@ ARG_IPS=""
 ARG_LOCAL=false
 ARG_PORT="80"
 ARG_SKIP_DNS_CHECK=false
+ARG_BRANCH="main"
 
 # Runtime state
 PROXY_AVAILABLE=false
@@ -124,6 +126,9 @@ check_dns() {
 show_help() {
     echo "Usage: $0 [options]"
     echo ""
+    echo "Developer installation - clones the git repository for development."
+    echo "For production deployments, use install.sh instead."
+    echo ""
     echo "Options:"
     echo "  --domain=DOMAIN         Domain for PocketDev (e.g., pocketdev.example.com)"
     echo "  --restriction=MODE      Access restriction: tailscale, whitelist, none"
@@ -131,13 +136,14 @@ show_help() {
     echo "  --local                 Local mode - skip domain/SSL setup"
     echo "  --port=PORT             Port for local mode (default: 80)"
     echo "  --skip-dns-check        Skip DNS verification"
+    echo "  --branch=BRANCH         Git branch to checkout (default: main)"
     echo "  -h, --help              Show this help message"
     echo ""
     echo "Examples:"
     echo "  $0                                                    # Interactive"
     echo "  $0 --domain=pocketdev.example.com --restriction=tailscale"
-    echo "  $0 --domain=pocketdev.example.com --restriction=whitelist --ips=\"1.2.3.4\""
     echo "  $0 --local --port=8080"
+    echo "  $0 --local --branch=feature/my-feature"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -170,6 +176,10 @@ while [[ $# -gt 0 ]]; do
             ARG_SKIP_DNS_CHECK=true
             shift
             ;;
+        --branch=*)
+            ARG_BRANCH="${1#*=}"
+            shift
+            ;;
         -h|--help)
             show_help
             exit 0
@@ -199,6 +209,20 @@ fi
 # =============================================================================
 log_step "Step 1/5: Pre-flight checks..."
 
+echo ""
+echo "============================================================================="
+echo -e "${CYAN}DEVELOPER INSTALLATION${NC}"
+echo "============================================================================="
+echo ""
+echo "This script installs PocketDev from source for development purposes."
+echo "You will get the latest code from the git repository."
+echo ""
+echo -e "${YELLOW}WARNING: Development versions may be unstable.${NC}"
+echo "For production use, run install.sh instead."
+echo ""
+echo "============================================================================="
+echo ""
+
 # Must run as root (or with sudo)
 if [ "$EUID" -ne 0 ]; then
     log_error "Please run as root: sudo $0"
@@ -215,12 +239,12 @@ if ! command -v docker &> /dev/null; then
 fi
 log_info "Docker found"
 
-# Install required dependencies (dig for DNS checks, openssl for secrets)
-if ! command -v dig &> /dev/null || ! command -v openssl &> /dev/null; then
+# Install required dependencies
+if ! command -v dig &> /dev/null || ! command -v openssl &> /dev/null || ! command -v git &> /dev/null; then
     log_info "Installing required dependencies..."
     apt-get update -qq
-    apt-get install -y -qq dnsutils openssl 2>/dev/null || {
-        log_error "Failed to install dependencies (dnsutils, openssl)"
+    apt-get install -y -qq dnsutils openssl git 2>/dev/null || {
+        log_error "Failed to install dependencies (dnsutils, openssl, git)"
         exit 1
     }
 fi
@@ -519,32 +543,31 @@ else
 fi
 
 # =============================================================================
-# STEP 4: Install PocketDev
+# STEP 4: Clone Repository and Install
 # =============================================================================
-log_step "Step 4/5: Installing PocketDev..."
+log_step "Step 4/5: Cloning repository and installing..."
 
-mkdir -p "$POCKETDEV_DIR"
-cd "$POCKETDEV_DIR"
+# Create parent directory
+mkdir -p "$(dirname "$POCKETDEV_DIR")"
 
-# Download deploy files
-VERSION=$(curl -sf "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | head -1 | sed 's/.*"\([^"]*\)".*/\1/' | sed 's/^v//')
-
-if [ -z "$VERSION" ]; then
-    log_warn "Could not fetch latest version, using main branch"
-    VERSION="main"
-    DOWNLOAD_URL="https://raw.githubusercontent.com/$REPO/main/deploy"
+# Clone or update repository
+if [ -d "$POCKETDEV_DIR/.git" ]; then
+    log_info "Repository exists, pulling latest changes..."
+    cd "$POCKETDEV_DIR"
+    git fetch origin
+    git checkout "$ARG_BRANCH"
+    git pull origin "$ARG_BRANCH"
 else
-    log_info "Installing PocketDev v${VERSION}..."
-    DOWNLOAD_URL="https://raw.githubusercontent.com/$REPO/v${VERSION}/deploy"
+    log_info "Cloning repository (branch: $ARG_BRANCH)..."
+    git clone --branch "$ARG_BRANCH" "$REPO_URL" "$POCKETDEV_DIR"
+    cd "$POCKETDEV_DIR"
 fi
 
-# Download deploy files
-for file in compose.yml .env.example; do
-    curl -fsSL "$DOWNLOAD_URL/$file" -o "$file"
-done
-log_info "Downloaded PocketDev files"
+log_info "Repository ready at $POCKETDEV_DIR"
 
 # Configure .env
+cd "$POCKETDEV_DIR/deploy"
+
 if [ ! -f ".env" ]; then
     cp .env.example .env
 
@@ -604,7 +627,7 @@ fi
 if [ "$PROXY_AVAILABLE" = true ] && [ "$SKIP_DOMAIN" = false ]; then
     cat > compose.override.yml << 'EOF'
 # Override for proxy-nginx integration
-# Generated by PocketDev installer
+# Generated by PocketDev developer installer
 
 services:
   pocket-dev-proxy:
@@ -622,9 +645,9 @@ EOF
     log_info "Created compose.override.yml for proxy-nginx"
 fi
 
-# Pull and start
-log_info "Pulling Docker images (this may take a few minutes)..."
-docker compose pull
+# Build and start (development uses docker compose build)
+log_info "Building Docker images (this may take several minutes)..."
+docker compose build
 
 log_info "Starting services..."
 docker compose up -d
@@ -655,7 +678,7 @@ else
     DOMAIN_CMD="$DOMAIN_CMD --upstream=pocket-dev-nginx"
     DOMAIN_CMD="$DOMAIN_CMD --max-body-size=2048M"
     DOMAIN_CMD="$DOMAIN_CMD --websocket-timeout=3600s"
-    DOMAIN_CMD="$DOMAIN_CMD --comment=\"PocketDev\""
+    DOMAIN_CMD="$DOMAIN_CMD --comment=\"PocketDev (dev)\""
 
     # Add whitelist if configured
     case "$RESTRICTION" in
@@ -692,11 +715,13 @@ fi
 # =============================================================================
 echo ""
 echo "============================================================================="
-echo -e "${GREEN}PocketDev installed successfully!${NC}"
+echo -e "${GREEN}PocketDev (Developer Edition) installed successfully!${NC}"
 echo "============================================================================="
 echo ""
 echo "Installed:"
-echo "  ✓ PocketDev services running"
+echo "  ✓ PocketDev source code at $POCKETDEV_DIR"
+echo "  ✓ Branch: $ARG_BRANCH"
+echo "  ✓ Services running"
 
 if [ "$SKIP_DOMAIN" = true ]; then
     echo "  ✓ Local mode (port $ARG_PORT)"
@@ -723,11 +748,13 @@ else
 fi
 
 echo ""
-echo "Useful commands:"
-echo "  cd $POCKETDEV_DIR"
+echo "Development commands:"
+echo "  cd $POCKETDEV_DIR/deploy"
 echo "  docker compose ps              # Check service status"
 echo "  docker compose logs -f         # View logs"
-echo "  docker compose pull && docker compose up -d  # Update"
+echo "  docker compose build && docker compose up -d  # Rebuild after changes"
+echo "  git pull && docker compose build && docker compose up -d  # Update from git"
 echo ""
+echo "See CONTRIBUTING.md for development guidelines."
 echo "============================================================================="
 echo ""
