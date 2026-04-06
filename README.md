@@ -4,17 +4,67 @@ AI-powered development environment with Claude Code integration. Run Claude Code
 
 ## Quick Start
 
-**Prerequisites**: Docker and Docker Compose
+### Production Deployment (Recommended)
+
+For a secure production deployment, first run [vps-setup](https://github.com/tetrixdev/vps-setup) to configure your server:
 
 ```bash
-mkdir pocket-dev && cd pocket-dev && \
-curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/setup.sh -o setup.sh && \
-curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/compose.yml -o compose.yml && \
-curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/.env.example -o .env.example && \
-chmod +x setup.sh && ./setup.sh
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/vps-setup/main/setup.sh | bash
 ```
 
-Then open http://localhost (or your configured port) and follow the setup wizard.
+Then install PocketDev:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash
+```
+
+The interactive wizard will guide you through:
+1. Domain configuration with DNS verification
+2. Access restriction (Tailscale, IP whitelist, or public)
+3. SSL certificate setup
+
+### Local Development
+
+For local testing without a domain:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --local
+```
+
+Or with a custom port:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --local --port=8080
+```
+
+### Installation Options
+
+The installer supports both interactive mode and CLI parameters for automation:
+
+```bash
+# Interactive (recommended)
+./install.sh
+
+# Non-interactive examples
+./install.sh --domain=pocketdev.example.com --restriction=tailscale
+./install.sh --domain=pocketdev.example.com --restriction=whitelist --ips="1.2.3.4,10.0.0.0/8"
+./install.sh --local --port=8080
+```
+
+| Option | Description |
+|--------|-------------|
+| `--domain=DOMAIN` | Domain for PocketDev (e.g., pocketdev.example.com) |
+| `--restriction=MODE` | Access restriction: `tailscale`, `whitelist`, or `none` |
+| `--ips=IPS` | IP whitelist (comma-separated, requires `--restriction=whitelist`) |
+| `--local` | Local mode - skip domain/SSL setup |
+| `--port=PORT` | Port for local mode (default: 80) |
+| `--skip-dns-check` | Skip DNS verification |
+| `-h, --help` | Show help message |
+
+### Prerequisites
+
+- **Production**: Run [vps-setup](https://github.com/tetrixdev/vps-setup) first (installs Docker, proxy-nginx, configures firewall)
+- **Local**: Docker and Docker Compose
 
 ## Features
 
@@ -36,12 +86,24 @@ All configuration is done through the web UI.
 ## Updating
 
 ```bash
-docker compose pull && docker compose up -d
+cd /docker-apps/pocket-dev && docker compose pull && docker compose up -d
 ```
 
-## Deploy to a Server
+## Security Architecture
 
-Want to run PocketDev on a VPS instead of locally? See the [Secure Server Setup Guide](docs/deployment/secure-server-setup.md) for a Tailscale-based deployment that keeps your instance private and invisible to the public internet.
+PocketDev uses a two-layer security model when deployed with vps-setup:
+
+1. **VPS-level (vps-setup)**: SSH access control via iptables
+   - Tailscale-only mode: SSH only accessible via Tailscale
+   - IP whitelist mode: SSH restricted to specific IPs
+   - Open mode: Standard SSH access
+
+2. **Web UI-level (install.sh)**: Application access via nginx
+   - Tailscale restriction: Only 100.64.0.0/10 can access
+   - IP whitelist: Custom IP restrictions
+   - Public: No restriction (requires explicit confirmation)
+
+See [vps-setup](https://github.com/tetrixdev/vps-setup) and [proxy-nginx](https://github.com/tetrixdev/proxy-nginx) for details.
 
 ## Troubleshooting
 
