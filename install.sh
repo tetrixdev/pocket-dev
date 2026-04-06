@@ -777,16 +777,13 @@ $DOMAIN {
 }
 EOF
 
-                    # Reload CoreDNS to pick up the new zone
-                    if docker kill -s SIGHUP coredns 2>/dev/null; then
-                        log_info "Registered $DOMAIN in CoreDNS"
-                        COREDNS_READY=true
-                    elif command -v coredns-reload &>/dev/null; then
-                        coredns-reload
+                    # Restart CoreDNS to pick up the new zone file
+                    # Note: SIGHUP doesn't re-scan import globs, full restart required
+                    if docker restart coredns >/dev/null 2>&1; then
                         log_info "Registered $DOMAIN in CoreDNS"
                         COREDNS_READY=true
                     else
-                        log_warn "Could not reload CoreDNS. Restart it manually:"
+                        log_warn "Could not restart CoreDNS. Restart it manually:"
                         echo "  docker restart coredns"
                         COREDNS_READY=true  # Zone file was created
                     fi
