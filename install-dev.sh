@@ -621,8 +621,8 @@ if [ ! -f ".env" ]; then
     fi
 
     # Detect user/group IDs (use original user, not root)
-    sedi "s|PD_USER_ID=|PD_USER_ID=$REAL_UID|" .env
-    sedi "s|PD_GROUP_ID=|PD_GROUP_ID=$REAL_GID|" .env
+    sedi "s|PD_USER_ID=.*|PD_USER_ID=$REAL_UID|" .env
+    sedi "s|PD_GROUP_ID=.*|PD_GROUP_ID=$REAL_GID|" .env
 
     # Set project name for container/volume naming
     sedi "s|PD_PROJECT_NAME=.*|PD_PROJECT_NAME=$ARG_NAME|" .env
