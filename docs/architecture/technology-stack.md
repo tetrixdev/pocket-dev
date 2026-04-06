@@ -121,10 +121,10 @@ docker compose up -d --build
 ```
 
 Builds:
-- `pocket-dev-proxy` from `docker-proxy/shared/Dockerfile`
 - `pocket-dev-php` from `docker-laravel/local/php/Dockerfile`
+- `pocket-dev-postgres` from `docker-postgres/Dockerfile`
 
-Others use stock images (nginx:alpine, postgres:17-alpine, redis:7-alpine).
+Others use stock images (nginx:alpine, redis:7-alpine).
 
 ## Future Considerations
 
