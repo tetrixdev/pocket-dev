@@ -808,16 +808,13 @@ $DOMAIN {
 }
 EOF
 
-                    # Reload CoreDNS to pick up the new zone
-                    if docker kill -s SIGHUP coredns 2>/dev/null; then
-                        log_info "Registered $DOMAIN in CoreDNS"
-                        COREDNS_READY=true
-                    elif command -v coredns-reload &>/dev/null; then
-                        coredns-reload
+                    # Restart CoreDNS to pick up the new zone file
+                    # Note: SIGHUP doesn't re-scan import globs, full restart required
+                    if docker restart coredns >/dev/null 2>&1; then
                         log_info "Registered $DOMAIN in CoreDNS"
                         COREDNS_READY=true
                     else
-                        log_warn "Could not reload CoreDNS. Restart it manually:"
+                        log_warn "Could not restart CoreDNS. Restart it manually:"
                         echo "  docker restart coredns"
                         COREDNS_READY=true  # Zone file was created
                     fi
@@ -881,22 +878,45 @@ else
     if [ "$RESTRICTION" = "tailscale" ] && [ "$COREDNS_READY" = true ]; then
         echo ""
         echo "============================================================================="
-        echo -e "${YELLOW}IMPORTANT: Tailscale Split DNS Configuration${NC}"
+        echo -e "${YELLOW}ACTION REQUIRED: Tailscale Split DNS Configuration${NC}"
         echo "============================================================================="
         echo ""
-        echo "To access PocketDev via your domain when connected to Tailscale,"
-        echo "you must add a split DNS entry in your Tailscale admin panel:"
+        echo "To access PocketDev via Tailscale, configure split DNS in your Tailscale admin:"
         echo ""
         echo "  1. Go to: https://login.tailscale.com/admin/dns"
-        echo "  2. Under 'Nameservers', click 'Add nameserver' -> 'Custom'"
-        echo "  3. Enter:"
+        echo ""
+        echo "  2. Add a Global nameserver (if you don't have one):"
+        echo "     - Click 'Add nameserver' -> 'Custom'"
+        echo "     - Enter: 8.8.8.8 (or 1.1.1.1)"
+        echo "     - Leave 'Restrict to domain' OFF"
+        echo "     - Click 'Save'"
+        echo ""
+        echo "  3. Enable 'Override DNS servers' toggle (right side of Global nameservers)"
+        echo ""
+        echo "  4. Add split DNS for your domain:"
+        echo "     - Click 'Add nameserver' -> 'Custom'"
         echo "     - Nameserver: $TAILSCALE_IP"
         echo "     - Toggle ON 'Restrict to domain'"
         echo "     - Domain: $DOMAIN"
-        echo "  4. Click 'Save'"
+        echo "     - Click 'Save'"
         echo ""
-        echo "This tells Tailscale devices to resolve $DOMAIN"
-        echo "(and *.$DOMAIN) to your Tailscale IP instead of the public IP."
+        echo "============================================================================="
+        echo -e "${CYAN}VERIFICATION${NC}"
+        echo "============================================================================="
+        echo ""
+        echo "After configuring, verify on your LOCAL machine (not this server):"
+        echo ""
+        echo "  nslookup $DOMAIN"
+        echo ""
+        echo "Expected result: $TAILSCALE_IP"
+        echo ""
+        echo "If it shows a different IP, flush your DNS cache:"
+        echo "  Windows: ipconfig /flushdns"
+        echo "  Mac:     sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder"
+        echo "  Linux:   sudo resolvectl flush-caches"
+        echo ""
+        echo -e "${CYAN}Note: This server's Tailscale IP is $TAILSCALE_IP${NC}"
+        echo -e "${CYAN}Verify with: tailscale ip -4${NC}"
         echo "============================================================================="
     fi
 fi
