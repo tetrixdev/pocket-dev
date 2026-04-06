@@ -660,7 +660,10 @@ if [ "$PROXY_AVAILABLE" = true ] && [ "$SKIP_DOMAIN" = false ]; then
 
 services:
   pocket-dev-proxy:
-    ports: []
+    # Disable this service when using proxy-nginx
+    # It only starts with: docker compose --profile standalone up
+    profiles:
+      - standalone
 
   pocket-dev-nginx:
     networks:
