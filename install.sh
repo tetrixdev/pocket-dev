@@ -104,9 +104,10 @@ check_dns() {
     local domain="$1"
     local expected_ip="$2"
 
-    # Resolve domain
+    # Resolve domain using public DNS (1.1.1.1) to avoid interference from
+    # Tailscale split DNS which could route queries to a local server
     local resolved_ip
-    resolved_ip=$(dig +short "$domain" 2>/dev/null | head -1)
+    resolved_ip=$(dig +short "$domain" @1.1.1.1 2>/dev/null | head -1)
 
     if [ -z "$resolved_ip" ]; then
         return 1  # DNS not resolving
@@ -745,7 +746,8 @@ else
                 log_info "Detected Tailscale IP: $TAILSCALE_IP"
 
                 # Check if port 53 is already in use on Tailscale IP
-                if ss -tuln 2>/dev/null | grep -q "$TAILSCALE_IP:53"; then
+                # Use regex to match exact port 53 (not 53967, etc.)
+                if ss -tuln 2>/dev/null | grep -qE "$TAILSCALE_IP:53([^0-9]|$)"; then
                     log_warn "Port 53 already in use on $TAILSCALE_IP. Skipping CoreDNS setup."
                     log_warn "Stop the existing DNS service or configure split DNS manually."
                 else
