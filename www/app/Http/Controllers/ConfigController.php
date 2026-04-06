@@ -233,8 +233,14 @@ class ConfigController extends Controller
     {
         $request->session()->put('config_last_section', 'nginx');
 
+        $configs = $this->getConfigs();
+        if (!isset($configs['nginx'])) {
+            // Nginx proxy config not available (production with proxy-nginx)
+            abort(404, 'Nginx proxy config is not available in this deployment mode.');
+        }
+
         try {
-            $config = $this->getConfigs()['nginx'];
+            $config = $configs['nginx'];
             $content = $this->readFromLocalPath($config['local_path']);
 
             return view('config.nginx', [
@@ -253,12 +259,18 @@ class ConfigController extends Controller
      */
     public function saveNginx(Request $request)
     {
+        $configs = $this->getConfigs();
+        if (!isset($configs['nginx'])) {
+            // Nginx proxy config not available (production with proxy-nginx)
+            abort(404, 'Nginx proxy config is not available in this deployment mode.');
+        }
+
         try {
             $validated = $request->validate([
                 'content' => 'required|string',
             ]);
 
-            $config = $this->getConfigs()['nginx'];
+            $config = $configs['nginx'];
 
             // Validate nginx config
             $this->validateNginxConfig($validated['content']);

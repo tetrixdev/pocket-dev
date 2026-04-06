@@ -769,7 +769,7 @@ fi
 
 echo ""
 echo "Development commands:"
-echo "  cd $POCKETDEV_DIR/deploy"
+echo "  cd $POCKETDEV_DIR"
 echo "  docker compose ps              # Check service status"
 echo "  docker compose logs -f         # View logs"
 echo "  docker compose build && docker compose up -d  # Rebuild after changes"
