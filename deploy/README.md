@@ -24,22 +24,22 @@ The installer will prompt for your domain and automatically:
 ### Non-Interactive Installation
 
 ```bash
-PD_DOMAIN=pocketdev.example.com curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --domain=pocketdev.example.com --restriction=tailscale
 ```
 
-### Standalone Mode (No proxy-nginx)
+### Local Mode (No proxy-nginx)
 
-If you don't have proxy-nginx or want to manage the proxy yourself:
+If you don't have proxy-nginx or want to run PocketDev locally:
 
 ```bash
-PD_SKIP_PROXY=true PD_NGINX_PORT=8080 curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --local --port=8080
 ```
 
 ### Manual Setup
 
 ```bash
 # Download deploy files
-mkdir -p /opt/pocketdev && cd /opt/pocketdev
+mkdir -p /docker-apps/pocket-dev && cd /docker-apps/pocket-dev
 VERSION=$(curl -sf "https://api.github.com/repos/tetrixdev/pocket-dev/releases/latest" | grep '"tag_name"' | sed 's/.*"\([^"]*\)".*/\1/' | sed 's/^v//')
 curl -fsSL "https://raw.githubusercontent.com/tetrixdev/pocket-dev/v${VERSION}/deploy/compose.yml" -o compose.yml
 curl -fsSL "https://raw.githubusercontent.com/tetrixdev/pocket-dev/v${VERSION}/deploy/.env.example" -o .env.example
@@ -48,25 +48,28 @@ curl -fsSL "https://raw.githubusercontent.com/tetrixdev/pocket-dev/v${VERSION}/d
 ./setup.sh
 ```
 
-## Environment Variables
+## Installation Options
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PD_DOMAIN` | Domain name for PocketDev | (prompted) |
-| `PD_MODE` | `production` (Docker images) or `local` (git clone) | `production` |
-| `PD_SKIP_PROXY` | Skip proxy-nginx integration | `false` |
-| `PD_NGINX_PORT` | Port for standalone mode | `80` |
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--domain=DOMAIN` | Domain for PocketDev | (prompted) |
+| `--restriction=MODE` | Access restriction: `tailscale`, `whitelist`, `none` | (prompted) |
+| `--ips=IPS` | IP whitelist (comma-separated) | - |
+| `--local` | Local mode - skip domain/SSL setup | `false` |
+| `--port=PORT` | Port for local mode | `80` |
+| `--skip-dns-check` | Skip DNS verification | `false` |
 
 ## Updates
 
 ```bash
-cd /opt/pocketdev
+cd /docker-apps/pocket-dev
 
 # Update to latest
 docker compose pull && docker compose up -d
 
 # Deploy specific version
-PD_IMAGE_TAG=v1.4.0 docker compose pull && docker compose up -d
+export PD_IMAGE_TAG=v1.4.0
+docker compose pull && docker compose up -d
 ```
 
 ## Backup

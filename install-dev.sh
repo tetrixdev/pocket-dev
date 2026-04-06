@@ -361,8 +361,8 @@ if [ "$SKIP_DOMAIN" = false ] && [ -n "$DOMAIN" ] && [ "$ARG_SKIP_DNS_CHECK" = f
 
     # Primary domain DNS check with retry loop
     while true; do
+        dns_status=0
         dns_result=$(check_dns "$DOMAIN" "$SERVER_IP" 2>&1) || dns_status=$?
-        dns_status=${dns_status:-0}
 
         if [ "$dns_status" -eq 0 ]; then
             log_info "DNS verified: $DOMAIN -> $SERVER_IP"
@@ -412,8 +412,8 @@ if [ "$SKIP_DOMAIN" = false ] && [ -n "$DOMAIN" ] && [ "$ARG_SKIP_DNS_CHECK" = f
 
     while true; do
         WILDCARD_DOMAIN="wildcard-test-$(date +%s).$DOMAIN"
+        wildcard_status=0
         wildcard_result=$(check_dns "$WILDCARD_DOMAIN" "$SERVER_IP" 2>&1) || wildcard_status=$?
-        wildcard_status=${wildcard_status:-0}
 
         if [ "$wildcard_status" -eq 0 ]; then
             log_info "Wildcard DNS verified: *.$DOMAIN -> $SERVER_IP"
@@ -547,6 +547,10 @@ fi
 # =============================================================================
 log_step "Step 4/5: Cloning repository and installing..."
 
+# Get original user's IDs (script runs as root via sudo)
+REAL_UID="${SUDO_UID:-$(id -u)}"
+REAL_GID="${SUDO_GID:-$(id -g)}"
+
 # Create parent directory
 mkdir -p "$(dirname "$POCKETDEV_DIR")"
 
@@ -561,6 +565,12 @@ else
     log_info "Cloning repository (branch: $ARG_BRANCH)..."
     git clone --branch "$ARG_BRANCH" "$REPO_URL" "$POCKETDEV_DIR"
     cd "$POCKETDEV_DIR"
+fi
+
+# Set ownership to original user (not root)
+if [ "$REAL_UID" != "0" ]; then
+    chown -R "$REAL_UID:$REAL_GID" "$POCKETDEV_DIR"
+    log_info "Set repository ownership to user $REAL_UID:$REAL_GID"
 fi
 
 log_info "Repository ready at $POCKETDEV_DIR"
@@ -592,11 +602,9 @@ if [ ! -f ".env" ]; then
         fi
     fi
 
-    # Detect user/group IDs
-    USER_ID=$(id -u)
-    GROUP_ID=$(id -g)
-    sedi "s|PD_USER_ID=|PD_USER_ID=$USER_ID|" .env
-    sedi "s|PD_GROUP_ID=|PD_GROUP_ID=$GROUP_ID|" .env
+    # Detect user/group IDs (use original user, not root)
+    sedi "s|PD_USER_ID=|PD_USER_ID=$REAL_UID|" .env
+    sedi "s|PD_GROUP_ID=|PD_GROUP_ID=$REAL_GID|" .env
 
     log_info "Generated .env with secrets"
 else
@@ -700,10 +708,12 @@ else
     eval "$DOMAIN_CMD"
 
     # Request SSL certificate
+    SSL_READY=false
     echo ""
     log_info "Requesting SSL certificate for $DOMAIN..."
     if docker exec proxy-nginx certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email 2>/dev/null; then
         log_info "SSL certificate obtained"
+        SSL_READY=true
     else
         log_warn "Automatic SSL failed. Request manually with:"
         echo "  docker exec -it proxy-nginx certbot --nginx -d $DOMAIN"
@@ -741,10 +751,20 @@ else
             echo "  ⚠ Access: Public (no restriction)"
             ;;
     esac
-    echo "  ✓ SSL certificate"
-    echo ""
-    echo "Access PocketDev at:"
-    echo "  https://$DOMAIN"
+    if [ "${SSL_READY:-false}" = true ]; then
+        echo "  ✓ SSL certificate"
+        echo ""
+        echo "Access PocketDev at:"
+        echo "  https://$DOMAIN"
+    else
+        echo "  ⚠ SSL certificate not configured"
+        echo ""
+        echo "Access PocketDev at:"
+        echo "  http://$DOMAIN"
+        echo ""
+        echo "To enable HTTPS, run:"
+        echo "  docker exec -it proxy-nginx certbot --nginx -d $DOMAIN"
+    fi
 fi
 
 echo ""

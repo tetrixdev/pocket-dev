@@ -337,8 +337,8 @@ if [ "$SKIP_DOMAIN" = false ] && [ -n "$DOMAIN" ] && [ "$ARG_SKIP_DNS_CHECK" = f
 
     # Primary domain DNS check with retry loop
     while true; do
+        dns_status=0
         dns_result=$(check_dns "$DOMAIN" "$SERVER_IP" 2>&1) || dns_status=$?
-        dns_status=${dns_status:-0}
 
         if [ "$dns_status" -eq 0 ]; then
             log_info "DNS verified: $DOMAIN -> $SERVER_IP"
@@ -388,8 +388,8 @@ if [ "$SKIP_DOMAIN" = false ] && [ -n "$DOMAIN" ] && [ "$ARG_SKIP_DNS_CHECK" = f
 
     while true; do
         WILDCARD_DOMAIN="wildcard-test-$(date +%s).$DOMAIN"
+        wildcard_status=0
         wildcard_result=$(check_dns "$WILDCARD_DOMAIN" "$SERVER_IP" 2>&1) || wildcard_status=$?
-        wildcard_status=${wildcard_status:-0}
 
         if [ "$wildcard_status" -eq 0 ]; then
             log_info "Wildcard DNS verified: *.$DOMAIN -> $SERVER_IP"
@@ -677,10 +677,12 @@ else
     eval "$DOMAIN_CMD"
 
     # Request SSL certificate
+    SSL_READY=false
     echo ""
     log_info "Requesting SSL certificate for $DOMAIN..."
     if docker exec proxy-nginx certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email 2>/dev/null; then
         log_info "SSL certificate obtained"
+        SSL_READY=true
     else
         log_warn "Automatic SSL failed. Request manually with:"
         echo "  docker exec -it proxy-nginx certbot --nginx -d $DOMAIN"
@@ -716,10 +718,20 @@ else
             echo "  ⚠ Access: Public (no restriction)"
             ;;
     esac
-    echo "  ✓ SSL certificate"
-    echo ""
-    echo "Access PocketDev at:"
-    echo "  https://$DOMAIN"
+    if [ "${SSL_READY:-false}" = true ]; then
+        echo "  ✓ SSL certificate"
+        echo ""
+        echo "Access PocketDev at:"
+        echo "  https://$DOMAIN"
+    else
+        echo "  ⚠ SSL certificate not configured"
+        echo ""
+        echo "Access PocketDev at:"
+        echo "  http://$DOMAIN"
+        echo ""
+        echo "To enable HTTPS, run:"
+        echo "  docker exec -it proxy-nginx certbot --nginx -d $DOMAIN"
+    fi
 fi
 
 echo ""
