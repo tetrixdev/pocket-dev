@@ -27,15 +27,7 @@ class BackupController extends Controller
      */
     protected function getVolumeKeys(): array
     {
-        $keys = ['redis', 'workspace', 'user', 'storage'];
-
-        // Only include proxy-config if the volume is mounted
-        // (available in local development, not in production with proxy-nginx)
-        if (is_dir('/etc/nginx-proxy-config')) {
-            $keys[] = 'proxy-config';
-        }
-
-        return $keys;
+        return ['redis', 'workspace', 'user', 'storage'];
     }
 
     /**
@@ -506,15 +498,6 @@ class BackupController extends Controller
         exec("docker run --rm -v {$workspaceVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
             Log::warning("Failed to fix workspace volume permissions", ['output' => implode("\n", $output)]);
-        }
-
-        // proxy-config: needs to be writable by host user group (only in local dev with proxy container)
-        if (is_dir('/etc/nginx-proxy-config')) {
-            $proxyConfigVolume = escapeshellarg($this->getVolumeName('proxy-config'));
-            exec("docker run --rm -v {$proxyConfigVolume}:/data alpine sh -c \"chown -R root:{$groupId} /data && chmod -R 775 /data\" 2>&1", $output, $returnCode);
-            if ($returnCode !== 0) {
-                Log::warning("Failed to fix proxy-config volume permissions", ['output' => implode("\n", $output)]);
-            }
         }
 
         // redis: needs redis user (999:999)

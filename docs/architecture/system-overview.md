@@ -9,18 +9,11 @@
 │  ┌──────────────────────────────────────────────────────────────────┐   │
 │  │                    Docker Compose Network                         │   │
 │  │                                                                   │   │
-│  │   ┌─────────────────────────────────────────────────────────┐    │   │
-│  │   │              pocket-dev-proxy (Port 80)                  │    │   │
-│  │   │              Nginx Reverse Proxy                         │    │   │
-│  │   │              - Basic Auth (required)                     │    │   │
-│  │   │              - IP Whitelist (optional)                   │    │   │
-│  │   │              - Routes: / → Laravel                       │    │   │
-│  │   └─────────────────────┬────────────────────────────────────┘    │   │
-│  │                         │                                         │   │
-│  │           ┌─────────────▼───────────┐                            │   │
-│  │           │  pocket-dev-nginx       │                            │   │
-│  │           │  (Internal Server)      │                            │   │
-│  │           └─────────┬───────────────┘                            │   │
+│  │           ┌───────────────────────────────┐                      │   │
+│  │           │  pocket-dev-nginx (Port 80)   │                      │   │
+│  │           │  - Exposed directly (local)   │                      │   │
+│  │           │  - Via proxy-nginx (server)   │                      │   │
+│  │           └─────────┬─────────────────────┘                      │   │
 │  │                     │                                             │   │
 │  │           ┌─────────▼───────────┐   ┌───────────────────┐        │   │
 │  │           │  pocket-dev-php     │   │  pocket-dev-queue │        │   │
@@ -41,24 +34,6 @@
 ```
 
 ## Container Details
-
-### pocket-dev-proxy
-
-**Purpose:** Security gateway for all incoming traffic.
-
-**Source files:**
-- `docker-proxy/shared/Dockerfile`
-- `docker-proxy/shared/entrypoint.sh`
-- `docker-proxy/shared/nginx.conf.template`
-
-**Responsibilities:**
-- Basic Auth via htpasswd (required, env: `BASIC_AUTH_USER`, `BASIC_AUTH_PASS`)
-- IP whitelist (optional, env: `IP_WHITELIST`)
-- Route `/` to Laravel (pocket-dev-nginx)
-- SSE streaming support (`proxy_buffering off`)
-- Maintenance page on 502/503
-
-**Health check:** `curl -f http://localhost:80/health`
 
 ### pocket-dev-php
 
@@ -91,12 +66,14 @@
 
 ### pocket-dev-nginx
 
-**Purpose:** Internal web server for Laravel.
+**Purpose:** Web server for Laravel.
 
 **Source files:**
 - `docker-laravel/shared/nginx/default.conf`
 
-Stock nginx:alpine image with custom config. Only accessible via proxy, not directly exposed.
+Stock nginx:alpine image with custom config.
+- **Local mode:** Exposed directly on port 80 (or custom `PD_NGINX_PORT`)
+- **Server mode:** Accessed via proxy-nginx (external reverse proxy)
 
 **Health check:** `curl -f http://localhost:80/`
 
@@ -131,7 +108,6 @@ Uses the same image as pocket-dev-php but runs `php artisan queue:work` instead 
 |--------|---------|------------|
 | `workspace-data` | Shared workspace for projects | PHP (`/workspace`) |
 | `user-data` | User home directory | PHP (`/home/appuser`) |
-| `proxy-config-data` | Editable nginx config | Proxy, PHP |
 | `postgres-data` | Database persistence | Postgres |
 | `redis-data` | Redis persistence | Redis |
 
@@ -140,22 +116,23 @@ Uses the same image as pocket-dev-php but runs `php artisan queue:work` instead 
 | Network | Purpose | Containers |
 |---------|---------|------------|
 | `pocket-dev` | Internal communication | All containers |
-| `pocket-dev-public` | External access | Proxy only |
+| `main-network` | proxy-nginx integration (server mode) | nginx |
 
 ## Data Flow
 
 ### Request Flow (Web Chat)
 
 ```
-Browser (Port 80)
+Browser
     │
     ▼
-pocket-dev-proxy
-    │ Basic Auth check
-    │ IP whitelist check (if configured)
-    │ Route: / → pocket-dev-nginx
+[proxy-nginx] (server only)
+    │ SSL termination
+    │ Basic Auth (optional)
+    │ IP whitelist (optional)
+    │
     ▼
-pocket-dev-nginx
+pocket-dev-nginx (Port 80)
     │ Static files or PHP
     ▼
 pocket-dev-php (PHP-FPM)
@@ -190,7 +167,6 @@ Sessions are stored as `.jsonl` files in project-specific directories.
 |------|-----------|----------------|
 | Laravel .env | `./` | `/var/www/.env` |
 | Claude config | N/A | `/home/appuser/.claude/` |
-| Nginx template | `docker-proxy/shared/nginx.conf.template` | `/etc/nginx-proxy-config/nginx.conf.template` |
 
 ## Startup Order
 
@@ -200,5 +176,4 @@ Docker Compose enforces this startup order via `depends_on`:
 2. **pocket-dev-redis** (cache ready)
 3. **pocket-dev-php** (depends on postgres and redis health)
 4. **pocket-dev-nginx** (depends on php health)
-5. **pocket-dev-proxy** (depends on nginx)
-6. **pocket-dev-queue** (depends on postgres and redis)
+5. **pocket-dev-queue** (depends on postgres and redis)

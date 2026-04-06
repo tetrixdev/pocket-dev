@@ -62,16 +62,6 @@ return [
 ];
 ```
 
-### Nginx Proxy (`docker-proxy/shared/nginx.conf.template`)
-
-Reverse proxy configuration with:
-
-- Basic auth enforcement
-- IP whitelist support
-- SSE streaming (`proxy_buffering off`)
-
-**Editable at runtime:** `/etc/nginx-proxy-config/nginx.conf.template`
-
 ### Docker Compose (`compose.yml`)
 
 Container orchestration with:

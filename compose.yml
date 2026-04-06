@@ -1,29 +1,4 @@
 services:
-  # Main nginx reverse proxy
-  pocket-dev-proxy:
-    build:
-      context: .
-      dockerfile: docker-proxy/shared/Dockerfile
-    container_name: ${PD_PROJECT_NAME:-pocket-dev}-proxy
-    restart: unless-stopped
-    ports:
-      - "${PD_NGINX_PORT:-80}:80"
-    environment:
-      - PD_DEPLOYMENT_MODE=${PD_DEPLOYMENT_MODE:-local}
-      - PD_DOMAIN_NAME=${PD_DOMAIN_NAME:-localhost}
-    volumes:
-      - proxy-config-data:/etc/nginx-proxy-config
-    depends_on:
-      - pocket-dev-nginx
-    networks:
-      - pocket-dev
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
   pocket-dev-php:
     build:
       context: .
@@ -53,7 +28,6 @@ services:
       - ./docker-laravel/shared/php/local.ini:/usr/local/etc/php/conf.d/local.ini
       - ./docker-laravel/local/php/entrypoint.sh:/entrypoint.sh
       - /var/run/docker.sock:/var/run/docker.sock
-      - proxy-config-data:/etc/nginx-proxy-config
       - user-data:/home/appuser
       - workspace-data:/workspace
       - pocketdev-storage:/var/www/storage/pocketdev
@@ -78,6 +52,8 @@ services:
     image: nginx:1.29-alpine
     container_name: ${PD_PROJECT_NAME:-pocket-dev}-nginx
     restart: unless-stopped
+    ports:
+      - "${PD_NGINX_PORT:-80}:80"
     volumes:
       - ./www:/var/www
       - ./docker-laravel/shared/nginx/default.conf:/etc/nginx/conf.d/default.conf
@@ -196,9 +172,6 @@ volumes:
     driver: local
   user-data:
     name: ${PD_PROJECT_NAME:-pocket-dev}-user
-    driver: local
-  proxy-config-data:
-    name: ${PD_PROJECT_NAME:-pocket-dev}-proxy-config
     driver: local
   pocketdev-storage:
     name: ${PD_PROJECT_NAME:-pocket-dev}-storage
