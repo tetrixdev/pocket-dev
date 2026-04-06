@@ -319,54 +319,97 @@ if [ "$SKIP_DOMAIN" = false ] && [ -n "$DOMAIN" ] && [ "$ARG_SKIP_DNS_CHECK" = f
     echo ""
     log_info "Verifying DNS for $DOMAIN..."
 
-    dns_result=$(check_dns "$DOMAIN" "$SERVER_IP" 2>&1) || dns_status=$?
-    dns_status=${dns_status:-0}
+    # Primary domain DNS check with retry loop
+    while true; do
+        dns_result=$(check_dns "$DOMAIN" "$SERVER_IP" 2>&1) || dns_status=$?
+        dns_status=${dns_status:-0}
 
-    if [ "$dns_status" -eq 0 ]; then
-        log_info "DNS verified: $DOMAIN -> $SERVER_IP"
-    elif [ "$dns_status" -eq 1 ]; then
-        echo ""
-        log_warn "DNS not resolving for $DOMAIN"
-        echo ""
-        echo "Please create an A record:"
-        echo "  $DOMAIN -> $SERVER_IP"
-        echo ""
-        read -rp "Continue anyway? (yes/no): " confirm < /dev/tty
-        if [ "$confirm" != "yes" ]; then
-            exit 1
+        if [ "$dns_status" -eq 0 ]; then
+            log_info "DNS verified: $DOMAIN -> $SERVER_IP"
+            break
+        elif [ "$dns_status" -eq 1 ]; then
+            echo ""
+            log_warn "DNS not resolving for $DOMAIN"
+            echo ""
+            echo "Please create an A record:"
+            echo "  $DOMAIN -> $SERVER_IP"
+        else
+            echo ""
+            log_warn "DNS mismatch for $DOMAIN"
+            echo "  Expected: $SERVER_IP"
+            echo "  Got:      $dns_result"
         fi
-    else
-        echo ""
-        log_warn "DNS mismatch for $DOMAIN"
-        echo "  Expected: $SERVER_IP"
-        echo "  Got:      $dns_result"
-        echo ""
-        read -rp "Continue anyway? (yes/no): " confirm < /dev/tty
-        if [ "$confirm" != "yes" ]; then
-            exit 1
-        fi
-    fi
 
-    # Check wildcard DNS
+        echo ""
+        echo "Options:"
+        echo "  [R] Check again (default)"
+        echo "  [C] Continue anyway"
+        echo "  [A] Abort"
+        echo ""
+        read -rp "Choice [R/c/a]: " choice < /dev/tty
+        case "${choice:-r}" in
+            r|R|"")
+                echo ""
+                log_info "Checking DNS again..."
+                ;;
+            c|C)
+                log_warn "Continuing without DNS verification"
+                break
+                ;;
+            a|A)
+                echo "Aborting."
+                exit 1
+                ;;
+            *)
+                echo "Invalid choice. Please enter R, C, or A."
+                ;;
+        esac
+    done
+
+    # Check wildcard DNS with retry loop
     echo ""
     log_info "Checking wildcard DNS (*.$DOMAIN)..."
-    WILDCARD_DOMAIN="wildcard-test-$(date +%s).$DOMAIN"
 
-    wildcard_result=$(check_dns "$WILDCARD_DOMAIN" "$SERVER_IP" 2>&1) || wildcard_status=$?
-    wildcard_status=${wildcard_status:-0}
+    while true; do
+        WILDCARD_DOMAIN="wildcard-test-$(date +%s).$DOMAIN"
+        wildcard_result=$(check_dns "$WILDCARD_DOMAIN" "$SERVER_IP" 2>&1) || wildcard_status=$?
+        wildcard_status=${wildcard_status:-0}
 
-    if [ "$wildcard_status" -eq 0 ]; then
-        log_info "Wildcard DNS verified: *.$DOMAIN -> $SERVER_IP"
-    else
-        echo ""
-        log_warn "Wildcard DNS not configured for *.$DOMAIN"
-        echo ""
-        echo "For deploying multiple apps, we recommend adding a wildcard A record:"
-        echo "  *.$DOMAIN -> $SERVER_IP"
-        echo ""
-        echo "This is optional - you can add it later."
-        echo ""
-    fi
+        if [ "$wildcard_status" -eq 0 ]; then
+            log_info "Wildcard DNS verified: *.$DOMAIN -> $SERVER_IP"
+            break
+        else
+            echo ""
+            log_warn "Wildcard DNS not configured for *.$DOMAIN"
+            echo ""
+            echo "For deploying multiple apps, we recommend adding a wildcard A record:"
+            echo "  *.$DOMAIN -> $SERVER_IP"
+            echo ""
+            echo "Options:"
+            echo "  [R] Check again (default)"
+            echo "  [C] Continue without wildcard (can add later)"
+            echo "  [A] Abort"
+            echo ""
+            read -rp "Choice [R/c/a]: " choice < /dev/tty
+            case "${choice:-r}" in
+                r|R|"")
+                    echo ""
+                    log_info "Checking wildcard DNS again..."
+                    ;;
+                c|C)
+                    log_info "Skipping wildcard DNS (can be added later)"
+                    break
+                    ;;
+                a|A)
+                    echo "Aborting."
+                    exit 1
+                    ;;
+                *)
+                    echo "Invalid choice. Please enter R, C, or A."
+                    ;;
+            esac
+        fi
+    done
 fi
 
 # =============================================================================
