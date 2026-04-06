@@ -575,8 +575,8 @@ fi
 
 log_info "Repository ready at $POCKETDEV_DIR"
 
-# Configure .env
-cd "$POCKETDEV_DIR/deploy"
+# Configure .env (use root directory for development builds)
+cd "$POCKETDEV_DIR"
 
 if [ ! -f ".env" ]; then
     cp .env.example .env
@@ -769,7 +769,7 @@ fi
 
 echo ""
 echo "Development commands:"
-echo "  cd $POCKETDEV_DIR/deploy"
+echo "  cd $POCKETDEV_DIR"
 echo "  docker compose ps              # Check service status"
 echo "  docker compose logs -f         # View logs"
 echo "  docker compose build && docker compose up -d  # Rebuild after changes"

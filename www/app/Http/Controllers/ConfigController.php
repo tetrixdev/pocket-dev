@@ -25,7 +25,7 @@ class ConfigController extends Controller
      */
     protected function getConfigs(): array
     {
-        return [
+        $configs = [
             'claude' => [
                 'title' => 'CLAUDE.md',
                 'local_path' => '/home/appuser/.claude/CLAUDE.md',
@@ -44,16 +44,24 @@ class ConfigController extends Controller
                 'validate' => false,
                 'reload_cmd' => null,
             ],
-            'nginx' => [
+        ];
+
+        // Only include nginx proxy config if the proxy volume is mounted
+        // (available in local development, not in production with proxy-nginx)
+        $proxyConfigPath = '/etc/nginx-proxy-config/nginx.conf.template';
+        if (file_exists($proxyConfigPath)) {
+            $configs['nginx'] = [
                 'title' => 'Nginx Proxy Config',
-                'local_path' => '/etc/nginx-proxy-config/nginx.conf.template',
+                'local_path' => $proxyConfigPath,
                 'container' => 'pocket-dev-proxy',
-                'container_path' => '/etc/nginx-proxy-config/nginx.conf.template',
+                'container_path' => $proxyConfigPath,
                 'syntax' => 'nginx',
                 'validate' => true,
                 'reload_cmd' => 'sh -c "envsubst \'\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME\' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"',
-            ],
-        ];
+            ];
+        }
+
+        return $configs;
     }
 
     /**
@@ -127,6 +135,13 @@ class ConfigController extends Controller
     public function index(Request $request)
     {
         $lastSection = $request->session()->get('config_last_section', 'system-prompt');
+
+        // If last section was nginx but it's no longer available, reset to system-prompt
+        if ($lastSection === 'nginx' && !isset($this->getConfigs()['nginx'])) {
+            $lastSection = 'system-prompt';
+            $request->session()->put('config_last_section', $lastSection);
+        }
+
         return redirect()->route('config.' . $lastSection);
     }
 
@@ -223,10 +238,18 @@ class ConfigController extends Controller
      */
     public function showNginx(Request $request)
     {
+        $configs = $this->getConfigs();
+        if (!isset($configs['nginx'])) {
+            // Nginx proxy config not available (production with proxy-nginx)
+            // Reset session to prevent stuck redirects
+            $request->session()->put('config_last_section', 'system-prompt');
+            abort(404, 'Nginx proxy config is not available in this deployment mode.');
+        }
+
         $request->session()->put('config_last_section', 'nginx');
 
         try {
-            $config = $this->getConfigs()['nginx'];
+            $config = $configs['nginx'];
             $content = $this->readFromLocalPath($config['local_path']);
 
             return view('config.nginx', [
@@ -245,12 +268,18 @@ class ConfigController extends Controller
      */
     public function saveNginx(Request $request)
     {
+        $configs = $this->getConfigs();
+        if (!isset($configs['nginx'])) {
+            // Nginx proxy config not available (production with proxy-nginx)
+            abort(404, 'Nginx proxy config is not available in this deployment mode.');
+        }
+
         try {
             $validated = $request->validate([
                 'content' => 'required|string',
             ]);
 
-            $config = $this->getConfigs()['nginx'];
+            $config = $configs['nginx'];
 
             // Validate nginx config
             $this->validateNginxConfig($validated['content']);

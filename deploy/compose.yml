@@ -1,28 +1,4 @@
 services:
-  # Nginx reverse proxy
-  pocket-dev-proxy:
-    image: ghcr.io/tetrixdev/pocket-dev-proxy:${PD_IMAGE_TAG:-latest}
-    pull_policy: always
-    container_name: pocket-dev-proxy
-    restart: unless-stopped
-    ports:
-      - "${PD_NGINX_PORT:-80}:80"
-    environment:
-      - PD_DEPLOYMENT_MODE=${PD_DEPLOYMENT_MODE:-local}
-      - PD_DOMAIN_NAME=${PD_DOMAIN_NAME:-localhost}
-    volumes:
-      - proxy-config-data:/etc/nginx-proxy-config
-    depends_on:
-      - pocket-dev-nginx
-    networks:
-      - pocket-dev
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
   pocket-dev-php:
     image: ghcr.io/tetrixdev/pocket-dev-php:${PD_IMAGE_TAG:-latest}
     pull_policy: always
@@ -39,7 +15,6 @@ services:
       - .env:/var/www/.env
       - user-data:/home/appuser
       - workspace-data:/workspace
-      - proxy-config-data:/etc/nginx-proxy-config
       - pocketdev-storage:/var/www/storage/pocketdev
       - shared-tmp:/tmp
       - /var/run/docker.sock:/var/run/docker.sock
@@ -165,9 +140,6 @@ volumes:
     driver: local
   user-data:
     name: pocket-dev-user
-    driver: local
-  proxy-config-data:
-    name: pocket-dev-proxy-config
     driver: local
   pocketdev-storage:
     name: pocket-dev-storage
