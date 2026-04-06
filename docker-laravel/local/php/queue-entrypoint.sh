@@ -101,14 +101,6 @@ find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
-# Fix permissions for mounted config volumes (for config editor)
-if [ -d "/etc/nginx-proxy-config" ]; then
-    echo "Setting permissions on /etc/nginx-proxy-config..."
-    chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
-    find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
-    find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
-fi
-
 # Fix /tmp permissions for cross-group access (shared volume between containers)
 # Ensures files created by any user are accessible by www-data group
 chgrp -R 33 /tmp 2>/dev/null || true

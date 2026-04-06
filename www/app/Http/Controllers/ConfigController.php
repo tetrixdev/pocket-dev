@@ -48,21 +48,6 @@ class ConfigController extends Controller
             ],
         ];
 
-        // Only include nginx proxy config if the proxy volume is mounted
-        // (available in local development, not in production with proxy-nginx)
-        $proxyConfigPath = '/etc/nginx-proxy-config/nginx.conf.template';
-        if (file_exists($proxyConfigPath)) {
-            $configs['nginx'] = [
-                'title' => 'Nginx Proxy Config',
-                'local_path' => $proxyConfigPath,
-                'container' => "{$projectName}-proxy",
-                'container_path' => $proxyConfigPath,
-                'syntax' => 'nginx',
-                'validate' => true,
-                'reload_cmd' => 'sh -c "envsubst \'\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME\' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"',
-            ];
-        }
-
         return $configs;
     }
 

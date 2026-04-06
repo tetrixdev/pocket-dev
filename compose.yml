@@ -28,7 +28,6 @@ services:
       - ./docker-laravel/shared/php/local.ini:/usr/local/etc/php/conf.d/local.ini
       - ./docker-laravel/local/php/entrypoint.sh:/entrypoint.sh
       - /var/run/docker.sock:/var/run/docker.sock
-      - proxy-config-data:/etc/nginx-proxy-config
       - user-data:/home/appuser
       - workspace-data:/workspace
       - pocketdev-storage:/var/www/storage/pocketdev
@@ -173,9 +172,6 @@ volumes:
     driver: local
   user-data:
     name: ${PD_PROJECT_NAME:-pocket-dev}-user
-    driver: local
-  proxy-config-data:
-    name: ${PD_PROJECT_NAME:-pocket-dev}-proxy-config
     driver: local
   pocketdev-storage:
     name: ${PD_PROJECT_NAME:-pocket-dev}-storage

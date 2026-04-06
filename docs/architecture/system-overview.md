@@ -108,7 +108,6 @@ Uses the same image as pocket-dev-php but runs `php artisan queue:work` instead 
 |--------|---------|------------|
 | `workspace-data` | Shared workspace for projects | PHP (`/workspace`) |
 | `user-data` | User home directory | PHP (`/home/appuser`) |
-| `proxy-config-data` | Nginx proxy config (for proxy-nginx) | PHP |
 | `postgres-data` | Database persistence | Postgres |
 | `redis-data` | Redis persistence | Redis |
 

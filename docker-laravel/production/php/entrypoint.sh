@@ -141,14 +141,6 @@ find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
-# Fix permissions for mounted config volumes (for config editor)
-if [ -d "/etc/nginx-proxy-config" ]; then
-    echo "Setting permissions on /etc/nginx-proxy-config..."
-    chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
-    find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
-    find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
-fi
-
 # Check if running as main PHP container (no args or php-fpm)
 # vs secondary container (queue worker, scheduler, etc.)
 if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
