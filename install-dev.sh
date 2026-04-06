@@ -575,8 +575,8 @@ fi
 
 log_info "Repository ready at $POCKETDEV_DIR"
 
-# Configure .env
-cd "$POCKETDEV_DIR/deploy"
+# Configure .env (use root directory for development builds)
+cd "$POCKETDEV_DIR"
 
 if [ ! -f ".env" ]; then
     cp .env.example .env

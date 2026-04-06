@@ -25,7 +25,7 @@ class ConfigController extends Controller
      */
     protected function getConfigs(): array
     {
-        return [
+        $configs = [
             'claude' => [
                 'title' => 'CLAUDE.md',
                 'local_path' => '/home/appuser/.claude/CLAUDE.md',
@@ -44,16 +44,24 @@ class ConfigController extends Controller
                 'validate' => false,
                 'reload_cmd' => null,
             ],
-            'nginx' => [
+        ];
+
+        // Only include nginx proxy config if the proxy volume is mounted
+        // (available in local development, not in production with proxy-nginx)
+        $proxyConfigPath = '/etc/nginx-proxy-config/nginx.conf.template';
+        if (file_exists($proxyConfigPath)) {
+            $configs['nginx'] = [
                 'title' => 'Nginx Proxy Config',
-                'local_path' => '/etc/nginx-proxy-config/nginx.conf.template',
+                'local_path' => $proxyConfigPath,
                 'container' => 'pocket-dev-proxy',
-                'container_path' => '/etc/nginx-proxy-config/nginx.conf.template',
+                'container_path' => $proxyConfigPath,
                 'syntax' => 'nginx',
                 'validate' => true,
                 'reload_cmd' => 'sh -c "envsubst \'\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME\' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"',
-            ],
-        ];
+            ];
+        }
+
+        return $configs;
     }
 
     /**

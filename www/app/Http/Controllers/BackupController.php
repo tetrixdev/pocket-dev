@@ -14,15 +14,26 @@ class BackupController extends Controller
     protected string $backupDir = 'backups';
 
     /**
-     * Volumes to backup (excluding postgres - we use pg_dump instead)
+     * Get volumes to backup (excluding postgres - we use pg_dump instead)
+     * Dynamically checks for proxy-config volume availability
      */
-    protected array $volumes = [
-        'pocket-dev-redis',
-        'pocket-dev-workspace',
-        'pocket-dev-user',
-        'pocket-dev-proxy-config',
-        'pocket-dev-storage',
-    ];
+    protected function getVolumes(): array
+    {
+        $volumes = [
+            'pocket-dev-redis',
+            'pocket-dev-workspace',
+            'pocket-dev-user',
+            'pocket-dev-storage',
+        ];
+
+        // Only include proxy-config if the volume is mounted
+        // (available in local development, not in production with proxy-nginx)
+        if (is_dir('/etc/nginx-proxy-config')) {
+            $volumes[] = 'pocket-dev-proxy-config';
+        }
+
+        return $volumes;
+    }
 
     /**
      * Show the backup management page
@@ -282,7 +293,7 @@ class BackupController extends Controller
      */
     protected function backupVolumes(string $tempDir): void
     {
-        foreach ($this->volumes as $volume) {
+        foreach ($this->getVolumes() as $volume) {
             $volumeDir = "{$tempDir}/volumes/{$volume}";
             exec("mkdir -p \"{$volumeDir}\"");
 
@@ -310,7 +321,7 @@ class BackupController extends Controller
             'name' => $backupName,
             'created_at' => now()->toIso8601String(),
             'pocketdev_version' => config('app.version', 'unknown'),
-            'volumes' => $this->volumes,
+            'volumes' => $this->getVolumes(),
             'includes_database' => true,
         ];
 
@@ -389,7 +400,7 @@ class BackupController extends Controller
             return;
         }
 
-        foreach ($this->volumes as $volume) {
+        foreach ($this->getVolumes() as $volume) {
             $volumeBackup = "{$volumesDir}/{$volume}";
             if (!is_dir($volumeBackup)) {
                 Log::warning("Volume backup not found: {$volume}");
@@ -445,10 +456,12 @@ class BackupController extends Controller
             Log::warning('Failed to fix pocket-dev-workspace permissions', ['output' => implode("\n", $output)]);
         }
 
-        // proxy-config: needs to be writable by host user group
-        exec("docker run --rm -v pocket-dev-proxy-config:/data alpine sh -c \"chown -R root:{$groupId} /data && chmod -R 775 /data\" 2>&1", $output, $returnCode);
-        if ($returnCode !== 0) {
-            Log::warning('Failed to fix pocket-dev-proxy-config permissions', ['output' => implode("\n", $output)]);
+        // proxy-config: needs to be writable by host user group (only in local dev with proxy container)
+        if (is_dir('/etc/nginx-proxy-config')) {
+            exec("docker run --rm -v pocket-dev-proxy-config:/data alpine sh -c \"chown -R root:{$groupId} /data && chmod -R 775 /data\" 2>&1", $output, $returnCode);
+            if ($returnCode !== 0) {
+                Log::warning('Failed to fix pocket-dev-proxy-config permissions', ['output' => implode("\n", $output)]);
+            }
         }
 
         // redis: needs redis user (999:999)
