@@ -13,7 +13,7 @@ If you have a fresh VPS, run vps-setup first:
 curl -fsSL https://raw.githubusercontent.com/tetrixdev/vps-setup/main/setup.sh | bash
 
 # 2. Install PocketDev
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | sudo bash
 ```
 
 The installer will prompt for your domain and automatically:
@@ -24,7 +24,7 @@ The installer will prompt for your domain and automatically:
 ### Non-Interactive Installation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --domain=pocketdev.example.com --restriction=tailscale
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | sudo bash -s -- --domain=pocketdev.example.com --restriction=tailscale
 ```
 
 ### Local Mode (No proxy-nginx)
@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.s
 If you don't have proxy-nginx or want to run PocketDev locally:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --local --port=8080
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | sudo bash -s -- --local --port=8080
 ```
 
 ### Manual Setup

@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/tetrixdev/vps-setup/main/setup.sh |
 Then install PocketDev:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | sudo bash
 ```
 
 The interactive wizard will guide you through:
@@ -28,13 +28,13 @@ The interactive wizard will guide you through:
 For local testing without a domain:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --local
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | sudo bash -s -- --local
 ```
 
 Or with a custom port:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --local --port=8080
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | sudo bash -s -- --local --port=8080
 ```
 
 ### Installation Options
