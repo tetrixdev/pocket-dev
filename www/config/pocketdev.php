@@ -11,7 +11,10 @@ return [
     | container/volume prefixes.
     |
     */
-    'project_name' => env('PD_PROJECT_NAME', 'pocket-dev'),
+    // Handle both unset and empty string to match Docker Compose ${VAR:-default} behavior
+    'project_name' => (($projectName = env('PD_PROJECT_NAME')) !== null && $projectName !== '')
+        ? $projectName
+        : 'pocket-dev',
 
     /*
     |--------------------------------------------------------------------------

@@ -212,6 +212,16 @@ if ! [[ "$ARG_PORT" =~ ^[0-9]+$ ]] || [ "$ARG_PORT" -lt 1 ] || [ "$ARG_PORT" -gt
     exit 1
 fi
 
+# Validate project name (lowercase letters and dashes only, must contain at least one dash)
+if ! [[ "$ARG_NAME" =~ ^[a-z][a-z-]*-[a-z][a-z-]*$ ]]; then
+    log_error "Invalid project name: $ARG_NAME"
+    echo "  Project name must:"
+    echo "    - Use only lowercase letters (a-z) and dashes (-)"
+    echo "    - Start with a letter"
+    echo "    - Contain at least one dash (e.g., 'pocket-dev', 'my-project')"
+    exit 1
+fi
+
 # =============================================================================
 # STEP 1: Pre-flight Checks
 # =============================================================================

@@ -22,26 +22,28 @@ class BackupController extends Controller
     }
 
     /**
-     * Get volumes to backup (excluding postgres - we use pg_dump instead)
-     * Dynamically checks for proxy-config volume availability
+     * Get logical volume keys (instance-neutral names used in backup archives)
+     * These are mapped to actual Docker volume names at backup/restore time
      */
-    protected function getVolumes(): array
+    protected function getVolumeKeys(): array
     {
-        $projectName = $this->getProjectName();
-        $volumes = [
-            "{$projectName}-redis",
-            "{$projectName}-workspace",
-            "{$projectName}-user",
-            "{$projectName}-storage",
-        ];
+        $keys = ['redis', 'workspace', 'user', 'storage'];
 
         // Only include proxy-config if the volume is mounted
         // (available in local development, not in production with proxy-nginx)
         if (is_dir('/etc/nginx-proxy-config')) {
-            $volumes[] = "{$projectName}-proxy-config";
+            $keys[] = 'proxy-config';
         }
 
-        return $volumes;
+        return $keys;
+    }
+
+    /**
+     * Map a logical volume key to the actual Docker volume name
+     */
+    protected function getVolumeName(string $key): string
+    {
+        return $this->getProjectName() . '-' . $key;
     }
 
     /**
@@ -301,38 +303,42 @@ class BackupController extends Controller
 
     /**
      * Backup Docker volumes
+     * Uses logical keys in archive structure for instance-neutral backups
      */
     protected function backupVolumes(string $tempDir): void
     {
-        foreach ($this->getVolumes() as $volume) {
-            $volumeDir = "{$tempDir}/volumes/{$volume}";
+        foreach ($this->getVolumeKeys() as $key) {
+            $volumeName = $this->getVolumeName($key);
+            // Store under logical key (e.g., "redis") not instance-specific name
+            $volumeDir = "{$tempDir}/volumes/{$key}";
             exec("mkdir -p \"{$volumeDir}\"");
 
             // Use a temporary container to copy volume contents
             $command = sprintf(
                 'docker run --rm -v %s:/source -v "%s":/backup alpine sh -c "cd /source && tar -cf - . | (cd /backup && tar -xf -)" 2>&1',
-                escapeshellarg($volume),
+                escapeshellarg($volumeName),
                 $volumeDir
             );
 
             exec($command, $output, $returnCode);
             if ($returnCode !== 0) {
-                throw new \RuntimeException("Failed to backup volume {$volume}: " . implode("\n", $output));
+                throw new \RuntimeException("Failed to backup volume {$volumeName}: " . implode("\n", $output));
             }
         }
     }
 
     /**
      * Create backup manifest
+     * Stores logical volume keys for instance-neutral restoration
      */
     protected function createManifest(string $tempDir, string $backupName): void
     {
         $manifest = [
-            'version' => '1.0',
+            'version' => '1.1', // Bumped version for instance-neutral format
             'name' => $backupName,
             'created_at' => now()->toIso8601String(),
             'pocketdev_version' => config('app.version', 'unknown'),
-            'volumes' => $this->getVolumes(),
+            'volumes' => $this->getVolumeKeys(), // Logical keys, not instance-specific names
             'includes_database' => true,
         ];
 
@@ -408,6 +414,7 @@ class BackupController extends Controller
 
     /**
      * Restore Docker volumes from backup
+     * Maps logical keys from backup to current instance's volume names
      */
     protected function restoreVolumes(string $backupDir): void
     {
@@ -417,23 +424,48 @@ class BackupController extends Controller
             return;
         }
 
-        foreach ($this->getVolumes() as $volume) {
-            $volumeBackup = "{$volumesDir}/{$volume}";
+        // Get available volume keys from this instance
+        $availableKeys = $this->getVolumeKeys();
+
+        // Try to restore each volume that exists in the backup
+        // Look for logical keys (v1.1 format) first, then fall back to legacy format
+        foreach ($availableKeys as $key) {
+            $volumeName = $this->getVolumeName($key);
+
+            // Check for logical key (new v1.1 format: "redis", "workspace", etc.)
+            $volumeBackup = "{$volumesDir}/{$key}";
+
+            // Fall back to legacy format (old v1.0 format: "pocket-dev-redis", etc.)
             if (!is_dir($volumeBackup)) {
-                Log::warning("Volume backup not found: {$volume}");
+                // Try common legacy prefixes
+                $legacyPaths = [
+                    "{$volumesDir}/pocket-dev-{$key}",
+                    "{$volumesDir}/{$volumeName}", // Current instance name (if same)
+                ];
+                foreach ($legacyPaths as $legacyPath) {
+                    if (is_dir($legacyPath)) {
+                        $volumeBackup = $legacyPath;
+                        Log::info("Using legacy backup path for {$key}", ['path' => $legacyPath]);
+                        break;
+                    }
+                }
+            }
+
+            if (!is_dir($volumeBackup)) {
+                Log::warning("Volume backup not found for key: {$key}");
                 continue;
             }
 
             // Use a temporary container to restore volume contents
             $command = sprintf(
                 'docker run --rm -v %s:/target -v "%s":/backup alpine sh -c "rm -rf /target/* /target/.[!.]* 2>/dev/null; cd /backup && tar -cf - . | (cd /target && tar -xf -)" 2>&1',
-                escapeshellarg($volume),
+                escapeshellarg($volumeName),
                 $volumeBackup
             );
 
             exec($command, $output, $returnCode);
             if ($returnCode !== 0) {
-                Log::warning("Failed to restore volume {$volume}", ['output' => implode("\n", $output)]);
+                Log::warning("Failed to restore volume {$volumeName}", ['output' => implode("\n", $output)]);
             }
         }
 
@@ -450,47 +482,46 @@ class BackupController extends Controller
         // Group is always www-data (33) for cross-group ownership model
         $userId = config('backup.user_id');
         $groupId = 33; // www-data
-        $projectName = $this->getProjectName();
 
         if ($userId === null || $userId === '') {
             throw new \RuntimeException('PD_USER_ID must be set in .env for volume permission fixes');
         }
 
         // user-data: needs host user ownership for CLI tools (Claude, Codex, etc.)
-        $userVolume = escapeshellarg("{$projectName}-user");
+        $userVolume = escapeshellarg($this->getVolumeName('user'));
         exec("docker run --rm -v {$userVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
-            Log::warning("Failed to fix {$projectName}-user permissions", ['output' => implode("\n", $output)]);
+            Log::warning("Failed to fix user volume permissions", ['output' => implode("\n", $output)]);
         }
 
         // storage: needs host user ownership for Laravel
-        $storageVolume = escapeshellarg("{$projectName}-storage");
+        $storageVolume = escapeshellarg($this->getVolumeName('storage'));
         exec("docker run --rm -v {$storageVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
-            Log::warning("Failed to fix {$projectName}-storage permissions", ['output' => implode("\n", $output)]);
+            Log::warning("Failed to fix storage volume permissions", ['output' => implode("\n", $output)]);
         }
 
         // workspace: needs host user ownership
-        $workspaceVolume = escapeshellarg("{$projectName}-workspace");
+        $workspaceVolume = escapeshellarg($this->getVolumeName('workspace'));
         exec("docker run --rm -v {$workspaceVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
-            Log::warning("Failed to fix {$projectName}-workspace permissions", ['output' => implode("\n", $output)]);
+            Log::warning("Failed to fix workspace volume permissions", ['output' => implode("\n", $output)]);
         }
 
         // proxy-config: needs to be writable by host user group (only in local dev with proxy container)
         if (is_dir('/etc/nginx-proxy-config')) {
-            $proxyConfigVolume = escapeshellarg("{$projectName}-proxy-config");
+            $proxyConfigVolume = escapeshellarg($this->getVolumeName('proxy-config'));
             exec("docker run --rm -v {$proxyConfigVolume}:/data alpine sh -c \"chown -R root:{$groupId} /data && chmod -R 775 /data\" 2>&1", $output, $returnCode);
             if ($returnCode !== 0) {
-                Log::warning("Failed to fix {$projectName}-proxy-config permissions", ['output' => implode("\n", $output)]);
+                Log::warning("Failed to fix proxy-config volume permissions", ['output' => implode("\n", $output)]);
             }
         }
 
         // redis: needs redis user (999:999)
-        $redisVolume = escapeshellarg("{$projectName}-redis");
+        $redisVolume = escapeshellarg($this->getVolumeName('redis'));
         exec("docker run --rm -v {$redisVolume}:/data alpine chown -R 999:999 /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
-            Log::warning("Failed to fix {$projectName}-redis permissions", ['output' => implode("\n", $output)]);
+            Log::warning("Failed to fix redis volume permissions", ['output' => implode("\n", $output)]);
         }
     }
 
