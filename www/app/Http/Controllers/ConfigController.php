@@ -25,11 +25,13 @@ class ConfigController extends Controller
      */
     protected function getConfigs(): array
     {
+        $projectName = config('pocketdev.project_name', 'pocket-dev');
+
         $configs = [
             'claude' => [
                 'title' => 'CLAUDE.md',
                 'local_path' => '/home/appuser/.claude/CLAUDE.md',
-                'container' => 'pocket-dev-php',
+                'container' => "{$projectName}-php",
                 'container_path' => '/home/appuser/.claude/CLAUDE.md',
                 'syntax' => 'markdown',
                 'validate' => false,
@@ -38,7 +40,7 @@ class ConfigController extends Controller
             'settings' => [
                 'title' => 'Claude Settings',
                 'local_path' => '/home/appuser/.claude/settings.json',
-                'container' => 'pocket-dev-php',
+                'container' => "{$projectName}-php",
                 'container_path' => '/home/appuser/.claude/settings.json',
                 'syntax' => 'json',
                 'validate' => false,
@@ -53,7 +55,7 @@ class ConfigController extends Controller
             $configs['nginx'] = [
                 'title' => 'Nginx Proxy Config',
                 'local_path' => $proxyConfigPath,
-                'container' => 'pocket-dev-proxy',
+                'container' => "{$projectName}-proxy",
                 'container_path' => $proxyConfigPath,
                 'syntax' => 'nginx',
                 'validate' => true,

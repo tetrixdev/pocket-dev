@@ -4,7 +4,7 @@ services:
     build:
       context: .
       dockerfile: docker-proxy/shared/Dockerfile
-    container_name: pocket-dev-proxy
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-proxy
     restart: unless-stopped
     ports:
       - "${PD_NGINX_PORT:-80}:80"
@@ -28,7 +28,7 @@ services:
     build:
       context: .
       dockerfile: docker-laravel/local/php/Dockerfile
-    container_name: pocket-dev-php
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-php
     restart: unless-stopped
     working_dir: /var/www
     # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
@@ -43,6 +43,7 @@ services:
       # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
       - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
     entrypoint: ["/entrypoint.sh"]
     ports:
       - "${PD_VITE_PORT:-5173}:5173"
@@ -75,7 +76,7 @@ services:
 
   pocket-dev-nginx:
     image: nginx:1.29-alpine
-    container_name: pocket-dev-nginx
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-nginx
     restart: unless-stopped
     volumes:
       - ./www:/var/www
@@ -96,7 +97,7 @@ services:
     build:
       context: .
       dockerfile: docker-postgres/Dockerfile
-    container_name: pocket-dev-postgres
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: pocket-dev
@@ -117,7 +118,7 @@ services:
 
   pocket-dev-redis:
     image: redis:7-alpine
-    container_name: pocket-dev-redis
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
@@ -135,7 +136,7 @@ services:
     build:
       context: .
       dockerfile: docker-laravel/local/php/Dockerfile
-    container_name: pocket-dev-queue
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-queue
     restart: unless-stopped
     working_dir: /var/www
     # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
@@ -155,6 +156,7 @@ services:
       # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
       - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
       # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
       - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
     volumes:
@@ -179,28 +181,28 @@ services:
 
 networks:
   pocket-dev:
-    name: pocket-dev
+    name: ${PD_PROJECT_NAME:-pocket-dev}
     driver: bridge
 
 volumes:
   postgres-data:
-    name: pocket-dev-postgres
+    name: ${PD_PROJECT_NAME:-pocket-dev}-postgres
     driver: local
   redis-data:
-    name: pocket-dev-redis
+    name: ${PD_PROJECT_NAME:-pocket-dev}-redis
     driver: local
   workspace-data:
-    name: pocket-dev-workspace
+    name: ${PD_PROJECT_NAME:-pocket-dev}-workspace
     driver: local
   user-data:
-    name: pocket-dev-user
+    name: ${PD_PROJECT_NAME:-pocket-dev}-user
     driver: local
   proxy-config-data:
-    name: pocket-dev-proxy-config
+    name: ${PD_PROJECT_NAME:-pocket-dev}-proxy-config
     driver: local
   pocketdev-storage:
-    name: pocket-dev-storage
+    name: ${PD_PROJECT_NAME:-pocket-dev}-storage
     driver: local
   shared-tmp:
-    name: pocket-dev-shared-tmp
+    name: ${PD_PROJECT_NAME:-pocket-dev}-shared-tmp
     driver: local

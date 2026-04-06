@@ -14,25 +14,36 @@ class BackupController extends Controller
     protected string $backupDir = 'backups';
 
     /**
-     * Get volumes to backup (excluding postgres - we use pg_dump instead)
-     * Dynamically checks for proxy-config volume availability
+     * Get the project name for container/volume naming
      */
-    protected function getVolumes(): array
+    protected function getProjectName(): string
     {
-        $volumes = [
-            'pocket-dev-redis',
-            'pocket-dev-workspace',
-            'pocket-dev-user',
-            'pocket-dev-storage',
-        ];
+        return config('pocketdev.project_name', 'pocket-dev');
+    }
+
+    /**
+     * Get logical volume keys (instance-neutral names used in backup archives)
+     * These are mapped to actual Docker volume names at backup/restore time
+     */
+    protected function getVolumeKeys(): array
+    {
+        $keys = ['redis', 'workspace', 'user', 'storage'];
 
         // Only include proxy-config if the volume is mounted
         // (available in local development, not in production with proxy-nginx)
         if (is_dir('/etc/nginx-proxy-config')) {
-            $volumes[] = 'pocket-dev-proxy-config';
+            $keys[] = 'proxy-config';
         }
 
-        return $volumes;
+        return $keys;
+    }
+
+    /**
+     * Map a logical volume key to the actual Docker volume name
+     */
+    protected function getVolumeName(string $key): string
+    {
+        return $this->getProjectName() . '-' . $key;
     }
 
     /**
@@ -263,8 +274,10 @@ class BackupController extends Controller
 
         // Use docker exec to run pg_dump in the postgres container
         // Capture output directly then write to file (more reliable than shell redirection)
+        $postgresContainer = $this->getProjectName() . '-postgres';
         $command = sprintf(
-            'docker exec pocket-dev-postgres pg_dump -U %s %s 2>&1',
+            'docker exec %s pg_dump -U %s %s 2>&1',
+            escapeshellarg($postgresContainer),
             escapeshellarg($dbUser),
             escapeshellarg($dbName)
         );
@@ -290,38 +303,42 @@ class BackupController extends Controller
 
     /**
      * Backup Docker volumes
+     * Uses logical keys in archive structure for instance-neutral backups
      */
     protected function backupVolumes(string $tempDir): void
     {
-        foreach ($this->getVolumes() as $volume) {
-            $volumeDir = "{$tempDir}/volumes/{$volume}";
+        foreach ($this->getVolumeKeys() as $key) {
+            $volumeName = $this->getVolumeName($key);
+            // Store under logical key (e.g., "redis") not instance-specific name
+            $volumeDir = "{$tempDir}/volumes/{$key}";
             exec("mkdir -p \"{$volumeDir}\"");
 
             // Use a temporary container to copy volume contents
             $command = sprintf(
                 'docker run --rm -v %s:/source -v "%s":/backup alpine sh -c "cd /source && tar -cf - . | (cd /backup && tar -xf -)" 2>&1',
-                escapeshellarg($volume),
+                escapeshellarg($volumeName),
                 $volumeDir
             );
 
             exec($command, $output, $returnCode);
             if ($returnCode !== 0) {
-                throw new \RuntimeException("Failed to backup volume {$volume}: " . implode("\n", $output));
+                throw new \RuntimeException("Failed to backup volume {$volumeName}: " . implode("\n", $output));
             }
         }
     }
 
     /**
      * Create backup manifest
+     * Stores logical volume keys for instance-neutral restoration
      */
     protected function createManifest(string $tempDir, string $backupName): void
     {
         $manifest = [
-            'version' => '1.0',
+            'version' => '1.1', // Bumped version for instance-neutral format
             'name' => $backupName,
             'created_at' => now()->toIso8601String(),
             'pocketdev_version' => config('app.version', 'unknown'),
-            'volumes' => $this->getVolumes(),
+            'volumes' => $this->getVolumeKeys(), // Logical keys, not instance-specific names
             'includes_database' => true,
         ];
 
@@ -346,10 +363,13 @@ class BackupController extends Controller
             throw new \RuntimeException('Invalid database name or username');
         }
 
+        $postgresContainer = $this->getProjectName() . '-postgres';
+
         // Drop and recreate the database, then restore
         // First terminate all connections
         $terminateCmd = sprintf(
-            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = \'%s\' AND pid <> pg_backend_pid();" 2>&1',
+            'docker exec %s psql -U %s -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = \'%s\' AND pid <> pg_backend_pid();" 2>&1',
+            escapeshellarg($postgresContainer),
             $dbUser,
             $dbName
         );
@@ -357,7 +377,8 @@ class BackupController extends Controller
 
         // Drop the database
         $dropCmd = sprintf(
-            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "DROP DATABASE IF EXISTS \\"%s\\";" 2>&1',
+            'docker exec %s psql -U %s -d postgres -c "DROP DATABASE IF EXISTS \\"%s\\";" 2>&1',
+            escapeshellarg($postgresContainer),
             $dbUser,
             $dbName
         );
@@ -365,7 +386,8 @@ class BackupController extends Controller
 
         // Create fresh database
         $createCmd = sprintf(
-            'docker exec pocket-dev-postgres psql -U %s -d postgres -c "CREATE DATABASE \\"%s\\" OWNER \\"%s\\";" 2>&1',
+            'docker exec %s psql -U %s -d postgres -c "CREATE DATABASE \\"%s\\" OWNER \\"%s\\";" 2>&1',
+            escapeshellarg($postgresContainer),
             $dbUser,
             $dbName,
             $dbUser
@@ -377,7 +399,8 @@ class BackupController extends Controller
 
         // Restore the dump
         $restoreCmd = sprintf(
-            'docker exec -i pocket-dev-postgres psql -U %s %s < "%s" 2>&1',
+            'docker exec -i %s psql -U %s %s < "%s" 2>&1',
+            escapeshellarg($postgresContainer),
             $dbUser,
             $dbName,
             $dumpFile
@@ -391,6 +414,7 @@ class BackupController extends Controller
 
     /**
      * Restore Docker volumes from backup
+     * Maps logical keys from backup to current instance's volume names
      */
     protected function restoreVolumes(string $backupDir): void
     {
@@ -400,23 +424,48 @@ class BackupController extends Controller
             return;
         }
 
-        foreach ($this->getVolumes() as $volume) {
-            $volumeBackup = "{$volumesDir}/{$volume}";
+        // Get available volume keys from this instance
+        $availableKeys = $this->getVolumeKeys();
+
+        // Try to restore each volume that exists in the backup
+        // Look for logical keys (v1.1 format) first, then fall back to legacy format
+        foreach ($availableKeys as $key) {
+            $volumeName = $this->getVolumeName($key);
+
+            // Check for logical key (new v1.1 format: "redis", "workspace", etc.)
+            $volumeBackup = "{$volumesDir}/{$key}";
+
+            // Fall back to legacy format (old v1.0 format: "pocket-dev-redis", etc.)
             if (!is_dir($volumeBackup)) {
-                Log::warning("Volume backup not found: {$volume}");
+                // Try common legacy prefixes
+                $legacyPaths = [
+                    "{$volumesDir}/pocket-dev-{$key}",
+                    "{$volumesDir}/{$volumeName}", // Current instance name (if same)
+                ];
+                foreach ($legacyPaths as $legacyPath) {
+                    if (is_dir($legacyPath)) {
+                        $volumeBackup = $legacyPath;
+                        Log::info("Using legacy backup path for {$key}", ['path' => $legacyPath]);
+                        break;
+                    }
+                }
+            }
+
+            if (!is_dir($volumeBackup)) {
+                Log::warning("Volume backup not found for key: {$key}");
                 continue;
             }
 
             // Use a temporary container to restore volume contents
             $command = sprintf(
                 'docker run --rm -v %s:/target -v "%s":/backup alpine sh -c "rm -rf /target/* /target/.[!.]* 2>/dev/null; cd /backup && tar -cf - . | (cd /target && tar -xf -)" 2>&1',
-                escapeshellarg($volume),
+                escapeshellarg($volumeName),
                 $volumeBackup
             );
 
             exec($command, $output, $returnCode);
             if ($returnCode !== 0) {
-                Log::warning("Failed to restore volume {$volume}", ['output' => implode("\n", $output)]);
+                Log::warning("Failed to restore volume {$volumeName}", ['output' => implode("\n", $output)]);
             }
         }
 
@@ -439,35 +488,40 @@ class BackupController extends Controller
         }
 
         // user-data: needs host user ownership for CLI tools (Claude, Codex, etc.)
-        exec("docker run --rm -v pocket-dev-user:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
+        $userVolume = escapeshellarg($this->getVolumeName('user'));
+        exec("docker run --rm -v {$userVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
-            Log::warning('Failed to fix pocket-dev-user permissions', ['output' => implode("\n", $output)]);
+            Log::warning("Failed to fix user volume permissions", ['output' => implode("\n", $output)]);
         }
 
         // storage: needs host user ownership for Laravel
-        exec("docker run --rm -v pocket-dev-storage:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
+        $storageVolume = escapeshellarg($this->getVolumeName('storage'));
+        exec("docker run --rm -v {$storageVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
-            Log::warning('Failed to fix pocket-dev-storage permissions', ['output' => implode("\n", $output)]);
+            Log::warning("Failed to fix storage volume permissions", ['output' => implode("\n", $output)]);
         }
 
         // workspace: needs host user ownership
-        exec("docker run --rm -v pocket-dev-workspace:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
+        $workspaceVolume = escapeshellarg($this->getVolumeName('workspace'));
+        exec("docker run --rm -v {$workspaceVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
-            Log::warning('Failed to fix pocket-dev-workspace permissions', ['output' => implode("\n", $output)]);
+            Log::warning("Failed to fix workspace volume permissions", ['output' => implode("\n", $output)]);
         }
 
         // proxy-config: needs to be writable by host user group (only in local dev with proxy container)
         if (is_dir('/etc/nginx-proxy-config')) {
-            exec("docker run --rm -v pocket-dev-proxy-config:/data alpine sh -c \"chown -R root:{$groupId} /data && chmod -R 775 /data\" 2>&1", $output, $returnCode);
+            $proxyConfigVolume = escapeshellarg($this->getVolumeName('proxy-config'));
+            exec("docker run --rm -v {$proxyConfigVolume}:/data alpine sh -c \"chown -R root:{$groupId} /data && chmod -R 775 /data\" 2>&1", $output, $returnCode);
             if ($returnCode !== 0) {
-                Log::warning('Failed to fix pocket-dev-proxy-config permissions', ['output' => implode("\n", $output)]);
+                Log::warning("Failed to fix proxy-config volume permissions", ['output' => implode("\n", $output)]);
             }
         }
 
         // redis: needs redis user (999:999)
-        exec('docker run --rm -v pocket-dev-redis:/data alpine chown -R 999:999 /data 2>&1', $output, $returnCode);
+        $redisVolume = escapeshellarg($this->getVolumeName('redis'));
+        exec("docker run --rm -v {$redisVolume}:/data alpine chown -R 999:999 /data 2>&1", $output, $returnCode);
         if ($returnCode !== 0) {
-            Log::warning('Failed to fix pocket-dev-redis permissions', ['output' => implode("\n", $output)]);
+            Log::warning("Failed to fix redis volume permissions", ['output' => implode("\n", $output)]);
         }
     }
 

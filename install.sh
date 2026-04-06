@@ -17,6 +17,7 @@
 #   --ips=IPS               IP whitelist (comma-separated, requires --restriction=whitelist)
 #   --local                 Local mode - skip domain/SSL setup
 #   --port=PORT             Port for local mode (default: 80)
+#   --name=NAME             Project name for containers/volumes (default: pocket-dev)
 #   --skip-dns-check        Skip DNS verification
 #   -h, --help              Show this help message
 #
@@ -50,6 +51,7 @@ ARG_IPS=""
 ARG_LOCAL=false
 ARG_PORT="80"
 ARG_SKIP_DNS_CHECK=false
+ARG_NAME="pocket-dev"
 
 # Runtime state
 PROXY_AVAILABLE=false
@@ -130,6 +132,7 @@ show_help() {
     echo "  --ips=IPS               IP whitelist (comma-separated, with --restriction=whitelist)"
     echo "  --local                 Local mode - skip domain/SSL setup"
     echo "  --port=PORT             Port for local mode (default: 80)"
+    echo "  --name=NAME             Project name for containers/volumes (default: pocket-dev)"
     echo "  --skip-dns-check        Skip DNS verification"
     echo "  -h, --help              Show this help message"
     echo ""
@@ -138,6 +141,7 @@ show_help() {
     echo "  $0 --domain=pocketdev.example.com --restriction=tailscale"
     echo "  $0 --domain=pocketdev.example.com --restriction=whitelist --ips=\"1.2.3.4\""
     echo "  $0 --local --port=8080"
+    echo "  $0 --domain=pd2.example.com --name=pocket-dev-2      # Multiple instances"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -170,6 +174,10 @@ while [[ $# -gt 0 ]]; do
             ARG_SKIP_DNS_CHECK=true
             shift
             ;;
+        --name=*)
+            ARG_NAME="${1#*=}"
+            shift
+            ;;
         -h|--help)
             show_help
             exit 0
@@ -191,6 +199,16 @@ fi
 # Validate port number
 if ! [[ "$ARG_PORT" =~ ^[0-9]+$ ]] || [ "$ARG_PORT" -lt 1 ] || [ "$ARG_PORT" -gt 65535 ]; then
     log_error "Invalid port: $ARG_PORT (must be 1-65535)"
+    exit 1
+fi
+
+# Validate project name (lowercase letters and dashes only, must contain at least one dash)
+if ! [[ "$ARG_NAME" =~ ^[a-z][a-z-]*-[a-z][a-z-]*$ ]]; then
+    log_error "Invalid project name: $ARG_NAME"
+    echo "  Project name must:"
+    echo "    - Use only lowercase letters (a-z) and dashes (-)"
+    echo "    - Start with a letter"
+    echo "    - Contain at least one dash (e.g., 'pocket-dev', 'my-project')"
     exit 1
 fi
 
@@ -574,6 +592,9 @@ if [ ! -f ".env" ]; then
     GROUP_ID=$(id -g)
     sedi "s|PD_USER_ID=|PD_USER_ID=$USER_ID|" .env
     sedi "s|PD_GROUP_ID=|PD_GROUP_ID=$GROUP_ID|" .env
+
+    # Set project name for container/volume naming
+    sedi "s|PD_PROJECT_NAME=.*|PD_PROJECT_NAME=$ARG_NAME|" .env
 
     log_info "Generated .env with secrets"
 else
