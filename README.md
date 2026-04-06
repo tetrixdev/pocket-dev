@@ -4,40 +4,66 @@ AI-powered development environment with Claude Code integration. Run Claude Code
 
 ## Quick Start
 
-### Local Development (Docker)
+### Production Deployment (Recommended)
 
-**Prerequisites**: Docker and Docker Compose
-
-```bash
-mkdir pocket-dev && cd pocket-dev && \
-curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/setup.sh -o setup.sh && \
-curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/compose.yml -o compose.yml && \
-curl -sL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/deploy/.env.example -o .env.example && \
-chmod +x setup.sh && ./setup.sh
-```
-
-Then open http://localhost (or your configured port) and follow the setup wizard.
-
-### Production Deployment (VPS)
-
-**Don't have a server yet?** Run this from your local machine:
+For a secure production deployment, first run [vps-setup](https://github.com/tetrixdev/vps-setup) to configure your server:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/setup-cloud.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/vps-setup/main/setup.sh | bash
 ```
 
-This creates a Hetzner Cloud server and configures everything automatically.
-
-**Already have a server?** SSH into it and run:
+Then install PocketDev:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/setup-server.sh | bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash
 ```
 
-Both scripts will:
-- Install Docker, proxy-nginx, and Tailscale
-- Configure SSL certificates
-- Set up PocketDev with your domain
+The interactive wizard will guide you through:
+1. Domain configuration with DNS verification
+2. Access restriction (Tailscale, IP whitelist, or public)
+3. SSL certificate setup
+
+### Local Development
+
+For local testing without a domain:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --local
+```
+
+Or with a custom port:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tetrixdev/pocket-dev/main/install.sh | bash -s -- --local --port=8080
+```
+
+### Installation Options
+
+The installer supports both interactive mode and CLI parameters for automation:
+
+```bash
+# Interactive (recommended)
+./install.sh
+
+# Non-interactive examples
+./install.sh --domain=pocketdev.example.com --restriction=tailscale
+./install.sh --domain=pocketdev.example.com --restriction=whitelist --ips="1.2.3.4,10.0.0.0/8"
+./install.sh --local --port=8080
+```
+
+| Option | Description |
+|--------|-------------|
+| `--domain=DOMAIN` | Domain for PocketDev (e.g., pocketdev.example.com) |
+| `--restriction=MODE` | Access restriction: `tailscale`, `whitelist`, or `none` |
+| `--ips=IPS` | IP whitelist (comma-separated, requires `--restriction=whitelist`) |
+| `--local` | Local mode - skip domain/SSL setup |
+| `--port=PORT` | Port for local mode (default: 80) |
+| `--skip-dns-check` | Skip DNS verification |
+
+### Prerequisites
+
+- **Production**: Run [vps-setup](https://github.com/tetrixdev/vps-setup) first (installs Docker, proxy-nginx, configures firewall)
+- **Local**: Docker and Docker Compose
 
 ## Features
 
@@ -62,17 +88,21 @@ All configuration is done through the web UI.
 docker compose pull && docker compose up -d
 ```
 
-## Deploy to a Server
+## Security Architecture
 
-Use the one-liners in Quick Start above. The setup provides:
+PocketDev uses a two-layer security model when deployed with vps-setup:
 
-- **Hetzner Cloud** - One-click server creation with backup option
-- **Tailscale** - SSH access only via your private network
-- **proxy-nginx** - Reverse proxy with automatic SSL certificates
-- **Docker hardening** - Containers isolated from public network
-- **Automatic updates** - Security patches applied automatically
+1. **VPS-level (vps-setup)**: SSH access control via iptables
+   - Tailscale-only mode: SSH only accessible via Tailscale
+   - IP whitelist mode: SSH restricted to specific IPs
+   - Open mode: Standard SSH access
 
-See [vps-setup](https://github.com/tetrixdev/vps-setup) for details on server hardening.
+2. **Web UI-level (install.sh)**: Application access via nginx
+   - Tailscale restriction: Only 100.64.0.0/10 can access
+   - IP whitelist: Custom IP restrictions
+   - Public: No restriction (requires explicit confirmation)
+
+See [vps-setup](https://github.com/tetrixdev/vps-setup) and [proxy-nginx](https://github.com/tetrixdev/proxy-nginx) for details.
 
 ## Troubleshooting
 
