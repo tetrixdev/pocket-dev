@@ -11,6 +11,7 @@ services:
       - PD_TARGET_GID=${PD_GROUP_ID:-1000}
       - PD_HOST_PROJECT_PATH=${PD_HOST_PROJECT_PATH:-${PWD}}
       - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
     volumes:
       - .env:/var/www/.env
       - user-data:/home/appuser
@@ -106,6 +107,7 @@ services:
       - PD_TARGET_GID=${PD_GROUP_ID:-1000}
       - PD_HOST_PROJECT_PATH=${PD_HOST_PROJECT_PATH:-${PWD}}
       - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
       # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
       - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
     volumes:

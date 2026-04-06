@@ -3,6 +3,18 @@
 return [
     /*
     |--------------------------------------------------------------------------
+    | Project Name
+    |--------------------------------------------------------------------------
+    |
+    | The project name used for Docker container and volume naming. This allows
+    | running multiple PocketDev instances on the same server with different
+    | container/volume prefixes.
+    |
+    */
+    'project_name' => env('PD_PROJECT_NAME', 'pocket-dev'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Allowed Path Prefixes
     |--------------------------------------------------------------------------
     |

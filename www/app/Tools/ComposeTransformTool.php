@@ -31,8 +31,15 @@ class ComposeTransformTool extends Tool
         'required' => ['input'],
     ];
 
-    private const VOLUME_NAME = 'pocket-dev-workspace';
     private const WORKSPACE_ROOT = '/workspace';
+
+    /**
+     * Get the workspace volume name based on project name
+     */
+    private function getVolumeName(): string
+    {
+        return config('pocketdev.project_name', 'pocket-dev') . '-workspace';
+    }
 
     public function getArtisanCommand(): ?string
     {
@@ -374,7 +381,7 @@ CLI;
 
                             $currentVolumes[] = [
                                 'type' => 'volume',
-                                'source' => self::VOLUME_NAME,
+                                'source' => $this->getVolumeName(),
                                 'target' => $stagingTarget,
                                 'subpath' => $parentSubpath,
                             ];
@@ -392,7 +399,7 @@ CLI;
                             // Directory mount
                             $currentVolumes[] = [
                                 'type' => 'volume',
-                                'source' => self::VOLUME_NAME,
+                                'source' => $this->getVolumeName(),
                                 'target' => $target,
                                 'subpath' => $subpath,
                             ];
@@ -631,7 +638,7 @@ CLI;
         // Add external volume declaration
         $lines[] = "";
         $lines[] = "volumes:";
-        $lines[] = "  " . self::VOLUME_NAME . ":";
+        $lines[] = "  " . $this->getVolumeName() . ":";
         $lines[] = "    external: true";
 
         return [

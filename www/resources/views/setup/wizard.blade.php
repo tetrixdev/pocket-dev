@@ -117,11 +117,11 @@
                 @if(config('backup.user_id') !== null)
                     <div class="relative">
                         <div
-                            @click="copyCommand('docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude', 'claude')"
+                            @click="copyCommand('docker exec -it -u {{ config('backup.user_id') }} {{ config('pocketdev.project_name', 'pocket-dev') }}-queue claude', 'claude')"
                             class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3"
                             title="Click to copy"
                         >
-                            docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude
+                            docker exec -it -u {{ config('backup.user_id') }} {{ config('pocketdev.project_name', 'pocket-dev') }}-queue claude
                         </div>
                         <div
                             x-show="copiedCommand === 'claude'"
@@ -161,11 +161,11 @@
                 @if(config('backup.user_id') !== null && config('backup.group_id') !== null)
                     <div class="relative">
                         <div
-                            @click="copyCommand('sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json', 'codex')"
+                            @click="copyCommand('sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json {{ config('pocketdev.project_name', 'pocket-dev') }}-queue:/home/appuser/.codex/auth.json && docker exec -u root {{ config('pocketdev.project_name', 'pocket-dev') }}-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec {{ config('pocketdev.project_name', 'pocket-dev') }}-queue chmod 600 /home/appuser/.codex/auth.json', 'codex')"
                             class="bg-gray-900 rounded p-3 font-mono text-xs text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3 overflow-x-auto"
                             title="Click to copy"
                         >
-                            sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 600 /home/appuser/.codex/auth.json
+                            sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json {{ config('pocketdev.project_name', 'pocket-dev') }}-queue:/home/appuser/.codex/auth.json && docker exec -u root {{ config('pocketdev.project_name', 'pocket-dev') }}-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec {{ config('pocketdev.project_name', 'pocket-dev') }}-queue chmod 600 /home/appuser/.codex/auth.json
                         </div>
                         <div
                             x-show="copiedCommand === 'codex'"
