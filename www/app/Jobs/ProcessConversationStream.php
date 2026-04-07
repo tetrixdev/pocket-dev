@@ -99,11 +99,14 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             // /compact command: trigger CLI compaction without saving a user message turn
             if (!empty($this->options['is_compact_command'])) {
                 RequestFlowLogger::log('job.handle.compact_command', 'Handling /compact command');
+                // Wire abort checker so /abort can interrupt the compact stream
+                if ($provider instanceof AbstractCliProvider) {
+                    $provider->setAbortChecker(fn() => $streamManager->checkAbortFlag($this->conversationUuid));
+                }
                 $this->handleCompactCommand(
                     $conversation,
                     $provider,
                     $streamManager,
-                    $modelRepository,
                     $this->options,
                 );
                 RequestFlowLogger::log('job.handle.compact_command_completed', '/compact command completed');
@@ -724,12 +727,24 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         Conversation $conversation,
         AIProviderInterface $provider,
         StreamManager $streamManager,
-        ModelRepository $modelRepository,
         array $options,
     ): void {
         $streamOptions = array_merge($options, ['override_user_message' => '/compact']);
 
         foreach ($provider->streamMessage($conversation, $streamOptions) as $event) {
+            // Check abort flag before processing each event
+            if ($streamManager->checkAbortFlag($this->conversationUuid)) {
+                RequestFlowLogger::log('job.compact.aborted', 'Abort detected during compact stream');
+                if ($provider instanceof AbstractCliProvider) {
+                    $provider->signalAbort();
+                }
+                $conversation->completeProcessing();
+                $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
+                $streamManager->completeStream($this->conversationUuid, 'aborted');
+                $streamManager->clearAbortFlag($this->conversationUuid);
+                return;
+            }
+
             RequestFlowLogger::log('job.compact.event', 'Compact stream event', [
                 'type' => $event->type,
             ]);
