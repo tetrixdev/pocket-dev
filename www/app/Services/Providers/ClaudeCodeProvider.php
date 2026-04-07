@@ -98,11 +98,6 @@ class ClaudeCodeProvider extends AbstractCliProvider
             ?: $conversation->model
             ?: config('ai.providers.claude_code.default_model', 'opus');
 
-        // Detect if this is a 1M context conversation so we can disable CLI auto-compaction.
-        // The CLI's internal compaction threshold is based on ~200K regardless of model.
-        $isExtendedContext = $conversation->agent?->extended_context
-            && $this->models->getMaxContextWindow($model) > 200000;
-
         // Get global allowed tools setting (Setting::get already decodes JSON)
         $globalAllowedTools = \App\Models\Setting::get('chat.claude_code_allowed_tools', []);
         if (!is_array($globalAllowedTools)) {
