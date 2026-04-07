@@ -736,13 +736,14 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             // Check abort flag before processing each event
             if ($streamManager->checkAbortFlag($this->conversationUuid)) {
                 RequestFlowLogger::log('job.compact.aborted', 'Abort detected during compact stream');
-                if ($provider instanceof AbstractCliProvider) {
-                    $provider->signalAbort();
-                }
                 $conversation->completeProcessing();
                 $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
                 $streamManager->completeStream($this->conversationUuid, 'aborted');
                 $streamManager->clearAbortFlag($this->conversationUuid);
+                // abort() may block on proc_close() — called after stream is already marked done
+                if ($provider instanceof AbstractCliProvider) {
+                    $provider->abort();
+                }
                 return;
             }
 
@@ -784,6 +785,19 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
                 case StreamEvent::ERROR:
                     throw new \RuntimeException($event->content ?? 'Compact command failed');
+            }
+        }
+
+        // Post-loop abort check: handles the case where the CLI's inner abort checker fired
+        // and the generator returned early without yielding another event.
+        if ($streamManager->checkAbortFlag($this->conversationUuid)) {
+            RequestFlowLogger::log('job.compact.aborted', 'Abort detected after compact stream ended');
+            $conversation->completeProcessing();
+            $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
+            $streamManager->completeStream($this->conversationUuid, 'aborted');
+            $streamManager->clearAbortFlag($this->conversationUuid);
+            if ($provider instanceof AbstractCliProvider) {
+                $provider->abort();
             }
         }
     }
