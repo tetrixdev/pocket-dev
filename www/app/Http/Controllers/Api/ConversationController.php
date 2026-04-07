@@ -307,12 +307,23 @@ class ConversationController extends Controller
         // Note: startStream() already clears old events inside its MULTI/EXEC transaction
         RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized');
 
+        // Detect /compact slash command for Claude Code CLI conversations.
+        // When triggered, the job bypasses the normal turn and sends /compact to the CLI directly.
+        $jobOptions = [];
+        if (
+            $conversation->provider_type === 'claude_code'
+            && strtolower(trim($validated['prompt'])) === '/compact'
+            && !empty($conversation->provider_session_id)
+        ) {
+            $jobOptions['is_compact_command'] = true;
+        }
+
         // Dispatch background job - reasoning settings are now stored on conversation
         RequestFlowLogger::log('controller.stream.dispatching_job', 'Dispatching ProcessConversationStream job');
         ProcessConversationStream::dispatch(
             $conversation->uuid,
             $validated['prompt'],
-            [] // Options no longer needed for reasoning - stored on conversation
+            $jobOptions
         );
         RequestFlowLogger::log('controller.stream.job_dispatched', 'Job dispatched to queue');
 
