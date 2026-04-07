@@ -2446,18 +2446,40 @@
 
                     const query = this.prompt.slice(1).toLowerCase();
 
+                    // Built-in commands for Claude Code — shown in autocomplete but sent
+                    // directly as /command rather than activating the skill system.
+                    const activeProvider = this.conversationProvider || this.provider;
+                    const builtInDefs = activeProvider === 'claude_code' ? [
+                        { name: 'compact', when_to_use: 'Compact conversation to reduce context usage', isBuiltin: true },
+                    ] : [];
+                    const builtInSuggestions = builtInDefs.filter(cmd =>
+                        cmd.name.includes(query) || cmd.when_to_use.toLowerCase().includes(query)
+                    );
+
                     // Filter skills matching the query (guard against null when_to_use)
-                    this.skillSuggestions = this.skills.filter(skill => {
+                    const skillSuggestions = this.skills.filter(skill => {
                         const name = (skill.name || '').toLowerCase();
                         const whenToUse = (skill.when_to_use || '').toLowerCase();
                         return name.includes(query) || whenToUse.includes(query);
-                    }).slice(0, 8);
+                    });
 
+                    this.skillSuggestions = [...builtInSuggestions, ...skillSuggestions].slice(0, 8);
                     this.showSkillSuggestions = this.skillSuggestions.length > 0;
                     this.selectedSkillIndex = 0;
                 },
 
                 selectSkill(skill) {
+                    // Built-in commands (e.g. /compact) are sent directly as /command text
+                    // rather than activating the skill system with instruction prepending.
+                    if (skill.isBuiltin) {
+                        this.prompt = '/' + skill.name;
+                        this.showSkillSuggestions = false;
+                        this.$nextTick(() => {
+                            this.$refs.promptInput?.focus();
+                        });
+                        return;
+                    }
+
                     // Set active skill and clear prompt (skill shown as chip above textarea)
                     this.activeSkill = skill;
                     this.prompt = '';
