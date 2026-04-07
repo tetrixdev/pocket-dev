@@ -4770,17 +4770,21 @@
                     }
 
                     // Block unmatched /commands - if prompt starts with / but no skill is active
+                    // Built-in commands that bypass the skill system and are sent directly as messages
+                    const builtInCommands = ['compact'];
                     if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
-                        const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0];
-                        const matchedSkill = this.findSkillByName(potentialSkillName);
-                        if (!matchedSkill) {
-                            this.showError(`Unknown skill: /${potentialSkillName}. Type / to see available skills.`);
-                            return;
+                        const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0].toLowerCase();
+                        if (!builtInCommands.includes(potentialSkillName)) {
+                            const matchedSkill = this.findSkillByName(potentialSkillName);
+                            if (!matchedSkill) {
+                                this.showError(`Unknown skill: /${potentialSkillName}. Type / to see available skills.`);
+                                return;
+                            }
+                            // If it matches, activate it and continue
+                            this.activeSkill = matchedSkill;
+                            // Remove the /command from prompt, keep any text after it
+                            this.prompt = this.prompt.trim().slice(1 + potentialSkillName.length).trim();
                         }
-                        // If it matches, activate it and continue
-                        this.activeSkill = matchedSkill;
-                        // Remove the /command from prompt, keep any text after it
-                        this.prompt = this.prompt.trim().slice(1 + potentialSkillName.length).trim();
                     }
 
                     // Block if uploads still in progress
