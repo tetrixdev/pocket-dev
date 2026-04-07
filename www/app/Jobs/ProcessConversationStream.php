@@ -666,6 +666,32 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             RequestFlowLogger::log('job.loop.saving_tool_results', 'Saving tool results message');
             $this->saveToolResultMessage($conversation, $toolResults);
 
+            // Check for end-turn signal from a tool (e.g. SubAgent in background mode).
+            // When present, finalize the parent turn immediately without a second AI call,
+            // saving a synthetic assistant message to keep the conversation history well-formed
+            // (avoids two consecutive user messages on the next turn).
+            $endTurnResult = null;
+            foreach ($toolResults as $r) {
+                if ($r['end_turn'] ?? false) {
+                    $endTurnResult = $r;
+                    break;
+                }
+            }
+
+            if ($endTurnResult !== null) {
+                $endTurnMessage = $endTurnResult['end_turn_message'] ?? 'Background agent started.';
+                RequestFlowLogger::log('job.loop.end_turn_signal', 'End-turn signal from tool — ending parent turn early', [
+                    'tool_use_id' => $endTurnResult['tool_use_id'],
+                ]);
+                $this->saveAssistantMessage(
+                    $conversation,
+                    [['type' => 'text', 'text' => $endTurnMessage]],
+                    0, 0, null, null,
+                    'end_turn',
+                );
+                return; // handle() will call completeProcessing()
+            }
+
             // Continue with tool results (recursive)
             // Pass the original user message for abort sync consistency
             RequestFlowLogger::log('job.loop.recursive_call', 'Making recursive call for tool results', [
@@ -808,9 +834,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             );
 
             $results[] = [
-                'tool_use_id' => $toolUse['id'],
-                'content' => $result->output,
-                'is_error' => $result->isError,
+                'tool_use_id'      => $toolUse['id'],
+                'content'          => $result->output,
+                'is_error'         => $result->isError,
+                'end_turn'         => $result->endTurn,
+                'end_turn_message' => $result->endTurnMessage,
             ];
         }
 

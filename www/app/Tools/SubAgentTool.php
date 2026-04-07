@@ -65,6 +65,7 @@ Returns immediately with a task_id. Use SubAgentOutput to check status and retri
 - The sub-agent shares your working directory and workspace
 - Foreground mode has a 10-minute timeout
 - For background tasks, use SubAgentOutput to poll for completion
+- To stop a running background task, use SubAgentCancel with its task_id
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
@@ -177,16 +178,23 @@ API;
                 'background' => $isBackground,
             ]);
 
-            // Background mode: return immediately
+            // Background mode: return immediately and signal the stream loop to end
+            // the parent turn without a second AI round-trip.
             if ($isBackground) {
-                return ToolResult::success(json_encode([
-                    'task_id' => $task->id,
-                    'status' => 'running',
-                    'agent' => $agent->slug,
+                $jsonOutput = json_encode([
+                    'task_id'  => $task->id,
+                    'status'   => 'running',
+                    'agent'    => $agent->slug,
                     'provider' => $agent->provider,
-                    'model' => $conversation->model,
-                    'message' => "Background sub-agent started. Use SubAgentOutput with task_id '{$task->id}' to check status and retrieve output.",
-                ], JSON_PRETTY_PRINT));
+                    'model'    => $conversation->model,
+                    'message'  => "Background sub-agent started. Use SubAgentOutput with task_id '{$task->id}' to check status and retrieve output. Use SubAgentCancel with task_id '{$task->id}' to cancel.",
+                ], JSON_PRETTY_PRINT);
+
+                $endTurnMessage = "Background sub-agent started (task `{$task->id}`, agent `{$agent->slug}`). "
+                    . "Use SubAgentOutput to check status and retrieve results, "
+                    . "or SubAgentCancel to stop it.";
+
+                return ToolResult::successEndTurn($jsonOutput, $endTurnMessage);
             }
 
             // Foreground mode: poll until complete
