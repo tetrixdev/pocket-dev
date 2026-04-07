@@ -297,18 +297,9 @@ class ConversationController extends Controller
             ], 409);
         }
 
-        // Initialize stream state BEFORE cleanup to prevent race condition
-        // This ensures clients won't see 'not_found' after cleanup and before job starts
-        RequestFlowLogger::log('controller.stream.initializing', 'Initializing stream state in Redis');
-        $this->streamManager->startStream($conversation->uuid, [
-            'model' => $conversation->model,
-            'provider' => $conversation->provider_type,
-        ]);
-        // Note: startStream() already clears old events inside its MULTI/EXEC transaction
-        RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized');
-
         // Detect /compact slash command for Claude Code CLI conversations.
         // When triggered, the job bypasses the normal turn and sends /compact to the CLI directly.
+        // Must be checked BEFORE startStream() to avoid leaving an orphaned stream state on error.
         $jobOptions = [];
         $isCompactCommand = $conversation->provider_type === 'claude_code'
             && strtolower(trim($validated['prompt'])) === '/compact';
@@ -324,6 +315,16 @@ class ConversationController extends Controller
             }
             $jobOptions['is_compact_command'] = true;
         }
+
+        // Initialize stream state BEFORE cleanup to prevent race condition
+        // This ensures clients won't see 'not_found' after cleanup and before job starts
+        RequestFlowLogger::log('controller.stream.initializing', 'Initializing stream state in Redis');
+        $this->streamManager->startStream($conversation->uuid, [
+            'model' => $conversation->model,
+            'provider' => $conversation->provider_type,
+        ]);
+        // Note: startStream() already clears old events inside its MULTI/EXEC transaction
+        RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized');
 
         // Dispatch background job - reasoning settings are now stored on conversation
         RequestFlowLogger::log('controller.stream.dispatching_job', 'Dispatching ProcessConversationStream job');
