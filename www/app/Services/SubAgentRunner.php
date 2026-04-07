@@ -114,15 +114,21 @@ class SubAgentRunner
         ]);
 
         if ($isBackground) {
-            return ToolResult::success(json_encode([
+            $jsonOutput = json_encode([
                 'task_id' => $task->id,
                 'conversation_id' => $conversation->uuid,
                 'status' => 'running',
                 'agent' => $agent->slug,
                 'provider' => $agent->provider,
                 'model' => $conversation->model,
-                'message' => "Background sub-agent started. Use SubAgentOutput with task_id '{$task->id}' to check status and retrieve output.",
-            ], JSON_PRETTY_PRINT));
+                'message' => "Background sub-agent started. Use SubAgentOutput with task_id '{$task->id}' to check status and retrieve output. Use SubAgentCancel with task_id '{$task->id}' to cancel.",
+            ], JSON_PRETTY_PRINT);
+
+            $endTurnMessage = "Background sub-agent started (task `{$task->id}`, agent `{$agent->slug}`). "
+                . "Use SubAgentOutput to check status and retrieve results, "
+                . "or SubAgentCancel to stop it.";
+
+            return ToolResult::successEndTurn($jsonOutput, $endTurnMessage);
         }
 
         return $this->waitForCompletion($task, $conversation);

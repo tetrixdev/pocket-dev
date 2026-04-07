@@ -67,6 +67,7 @@ Pass `conversation_id` from a previous response to continue from where you left 
 - The sub-agent shares your working directory and workspace
 - Foreground mode has a 10-minute timeout
 - For background tasks, use SubAgentOutput to poll for completion
+- To stop a running background task, use SubAgentCancel with its task_id
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
