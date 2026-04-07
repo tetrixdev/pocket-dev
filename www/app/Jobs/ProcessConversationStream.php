@@ -730,6 +730,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         array $options,
     ): void {
         $streamOptions = array_merge($options, ['override_user_message' => '/compact']);
+        $compactionReceived = false;
 
         foreach ($provider->streamMessage($conversation, $streamOptions) as $event) {
             // Check abort flag before processing each event
@@ -751,6 +752,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
             switch ($event->type) {
                 case StreamEvent::COMPACTION_SUMMARY:
+                    $compactionReceived = true;
                     RequestFlowLogger::log('job.compact.summary_received', 'Compaction summary received', [
                         'summary_length' => strlen($event->content ?? ''),
                         'pre_tokens' => $event->metadata['pre_tokens'] ?? null,
@@ -770,6 +772,14 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                         'conversation' => $this->conversationUuid,
                         'pre_tokens' => $event->metadata['pre_tokens'] ?? null,
                     ]);
+                    break;
+
+                case StreamEvent::DONE:
+                    // Stream ended — fail if no compaction summary was received.
+                    // This catches timeout/no-op paths where the CLI exits without compacting.
+                    if (!$compactionReceived) {
+                        throw new \RuntimeException('Compact command completed without producing a compaction summary. The context may be too small to compact.');
+                    }
                     break;
 
                 case StreamEvent::ERROR:
