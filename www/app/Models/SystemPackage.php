@@ -44,12 +44,14 @@ class SystemPackage extends Model
      */
     public static function getAllWithScripts(): array
     {
-        return static::select('id', 'name', 'install_script')
+        return static::select('id', 'name', 'install_script', 'cli_commands', 'status')
             ->get()
             ->map(fn($p) => [
                 'id' => $p->id,
                 'name' => $p->name,
                 'script' => $p->install_script,
+                'cli_commands' => $p->cli_commands,
+                'status' => $p->status,
             ])
             ->toArray();
     }

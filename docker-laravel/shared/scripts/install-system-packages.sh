@@ -46,6 +46,24 @@ echo "$packages_json" | jq -c '.[]' 2>/dev/null | while read -r pkg; do
     pkg_id=$(echo "$pkg" | jq -r '.id')
     pkg_name=$(echo "$pkg" | jq -r '.name')
     pkg_script=$(echo "$pkg" | jq -r '.script')
+    pkg_status=$(echo "$pkg" | jq -r '.status // ""')
+    pkg_cli=$(echo "$pkg" | jq -r '.cli_commands // ""')
+
+    # Skip if already installed and all CLI commands are present in PATH.
+    # This avoids re-running expensive install scripts (e.g. dotnet, az) on every container restart.
+    if [ "$pkg_status" = "installed" ] && [ -n "$pkg_cli" ]; then
+        all_present=true
+        for cmd in $(echo "$pkg_cli" | tr ',' '\n' | tr -d ' '); do
+            if [ -n "$cmd" ] && ! command -v "$cmd" > /dev/null 2>&1; then
+                all_present=false
+                break
+            fi
+        done
+        if [ "$all_present" = "true" ]; then
+            echo "  ✓ $pkg_name already installed (skipping)"
+            continue
+        fi
+    fi
 
     # Auto-rewrite /tmp/ to /var/tmp/ in install scripts
     # This fixes curl write errors caused by the shared /tmp volume during startup
