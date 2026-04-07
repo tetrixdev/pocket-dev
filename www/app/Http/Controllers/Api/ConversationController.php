@@ -329,11 +329,18 @@ class ConversationController extends Controller
         // Detect /compact slash command for Claude Code CLI conversations.
         // When triggered, the job bypasses the normal turn and sends /compact to the CLI directly.
         $jobOptions = [];
-        if (
-            $conversation->provider_type === 'claude_code'
-            && strtolower(trim($validated['prompt'])) === '/compact'
-            && !empty($conversation->provider_session_id)
-        ) {
+        $isCompactCommand = $conversation->provider_type === 'claude_code'
+            && strtolower(trim($validated['prompt'])) === '/compact';
+
+        if ($isCompactCommand) {
+            if (empty($conversation->provider_session_id)) {
+                RequestFlowLogger::log('controller.stream.compact_no_session', '/compact requires an active session');
+                RequestFlowLogger::endRequest('error');
+                return response()->json([
+                    'success' => false,
+                    'error' => '/compact requires an active Claude Code session. Send a message first to start one.',
+                ], 422);
+            }
             $jobOptions['is_compact_command'] = true;
         }
 

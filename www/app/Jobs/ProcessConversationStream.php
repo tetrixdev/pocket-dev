@@ -107,7 +107,6 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     $conversation,
                     $provider,
                     $streamManager,
-                    $modelRepository,
                     $this->options,
                 );
                 RequestFlowLogger::log('job.handle.compact_command_completed', '/compact command completed');
@@ -728,7 +727,6 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         Conversation $conversation,
         AIProviderInterface $provider,
         StreamManager $streamManager,
-        ModelRepository $modelRepository,
         array $options,
     ): void {
         $streamOptions = array_merge($options, ['override_user_message' => '/compact']);
