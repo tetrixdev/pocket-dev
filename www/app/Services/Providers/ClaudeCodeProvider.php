@@ -192,17 +192,6 @@ class ClaudeCodeProvider extends AbstractCliProvider
         // Enable tool_progress heartbeats during tool execution
         $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
 
-        // For 1M context agents: disable CLI auto-compaction entirely.
-        // The CLI's internal compaction threshold is ~200K regardless of model, so it would
-        // compact at ~180K — far too early for a 1M context window. DISABLE_AUTO_COMPACT=1
-        // disables both the auto-compact trigger and the blocking limit check (both are gated
-        // by zb() in the CLI source), letting the conversation grow to the API's actual 1M limit.
-        $agent = $conversation->agent;
-        $model = $conversation->model ?? config('ai.providers.claude_code.default_model', 'opus');
-        if ($agent?->extended_context && $this->models->getMaxContextWindow($model) > 200000) {
-            $env['DISABLE_AUTO_COMPACT'] = '1';
-        }
-
         return $env;
     }
 
