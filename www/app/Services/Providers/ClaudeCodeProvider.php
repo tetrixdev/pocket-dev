@@ -187,15 +187,16 @@ class ClaudeCodeProvider extends AbstractCliProvider
         // Enable tool_progress heartbeats during tool execution
         $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
 
-        // Disable the CLI's automatic context compaction. The CLI determines its
-        // context window from server-sent SDK betas: Max subscribers receive the
-        // "context-1m-2025-08-07" beta and get a ~950K auto-compact threshold,
-        // while all other users default to 200K (auto-compact at ~180K). Because
-        // PocketDev uses OAuth and cannot control which betas the server sends,
-        // we disable auto-compact for everyone. Users can compact manually via
-        // the /compact command, which triggers at the right moment for their
-        // actual context window.
-        $env['DISABLE_AUTO_COMPACT'] = '1';
+        // Disable auto-compact only for 1M context conversations. For standard
+        // 200K users, auto-compact works correctly and prevents "Prompt is too long"
+        // errors caused by unbounded session history accumulation. For 1M users
+        // (Max subscribers), the CLI detects 200K from server betas and would
+        // compact at ~166K — far too early — so we disable it and let them use
+        // /compact manually instead.
+        $contextWindow = $conversation->context_window_size ?? 0;
+        if ($contextWindow >= 900000) {
+            $env['DISABLE_AUTO_COMPACT'] = '1';
+        }
 
         return $env;
     }
