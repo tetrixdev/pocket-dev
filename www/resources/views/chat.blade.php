@@ -1223,22 +1223,41 @@
                        'xmlns', 'preserveAspectRatio', 'clip-path', 'data-mermaid']
         };
 
-        // Configure marked.js
+        // Configure marked.js with custom renderer for mermaid and syntax highlighting
+        // Note: marked.js v5+ removed the highlight option, use renderer instead
+        const renderer = new marked.Renderer();
+        const originalCodeRenderer = renderer.code.bind(renderer);
+        renderer.code = function(code, language, escaped) {
+            // Handle both old signature (code, lang) and new signature ({text, lang})
+            let text = code;
+            let lang = language;
+            if (typeof code === 'object') {
+                text = code.text;
+                lang = code.lang;
+            }
+
+            // Mermaid blocks: return placeholder for post-processing
+            if (lang === 'mermaid') {
+                const escapedCode = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                return `<div class="mermaid-placeholder" data-mermaid="${escapedCode}"></div>`;
+            }
+
+            // Regular code: apply syntax highlighting
+            let highlighted;
+            if (lang && hljs.getLanguage(lang)) {
+                try { highlighted = hljs.highlight(String(text), { language: lang }).value; } catch (err) {}
+            }
+            if (!highlighted) {
+                highlighted = hljs.highlightAuto(String(text)).value;
+            }
+            return `<pre><code class="hljs language-${lang || ''}">${highlighted}</code></pre>`;
+        };
+
         marked.setOptions({
             breaks: true,
             gfm: true,
-            highlight: function(code, lang) {
-                // Mermaid blocks: return placeholder for post-processing
-                if (lang === 'mermaid') {
-                    const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                                       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                    return `<div class="mermaid-placeholder" data-mermaid="${escaped}"></div>`;
-                }
-                if (lang && hljs.getLanguage(lang)) {
-                    try { return hljs.highlight(code, { language: lang }).value; } catch (err) {}
-                }
-                return hljs.highlightAuto(code).value;
-            }
+            renderer: renderer
         });
 
         function chatApp() {
