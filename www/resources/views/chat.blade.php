@@ -631,6 +631,19 @@
             crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
+            integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I"
+            crossorigin="anonymous"></script>
+    <script>
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'dark',
+                securityLevel: 'strict',
+                fontFamily: 'ui-sans-serif, system-ui, sans-serif'
+            });
+        }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
           integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
           crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -658,6 +671,55 @@
         /* Wrapper for horizontal scroll on tables - applied via JS */
         .table-wrapper { overflow-x: auto; margin: 1em 0; -webkit-overflow-scrolling: touch; }
         .table-wrapper table { margin: 0; }
+
+        /* Mermaid diagram styles */
+        .mermaid-placeholder { margin: 1em 0; }
+        .mermaid-diagram {
+            background: #1f2937;
+            border-radius: 0.5em;
+            padding: 1em;
+            overflow-x: auto;
+            margin: 1em 0;
+            display: flex;
+            justify-content: center;
+        }
+        .mermaid-diagram svg { max-width: 100%; height: auto; }
+        .mermaid-loading {
+            background: #374151;
+            border-radius: 0.5em;
+            padding: 1em;
+            text-align: center;
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+        .mermaid-loading i { margin-right: 0.5em; }
+        .mermaid-error {
+            background: #1f2937;
+            border: 1px solid #dc2626;
+            border-radius: 0.5em;
+            overflow: hidden;
+            margin: 1em 0;
+        }
+        .mermaid-error-header {
+            background: rgba(220, 38, 38, 0.2);
+            padding: 0.5em 1em;
+            color: #fca5a5;
+            font-size: 0.875rem;
+        }
+        .mermaid-error-header i { margin-right: 0.5em; }
+        .mermaid-error-code {
+            margin: 0;
+            padding: 1em;
+            background: #1f2937;
+            overflow-x: auto;
+        }
+        .mermaid-error-code code {
+            background: none !important;
+            padding: 0 !important;
+            color: #d1d5db;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+        }
 
         /* File path links - clickable paths that open file preview modal */
         .file-path-link {
@@ -1149,11 +1211,29 @@
     @include('partials.chat.modals')
 
     <script>
+        // DOMPurify config to allow Mermaid-generated SVG elements
+        const mermaidSanitizeConfig = {
+            ADD_TAGS: ['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline',
+                       'polygon', 'text', 'tspan', 'defs', 'marker', 'use', 'style',
+                       'foreignObject', 'clipPath', 'linearGradient', 'radialGradient', 'stop'],
+            ADD_ATTR: ['viewBox', 'width', 'height', 'fill', 'stroke', 'stroke-width', 'd',
+                       'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry',
+                       'transform', 'points', 'class', 'id', 'style', 'marker-end',
+                       'text-anchor', 'dominant-baseline', 'font-size', 'opacity',
+                       'xmlns', 'preserveAspectRatio', 'clip-path', 'data-mermaid']
+        };
+
         // Configure marked.js
         marked.setOptions({
             breaks: true,
             gfm: true,
             highlight: function(code, lang) {
+                // Mermaid blocks: return placeholder for post-processing
+                if (lang === 'mermaid') {
+                    const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                    return `<div class="mermaid-placeholder" data-mermaid="${escaped}"></div>`;
+                }
                 if (lang && hljs.getLanguage(lang)) {
                     try { return hljs.highlight(code, { language: lang }).value; } catch (err) {}
                 }
@@ -1796,6 +1876,17 @@
                             }
                         }
                     });
+
+                    // Trigger mermaid diagram rendering after message updates (debounced for streaming)
+                    this.$watch('messages', () => {
+                        clearTimeout(this._mermaidTimeout);
+                        this._mermaidTimeout = setTimeout(() => {
+                            this.$nextTick(() => {
+                                const container = document.getElementById('messages');
+                                if (container) this.renderMermaidDiagrams(container);
+                            });
+                        }, 300);
+                    }, { deep: true });
                 },
 
                 // Extract session ID from URL path (strict UUID validation)
@@ -5239,6 +5330,114 @@
                     html = html.replace(/<\/table>/g, '</table></div>');
 
                     return DOMPurify.sanitize(html);
+                },
+
+                // Mermaid diagram rendering
+                async renderMermaidDiagrams(containerEl) {
+                    // Fallback: if Mermaid CDN failed to load, show code blocks instead
+                    if (typeof mermaid === 'undefined') {
+                        if (!containerEl) return;
+                        const placeholders = containerEl.querySelectorAll('.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error)');
+                        for (const placeholder of placeholders) {
+                            const code = placeholder.dataset.mermaid;
+                            if (!code) continue;
+                            const decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+                                               .replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+                            placeholder.innerHTML = `<div class="mermaid-error">
+                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation"></i> Mermaid library unavailable</div>
+                                <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
+                            </div>`;
+                            placeholder.classList.add('mermaid-error');
+                        }
+                        return;
+                    }
+                    if (!containerEl) return;
+
+                    const placeholders = containerEl.querySelectorAll(
+                        '.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error):not(.mermaid-processing)'
+                    );
+
+                    for (const placeholder of placeholders) {
+                        const code = placeholder.dataset.mermaid;
+                        if (!code) continue;
+
+                        // Decode HTML entities
+                        const decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+                                           .replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+
+                        // Check if complete (not mid-stream)
+                        if (!this.isMermaidComplete(decoded)) {
+                            placeholder.innerHTML = '<div class="mermaid-loading"><i class="fa-solid fa-spinner fa-spin"></i> Rendering diagram...</div>';
+                            continue;
+                        }
+
+                        // Mark as processing to prevent race conditions
+                        placeholder.classList.add('mermaid-processing');
+
+                        try {
+                            const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
+
+                            // Render with timeout to prevent hanging on complex/malicious diagrams
+                            const { svg } = await Promise.race([
+                                mermaid.render(id, decoded),
+                                new Promise((_, reject) =>
+                                    setTimeout(() => reject(new Error('Diagram render timeout')), 5000)
+                                )
+                            ]);
+
+                            // Sanitize Mermaid SVG output with permissive config (scoped to Mermaid only)
+                            const sanitizedSvg = DOMPurify.sanitize(svg, mermaidSanitizeConfig);
+                            placeholder.innerHTML = `<div class="mermaid-diagram">${sanitizedSvg}</div>`;
+                            placeholder.classList.remove('mermaid-processing');
+                            placeholder.classList.add('mermaid-rendered');
+                        } catch (err) {
+                            console.error('Mermaid render error:', err);
+                            placeholder.innerHTML = `<div class="mermaid-error">
+                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation"></i> ${err.message === 'Diagram render timeout' ? 'Diagram render timeout' : 'Diagram syntax error'}</div>
+                                <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
+                            </div>`;
+                            placeholder.classList.remove('mermaid-processing');
+                            placeholder.classList.add('mermaid-error');
+                        }
+                    }
+                },
+
+                isMermaidComplete(code) {
+                    if (!code?.trim()) return false;
+                    const trimmed = code.trim();
+
+                    // Must start with valid diagram type (comprehensive list for Mermaid v11)
+                    const types = [
+                        'graph', 'flowchart', 'sequenceDiagram', 'classDiagram',
+                        'stateDiagram', 'erDiagram', 'journey', 'gantt', 'pie',
+                        'gitGraph', 'mindmap', 'timeline', 'quadrantChart', 'xychart', 'block',
+                        'sankey', 'requirement', 'c4Context', 'c4Container', 'c4Component', 'c4Dynamic',
+                        'architecture', 'zenuml', 'packet'
+                    ];
+                    if (!types.some(t => trimmed.toLowerCase().startsWith(t.toLowerCase()))) {
+                        // Unknown type - let Mermaid try to render it (handles future types)
+                        // But require at least 2 lines to avoid rendering mid-stream
+                        return trimmed.includes('\n');
+                    }
+
+                    // Check for incomplete patterns (mid-stream)
+                    const incompletePatterns = [
+                        /-->?\s*$/,           // Ends with arrow
+                        /\|\s*$/,             // Ends mid-label
+                        /[\[\(\{<]\s*$/,      // Ends with open bracket
+                        /:\s*$/,              // Ends with colon (incomplete label/definition)
+                        /participant\s*$/i,   // Incomplete participant declaration
+                        /Note\s+(left|right|over)?\s*$/i,  // Incomplete note
+                        /subgraph\s*$/i,      // Incomplete subgraph
+                    ];
+                    if (incompletePatterns.some(p => p.test(trimmed))) return false;
+
+                    return true;
+                },
+
+                escapeHtmlForMermaid(text) {
+                    if (!text) return '';
+                    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 },
 
                 formatTimestamp(ts) {
