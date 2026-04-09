@@ -187,6 +187,17 @@ class ClaudeCodeProvider extends AbstractCliProvider
         // Enable tool_progress heartbeats during tool execution
         $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
 
+        // Disable auto-compact only for 1M context conversations. For standard
+        // 200K users, auto-compact works correctly and prevents "Prompt is too long"
+        // errors caused by unbounded session history accumulation. For 1M users
+        // (Max subscribers), the CLI detects 200K from server betas and would
+        // compact at ~166K — far too early — so we disable it and let them use
+        // /compact manually instead.
+        $contextWindow = $conversation->context_window_size ?? 0;
+        if ($contextWindow >= 900000) {
+            $env['DISABLE_AUTO_COMPACT'] = '1';
+        }
+
         return $env;
     }
 
