@@ -187,15 +187,28 @@ class ClaudeCodeProvider extends AbstractCliProvider
         // Enable tool_progress heartbeats during tool execution
         $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
 
-        // Disable auto-compact only for 1M context conversations. For standard
-        // 200K users, auto-compact works correctly and prevents "Prompt is too long"
-        // errors caused by unbounded session history accumulation. For 1M users
-        // (Max subscribers), the CLI detects 200K from server betas and would
-        // compact at ~166K — far too early — so we disable it and let them use
-        // /compact manually instead.
-        $contextWindow = $conversation->context_window_size ?? 0;
-        if ($contextWindow >= 900000) {
+        // For 1M context agents, the CLI has two separate limits that must both be addressed:
+        //
+        // 1. DISABLE_AUTO_COMPACT=1 — prevents auto-compact at ~167K tokens.
+        //    The CLI determines context window from server-sent SDK betas. Max subscribers
+        //    receive "context-1m-2025-08-07" at the API level, but the CLI still calculates
+        //    its compact threshold against ~200K, causing premature compaction at ~167K.
+        //
+        // 2. CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE=977000 — bypasses the hard blocking limit.
+        //    DISABLE_AUTO_COMPACT does NOT bypass this limit (different code path in CLI).
+        //    Without this override, the CLI blocks requests at ~177K tokens regardless.
+        //    Formula: ZQ(model) - We1 = (200K - 20K) - 3K = 177K (empirically confirmed).
+        //    With this override, the CLI allows up to 977K tokens before blocking, matching
+        //    the actual 1M API window available to Max subscribers.
+        //
+        // For standard 200K agents, auto-compact works correctly at ~167K and prevents
+        // "Prompt is too long" errors from unbounded session history accumulation.
+        $is1mAgent = $conversation->agent?->extended_context
+            && $this->models->getMaxContextWindow($conversation->model ?? '') > 200000;
+
+        if ($is1mAgent) {
             $env['DISABLE_AUTO_COMPACT'] = '1';
+            $env['CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE'] = '977000';
         }
 
         return $env;
