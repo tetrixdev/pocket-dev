@@ -100,6 +100,13 @@ class SystemPromptBuilder
             $sections[] = $agentsSection;
         }
 
+        // 3c. Dedicated agent tools section (CLI equivalent of API agent_* tool definitions)
+        if ($promptType === 'cli' && $agent) {
+            if ($agentToolsSection = $this->buildExposedAgentToolsSection($agent)) {
+                $sections[] = $agentToolsSection;
+            }
+        }
+
         // 4. Skills section (slash commands)
         if ($skillsSection = $this->toolSelector->buildSkillsSection($agent)) {
             $sections[] = $skillsSection;
@@ -511,6 +518,52 @@ PROMPT;
                 $escapeCell($agent->model),
                 $escapeCell($desc),
             );
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Build a section describing exposed agents as dedicated named tools for CLI providers.
+     *
+     * For API providers this is handled via getDefinitions() injecting agent_* tool schemas.
+     * For CLI providers (Claude Code, Codex) the equivalent is text in the system prompt
+     * describing each exposed agent as a callable tool via `pd subagent:run`.
+     */
+    private function buildExposedAgentToolsSection(?Agent $callerAgent): ?string
+    {
+        if (!$callerAgent || !$callerAgent->can_call_subagents) {
+            return null;
+        }
+
+        $query = Agent::where('workspace_id', $callerAgent->workspace_id)
+            ->where('enabled', true)
+            ->where('expose_as_tool', true)
+            ->where('id', '!=', $callerAgent->id);
+
+        $allowlist = $callerAgent->allowed_subagents;
+        if (!empty($allowlist)) {
+            $query->whereIn('id', $allowlist);
+        }
+
+        $agents = $query->orderBy('name')->get();
+
+        if ($agents->isEmpty()) {
+            return null;
+        }
+
+        $lines = ["# Dedicated Agent Tools\n"];
+        $lines[] = "These agents are exposed as dedicated tools. Call them by name instead of using the generic SubAgent tool.\n";
+
+        foreach ($agents as $agent) {
+            $toolName = 'agent_' . $agent->slug;
+            $lines[] = "#### {$toolName}";
+            if ($agent->description) {
+                $lines[] = trim($agent->description);
+            }
+            $lines[] = "```bash";
+            $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"<your task>\"";
+            $lines[] = "```\n";
         }
 
         return implode("\n", $lines);
