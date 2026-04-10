@@ -2,13 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\Agent;
 use App\Models\PocketTool;
 use App\Models\Workspace;
+use App\Tools\AgentTool;
 use App\Tools\ExecutionContext;
 use App\Tools\Tool;
 use App\Tools\ToolResult;
 use App\Tools\UserTool;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Registry for available tools.
@@ -17,6 +20,10 @@ use Illuminate\Support\Facades\Log;
  * Built-in tools (from app/Tools) are cached in the singleton.
  * User tools (from database) are always fetched fresh to ensure
  * newly created tools are available without restarting the queue worker.
+ *
+ * Agent tools (agents with expose_as_tool = true) are always fetched fresh
+ * and injected per-caller based on the caller agent's can_call_subagents
+ * and allowed_subagents settings.
  *
  * Tool filtering follows a three-tier hierarchy:
  * 1. Global enablement (PocketTool.enabled) - tool exists and is globally enabled
@@ -63,8 +70,64 @@ class ToolRegistry
     }
 
     /**
+     * Get AgentTools for agents that are opted-in (expose_as_tool = true)
+     * and permitted for the given caller.
+     *
+     * Rules:
+     * - If no caller: inject all opted-in agents across all workspaces (e.g. CLI context)
+     * - If caller has can_call_subagents = false: inject nothing
+     * - If caller has allowed_subagents (non-null array): inject only those agent IDs
+     * - Otherwise: inject all opted-in agents in the same workspace as the caller
+     *
+     * @return array<string, AgentTool>
+     */
+    private function getAgentTools(?Agent $callerAgent = null): array
+    {
+        $agentTools = [];
+
+        try {
+            // Caller has explicitly disabled sub-agent calling
+            if ($callerAgent !== null && ! $callerAgent->can_call_subagents) {
+                return [];
+            }
+
+            $query = Agent::query()
+                ->where('enabled', true)
+                ->where('expose_as_tool', true);
+
+            if ($callerAgent !== null) {
+                // Scope to caller's workspace
+                $query->where('workspace_id', $callerAgent->workspace_id);
+
+                // Apply allowlist if set
+                $allowlist = $callerAgent->allowed_subagents;
+                if (!empty($allowlist)) {
+                    $query->whereIn('id', $allowlist);
+                }
+
+                // Never inject the caller itself as its own sub-agent tool
+                $query->where('id', '!=', $callerAgent->id);
+            }
+
+            $agents = $query->get();
+
+            foreach ($agents as $agent) {
+                $tool = new AgentTool($agent);
+                $agentTools[$tool->name] = $tool;
+            }
+        } catch (\Throwable $e) {
+            Log::debug('ToolRegistry: Could not load agent tools', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $agentTools;
+    }
+
+    /**
      * Get a tool by name.
      * Checks built-in tools first, then user tools.
+     * Does not include agent tools (use execute() which handles agent_* prefix).
      */
     public function get(string $name): ?Tool
     {
@@ -88,6 +151,7 @@ class ToolRegistry
 
     /**
      * Get all registered tools (built-in + fresh user tools).
+     * Does not include agent tools (context-dependent).
      *
      * @return array<string, Tool>
      */
@@ -144,15 +208,20 @@ class ToolRegistry
 
     /**
      * Get tool definitions for the API.
-     * Returns array of tool definition objects.
      *
+     * Merges built-in tools, user tools, and per-caller agent tools.
+     * Agent tools are filtered based on the caller's sub-agent settings.
+     *
+     * @param Agent|null $callerAgent The agent making the request (null = no per-agent filtering)
      * @return array<array{name: string, description: string, input_schema: array}>
      */
-    public function getDefinitions(): array
+    public function getDefinitions(?Agent $callerAgent = null): array
     {
+        $tools = array_merge($this->all(), $this->getAgentTools($callerAgent));
+
         return array_map(
             fn(Tool $tool) => $tool->toDefinition(),
-            array_values($this->all())
+            array_values($tools)
         );
     }
 
@@ -184,9 +253,17 @@ class ToolRegistry
 
     /**
      * Execute a tool by name.
+     *
+     * Handles the agent_* prefix for native per-agent tool calls.
+     * Agent resolution is scoped to the context workspace for security.
      */
     public function execute(string $name, array $input, ExecutionContext $context): ToolResult
     {
+        // Handle native agent tool calls (agent_<slug> prefix)
+        if (Str::startsWith($name, 'agent_')) {
+            return $this->executeAgentTool($name, $input, $context);
+        }
+
         $tool = $this->get($name);
 
         if ($tool === null) {
@@ -197,6 +274,59 @@ class ToolRegistry
             return $tool->execute($input, $context);
         } catch (\Throwable $e) {
             return ToolResult::error("Tool execution failed: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Dispatch an agent_* tool call.
+     *
+     * Resolves the target agent by slug, verifies it has expose_as_tool = true,
+     * and checks that the caller's sub-agent settings permit the call.
+     */
+    private function executeAgentTool(string $name, array $input, ExecutionContext $context): ToolResult
+    {
+        $slug = Str::after($name, 'agent_');
+        $workspace = $context->getWorkspace();
+        $callerAgent = $context->getAgent();
+
+        // Security: caller must have sub-agent calling enabled
+        if ($callerAgent !== null && ! $callerAgent->can_call_subagents) {
+            return ToolResult::error("This agent is not permitted to call other agents.");
+        }
+
+        $query = Agent::query()
+            ->where('slug', $slug)
+            ->where('enabled', true)
+            ->where('expose_as_tool', true);
+
+        if ($workspace) {
+            $query->where('workspace_id', $workspace->id);
+        }
+
+        $agent = $query->first();
+
+        if (!$agent) {
+            return ToolResult::error("Agent tool '{$name}' not found or not available. The agent may not exist, be disabled, or not have expose_as_tool enabled.");
+        }
+
+        // Check allowlist
+        if ($callerAgent !== null) {
+            $allowlist = $callerAgent->allowed_subagents;
+            if (!empty($allowlist) && !in_array($agent->id, $allowlist, true)) {
+                return ToolResult::error("Agent '{$agent->name}' is not in this agent's allowed sub-agents list.");
+            }
+
+            // Prevent self-call
+            if ($callerAgent->id === $agent->id) {
+                return ToolResult::error("An agent cannot call itself as a sub-agent.");
+            }
+        }
+
+        try {
+            $agentTool = new AgentTool($agent);
+            return $agentTool->execute($input, $context);
+        } catch (\Throwable $e) {
+            return ToolResult::error("Agent tool execution failed: {$e->getMessage()}");
         }
     }
 
