@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\Screen;
 use App\Models\Session;
 use App\Models\Workspace;
+use App\Services\ModelRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -23,6 +24,7 @@ class ConversationFactory
 {
     public function __construct(
         private ProviderFactory $providerFactory,
+        private ModelRepository $models,
     ) {}
 
     /**
@@ -192,10 +194,22 @@ class ConversationFactory
 
     /**
      * Initialize the context window size from the provider.
+     * For agents with extended_context (1M support), uses max_context_window instead.
      */
     private function initializeContextWindow(Conversation $conversation): void
     {
         try {
+            // For 1M context agents, use max_context_window (e.g. 1,000,000)
+            // instead of the standard context_window (e.g. 200,000)
+            $conversation->loadMissing('agent');
+            if ($conversation->agent?->extended_context) {
+                $maxContextWindow = $this->models->getMaxContextWindow($conversation->model);
+                if ($maxContextWindow > 0) {
+                    $conversation->update(['context_window_size' => $maxContextWindow]);
+                    return;
+                }
+            }
+
             $provider = $this->providerFactory->make($conversation->provider_type);
             $contextWindow = $provider->getContextWindow($conversation->model);
             $conversation->update(['context_window_size' => $contextWindow]);

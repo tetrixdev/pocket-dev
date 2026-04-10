@@ -746,10 +746,20 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
             // Ensure context_window_size is set (for existing conversations that don't have it)
             if (!$conversation->context_window_size) {
-                $provider = app(\App\Services\ProviderFactory::class)->make($conversation->provider_type);
                 try {
-                    $contextWindow = $provider->getContextWindow($conversation->model);
-                    $conversation->updateContextWindowSize($contextWindow);
+                    // For 1M context agents, use max_context_window (1M) instead of default (200K)
+                    $conversation->loadMissing('agent');
+                    if ($conversation->agent?->extended_context) {
+                        $models = app(\App\Services\ModelRepository::class);
+                        $maxContextWindow = $models->getMaxContextWindow($conversation->model);
+                        if ($maxContextWindow > 0) {
+                            $conversation->updateContextWindowSize($maxContextWindow);
+                        }
+                    } else {
+                        $provider = app(\App\Services\ProviderFactory::class)->make($conversation->provider_type);
+                        $contextWindow = $provider->getContextWindow($conversation->model);
+                        $conversation->updateContextWindowSize($contextWindow);
+                    }
                 } catch (\Exception $e) {
                     // Model not found or provider error - skip (will retry on next turn)
                     Log::debug('ProcessConversationStream: Failed to get context window', [

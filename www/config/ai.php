@@ -289,11 +289,13 @@ return [
 
         // Claude Code models (aliases supported by CLI)
         // Pricing is null since Claude Code uses subscription credits
+        // max_context_window: opus/sonnet support 1M for Max subscribers via context-1m-2025-08-07 beta
         'claude_code' => [
             [
                 'model_id' => 'opus',
                 'display_name' => 'Claude Opus (via CLI)',
                 'context_window' => 200000,
+                'max_context_window' => 1000000,
                 'max_output_tokens' => 64000,
                 'input_price_per_million' => null,
                 'output_price_per_million' => null,
@@ -304,6 +306,7 @@ return [
                 'model_id' => 'sonnet',
                 'display_name' => 'Claude Sonnet (via CLI)',
                 'context_window' => 200000,
+                'max_context_window' => 1000000,
                 'max_output_tokens' => 64000,
                 'input_price_per_million' => null,
                 'output_price_per_million' => null,
@@ -314,6 +317,7 @@ return [
                 'model_id' => 'haiku',
                 'display_name' => 'Claude Haiku (via CLI)',
                 'context_window' => 200000,
+                'max_context_window' => 200000,
                 'max_output_tokens' => 64000,
                 'input_price_per_million' => null,
                 'output_price_per_million' => null,
