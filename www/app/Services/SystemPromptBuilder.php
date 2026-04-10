@@ -100,13 +100,6 @@ class SystemPromptBuilder
             $sections[] = $agentsSection;
         }
 
-        // 3c. Dedicated agent tools section (CLI equivalent of API agent_* tool definitions)
-        if ($promptType === 'cli' && $agent) {
-            if ($agentToolsSection = $this->buildExposedAgentToolsSection($agent)) {
-                $sections[] = $agentToolsSection;
-            }
-        }
-
         // 4. Skills section (slash commands)
         if ($skillsSection = $this->toolSelector->buildSkillsSection($agent)) {
             $sections[] = $skillsSection;
@@ -146,6 +139,14 @@ class SystemPromptBuilder
         // 11. Environment (credentials and packages)
         if ($envSection = $this->buildEnvironmentSection($workspace)) {
             $sections[] = $envSection;
+        }
+
+        // 12. Dedicated agent tools — injected last so it's in the recency zone
+        // For CLI providers this is the equivalent of API agent_* tool definitions.
+        if ($promptType === 'cli' && $agent) {
+            if ($agentToolsSection = $this->buildExposedAgentToolsSection($agent)) {
+                $sections[] = $agentToolsSection;
+            }
         }
 
         // Note: Context usage section removed to improve prompt caching.
@@ -552,17 +553,20 @@ PROMPT;
             return null;
         }
 
-        $lines = ["# Dedicated Agent Tools\n"];
-        $lines[] = "These agents are exposed as dedicated tools. Call them by name instead of using the generic SubAgent tool.\n";
+        $lines = [];
+        $lines[] = "# IMPORTANT: You Have Dedicated Sub-Agent Tools\n";
+        $lines[] = "The following agents are available as **dedicated tools** you MUST use via the Bash tool.";
+        $lines[] = "When a task matches one of these agents, call it directly — do NOT use the generic SubAgent tool.\n";
 
         foreach ($agents as $agent) {
             $toolName = 'agent_' . $agent->slug;
-            $lines[] = "#### {$toolName}";
+            $lines[] = "## {$toolName}";
             if ($agent->description) {
-                $lines[] = trim($agent->description);
+                $lines[] = '> ' . trim($agent->description);
             }
+            $lines[] = "Call via Bash:";
             $lines[] = "```bash";
-            $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"<your task>\"";
+            $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"<your task here>\"";
             $lines[] = "```\n";
         }
 
