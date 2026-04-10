@@ -554,19 +554,24 @@ PROMPT;
         }
 
         $lines = [];
-        $lines[] = "# IMPORTANT: You Have Dedicated Sub-Agent Tools\n";
-        $lines[] = "The following agents are available as **dedicated tools** you MUST use via the Bash tool.";
-        $lines[] = "When a task matches one of these agents, call it directly — do NOT use the generic SubAgent tool.\n";
+        $lines[] = "# IMPORTANT: Dedicated Agent Tools Available\n";
+        $lines[] = "You have access to the following dedicated agents as tools. When asked to use one of these";
+        $lines[] = "agents by name (e.g. \"use agent_opus-45-reviewer\"), invoke it immediately using the Bash tool.\n";
+        $lines[] = "**Do NOT look in memory. Do NOT use SubAgent. Just run the Bash command shown below.**\n";
 
         foreach ($agents as $agent) {
             $toolName = 'agent_' . $agent->slug;
             $lines[] = "## {$toolName}";
             if ($agent->description) {
-                $lines[] = '> ' . trim($agent->description);
+                $lines[] = trim($agent->description);
             }
-            $lines[] = "Call via Bash:";
+            $lines[] = "When asked to use `{$toolName}`, run this Bash command:";
             $lines[] = "```bash";
-            $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"<your task here>\"";
+            $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"<task>\"";
+            $lines[] = "```";
+            $lines[] = "Example: User says \"use agent_{$agent->slug} to review this code\" → you run:";
+            $lines[] = "```bash";
+            $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"Review this code: ...\"";
             $lines[] = "```\n";
         }
 
