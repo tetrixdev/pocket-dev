@@ -237,7 +237,8 @@
                             type="checkbox"
                             name="expose_as_tool"
                             value="1"
-                            x-model="exposeAsTool"
+                            :checked="exposeAsTool"
+                            @change="exposeAsTool = $event.target.checked"
                             class="mt-0.5 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
                         >
                         <div>
@@ -254,7 +255,8 @@
                             type="checkbox"
                             name="can_call_subagents"
                             value="1"
-                            x-model="canCallSubagents"
+                            :checked="canCallSubagents"
+                            @change="canCallSubagents = $event.target.checked"
                             class="mt-0.5 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
                         >
                         <div>
