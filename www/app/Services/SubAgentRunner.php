@@ -52,7 +52,7 @@ class SubAgentRunner
             }
 
             return $this->spawn($agent, $prompt, $isBackground, $context, $workspaceId, $workingDirectory);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('SubAgentRunner: failed to start sub-agent', [
                 'agent' => $agent->slug,
                 'error' => $e->getMessage(),
@@ -141,6 +141,10 @@ class SubAgentRunner
 
         if (!$conversation) {
             return ToolResult::error("Conversation '{$conversationId}' not found or not accessible.");
+        }
+
+        if ($conversation->status === Conversation::STATUS_RUNNING) {
+            return ToolResult::error("Conversation '{$conversationId}' is still running. Wait for it to complete before resuming.");
         }
 
         // Create a new task linked to this resumed conversation

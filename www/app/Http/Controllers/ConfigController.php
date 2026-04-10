@@ -502,7 +502,7 @@ class ConfigController extends Controller
                     'enabled' => $validated['enabled'] ?? true,
                     'extended_context' => ($validated['extended_context'] ?? '1') === '1',
                     'expose_as_tool' => $validated['expose_as_tool'] ?? false,
-                    'can_call_subagents' => $validated['can_call_subagents'] ?? true,
+                    'can_call_subagents' => (bool) ($validated['can_call_subagents'] ?? false),
                     'allowed_subagents' => !empty($validated['allowed_subagents']) ? $validated['allowed_subagents'] : null,
                 ]);
 
@@ -625,7 +625,7 @@ class ConfigController extends Controller
                     'enabled' => $validated['enabled'] ?? true,
                     'extended_context' => ($validated['extended_context'] ?? '1') === '1',
                     'expose_as_tool' => $validated['expose_as_tool'] ?? false,
-                    'can_call_subagents' => $validated['can_call_subagents'] ?? true,
+                    'can_call_subagents' => (bool) ($validated['can_call_subagents'] ?? false),
                     'allowed_subagents' => !empty($validated['allowed_subagents']) ? $validated['allowed_subagents'] : null,
                 ]);
 

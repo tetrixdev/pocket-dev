@@ -86,27 +86,26 @@ class ToolRegistry
         $agentTools = [];
 
         try {
+            // No caller context (e.g. CLI) — do not inject any agent tools
+            if ($callerAgent === null) {
+                return [];
+            }
+
             // Caller has explicitly disabled sub-agent calling
-            if ($callerAgent !== null && ! $callerAgent->can_call_subagents) {
+            if (! $callerAgent->can_call_subagents) {
                 return [];
             }
 
             $query = Agent::query()
                 ->where('enabled', true)
-                ->where('expose_as_tool', true);
+                ->where('expose_as_tool', true)
+                ->where('workspace_id', $callerAgent->workspace_id)
+                ->where('id', '!=', $callerAgent->id);
 
-            if ($callerAgent !== null) {
-                // Scope to caller's workspace
-                $query->where('workspace_id', $callerAgent->workspace_id);
-
-                // Apply allowlist if set
-                $allowlist = $callerAgent->allowed_subagents;
-                if (!empty($allowlist)) {
-                    $query->whereIn('id', $allowlist);
-                }
-
-                // Never inject the caller itself as its own sub-agent tool
-                $query->where('id', '!=', $callerAgent->id);
+            // Apply allowlist if set
+            $allowlist = $callerAgent->allowed_subagents;
+            if (!empty($allowlist)) {
+                $query->whereIn('id', $allowlist);
             }
 
             $agents = $query->get();
