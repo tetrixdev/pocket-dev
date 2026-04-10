@@ -99,6 +99,10 @@ class SubAgentRunner
             'subagent_task_id' => $task->id,
         ]);
 
+        // Mark as processing BEFORE dispatching so waitForCompletion doesn't see
+        // the initial 'idle' status and return prematurely before the job starts.
+        $conversation->startProcessing();
+
         ProcessConversationStream::dispatch($conversation->uuid, $prompt);
 
         Log::info('SubAgentRunner: task started', [
@@ -143,7 +147,7 @@ class SubAgentRunner
             return ToolResult::error("Conversation '{$conversationId}' not found or not accessible.");
         }
 
-        if ($conversation->status === Conversation::STATUS_RUNNING) {
+        if ($conversation->status === Conversation::STATUS_PROCESSING) {
             return ToolResult::error("Conversation '{$conversationId}' is still running. Wait for it to complete before resuming.");
         }
 
