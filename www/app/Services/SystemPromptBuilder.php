@@ -549,30 +549,38 @@ PROMPT;
 
         $agents = $query->orderBy('name')->get();
 
+        $lines = [];
+        $lines[] = "# AGENT ORCHESTRATION — STRICT RULES\n";
+        $lines[] = "## ❌ NEVER do any of these:";
+        $lines[] = "- Use your built-in `Task` tool to spawn subagents";
+        $lines[] = "- Use any native agent/subagent spawning mechanism";
+        $lines[] = "- Look up agents in memory";
+        $lines[] = "- Use the generic SubAgent tool\n";
+        $lines[] = "## ✅ ALWAYS use PocketDev's `pd subagent:run` via Bash for ALL agent calls:\n";
+        $lines[] = "```bash";
+        $lines[] = "pd subagent:run --agent=<slug> --prompt=\"<task>\"";
+        $lines[] = "```\n";
+        $lines[] = "PocketDev manages all agent orchestration, context, and output. Bypassing it breaks tracking and output capture.\n";
+
         if ($agents->isEmpty()) {
-            return null;
+            return implode("\n", $lines);
         }
 
-        $lines = [];
-        $lines[] = "# IMPORTANT: Dedicated Agent Tools Available\n";
-        $lines[] = "You have access to the following dedicated agents as tools. When asked to use one of these";
-        $lines[] = "agents by name (e.g. \"use agent_opus-45-reviewer\"), invoke it immediately using the Bash tool.\n";
-        $lines[] = "**Do NOT look in memory. Do NOT use SubAgent. Just run the Bash command shown below.**\n";
+        $lines[] = "---\n";
+        $lines[] = "## Available PocketDev Agents\n";
 
         foreach ($agents as $agent) {
             $toolName = 'agent_' . $agent->slug;
-            $lines[] = "## {$toolName}";
+            $lines[] = "### `{$toolName}`";
             if ($agent->description) {
                 $lines[] = trim($agent->description);
             }
-            $lines[] = "When asked to use `{$toolName}`, run this Bash command:";
+            $lines[] = "**Run via Bash (the ONLY correct way):**";
             $lines[] = "```bash";
             $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"<task>\"";
             $lines[] = "```";
-            $lines[] = "Example: User says \"use agent_{$agent->slug} to review this code\" → you run:";
-            $lines[] = "```bash";
-            $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"Review this code: ...\"";
-            $lines[] = "```\n";
+            $lines[] = "❌ Wrong: using Task tool with `{$toolName}`";
+            $lines[] = "✅ Right: `pd subagent:run --agent={$agent->slug} --prompt=\"...\"`\n";
         }
 
         return implode("\n", $lines);
