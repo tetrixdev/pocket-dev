@@ -283,7 +283,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
         // Prepare provider options
         $getToolDefsStart = microtime(true);
-        $toolDefinitions = $toolRegistry->getDefinitions();
+        $toolDefinitions = $toolRegistry->getDefinitions($conversation->agent);
         $getToolDefsTime = (microtime(true) - $getToolDefsStart) * 1000;
         RequestFlowLogger::log('job.loop.tool_definitions', 'Tool definitions retrieved', [
             'duration_ms' => round($getToolDefsTime, 2),
@@ -789,11 +789,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Get session from conversation's screen (for panel tools that need to create screens)
         $session = $conversation->screen?->session;
 
-        // Pass workspace, session, and stream context so tools can access workspace-specific credentials,
-        // create panel screens, and emit stream events when needed
+        // Pass workspace, agent, session, and stream context so tools can access workspace-specific
+        // credentials, create panel screens, emit stream events, and enforce sub-agent permissions
         $context = new ExecutionContext(
             $conversation->working_directory,
             workspace: $conversation->workspace,
+            agent: $conversation->agent,
             session: $session,
             streamManager: $streamManager,
             conversationUuid: $this->conversationUuid,
