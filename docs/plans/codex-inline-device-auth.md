@@ -67,7 +67,7 @@ public function startDeviceAuth(): JsonResponse
 
 **Nieuwe "Subscription" tab UI:**
 
-```
+```text
 ┌─────────────────────────────────────────┐
 │  Login met ChatGPT Subscription         │
 │                                         │
