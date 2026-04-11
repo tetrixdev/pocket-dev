@@ -207,17 +207,40 @@
                 </div>
 
                 <!-- Via laptop / SSH tab -->
-                <div id="content-laptop" class="tab-content hidden">
-                    <p class="text-gray-300 mb-1">Draai deze twee commando's op je <strong class="text-white">laptop, desktop of via SSH</strong>.</p>
-                    <p class="text-sm text-gray-400 mb-6">Werkt altijd — geen org-restricties, geen device-auth nodig. Vereist alleen Node.js en Python3.</p>
+                @php
+                    $pdUrl = url('/');
+                    $linux1 = 'npm install -g @openai/codex && codex login';
+                    $linux2 = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
+                    $linuxAll = "npm install -g @openai/codex && codex login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
+                    $win1 = 'npm install -g @openai/codex; codex login';
+                    $win2 = "Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body (@{json=(Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw)} | ConvertTo-Json); Write-Host '✓ Klaar!'";
+                    $winAll = "npm install -g @openai/codex; codex login; Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body (@{json=(Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw)} | ConvertTo-Json); Write-Host '✓ Klaar!'";
+                @endphp
+                <div id="content-laptop" class="tab-content hidden" x-data="{ os: 'linux' }">
+                    <p class="text-gray-300 mb-1">Draai deze commando's op je <strong class="text-white">laptop, desktop of via SSH</strong>.</p>
+                    <p class="text-sm text-gray-400 mb-4">Werkt altijd — geen org-restricties, geen device-auth nodig.</p>
+
+                    <!-- OS toggle -->
+                    <div class="flex gap-2 mb-6">
+                        <button
+                            @click="os = 'linux'"
+                            :class="os === 'linux' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'"
+                            class="px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
+                        >🐧 Linux / macOS</button>
+                        <button
+                            @click="os = 'windows'"
+                            :class="os === 'windows' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'"
+                            class="px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
+                        >🪟 Windows (PowerShell)</button>
+                    </div>
 
                     <!-- Stap 1 -->
                     <div class="mb-5">
                         <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Stap 1 — Installeer Codex en log in</p>
                         <div class="flex items-center gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
-                            <code class="text-green-400 text-sm flex-1 select-all">npm install -g @openai/codex && codex login</code>
+                            <code class="text-green-400 text-sm flex-1 select-all" x-text="os === 'linux' ? {{ json_encode($linux1) }} : {{ json_encode($win1) }}"></code>
                             <button
-                                onclick="copyCmd(this, 'npm install -g @openai/codex && codex login')"
+                                @click="copyCmd($el, os === 'linux' ? {{ json_encode($linux1) }} : {{ json_encode($win1) }})"
                                 class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all"
                             >📋 Copy</button>
                         </div>
@@ -227,29 +250,23 @@
                     <!-- Stap 2 -->
                     <div class="mb-5">
                         <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Stap 2 — Upload auth.json naar PocketDev</p>
-                        @php
-                            $uploadCmd = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '" . url('/') . "/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
-                        @endphp
                         <div class="flex items-start gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
-                            <code class="text-green-400 text-sm flex-1 break-all select-all">{{ $uploadCmd }}</code>
+                            <code class="text-green-400 text-sm flex-1 break-all select-all" x-text="os === 'linux' ? {{ json_encode($linux2) }} : {{ json_encode($win2) }}"></code>
                             <button
-                                onclick="copyCmd(this, {{ json_encode($uploadCmd) }})"
+                                @click="copyCmd($el, os === 'linux' ? {{ json_encode($linux2) }} : {{ json_encode($win2) }})"
                                 class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all mt-0.5"
                             >📋 Copy</button>
                         </div>
                         <p class="text-xs text-gray-500 mt-1.5">Voert stap 2 pas uit nadat je bent ingelogd in stap 1.</p>
                     </div>
 
-                    <!-- Of alles in één -->
+                    <!-- Alles in één -->
                     <div class="border-t border-gray-700 pt-4">
                         <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Of alles in één commando</p>
-                        @php
-                            $oneCmd = "npm install -g @openai/codex && codex login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '" . url('/') . "/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
-                        @endphp
                         <div class="flex items-start gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
-                            <code class="text-green-400 text-sm flex-1 break-all select-all">{{ $oneCmd }}</code>
+                            <code class="text-green-400 text-sm flex-1 break-all select-all" x-text="os === 'linux' ? {{ json_encode($linuxAll) }} : {{ json_encode($winAll) }}"></code>
                             <button
-                                onclick="copyCmd(this, {{ json_encode($oneCmd) }})"
+                                @click="copyCmd($el, os === 'linux' ? {{ json_encode($linuxAll) }} : {{ json_encode($winAll) }})"
                                 class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all mt-0.5"
                             >📋 Copy</button>
                         </div>
