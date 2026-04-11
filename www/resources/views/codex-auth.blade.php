@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Codex Authentication</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"></script>
 </head>
 <body class="antialiased bg-gray-900 text-gray-100">
     <div class="min-h-screen flex items-center justify-center p-4">
@@ -64,7 +65,7 @@
 
                 <!-- Tabs -->
                 <div class="flex space-x-2 mb-6 border-b border-gray-700">
-                    <button onclick="switchTab('docker')" id="tab-docker" class="tab-btn px-4 py-2 -mb-px border-b-2 border-blue-500 text-blue-400">
+                    <button onclick="switchTab('device')" id="tab-device" class="tab-btn px-4 py-2 -mb-px border-b-2 border-blue-500 text-blue-400">
                         Subscription (Recommended)
                     </button>
                     <button onclick="switchTab('json')" id="tab-json" class="tab-btn px-4 py-2 -mb-px border-b-2 border-transparent text-gray-400 hover:text-gray-300">
@@ -72,30 +73,114 @@
                     </button>
                 </div>
 
-                <!-- Host Login Tab (Subscription) -->
-                <div id="content-docker" class="tab-content">
-                    <p class="text-gray-300 mb-4">Sign in with your ChatGPT subscription (Plus, Pro, Team, Edu, or Enterprise).</p>
-                    <p class="text-sm text-gray-400 mb-4">
-                        Run this command on your <strong class="text-white">host machine</strong> (not in Docker) to authenticate:
-                    </p>
-                    @if(config('backup.user_id') !== null && config('backup.group_id') !== null)
-                        <div class="bg-gray-900 rounded p-4 mb-4 overflow-x-auto">
-                            <code class="text-sm text-green-400">sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 660 /home/appuser/.codex/auth.json</code>
+                <!-- Inline Device Auth Tab (Subscription) -->
+                <div id="content-device" class="tab-content" x-data="codexDeviceAuth()">
+
+                    <!-- Idle state: show start button -->
+                    <div x-show="state === 'idle'">
+                        <p class="text-gray-300 mb-2">
+                            Sign in with your ChatGPT subscription (Plus, Pro, Team, Edu, or Enterprise).
+                        </p>
+                        <p class="text-sm text-gray-400 mb-6">
+                            Works on any device — no terminal, no Docker commands needed.
+                        </p>
+                        <button
+                            @click="startAuth()"
+                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors"
+                        >
+                            Login met ChatGPT
+                        </button>
+                    </div>
+
+                    <!-- Starting state: spinner -->
+                    <div x-show="state === 'starting'" class="text-center py-8">
+                        <svg class="animate-spin w-8 h-8 mx-auto text-blue-400 mb-3" fill="none" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                        </svg>
+                        <p class="text-gray-400">Connecting to OpenAI...</p>
+                    </div>
+
+                    <!-- Ready state: show URL and code -->
+                    <div x-show="state === 'ready'" style="display:none">
+                        <p class="text-gray-300 mb-6 text-sm">
+                            Open the link below on your phone or another browser window, then enter the code when prompted.
+                        </p>
+
+                        <!-- Step 1: URL -->
+                        <div class="mb-6">
+                            <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 1 — Open this link</p>
+                            <div class="flex items-center gap-3 bg-gray-900 rounded-lg p-3 border border-gray-700">
+                                <span class="text-blue-400 text-sm font-mono flex-1 truncate" x-text="verificationUrl"></span>
+                                <button
+                                    @click="copyUrl()"
+                                    class="flex-shrink-0 px-3 py-1.5 rounded text-sm transition-all"
+                                    :class="urlCopied ? 'bg-green-700 text-green-200' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'"
+                                >
+                                    <span x-show="!urlCopied">📋 Copy</span>
+                                    <span x-show="urlCopied">✓ Copied!</span>
+                                </button>
+                            </div>
                         </div>
-                        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
-                            <li>Copy the command above and run it in your terminal</li>
-                            <li>This installs Codex locally, opens a browser login, then copies credentials to the container</li>
-                            <li>After completion, come back here and refresh the page</li>
-                        </ol>
-                    @else
-                        <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">
-                            <strong>Configuration required:</strong> Set <code class="bg-red-900 px-1 rounded">PD_USER_ID</code> and <code class="bg-red-900 px-1 rounded">PD_GROUP_ID</code> in your .env file.
-                            <span class="text-red-400 text-xs block mt-1">Run <code>id -u</code> and <code>id -g</code> on your host to get the values. Then reload this page to see the login command.</span>
+
+                        <!-- Step 2: Code -->
+                        <div class="mb-6">
+                            <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 2 — Enter this code</p>
+                            <div class="flex items-center gap-4">
+                                <div class="bg-gray-900 border border-gray-600 rounded-lg px-6 py-4">
+                                    <span class="text-3xl font-mono font-bold tracking-widest text-white" x-text="userCode"></span>
+                                </div>
+                                <button
+                                    @click="copyCode()"
+                                    class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                                    :class="codeCopied ? 'bg-green-700 text-green-200' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'"
+                                >
+                                    <span x-show="!codeCopied">📋 Copy code</span>
+                                    <span x-show="codeCopied">✓ Copied!</span>
+                                </button>
+                            </div>
                         </div>
-                    @endif
-                    <button onclick="window.location.reload()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded">
-                        Refresh Page
-                    </button>
+
+                        <!-- Waiting indicator + countdown -->
+                        <div class="flex items-center gap-3 text-sm text-gray-400">
+                            <svg class="animate-spin w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                            </svg>
+                            <span>Waiting for authentication…</span>
+                            <span class="text-gray-500">(expires in <span class="font-mono" x-text="countdown"></span>)</span>
+                        </div>
+                    </div>
+
+                    <!-- Authenticated! -->
+                    <div x-show="state === 'authenticated'" style="display:none" class="text-center py-8">
+                        <div class="text-5xl mb-4">✅</div>
+                        <p class="text-green-400 font-semibold text-lg mb-2">Successfully authenticated!</p>
+                        <p class="text-gray-400 text-sm mb-6">Your ChatGPT subscription is now connected to PocketDev.</p>
+                        <button
+                            onclick="window.location.reload()"
+                            class="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors"
+                        >
+                            Reload Page
+                        </button>
+                    </div>
+
+                    <!-- Expired or failed -->
+                    <div x-show="state === 'expired' || state === 'failed'" style="display:none">
+                        <div class="bg-red-900/30 border border-red-700 rounded-lg p-4 mb-4">
+                            <p class="text-red-400 font-semibold mb-1">
+                                <span x-show="state === 'expired'">Code expired</span>
+                                <span x-show="state === 'failed'">Authentication failed</span>
+                            </p>
+                            <p class="text-red-300 text-sm" x-text="error || (state === 'expired' ? 'The code expired before authentication completed.' : 'Please try again.')"></p>
+                        </div>
+                        <button
+                            @click="reset(); startAuth()"
+                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors"
+                        >
+                            Try again
+                        </button>
+                    </div>
                 </div>
 
                 <!-- API Key Tab -->
@@ -116,7 +201,7 @@
                 </div>
             </div>
 
-            <!-- Instructions -->
+            <!-- Info block -->
             <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 text-sm">
                 <h3 class="font-semibold mb-2">About Codex Authentication:</h3>
                 <ul class="list-disc list-inside space-y-1 text-gray-300">
@@ -143,23 +228,163 @@
     </div>
 
     <script>
+        // ── Tab switching ──────────────────────────────────────────────────────────
         function switchTab(tab) {
-            // Hide all content
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            // Reset all tabs
             document.querySelectorAll('.tab-btn').forEach(el => {
                 el.classList.remove('border-blue-500', 'text-blue-400');
                 el.classList.add('border-transparent', 'text-gray-400');
             });
-            // Show selected content
             document.getElementById('content-' + tab).classList.remove('hidden');
-            // Highlight selected tab
             const activeTab = document.getElementById('tab-' + tab);
             activeTab.classList.remove('border-transparent', 'text-gray-400');
             activeTab.classList.add('border-blue-500', 'text-blue-400');
         }
 
-        // JSON form
+        // ── Device auth Alpine component ───────────────────────────────────────────
+        function codexDeviceAuth() {
+            return {
+                state: 'idle',   // idle | starting | ready | authenticated | expired | failed
+                verificationUrl: '',
+                userCode: '',
+                expiresIn: 900,
+                urlCopied: false,
+                codeCopied: false,
+                error: '',
+                _pollTimer: null,
+                _countdownTimer: null,
+
+                get countdown() {
+                    const m = Math.floor(this.expiresIn / 60);
+                    const s = this.expiresIn % 60;
+                    return `${m}:${String(s).padStart(2, '0')}`;
+                },
+
+                async init() {
+                    // Resume any session already in progress (e.g. after page reload)
+                    await this.checkStatus();
+                },
+
+                async startAuth() {
+                    this.state = 'starting';
+                    this.error = '';
+
+                    try {
+                        const res = await fetch('{{ route('codex.auth.deviceStart') }}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            }
+                        });
+                        const data = await res.json();
+
+                        if (!data.success) {
+                            this.state = 'failed';
+                            this.error = data.error || 'Unknown error';
+                            return;
+                        }
+
+                        this._applyStatus(data);
+                        this._startPolling();
+                    } catch (e) {
+                        this.state = 'failed';
+                        this.error = e.message;
+                    }
+                },
+
+                _startPolling() {
+                    if (this._pollTimer) clearInterval(this._pollTimer);
+                    this._pollTimer = setInterval(() => this.checkStatus(), 2500);
+                },
+
+                async checkStatus() {
+                    try {
+                        const res = await fetch('{{ route('codex.auth.deviceStatus') }}');
+                        const data = await res.json();
+                        this._applyStatus(data);
+                    } catch (e) {
+                        // Network error — keep polling silently
+                    }
+                },
+
+                _applyStatus(data) {
+                    const status = data.status;
+
+                    if (status === 'ready' && this.state !== 'ready') {
+                        this.state = 'ready';
+                        this.verificationUrl = data.verification_url || '';
+                        this.userCode = data.user_code || '';
+                        this.expiresIn = data.expires_in ?? 900;
+                        this._startCountdown();
+                        if (!this._pollTimer) this._startPolling();
+                    } else if (status === 'ready') {
+                        // Already showing — sync expiry
+                        if (data.expires_in !== undefined) this.expiresIn = data.expires_in;
+                    } else if (status === 'authenticated') {
+                        this.state = 'authenticated';
+                        this._stopTimers();
+                    } else if (status === 'failed') {
+                        this.state = 'failed';
+                        this.error = data.error || 'Authentication failed';
+                        this._stopTimers();
+                    } else if (status === 'expired') {
+                        this.state = 'expired';
+                        this._stopTimers();
+                    } else if (status === 'starting' && this.state === 'idle') {
+                        this.state = 'starting';
+                        this._startPolling();
+                    }
+                    // 'none': nothing to do (still idle)
+                },
+
+                _startCountdown() {
+                    if (this._countdownTimer) clearInterval(this._countdownTimer);
+                    this._countdownTimer = setInterval(() => {
+                        if (this.expiresIn > 0) {
+                            this.expiresIn--;
+                        } else {
+                            this.state = 'expired';
+                            this._stopTimers();
+                        }
+                    }, 1000);
+                },
+
+                _stopTimers() {
+                    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+                    if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
+                },
+
+                reset() {
+                    this._stopTimers();
+                    this.state = 'idle';
+                    this.verificationUrl = '';
+                    this.userCode = '';
+                    this.expiresIn = 900;
+                    this.error = '';
+                    this.urlCopied = false;
+                    this.codeCopied = false;
+                },
+
+                async copyUrl() {
+                    try {
+                        await navigator.clipboard.writeText(this.verificationUrl);
+                        this.urlCopied = true;
+                        setTimeout(() => { this.urlCopied = false; }, 2000);
+                    } catch (e) {}
+                },
+
+                async copyCode() {
+                    try {
+                        await navigator.clipboard.writeText(this.userCode);
+                        this.codeCopied = true;
+                        setTimeout(() => { this.codeCopied = false; }, 2000);
+                    } catch (e) {}
+                },
+            };
+        }
+
+        // ── JSON (API Key) form ────────────────────────────────────────────────────
         document.getElementById('json-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const jsonInput = document.getElementById('json-input').value;
@@ -192,7 +417,7 @@
             }
         });
 
-        // Logout
+        // ── Logout ─────────────────────────────────────────────────────────────────
         async function logout() {
             if (!confirm('Are you sure you want to clear your credentials?')) {
                 return;
@@ -219,10 +444,12 @@
             }
         }
 
-        // Helper function
+        // ── Helper ─────────────────────────────────────────────────────────────────
         function showResult(elementId, type, message) {
             const element = document.getElementById(elementId);
-            const bgColor = type === 'success' ? 'bg-green-900/30 border-green-700 text-green-400' : 'bg-red-900/30 border-red-700 text-red-400';
+            const bgColor = type === 'success'
+                ? 'bg-green-900/30 border-green-700 text-green-400'
+                : 'bg-red-900/30 border-red-700 text-red-400';
             const div = document.createElement('div');
             div.className = `border rounded p-3 ${bgColor}`;
             div.textContent = message;
