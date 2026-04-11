@@ -9,7 +9,7 @@
             </div>
             {{-- Content - render markdown --}}
             <div class="px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm text-gray-200 prose prose-invert prose-sm max-w-none">
-                <div x-html="DOMPurify.sanitize(marked.parse(msg.content || ''))"></div>
+                <div x-html="window.stripAlpineDirectives(marked.parse(msg.content || ''))"></div>
             </div>
         </div>
     </div>

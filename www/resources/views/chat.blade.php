@@ -14,6 +14,12 @@
         window.TITLE_MAX_LENGTH = 50;      // Maximum allowed characters
         window.TITLE_MOBILE_LENGTH = 25;   // Approximate mobile truncation point
 
+        // Strip Alpine.js directives from HTML to prevent infinite re-initialization
+        // loops when injected via x-html (e.g. code examples containing x-data, @click, etc.)
+        window.stripAlpineDirectives = function(html) {
+            return html.replace(/\s(?:x-(?:data|init|show|bind|on|text|html|model|for|if|transition|effect|ref|cloak|teleport|ignore|id|trap|collapse|intersect|mask|anchor)\b(?::[a-z0-9._-]+)?(?:\.[a-z0-9._-]+)*|@[a-z][a-z0-9._-]*(?:\.[a-z0-9._-]+)*|:[a-z][a-z0-9._-]*)(?:="[^"]*"|='[^']*')?/gi, '');
+        };
+
         // Global helper to linkify file paths in HTML content
         window.linkifyFilePaths = function(html) {
             // Allowed paths from Laravel config (single source of truth)
@@ -189,28 +195,23 @@
 
                                 // Render content based on type
                                 if (updatedEntry.isHtml) {
-                                    // Sanitize HTML for safe rendering in iframe
-                                    let sanitized = DOMPurify.sanitize(updatedEntry.content, {
-                                        WHOLE_DOCUMENT: true,
-                                        ADD_TAGS: ['style', 'link', 'base'],
-                                        ADD_ATTR: ['target'],
-                                    });
                                     // Inject target="_blank" for links - preserve existing <base href> if present
-                                    if (/<base\s[^>]*href=/i.test(sanitized)) {
+                                    let html = updatedEntry.content;
+                                    if (/<base\s[^>]*href=/i.test(html)) {
                                         // Existing base tag with href - add target attribute to it
-                                        sanitized = sanitized.replace(/<base(\s[^>]*)(href="[^"]*")([^>]*)>/i, '<base$1$2$3 target="_blank">');
-                                    } else if (sanitized.includes('<head>')) {
-                                        sanitized = sanitized.replace('<head>', '<head><base target="_blank">');
-                                    } else if (sanitized.includes('<head ')) {
-                                        sanitized = sanitized.replace(/<head([^>]*)>/, '<head$1><base target="_blank">');
+                                        html = html.replace(/<base(\s[^>]*)(href="[^"]*")([^>]*)>/i, '<base$1$2$3 target="_blank">');
+                                    } else if (html.includes('<head>')) {
+                                        html = html.replace('<head>', '<head><base target="_blank">');
+                                    } else if (html.includes('<head ')) {
+                                        html = html.replace(/<head([^>]*)>/, '<head$1><base target="_blank">');
                                     } else {
-                                        sanitized = '<base target="_blank">' + sanitized;
+                                        html = '<base target="_blank">' + html;
                                     }
-                                    updatedEntry.sanitizedHtml = sanitized;
+                                    updatedEntry.sanitizedHtml = html;
                                 } else if (updatedEntry.isMarkdown) {
                                     let html = marked.parse(updatedEntry.content);
                                     html = window.linkifyFilePaths(html);
-                                    updatedEntry.renderedContent = DOMPurify.sanitize(html);
+                                    updatedEntry.renderedContent = window.stripAlpineDirectives(html);
                                 } else {
                                     // Syntax highlight then linkify
                                     const ext = data.extension;
@@ -359,7 +360,7 @@
                                 if (currentEntry.isMarkdown) {
                                     let html = marked.parse(this.editContent);
                                     html = window.linkifyFilePaths(html);
-                                    currentEntry.renderedContent = DOMPurify.sanitize(html);
+                                    currentEntry.renderedContent = window.stripAlpineDirectives(html);
                                 } else {
                                     let highlighted;
                                     if (ext && hljs.getLanguage(ext)) {
@@ -625,9 +626,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
             integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
-            crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"
-            integrity="sha384-80VlBZnyAwkkqtSfg5NhPyZff6nU4K/qniLBL8Jnm4KDv6jZhLiYtJbhglg/i9ww"
             crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -1432,23 +1430,6 @@
     @include('partials.chat.modals')
 
     <script>
-        // DOMPurify config to allow Mermaid-generated SVG elements
-        const mermaidSanitizeConfig = {
-            ADD_TAGS: ['svg', 'g', 'path', 'rect', 'circle', 'ellipse', 'line', 'polyline',
-                       'polygon', 'text', 'tspan', 'defs', 'marker', 'use', 'style',
-                       'foreignObject', 'clipPath', 'linearGradient', 'radialGradient', 'stop'],
-            ADD_ATTR: ['viewBox', 'width', 'height', 'fill', 'stroke', 'stroke-width', 'd',
-                       'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry',
-                       'transform', 'points', 'class', 'id', 'style', 'marker-end',
-                       'text-anchor', 'dominant-baseline', 'font-size', 'opacity',
-                       'xmlns', 'preserveAspectRatio', 'clip-path',
-                       // Text attributes for Mermaid labels
-                       'font-family', 'font-weight', 'font-style', 'dx', 'dy',
-                       'alignment-baseline', 'letter-spacing', 'fill-opacity',
-                       'stroke-opacity', 'data-id', 'data-node', 'data-label-type',
-                       'requiredFeatures', 'requiredExtensions', 'systemLanguage']
-        };
-
         // Global cache for rendered Mermaid SVGs (prevents flicker on re-render)
         // Shared between marked.js renderer and Alpine component
         window._mermaidSvgCache = new Map();
@@ -1480,7 +1461,7 @@
                         }
 
                         // Not in cache - output placeholder for async rendering
-                        // Use base64 encoding to prevent DOMPurify from sanitizing the attribute value
+                        // Use base64 encoding to safely embed the mermaid code in an attribute
                         const base64Code = btoa(unescape(encodeURIComponent(String(text))));
                         return `<div class="mermaid-placeholder" data-mermaid-b64="${base64Code}" data-mermaid-hash="${hashStr}"></div>`;
                     }
@@ -2131,7 +2112,7 @@
                         }
                     });
 
-                    // Event delegation for file path links (DOMPurify strips onclick attributes)
+                    // Event delegation for file path links (using data attributes instead of onclick)
                     document.addEventListener('click', (e) => {
                         const link = e.target.closest('.file-path-link');
                         if (link) {
@@ -2651,9 +2632,7 @@
 
                 parseMarkdownForSystemPrompt(text) {
                     if (!text) return '';
-                    // Use marked + DOMPurify for rendering
-                    let html = marked.parse(text);
-                    return DOMPurify.sanitize(html);
+                    return window.stripAlpineDirectives(marked.parse(text));
                 },
 
                 // ==================== Workspace Methods ====================
@@ -5633,21 +5612,9 @@
                     html = html.replace(/<table>/g, '<div class="table-wrapper"><table>');
                     html = html.replace(/<\/table>/g, '</table></div>');
 
-                    // Debug: Check if mermaid placeholder exists before sanitization
-                    const hasMermaidBefore = html.includes('data-mermaid-b64=');
+                    html = window.stripAlpineDirectives(html);
 
-                    // Allow data-mermaid-b64 and data-mermaid-hash attributes for mermaid placeholders
-                    // Using base64 encoding prevents DOMPurify from inspecting/stripping the content
-                    // Hash is used for caching rendered diagrams to prevent flicker on re-render
-                    const result = DOMPurify.sanitize(html, { ADD_ATTR: ['data-mermaid-b64', 'data-mermaid-hash'] });
-
-                    // Debug: Check if mermaid placeholder still has data-mermaid-b64 after sanitization
-                    const hasMermaidAfter = result.includes('data-mermaid-b64=');
-                    if (hasMermaidBefore || hasMermaidAfter) {
-                        console.log('[Mermaid Debug] renderMarkdown: before sanitize has data-mermaid-b64:', hasMermaidBefore, ', after:', hasMermaidAfter);
-                    }
-
-                    return result;
+                    return html;
                 },
 
                 // Mermaid diagram rendering
@@ -5727,8 +5694,6 @@
                                 console.log('[Mermaid Debug] Cached SVG for hash:', hash);
                             }
 
-                            // Mermaid's securityLevel: 'strict' already sanitizes the output
-                            // Skipping DOMPurify here since it strips Mermaid's label elements
                             placeholder.innerHTML = `<div class="mermaid-diagram">${svg}</div>`;
                             placeholder.classList.remove('mermaid-processing');
                             placeholder.classList.add('mermaid-rendered');

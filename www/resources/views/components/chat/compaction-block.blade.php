@@ -24,7 +24,7 @@
             <div x-show="!msg.collapsed" class="px-3 md:px-4 py-2 md:py-3">
                 <div class="text-xs text-amber-300/70 mb-2">Summary Claude continues with:</div>
                 <div class="prose prose-invert prose-sm max-w-none prose-p:my-2 prose-headings:text-amber-200 prose-strong:text-amber-100"
-                     x-html="DOMPurify.sanitize(marked.parse(msg.content || ''))">
+                     x-html="window.stripAlpineDirectives(marked.parse(msg.content || ''))">
                 </div>
             </div>
         </div>
