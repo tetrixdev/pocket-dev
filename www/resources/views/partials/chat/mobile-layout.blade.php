@@ -298,20 +298,34 @@
 
     {{-- Footer --}}
     <div class="p-4 border-t border-gray-700 text-xs text-gray-400">
-        <div class="mb-2">Cost: <span class="text-green-400 font-mono" x-text="'$' + sessionCost.toFixed(4)">$0.00</span></div>
-        <div class="mb-2"><span x-text="totalTokens.toLocaleString() + ' tokens'">0 tokens</span></div>
-        <div class="flex flex-wrap gap-3">
-            <x-button @click="copyConversationToClipboard(); showMobileDrawer = false"
-                      variant="ghost"
-                      size="sm"
-                      ::disabled="messages.length === 0">
-                <span x-text="copyingConversation ? 'Copied!' : 'Copy Chat'"></span>
-            </x-button>
-@if(config('app.debug'))
-            <x-button @click="$store.debug.toggle(); showMobileDrawer = false" variant="ghost" size="sm">
+        <div class="mb-3 pb-3 border-b border-gray-700">
+            <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center gap-1">
+                    <span class="text-gray-300 font-semibold">Session Cost</span>
+                    <button @click="showPricingSettings = true; showMobileDrawer = false" class="text-gray-400 hover:text-gray-200 transition-colors cursor-pointer" title="Configure pricing">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </button>
+                </div>
+                <span class="text-green-400 font-mono" x-text="'$' + sessionCost.toFixed(4)">$0.00</span>
+            </div>
+            <div class="text-gray-500" style="font-size: 10px;">
+                <span x-text="totalTokens.toLocaleString() + ' tokens'">0 tokens</span>
+            </div>
+        </div>
+        <div>Working Dir: <span x-text="currentWorkspace?.working_directory_path || '/workspace'"></span></div>
+        <div class="text-gray-500" style="font-size: 10px;">Version: {{ app(\App\Services\VersionService::class)->getVersionLabel() }}</div>
+        <div class="flex flex-wrap gap-2 mt-2">
+            <button @click="copyConversationToClipboard(); showMobileDrawer = false"
+                    :disabled="messages.length === 0"
+                    :class="messages.length === 0 ? 'text-gray-600 cursor-not-allowed' : 'text-blue-400 hover:text-blue-300 cursor-pointer'"
+                    x-text="copyingConversation ? 'Copied!' : 'Copy Chat'">
+            </button>
+            <button @click="$store.debug.toggle(); showMobileDrawer = false" class="text-blue-400 hover:text-blue-300 cursor-pointer">
                 Debug Log
-            </x-button>
-@endif
+            </button>
         </div>
     </div>
 </div>

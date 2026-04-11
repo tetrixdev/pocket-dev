@@ -14,8 +14,9 @@
 
         {{-- Attachment Button --}}
         <div x-data="{
-            showModal: false,
             get attachments() { return Alpine.store('attachments'); },
+            get showModal() { return this.attachments.showModal; },
+            set showModal(val) { this.attachments.showModal = val; },
             get hasAnyFiles() { return this.attachments.files.length > 0; },
             get isUploading() { return this.attachments.isUploading; },
             openFilePicker() {
@@ -267,7 +268,7 @@
             <button type="button"
                     disabled
                     class="px-4 py-[10px] rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-not-allowed bg-gray-600 text-gray-300">
-                <x-spinner /> Aborting...
+                <x-spinner /> Stopping...
             </button>
         </template>
         <template x-if="isStreaming && !_streamState.abortPending">

@@ -28,7 +28,10 @@
         <div class="flex items-center justify-between px-4 py-3 bg-gray-800 border-b border-gray-700 shrink-0">
             <div class="flex items-center gap-3 min-w-0 flex-1">
                 {{-- File icon --}}
-                <i class="fa-regular fa-file-lines text-blue-400 shrink-0"></i>
+                <i :class="{
+                    'fa-regular fa-image text-purple-400 shrink-0': $store.filePreview.isImage,
+                    'fa-regular fa-file-lines text-blue-400 shrink-0': !$store.filePreview.isImage
+                }"></i>
 
                 {{-- Filename and path --}}
                 <div class="min-w-0 flex-1">
@@ -45,19 +48,19 @@
 
             {{-- Actions --}}
             <div class="flex items-center gap-2 shrink-0 ml-2">
-                {{-- File size (hidden when editing) --}}
+                {{-- File size (desktop only, hidden when editing) --}}
                 <span class="text-xs text-gray-500 hidden sm:inline"
                       x-show="!$store.filePreview.editing"
                       x-text="$store.filePreview.sizeFormatted"></span>
 
-                {{-- View mode buttons --}}
+                {{-- View mode buttons (desktop only for copy/download/edit, close/back always visible) --}}
                 <template x-if="!$store.filePreview.editing">
                     <div class="flex items-center gap-2">
-                        {{-- Copy button - show when file loaded (even if empty) --}}
+                        {{-- Copy button - desktop only, text files only --}}
                         <button @click="$store.filePreview.copyContent()"
-                                class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                class="hidden md:inline-flex p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Copy content"
-                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error">
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage && !$store.filePreview.isBinary">
                             <template x-if="!$store.filePreview.copied">
                                 <i class="fa-regular fa-copy"></i>
                             </template>
@@ -66,15 +69,23 @@
                             </template>
                         </button>
 
-                        {{-- Edit button - show when file loaded (even if empty) --}}
+                        {{-- Download button - desktop only, show for text files, binary files, AND images --}}
+                        <button @click="$store.filePreview.downloadFile()"
+                                class="hidden md:inline-flex p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                title="Download file"
+                                x-show="!$store.filePreview.loading && $store.filePreview.readable">
+                            <i class="fa-solid fa-download"></i>
+                        </button>
+
+                        {{-- Edit button - desktop only, text files only --}}
                         <button @click="$store.filePreview.startEditing()"
-                                class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                class="hidden md:inline-flex p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Edit file"
-                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error">
+                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage && !$store.filePreview.isBinary">
                             <i class="fa-regular fa-pen-to-square"></i>
                         </button>
 
-                        {{-- Close/Back button --}}
+                        {{-- Close/Back button - always visible --}}
                         <button @click="$store.filePreview.close()"
                                 class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 :title="$store.filePreview.stackDepth > 1 ? 'Back (Esc)' : 'Close (Esc)'">
@@ -83,25 +94,32 @@
                     </div>
                 </template>
 
-                {{-- Edit mode buttons --}}
+                {{-- Edit mode buttons (desktop only) --}}
                 <template x-if="$store.filePreview.editing">
                     <div class="flex items-center gap-2">
                         {{-- Cancel button --}}
                         <button @click="$store.filePreview.cancelEditing()"
-                                class="px-3 py-1.5 text-sm text-gray-300 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                class="hidden md:inline-flex px-3 py-1.5 text-sm text-gray-300 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 :disabled="$store.filePreview.saving">
                             Cancel
                         </button>
 
                         {{-- Save button --}}
                         <button @click="$store.filePreview.saveFile()"
-                                class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors flex items-center gap-2"
+                                class="hidden md:inline-flex px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors items-center gap-2"
                                 :disabled="$store.filePreview.saving"
                                 :class="{ 'opacity-50 cursor-not-allowed': $store.filePreview.saving }">
                             <template x-if="$store.filePreview.saving">
                                 <x-spinner />
                             </template>
                             <span x-text="$store.filePreview.saving ? 'Saving...' : 'Save'"></span>
+                        </button>
+
+                        {{-- Close/Back button - always visible during edit mode too --}}
+                        <button @click="$store.filePreview.cancelEditing(); $store.filePreview.close()"
+                                class="md:hidden p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                :title="$store.filePreview.stackDepth > 1 ? 'Back (Esc)' : 'Close (Esc)'">
+                            <i :class="$store.filePreview.stackDepth > 1 ? 'fa-solid fa-arrow-left' : 'fa-solid fa-xmark'"></i>
                         </button>
                     </div>
                 </template>
@@ -140,12 +158,29 @@
                 </div>
             </template>
 
-            {{-- Error state --}}
-            <template x-if="!$store.filePreview.loading && $store.filePreview.error">
+            {{-- Error state (not for images - they have their own view) --}}
+            <template x-if="!$store.filePreview.loading && $store.filePreview.error && !$store.filePreview.isImage">
                 <div class="flex flex-col items-center justify-center h-full text-center p-6">
                     <i class="fa-solid fa-exclamation-triangle text-4xl text-yellow-500 mb-4"></i>
                     <div class="text-gray-300 mb-2" x-text="$store.filePreview.error"></div>
                     <div class="text-sm text-gray-500" x-text="$store.filePreview.path"></div>
+                </div>
+            </template>
+
+            {{-- Image preview --}}
+            <template x-if="!$store.filePreview.loading && $store.filePreview.isImage">
+                <div x-data="{ previewFailed: false }"
+                     class="flex items-center justify-center h-full p-4 bg-gray-950/50">
+                    <img x-show="!previewFailed"
+                         :src="'/api/file/download?path=' + encodeURIComponent($store.filePreview.path)"
+                         :alt="$store.filePreview.filename"
+                         x-on:error="previewFailed = true"
+                         class="max-w-full max-h-full object-contain rounded shadow-lg">
+                    <div x-show="previewFailed" x-cloak class="text-center text-gray-400">
+                        <i class="fa-regular fa-image text-3xl mb-3"></i>
+                        <div class="text-sm">Image preview unavailable.</div>
+                        <div class="text-xs text-gray-500 mt-1">Use Download to open the file.</div>
+                    </div>
                 </div>
             </template>
 
@@ -196,5 +231,63 @@
                 </div>
             </template>
         </div>
+
+        {{-- Mobile bottom action bar (view mode) - hidden on desktop --}}
+        <template x-if="!$store.filePreview.editing">
+            <div class="flex md:hidden items-center justify-center gap-6 px-4 py-3 bg-gray-800 border-t border-gray-700 shrink-0"
+                 x-show="!$store.filePreview.loading">
+                {{-- Copy button - text files only (not images, not binary) --}}
+                <button @click="$store.filePreview.copyContent()"
+                        class="flex flex-col items-center gap-1 text-gray-400 active:text-white transition-colors"
+                        x-show="!$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage && !$store.filePreview.isBinary">
+                    <template x-if="!$store.filePreview.copied">
+                        <i class="fa-regular fa-copy text-lg"></i>
+                    </template>
+                    <template x-if="$store.filePreview.copied">
+                        <i class="fa-solid fa-check text-lg text-green-400"></i>
+                    </template>
+                    <span class="text-xs" x-text="$store.filePreview.copied ? 'Copied' : 'Copy'"></span>
+                </button>
+
+                {{-- Download button - show for text files, binary files, AND images --}}
+                <button @click="$store.filePreview.downloadFile()"
+                        class="flex flex-col items-center gap-1 text-gray-400 active:text-white transition-colors"
+                        x-show="$store.filePreview.readable">
+                    <i class="fa-solid fa-download text-lg"></i>
+                    <span class="text-xs">Download</span>
+                </button>
+
+                {{-- Edit button - text files only (not images, not binary) --}}
+                <button @click="$store.filePreview.startEditing()"
+                        class="flex flex-col items-center gap-1 text-gray-400 active:text-white transition-colors"
+                        x-show="!$store.filePreview.stack.at(-1)?.error && !$store.filePreview.isImage && !$store.filePreview.isBinary">
+                    <i class="fa-regular fa-pen-to-square text-lg"></i>
+                    <span class="text-xs">Edit</span>
+                </button>
+            </div>
+        </template>
+
+        {{-- Mobile bottom action bar (edit mode) - hidden on desktop --}}
+        <template x-if="$store.filePreview.editing">
+            <div class="flex md:hidden items-center justify-between px-4 py-3 bg-gray-800 border-t border-gray-700 shrink-0">
+                {{-- Cancel button --}}
+                <button @click="$store.filePreview.cancelEditing()"
+                        class="px-4 py-2 text-sm text-gray-300 active:text-white transition-colors rounded hover:bg-gray-700"
+                        :disabled="$store.filePreview.saving">
+                    Cancel
+                </button>
+
+                {{-- Save button --}}
+                <button @click="$store.filePreview.saveFile()"
+                        class="px-4 py-2 text-sm bg-blue-600 active:bg-blue-700 text-white rounded transition-colors flex items-center gap-2"
+                        :disabled="$store.filePreview.saving"
+                        :class="{ 'opacity-50': $store.filePreview.saving }">
+                    <template x-if="$store.filePreview.saving">
+                        <x-spinner />
+                    </template>
+                    <span x-text="$store.filePreview.saving ? 'Saving...' : 'Save'"></span>
+                </button>
+            </div>
+        </template>
     </div>
 </div>

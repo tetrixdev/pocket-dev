@@ -27,7 +27,7 @@ class MemoryDatabaseService
             return [
                 'success' => false,
                 'memory_database' => null,
-                'message' => 'Schema name must be lowercase, start with a letter, contain only letters/numbers/underscores, and be max 55 characters',
+                'message' => 'Schema name must be lowercase, start with a letter, contain only letters/numbers/underscores, and be max 30 characters',
             ];
         }
 
@@ -95,15 +95,24 @@ class MemoryDatabaseService
                         name TEXT NOT NULL,
                         when_to_use TEXT NOT NULL,
                         instructions TEXT NOT NULL,
+                        source VARCHAR(20) DEFAULT 'user' NOT NULL,
+                        tags TEXT[] DEFAULT '{}',
+                        version VARCHAR(20) DEFAULT NULL,
                         created_at TIMESTAMP DEFAULT NOW(),
                         updated_at TIMESTAMP DEFAULT NOW(),
                         CONSTRAINT skills_name_unique UNIQUE (name)
                     )
                 ");
 
-                // Create index for skills name lookups
+                // Create indexes for skills
                 DB::connection('pgsql')->statement("
                     CREATE INDEX idx_{$schemaName}_skills_name ON {$fullSchemaName}.skills(name)
+                ");
+                DB::connection('pgsql')->statement("
+                    CREATE INDEX idx_{$schemaName}_skills_source ON {$fullSchemaName}.skills(source)
+                ");
+                DB::connection('pgsql')->statement("
+                    CREATE INDEX idx_{$schemaName}_skills_tags ON {$fullSchemaName}.skills USING GIN (tags)
                 ");
 
                 // Add column comments for AI-consumable documentation
@@ -115,6 +124,15 @@ class MemoryDatabaseService
                 ");
                 DB::connection('pgsql')->statement("
                     COMMENT ON COLUMN {$fullSchemaName}.skills.instructions IS 'Full skill instructions in markdown format'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.source IS 'Origin: ''system'' for PocketDev-shipped skills, ''user'' for user-created'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.tags IS 'Grouping labels for filtering, e.g., {\"system\",\"deployment\"}'
+                ");
+                DB::connection('pgsql')->statement("
+                    COMMENT ON COLUMN {$fullSchemaName}.skills.version IS 'PocketDev version that last updated this skill (system skills only)'
                 ");
 
                 // Register skills in schema_registry with proper description format
@@ -158,6 +176,9 @@ class MemoryDatabaseService
                     'description' => $description,
                 ]);
             });
+
+            // Seed system skills into the new schema
+            $this->seedSystemSkills($fullSchemaName);
 
             Log::info('Memory database created', [
                 'id' => $memoryDb->id,
@@ -338,5 +359,51 @@ class MemoryDatabaseService
             'tables' => (int) ($tableCount->count ?? 0),
             'embeddings' => (int) ($embeddingCount->count ?? 0),
         ];
+    }
+
+    /**
+     * Seed system skills into a specific schema.
+     * This inserts the built-in skills like /deploy.
+     */
+    private function seedSystemSkills(string $fullSchemaName): void
+    {
+        $skills = \App\Skills\SystemSkillDefinitions::all();
+        $version = \App\Skills\SystemSkillDefinitions::VERSION;
+
+        foreach ($skills as $skill) {
+            $tagsArray = $this->arrayToPgArray($skill['tags']);
+
+            DB::connection('pgsql')->statement("
+                INSERT INTO {$fullSchemaName}.skills
+                (name, when_to_use, instructions, source, tags, version, created_at, updated_at)
+                VALUES (?, ?, ?, 'system', ?, ?, NOW(), NOW())
+                ON CONFLICT (name) DO NOTHING
+            ", [
+                $skill['name'],
+                $skill['when_to_use'],
+                $skill['instructions'],
+                $tagsArray,
+                $version,
+            ]);
+        }
+
+        Log::info('Seeded system skills into new schema', [
+            'schema' => $fullSchemaName,
+            'skill_count' => count($skills),
+        ]);
+    }
+
+    /**
+     * Convert PHP array to PostgreSQL array literal.
+     */
+    private function arrayToPgArray(array $values): string
+    {
+        $escaped = array_map(function ($v) {
+            $v = str_replace('\\', '\\\\', $v);
+            $v = str_replace('"', '\\"', $v);
+            return '"' . $v . '"';
+        }, $values);
+
+        return '{' . implode(',', $escaped) . '}';
     }
 }

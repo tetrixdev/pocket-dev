@@ -12,7 +12,7 @@
             </p>
             @if(config('backup.user_id') !== null)
                 <div class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 select-all">
-                    docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude
+                    docker exec -it -u {{ config('backup.user_id') }} {{ config('pocketdev.project_name', 'pocket-dev') }}-queue claude
                 </div>
                 <p class="text-gray-500 text-xs mt-2">
                     This opens an interactive login. Complete the OAuth flow in your browser, then Claude Code will be ready to use.

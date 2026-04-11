@@ -218,6 +218,7 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $html = $systemPanel->render($params, $state, $panelState->id);
                 $deps = $systemPanel->panelDependencies;
                 return response($this->wrapPanelHtml($html, $deps))->header('Content-Type', 'text/html');
@@ -339,6 +340,7 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $panelParams = $panelState->parameters ?? [];
                 $result = $systemPanel->handleAction($action, $params, $state, $panelParams);
 
@@ -384,8 +386,9 @@ HTML;
         // If panel has a script, run it with action context
         if ($panel->hasScript()) {
             try {
-                // Get credentials for environment injection
-                $credentials = \App\Models\Credential::getAllAsEnvArray();
+                // Get credentials for environment injection (workspace-specific + global)
+                $workspaceId = $this->getWorkspaceId($panelState);
+                $credentials = \App\Models\Credential::getEnvArrayForWorkspace($workspaceId);
 
                 $env = array_merge($credentials, [
                     'PANEL_ACTION' => $action,
@@ -481,6 +484,7 @@ HTML;
         $systemPanel = $registry->get($slug);
         if ($systemPanel) {
             try {
+                $systemPanel->setWorkspaceId($this->getWorkspaceId($panelState));
                 $markdown = $systemPanel->peek($params, $state);
                 return response($markdown)->header('Content-Type', 'text/markdown');
             } catch (\Throwable $e) {
@@ -514,8 +518,9 @@ HTML;
         }
 
         try {
-            // Get credentials for environment injection
-            $credentials = \App\Models\Credential::getAllAsEnvArray();
+            // Get credentials for environment injection (workspace-specific + global)
+            $workspaceId = $this->getWorkspaceId($panelState);
+            $credentials = \App\Models\Credential::getEnvArrayForWorkspace($workspaceId);
 
             // Set environment variables for the peek script
             $env = array_merge($credentials, [
@@ -592,6 +597,14 @@ HTML;
         $output .= "\n*No peek script defined for this panel.*\n";
 
         return $output;
+    }
+
+    /**
+     * Extract workspace ID from a panel state via its screen → session chain.
+     */
+    private function getWorkspaceId(PanelState $panelState): ?string
+    {
+        return $panelState->screen?->session?->workspace_id;
     }
 
     /**

@@ -101,14 +101,6 @@ find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
-# Fix permissions for mounted config volumes (for config editor)
-if [ -d "/etc/nginx-proxy-config" ]; then
-    echo "Setting permissions on /etc/nginx-proxy-config..."
-    chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
-    find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
-    find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
-fi
-
 # Fix /tmp permissions for cross-group access (shared volume between containers)
 # Ensures files created by any user are accessible by www-data group
 chgrp -R 33 /tmp 2>/dev/null || true
@@ -168,23 +160,6 @@ if [ -n "$CLAUDE_CODE_VERSION" ]; then
 fi
 
 # =============================================================================
-# CREDENTIAL LOADING (requires DB ready)
-# =============================================================================
-# Export user-configured credentials as environment variables.
-# These will be inherited by all worker processes.
-if [ -x /usr/local/bin/load-credentials ]; then
-    if ! cred_output=$(/usr/local/bin/load-credentials 2>&1); then
-        echo "Credential loading failed - aborting startup"
-        echo "$cred_output"
-        exit 1
-    fi
-    cred_exports=$(echo "$cred_output" | grep '^export ' || true)
-    if [ -n "$cred_exports" ]; then
-        eval "$cred_exports"
-    fi
-fi
-
-# =============================================================================
 # DROP PRIVILEGES AND START WORKERS
 # =============================================================================
 
@@ -197,7 +172,7 @@ chmod 666 /dev/stdout /dev/stderr 2>/dev/null || true
 # Ensure supervisord log/pid files are writable by TARGET_USER
 # /tmp is a shared volume - files may exist from previous runs with different ownership
 # Guard against symlink traversal (same pattern as /tmp/pocketdev*)
-for f in /tmp/supervisord.log /tmp/supervisord.pid; do
+for f in /tmp/supervisord.log /tmp/supervisord.pid /tmp/supervisor.sock; do
     if [ -L "$f" ]; then
         echo "WARN: $f is a symlink; removing before recreation" >&2
         rm -f "$f" 2>/dev/null || true
@@ -207,8 +182,8 @@ for f in /tmp/supervisord.log /tmp/supervisord.pid; do
 done
 
 # Ensure queue worker log files are writable by TARGET_USER
-# Supervisor creates 10 workers (00-09) with stdout and stderr logs each
-for i in $(seq -f '%02g' 0 9); do
+# Supervisor creates 20 workers (00-19) with stdout and stderr logs each
+for i in $(seq -f '%02g' 0 19); do
     for f in "/tmp/queue-worker-${i}.log" "/tmp/queue-worker-${i}-error.log"; do
         if [ -L "$f" ]; then
             echo "WARN: $f is a symlink; removing before recreation" >&2

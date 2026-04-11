@@ -3,16 +3,17 @@
     <div class="space-y-6">
         {{-- Session Name Section --}}
         <div class="space-y-2">
-            <x-text-input
+            <label class="block text-sm font-medium text-gray-300 mb-2">Session Name</label>
+            <input
                 type="text"
+                id="session-edit-name-input"
                 x-model="sessionEditName"
-                x-ref="sessionEditNameInput"
                 @keydown.enter.prevent="saveSessionEdit()"
                 @keydown.escape="showSessionEditModal = false"
                 placeholder="Enter session name..."
-                label="Session Name"
                 x-bind:maxlength="window.TITLE_MAX_LENGTH"
-            />
+                class="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500 text-white placeholder-gray-400"
+            >
 
             {{-- Preview with yellow highlighting for chars beyond mobile truncation --}}
             <div x-show="sessionEditName.length > 0" class="text-sm">
@@ -36,7 +37,7 @@
             <div class="border-t border-gray-700 pt-4">
                 <h4 class="text-sm font-medium text-gray-300 mb-3">Chat Labels</h4>
                 <p class="text-xs text-gray-500 mb-3">
-                    Optionally give chats a short label (max 6 characters) to replace the number in tabs.
+                    Optionally give chats a short label to replace the number in tabs.
                 </p>
 
                 <div class="space-y-2 max-h-48 overflow-y-auto">
@@ -49,7 +50,6 @@
                             {{-- Label input (full width) --}}
                             <input type="text"
                                    x-model="chat.label"
-                                   maxlength="6"
                                    placeholder="Label..."
                                    @keydown.enter.prevent="saveSessionEdit()"
                                    class="flex-1 h-8 px-2 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500">

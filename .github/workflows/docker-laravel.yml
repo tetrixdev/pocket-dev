@@ -29,6 +29,20 @@ jobs:
           npm run build
           rm -rf node_modules
 
+      # Generate version.json for production builds
+      - name: Generate version.json
+        run: |
+          cat > www/version.json << EOF
+          {
+            "tag": "${{ github.event.release.tag_name }}",
+            "commit": "${{ github.sha }}",
+            "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "prerelease": ${{ github.event.release.prerelease }}
+          }
+          EOF
+          echo "Generated version.json:"
+          cat www/version.json
+
       # Set up Docker Buildx for caching support
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -69,22 +83,6 @@ jobs:
             --push \
             .
 
-      # Build and push Proxy image
-      - name: Build and push pocket-dev-proxy image
-        run: |
-          TAGS="--tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }}"
-          if [ "${{ github.event.release.prerelease }}" != "true" ]; then
-            TAGS="$TAGS --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:latest"
-          fi
-          docker buildx build \
-            --file docker-proxy/shared/Dockerfile \
-            --progress plain \
-            --build-arg BUILDKIT_INLINE_CACHE=1 \
-            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:cache,mode=max \
-            $TAGS \
-            --push \
-            .
-
       # Build and push PostgreSQL image with extensions
       - name: Build and push pocket-dev-postgres image
         run: |
@@ -107,7 +105,6 @@ jobs:
           echo "✅ Images built and pushed:"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }}"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }}"
-          echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-proxy:${{ github.event.release.tag_name }}"
           echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:${{ github.event.release.tag_name }}"
           echo ""
           if [ "${{ github.event.release.prerelease }}" = "true" ]; then

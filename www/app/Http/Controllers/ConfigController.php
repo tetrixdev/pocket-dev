@@ -7,6 +7,7 @@ use App\Models\PocketTool;
 use App\Models\Workspace;
 use App\Services\NativeToolService;
 use App\Services\ToolSelector;
+use App\Services\VersionService;
 use App\Tools\Tool;
 use App\Tools\UserTool;
 use Illuminate\Http\Request;
@@ -24,11 +25,13 @@ class ConfigController extends Controller
      */
     protected function getConfigs(): array
     {
-        return [
+        $projectName = config('pocketdev.project_name', 'pocket-dev');
+
+        $configs = [
             'claude' => [
                 'title' => 'CLAUDE.md',
                 'local_path' => '/home/appuser/.claude/CLAUDE.md',
-                'container' => 'pocket-dev-php',
+                'container' => "{$projectName}-php",
                 'container_path' => '/home/appuser/.claude/CLAUDE.md',
                 'syntax' => 'markdown',
                 'validate' => false,
@@ -37,22 +40,15 @@ class ConfigController extends Controller
             'settings' => [
                 'title' => 'Claude Settings',
                 'local_path' => '/home/appuser/.claude/settings.json',
-                'container' => 'pocket-dev-php',
+                'container' => "{$projectName}-php",
                 'container_path' => '/home/appuser/.claude/settings.json',
                 'syntax' => 'json',
                 'validate' => false,
                 'reload_cmd' => null,
             ],
-            'nginx' => [
-                'title' => 'Nginx Proxy Config',
-                'local_path' => '/etc/nginx-proxy-config/nginx.conf.template',
-                'container' => 'pocket-dev-proxy',
-                'container_path' => '/etc/nginx-proxy-config/nginx.conf.template',
-                'syntax' => 'nginx',
-                'validate' => true,
-                'reload_cmd' => 'sh -c "envsubst \'\$IP_ALLOWED \$AUTH_ENABLED \$DEFAULT_SERVER \$DOMAIN_NAME\' < /etc/nginx-proxy-config/nginx.conf.template > /etc/nginx/nginx.conf && nginx -s reload"',
-            ],
         ];
+
+        return $configs;
     }
 
     /**
@@ -126,6 +122,13 @@ class ConfigController extends Controller
     public function index(Request $request)
     {
         $lastSection = $request->session()->get('config_last_section', 'system-prompt');
+
+        // If last section was nginx but it's no longer available, reset to system-prompt
+        if ($lastSection === 'nginx' && !isset($this->getConfigs()['nginx'])) {
+            $lastSection = 'system-prompt';
+            $request->session()->put('config_last_section', $lastSection);
+        }
+
         return redirect()->route('config.' . $lastSection);
     }
 
@@ -222,10 +225,18 @@ class ConfigController extends Controller
      */
     public function showNginx(Request $request)
     {
+        $configs = $this->getConfigs();
+        if (!isset($configs['nginx'])) {
+            // Nginx proxy config not available (production with proxy-nginx)
+            // Reset session to prevent stuck redirects
+            $request->session()->put('config_last_section', 'system-prompt');
+            abort(404, 'Nginx proxy config is not available in this deployment mode.');
+        }
+
         $request->session()->put('config_last_section', 'nginx');
 
         try {
-            $config = $this->getConfigs()['nginx'];
+            $config = $configs['nginx'];
             $content = $this->readFromLocalPath($config['local_path']);
 
             return view('config.nginx', [
@@ -244,12 +255,18 @@ class ConfigController extends Controller
      */
     public function saveNginx(Request $request)
     {
+        $configs = $this->getConfigs();
+        if (!isset($configs['nginx'])) {
+            // Nginx proxy config not available (production with proxy-nginx)
+            abort(404, 'Nginx proxy config is not available in this deployment mode.');
+        }
+
         try {
             $validated = $request->validate([
                 'content' => 'required|string',
             ]);
 
-            $config = $this->getConfigs()['nginx'];
+            $config = $configs['nginx'];
 
             // Validate nginx config
             $this->validateNginxConfig($validated['content']);
@@ -285,6 +302,13 @@ class ConfigController extends Controller
     {
         return collect(config("ai.models.{$provider}", []))
             ->mapWithKeys(fn ($m) => [$m['model_id'] => $m['display_name']])
+            ->toArray();
+    }
+
+    protected function getMaxContextPerProvider(string $provider): array
+    {
+        return collect(config("ai.models.{$provider}", []))
+            ->mapWithKeys(fn ($m) => [$m['model_id'] => $m['max_context_window'] ?? $m['context_window']])
             ->toArray();
     }
 
@@ -324,6 +348,9 @@ class ConfigController extends Controller
             'providers' => Agent::getProviders(),
             'modelsPerProvider' => collect(Agent::getProviders())
                 ->mapWithKeys(fn ($p) => [$p => $this->getModelsForProvider($p)])
+                ->toArray(),
+            'maxContextPerProvider' => collect(Agent::getProviders())
+                ->mapWithKeys(fn ($p) => [$p => $this->getMaxContextPerProvider($p)])
                 ->toArray(),
             'workspaces' => Workspace::orderBy('name')->get(),
             'selectedWorkspaceId' => $request->query('workspace_id'),
@@ -415,6 +442,7 @@ class ConfigController extends Controller
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
+                'extended_context' => 'nullable|in:0,1',
             ]);
 
             // Check for duplicate slug within workspace
@@ -455,6 +483,7 @@ class ConfigController extends Controller
                     'system_prompt' => $validated['system_prompt'] ?? null,
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
+                    'extended_context' => ($validated['extended_context'] ?? '1') === '1',
                 ]);
 
                 // Sync memory schemas (only if not inheriting)
@@ -487,6 +516,9 @@ class ConfigController extends Controller
             'modelsPerProvider' => collect(Agent::getProviders())
                 ->mapWithKeys(fn ($p) => [$p => $this->getModelsForProvider($p)])
                 ->toArray(),
+            'maxContextPerProvider' => collect(Agent::getProviders())
+                ->mapWithKeys(fn ($p) => [$p => $this->getMaxContextPerProvider($p)])
+                ->toArray(),
         ]);
     }
 
@@ -516,6 +548,7 @@ class ConfigController extends Controller
                 'system_prompt' => 'nullable|string',
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
+                'extended_context' => 'nullable|in:0,1',
             ]);
 
             // Check for duplicate slug within workspace (excluding current agent)
@@ -556,6 +589,7 @@ class ConfigController extends Controller
                     'system_prompt' => $validated['system_prompt'] ?? null,
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
+                    'extended_context' => ($validated['extended_context'] ?? '1') === '1',
                 ]);
 
                 // Sync memory schemas (only if not inheriting)
@@ -2282,24 +2316,103 @@ class ConfigController extends Controller
     // =========================================================================
 
     /**
-     * Show developer tools page
+     * Show system management page
      */
-    public function showDeveloper(Request $request)
+    public function showSystem(Request $request, VersionService $versionService)
     {
-        $request->session()->put('config_last_section', 'developer');
+        $request->session()->put('config_last_section', 'system');
 
         // Check for any conversations currently processing
         $processingCount = \App\Models\Conversation::where('status', \App\Models\Conversation::STATUS_PROCESSING)->count();
 
-        return view('config.developer', [
+        // Get version information
+        $version = $versionService->getCurrentVersion();
+
+        // Get cached update info (don't fetch on page load - use explicit check button)
+        $updateInfo = $versionService->checkForUpdates(forceRefresh: false);
+
+        return view('config.system', [
             'processingCount' => $processingCount,
+            'version' => $version,
+            'updateInfo' => $updateInfo,
         ]);
     }
 
     /**
-     * Force recreate all Docker containers
+     * Check for updates (refresh cache)
      */
-    public function forceRecreate(Request $request)
+    public function checkUpdate(Request $request, VersionService $versionService)
+    {
+        $versionService->checkForUpdates(forceRefresh: true);
+
+        return redirect()->route('config.system')->with('success', 'Update check complete.');
+    }
+
+    /**
+     * Apply update (production: pull latest images; local: git pull)
+     */
+    public function applyUpdate(Request $request, VersionService $versionService)
+    {
+        try {
+            $hostProjectPath = config('backup.host_project_path');
+
+            if (empty($hostProjectPath)) {
+                throw new \RuntimeException('PD_HOST_PROJECT_PATH environment variable is not set');
+            }
+
+            // Production: pull latest images and recreate
+            // Spawn a helper container that survives container restarts
+            $command = sprintf(
+                'docker run --rm -d ' .
+                '-v /var/run/docker.sock:/var/run/docker.sock ' .
+                '-v "%s:%s" ' .
+                '-w "%s" ' .
+                'docker:27-cli ' .
+                'sh -c "docker compose pull && docker compose up -d --force-recreate" 2>&1',
+                $hostProjectPath,
+                $hostProjectPath,
+                $hostProjectPath
+            );
+
+            exec($command, $output, $returnCode);
+
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
+            }
+
+            // Clear update cache so next page load shows fresh status
+            \Illuminate\Support\Facades\Cache::forget('pocketdev:latest_release');
+            \Illuminate\Support\Facades\Cache::forget('pocketdev:update_available');
+
+            return redirect()->route('config.system')->with('success', 'Update initiated. PocketDev will restart with the new version shortly.');
+        } catch (\Exception $e) {
+            Log::error('Failed to apply update', ['error' => $e->getMessage()]);
+            return redirect()->route('config.system')->with('error', 'Failed to apply update: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Pull latest changes from main branch (local development only)
+     */
+    public function pullFromMain(Request $request, VersionService $versionService)
+    {
+        if (!app()->environment('local')) {
+            return redirect()->route('config.system')->with('error', 'This action is only available in local development.');
+        }
+
+        $result = $versionService->pullFromMain();
+
+        if ($result['success']) {
+            return redirect()->route('config.system')->with('success', 'Pulled latest changes from main. Restart containers to apply.');
+        } else {
+            return redirect()->route('config.system')->with('error', $result['error'] ?? 'Failed to pull from main.');
+        }
+    }
+
+    /**
+     * Restart all Docker containers (force recreate)
+     */
+    public function restartContainers(Request $request)
     {
         try {
             $hostProjectPath = config('backup.host_project_path');
@@ -2327,16 +2440,17 @@ class ConfigController extends Controller
                 throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
             }
 
-            return redirect()->back()->with('success', 'Force recreate initiated. Containers will restart shortly.');
+            return redirect()->back()->with('success', 'Restart initiated. Containers will restart shortly.');
         } catch (\Exception $e) {
-            Log::error('Failed to force recreate containers', ['error' => $e->getMessage()]);
-            return redirect()->back()->with('error', 'Failed to force recreate: ' . $e->getMessage());
+            Log::error('Failed to restart containers', ['error' => $e->getMessage()]);
+            return redirect()->back()->with('error', 'Failed to restart: ' . $e->getMessage());
         }
     }
 
     /**
      * Rebuild all Docker containers (down + build + up)
      * Use this when Dockerfiles or entrypoint scripts have changed.
+     * Only available in local development.
      */
     public function rebuildContainers(Request $request)
     {

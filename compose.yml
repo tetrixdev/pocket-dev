@@ -1,38 +1,9 @@
 services:
-  # Main nginx reverse proxy
-  pocket-dev-proxy:
-    build:
-      context: .
-      dockerfile: docker-proxy/shared/Dockerfile
-    container_name: pocket-dev-proxy
-    restart: unless-stopped
-    ports:
-      - "${PD_NGINX_PORT:-80}:80"
-    environment:
-      - PD_DEPLOYMENT_MODE=${PD_DEPLOYMENT_MODE:-local}
-      - PD_DOMAIN_NAME=${PD_DOMAIN_NAME:-localhost}
-    volumes:
-      - proxy-config-data:/etc/nginx-proxy-config
-    depends_on:
-      - pocket-dev-nginx
-    networks:
-      - pocket-dev
-    labels:
-      - "traefik.http.middlewares.pocket-auth.basicauth.users=${PD_BASIC_AUTH_CREDENTIALS:-}"
-      - "traefik.http.routers.pocket-dev-proxy-http.middlewares=pocket-auth"
-      - "traefik.http.routers.pocket-dev-proxy-https.middlewares=pocket-auth"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-
   pocket-dev-php:
     build:
       context: .
       dockerfile: docker-laravel/local/php/Dockerfile
-    container_name: pocket-dev-php
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-php
     restart: unless-stopped
     working_dir: /var/www
     # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
@@ -47,6 +18,7 @@ services:
       # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
       - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
     entrypoint: ["/entrypoint.sh"]
     ports:
       - "${PD_VITE_PORT:-5173}:5173"
@@ -56,7 +28,6 @@ services:
       - ./docker-laravel/shared/php/local.ini:/usr/local/etc/php/conf.d/local.ini
       - ./docker-laravel/local/php/entrypoint.sh:/entrypoint.sh
       - /var/run/docker.sock:/var/run/docker.sock
-      - proxy-config-data:/etc/nginx-proxy-config
       - user-data:/home/appuser
       - workspace-data:/workspace
       - pocketdev-storage:/var/www/storage/pocketdev
@@ -79,8 +50,11 @@ services:
 
   pocket-dev-nginx:
     image: nginx:1.29-alpine
-    container_name: pocket-dev-nginx
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-nginx
     restart: unless-stopped
+    # Port binding is added via compose.override.yml:
+    # - Local mode: binds to PD_NGINX_PORT (default 80)
+    # - Server mode with proxy-nginx: no port binding, connects via main-network
     volumes:
       - ./www:/var/www
       - ./docker-laravel/shared/nginx/default.conf:/etc/nginx/conf.d/default.conf
@@ -100,7 +74,7 @@ services:
     build:
       context: .
       dockerfile: docker-postgres/Dockerfile
-    container_name: pocket-dev-postgres
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: pocket-dev
@@ -119,7 +93,7 @@ services:
 
   pocket-dev-redis:
     image: redis:7-alpine
-    container_name: pocket-dev-redis
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
@@ -137,12 +111,18 @@ services:
     build:
       context: .
       dockerfile: docker-laravel/local/php/Dockerfile
-    container_name: pocket-dev-queue
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-queue
     restart: unless-stopped
     working_dir: /var/www
     # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
     entrypoint: ["/queue-entrypoint.sh"]
     # Command removed - supervisord in entrypoint manages multiple workers
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | awk 'BEGIN{ok=1;count=0} /^queue-worker_/ {count++; if ($2 != \"RUNNING\") ok=0} END{if (count==0) ok=0; exit !ok}'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     environment:
       - HOME=/home/appuser
       - PD_TARGET_UID=${PD_USER_ID:-1000}
@@ -151,6 +131,7 @@ services:
       # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
       - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
       - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
       # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
       - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
     volumes:
@@ -175,28 +156,25 @@ services:
 
 networks:
   pocket-dev:
-    name: pocket-dev
+    name: ${PD_PROJECT_NAME:-pocket-dev}
     driver: bridge
 
 volumes:
   postgres-data:
-    name: pocket-dev-postgres
+    name: ${PD_PROJECT_NAME:-pocket-dev}-postgres
     driver: local
   redis-data:
-    name: pocket-dev-redis
+    name: ${PD_PROJECT_NAME:-pocket-dev}-redis
     driver: local
   workspace-data:
-    name: pocket-dev-workspace
+    name: ${PD_PROJECT_NAME:-pocket-dev}-workspace
     driver: local
   user-data:
-    name: pocket-dev-user
-    driver: local
-  proxy-config-data:
-    name: pocket-dev-proxy-config
+    name: ${PD_PROJECT_NAME:-pocket-dev}-user
     driver: local
   pocketdev-storage:
-    name: pocket-dev-storage
+    name: ${PD_PROJECT_NAME:-pocket-dev}-storage
     driver: local
   shared-tmp:
-    name: pocket-dev-shared-tmp
+    name: ${PD_PROJECT_NAME:-pocket-dev}-shared-tmp
     driver: local

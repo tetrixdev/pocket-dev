@@ -125,6 +125,8 @@ Panels are interactive UI components. Required field: `blade_template`.
 2. Do NOT use `<script>` tags - they won't work with dynamic loading
 3. Use **Tailwind CSS** for styling
 4. Available variables: `$parameters`, `$state`, `$panelState`, `$panel`
+5. **Never use `:attr="$phpVar"` on regular HTML elements** — the `:` prefix is both Alpine.js shorthand (`x-bind:`) and Blade component syntax, but Blade ignores it on regular HTML. So `:disabled="$phpTrue"` passes the literal string `$phpTrue` to Alpine, which evaluates it as undefined JS. **Preferred:** inject PHP values into `x-data` via `@js()` (e.g., `items: @js($parameters['items'] ?? [])`). Alternative: use `x-bind:attr="{{ $var }}"` for one-off bindings.
+6. **Use `!!()` for boolean attribute expressions** — `x-bind:disabled` requires an explicit `true`/`false`. If the expression can return `undefined` (e.g., `actionLoading[id]` when the key doesn't exist), Alpine won't remove the attribute. Wrap in `!!()` to force a boolean: `x-bind:disabled="!!(!canWrite() || actionLoading[id])"`.
 
 **Correct pattern:**
 ```blade

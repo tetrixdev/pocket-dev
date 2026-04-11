@@ -108,7 +108,7 @@
                     <p class="text-gray-300 mb-4">Run this command on your host machine to authenticate:</p>
                     @if(config('backup.user_id') !== null)
                         <div class="bg-gray-900 rounded p-4 mb-4">
-                            <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude</code>
+                            <code class="text-sm text-green-400">docker exec -it -u {{ config('backup.user_id') }} {{ config('pocketdev.project_name', 'pocket-dev') }}-queue claude</code>
                         </div>
                     @else
                         <div class="bg-red-900/50 border border-red-500 rounded p-4 mb-4 text-red-300 text-sm">

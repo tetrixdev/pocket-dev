@@ -207,11 +207,11 @@
                     </a>
                 </div>
 
-                <!-- Developer Tools (Restart/Rebuild) -->
+                <!-- System Management -->
                 <div class="border-b border-gray-700">
-                    <a href="{{ route('config.developer') }}"
-                       class="category-button w-full block {{ Route::currentRouteName() == 'config.developer' ? 'active' : '' }}">
-                        🔧 Developer
+                    <a href="{{ route('config.system') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.system' ? 'active' : '' }}">
+                        ⚙️ System
                     </a>
                 </div>
 
@@ -427,12 +427,12 @@
                 </a>
             </div>
 
-            <!-- Developer Tools (Restart/Rebuild) -->
+            <!-- System Management -->
             <div class="border-b border-gray-700">
-                <a href="{{ route('config.developer') }}"
+                <a href="{{ route('config.system') }}"
                    @click="showMobileDrawer = false"
-                   class="category-button w-full block {{ Route::currentRouteName() == 'config.developer' ? 'active' : '' }}">
-                    🔧 Developer
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.system' ? 'active' : '' }}">
+                    ⚙️ System
                 </a>
             </div>
 

@@ -44,6 +44,7 @@ class Agent extends Model
         'system_prompt',
         'is_default',
         'enabled',
+        'extended_context',
     ];
 
     protected $casts = [
@@ -52,6 +53,7 @@ class Agent extends Model
         'inherit_workspace_schemas' => 'boolean',
         'is_default' => 'boolean',
         'enabled' => 'boolean',
+        'extended_context' => 'boolean',
         'reasoning_config' => 'array',
         'response_level' => 'integer',
     ];

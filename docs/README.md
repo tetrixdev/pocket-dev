@@ -34,9 +34,9 @@ What are you looking for?
 | Anthropic/OpenAI/Claude Code setup | `architecture/system-overview.md` | Provider factory |
 | Reasoning/thinking token settings | `architecture/provider-specific-reasoning-settings.md` | Per-provider config |
 | **Infrastructure** | | |
-| Container architecture | `architecture/system-overview.md` | 6 containers, networking |
+| Container architecture | `architecture/system-overview.md` | 5 containers, networking |
 | Job queue (Redis) | `architecture/system-overview.md` | Background processing |
-| Authentication (Basic Auth, IP whitelist) | `architecture/authentication.md` | Proxy layer |
+| Authentication (Basic Auth, IP whitelist) | `architecture/authentication.md` | Via proxy-nginx |
 | API key storage | `architecture/authentication.md` | Encrypted in DB |
 | File permissions (PHP-FPM vs queue) | `architecture/file-permissions.md` | umask, group perms |
 | **Database** | | |
@@ -48,6 +48,9 @@ What are you looking for?
 | **Configuration** | | |
 | Environment variables | `configuration/README.md` | .env file |
 | AI provider config | `configuration/README.md` | config/ai.php |
+| **Skills** | | |
+| System skills (built-in workflows) | `architecture/system-skills.md` | Adding/updating skills |
+| Skill tag filtering | `architecture/system-skills.md` | Workspace whitelist/blacklist |
 
 ---
 
@@ -55,7 +58,7 @@ What are you looking for?
 
 ### 🏗️ Architecture (`architecture/`)
 
-**TLDR:** Six Docker containers (proxy, php, nginx, postgres, redis, queue) connected via bridge network. Proxy handles Basic Auth + IP whitelist. PHP container runs Laravel + Claude CLI + Node.js. Redis provides caching and queue backend. Volumes share workspace and user data.
+**TLDR:** Five Docker containers (php, nginx, postgres, redis, queue) connected via bridge network. On servers, external proxy-nginx handles SSL + Basic Auth + IP whitelist. PHP container runs Laravel + Claude CLI + Node.js. Redis provides caching and queue backend. Volumes share workspace and user data.
 
 **Read level:** 📖 Full read recommended - Understanding container relationships is helpful for debugging.
 
@@ -64,6 +67,7 @@ What are you looking for?
 - `authentication.md` - Basic Auth, IP whitelist, Claude credential management
 - `technology-stack.md` - Laravel, Alpine.js, Docker, key dependencies
 - `file-permissions.md` - Cross-process file permissions (PHP-FPM vs queue workers)
+- `system-skills.md` - Built-in AI workflow skills, how to add/update them
 
 ### 📦 Modules (`modules/`)
 
@@ -157,4 +161,3 @@ docker compose logs -f pocket-dev-php
 | Chat interface | `resources/views/chat.blade.php` |
 | Config editor | `app/Http/Controllers/ConfigController.php` |
 | Docker setup | `compose.yml` |
-| Proxy config | `docker-proxy/shared/` |

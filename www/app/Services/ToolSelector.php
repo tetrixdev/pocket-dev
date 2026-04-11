@@ -751,6 +751,8 @@ GUIDE;
     /**
      * Build hierarchical preview data for skills.
      * Returns nested structure for preview display.
+     *
+     * Skills are filtered by workspace tag settings (blacklist/whitelist mode).
      */
     public function buildSkillsPreviewHierarchy(?Agent $agent): ?array
     {
@@ -760,6 +762,9 @@ GUIDE;
             return null;
         }
 
+        // Get workspace for tag filtering (if available)
+        $workspace = $agent?->workspace;
+
         // Gather skills grouped by schema
         $skillsBySchema = [];
 
@@ -767,16 +772,42 @@ GUIDE;
             $fullSchemaName = $schema->getFullSchemaName();
 
             try {
-                $skills = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
-                    ->table("{$fullSchemaName}.skills")
-                    ->select(['name', 'when_to_use'])
-                    ->orderBy('name')
-                    ->get();
+                // Check if source column exists (for backwards compatibility)
+                $hasSourceColumn = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
+                    ->selectOne("
+                        SELECT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_schema = ? AND table_name = 'skills' AND column_name = 'source'
+                        ) as exists
+                    ", [$fullSchemaName]);
+
+                $hasSource = (bool) ($hasSourceColumn->exists ?? false);
+
+                // Query skills with source/tags if available
+                $query = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
+                    ->table("{$fullSchemaName}.skills");
+
+                if ($hasSource) {
+                    $query->select(['name', 'when_to_use', 'source', 'tags']);
+                } else {
+                    $query->select(['name', 'when_to_use']);
+                }
+
+                $skills = $query->orderBy('name')->get();
+
+                // Filter skills by workspace tag settings
+                if ($workspace && $hasSource) {
+                    $skills = $skills->filter(function ($skill) use ($workspace) {
+                        $tags = $this->parsePgArray($skill->tags ?? '{}');
+                        return $workspace->isSkillTagAllowed($tags);
+                    });
+                }
 
                 if ($skills->isNotEmpty()) {
                     $skillsBySchema[$schema->schema_name] = [
                         'schema' => $schema,
                         'skills' => $skills,
+                        'hasSource' => $hasSource,
                     ];
                 }
             } catch (\Illuminate\Database\QueryException $e) {
@@ -865,6 +896,9 @@ GUIDE;
      * Get a specific skill by name from available schemas.
      * Returns the full skill content if found.
      *
+     * Respects workspace tag filtering - a skill won't be found if it's
+     * filtered out by the workspace's blacklist/whitelist settings.
+     *
      * @param Agent|null $agent The agent context
      * @param string $skillName The skill name to look up
      * @return array|null The skill data or null if not found
@@ -872,6 +906,7 @@ GUIDE;
     public function getSkillByName(?Agent $agent, string $skillName): ?array
     {
         $schemas = $this->getAvailableSchemas($agent);
+        $workspace = $agent?->workspace;
 
         foreach ($schemas as $schema) {
             $fullSchemaName = $schema->getFullSchemaName();
@@ -883,11 +918,21 @@ GUIDE;
                     ->first();
 
                 if ($skill) {
+                    // Check tag filtering if workspace is available and skill has tags
+                    if ($workspace && isset($skill->tags)) {
+                        $tags = $this->parsePgArray($skill->tags ?? '{}');
+                        if (!$workspace->isSkillTagAllowed($tags)) {
+                            continue; // Skill filtered out, try next schema
+                        }
+                    }
+
                     return [
                         'name' => $skill->name,
                         'when_to_use' => $skill->when_to_use,
                         'instructions' => $skill->instructions,
                         'schema' => $schema->schema_name,
+                        'source' => $skill->source ?? 'user',
+                        'tags' => $this->parsePgArray($skill->tags ?? '{}'),
                     ];
                 }
             } catch (\Illuminate\Database\QueryException $e) {
@@ -912,12 +957,16 @@ GUIDE;
     /**
      * Get all skills from available schemas.
      *
+     * Respects workspace tag filtering - skills that are filtered out by
+     * the workspace's blacklist/whitelist settings won't be included.
+     *
      * @param Agent|null $agent The agent context
      * @return Collection Collection of skill arrays
      */
     public function getAllSkills(?Agent $agent): Collection
     {
         $schemas = $this->getAvailableSchemas($agent);
+        $workspace = $agent?->workspace;
         $allSkills = collect();
 
         foreach ($schemas as $schema) {
@@ -926,16 +975,24 @@ GUIDE;
             try {
                 $skills = \Illuminate\Support\Facades\DB::connection('pgsql_readonly')
                     ->table("{$fullSchemaName}.skills")
-                    ->select(['name', 'when_to_use', 'instructions'])
                     ->orderBy('name')
                     ->get();
 
                 foreach ($skills as $skill) {
+                    $tags = $this->parsePgArray($skill->tags ?? '{}');
+
+                    // Apply tag filtering if workspace is available
+                    if ($workspace && !$workspace->isSkillTagAllowed($tags)) {
+                        continue;
+                    }
+
                     $allSkills->push([
                         'name' => $skill->name,
                         'when_to_use' => $skill->when_to_use,
                         'instructions' => $skill->instructions,
                         'schema' => $schema->schema_name,
+                        'source' => $skill->source ?? 'user',
+                        'tags' => $tags,
                     ]);
                 }
             } catch (\Illuminate\Database\QueryException $e) {
@@ -954,6 +1011,73 @@ GUIDE;
         }
 
         return $allSkills;
+    }
+
+    /**
+     * Parse a PostgreSQL array literal into a PHP array.
+     *
+     * Handles formats like: {}, {foo,bar}, {"foo","bar"}, {"foo,bar","baz"}
+     *
+     * @param string|null $pgArray The PostgreSQL array literal
+     * @return array The parsed PHP array
+     */
+    private function parsePgArray(?string $pgArray): array
+    {
+        if (empty($pgArray) || $pgArray === '{}') {
+            return [];
+        }
+
+        // Remove outer braces
+        $inner = trim($pgArray, '{}');
+        if (empty($inner)) {
+            return [];
+        }
+
+        // Simple case: no quotes, just comma-separated values
+        if (!str_contains($inner, '"')) {
+            return array_map('trim', explode(',', $inner));
+        }
+
+        // Complex case: quoted values (may contain commas)
+        $result = [];
+        $current = '';
+        $inQuotes = false;
+        $escaped = false;
+
+        for ($i = 0; $i < strlen($inner); $i++) {
+            $char = $inner[$i];
+
+            if ($escaped) {
+                $current .= $char;
+                $escaped = false;
+                continue;
+            }
+
+            if ($char === '\\') {
+                $escaped = true;
+                continue;
+            }
+
+            if ($char === '"') {
+                $inQuotes = !$inQuotes;
+                continue;
+            }
+
+            if ($char === ',' && !$inQuotes) {
+                $result[] = $current;
+                $current = '';
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        // Add final element
+        if ($current !== '') {
+            $result[] = $current;
+        }
+
+        return $result;
     }
 
     /**
