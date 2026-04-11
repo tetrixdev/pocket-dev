@@ -778,12 +778,12 @@
 
                     /* Architecture Diagram - improve border and text visibility */
                     .architecture-service { fill: #374151 !important; stroke: #60a5fa !important; stroke-width: 2px !important; }
-                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; font-weight: 400 !important; font-style: normal !important; letter-spacing: 0.05em !important; }
+                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; font-size: 14px !important; font-weight: 400 !important; font-style: normal !important; }
                     .architecture-group { fill: transparent !important; stroke: #9ca3af !important; stroke-width: 2px !important; stroke-dasharray: 8 4 !important; }
                     .architecture-edge { stroke: #9ca3af !important; stroke-width: 1.5px !important; }
                     .node-bkg { stroke: #9ca3af !important; }
-                    /* Architecture labels - prevent italic, improve readability */
-                    [id*="architecture"] text, [aria-roledescription="architecture"] text { font-weight: 400 !important; font-style: normal !important; letter-spacing: 0.05em !important; }
+                    /* Architecture labels - smaller font, prevent word-art look */
+                    [id*="architecture"] text, [aria-roledescription="architecture"] text { font-size: 14px !important; font-weight: 400 !important; font-style: normal !important; }
 
                     /* Sankey Diagram - brighter flow colors */
                     .sankey-node rect { fill: #60a5fa !important; stroke: #3b82f6 !important; }
@@ -1012,18 +1012,26 @@
         }
         .mermaid-diagram svg { max-width: 100%; height: auto; }
 
-        /* SVG text elements - force light text color */
-        .mermaid-diagram svg text,
+        /* SVG text elements - force light text color EXCEPT for diagrams with colored backgrounds */
+        /* Mind maps, pie charts use dark text on pastel backgrounds */
+        .mermaid-diagram svg text { fill: #e5e7eb !important; }
         .mermaid-diagram svg tspan { fill: #e5e7eb !important; }
+        /* Mind map sections need dark text on colored backgrounds */
+        .mermaid-diagram svg [class*="section-"] text,
+        .mermaid-diagram svg [class*="section-"] tspan,
+        .mermaid-diagram svg .mindmap-node text,
+        .mermaid-diagram svg .mindmap-node tspan { fill: #1f2937 !important; }
+        /* Pie chart slice labels need dark text */
+        .mermaid-diagram svg .slice { fill: #1f2937 !important; }
 
         /* foreignObject contains HTML <span> elements (when htmlLabels: true) */
         .mermaid-diagram svg foreignObject * { color: #e5e7eb !important; }
 
-        /* Catch-all selectors for any label-related classes */
-        .mermaid-diagram svg [class*="label"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
-        .mermaid-diagram svg [class*="Label"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
-        .mermaid-diagram svg [class*="text"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
-        .mermaid-diagram svg [class*="Text"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        /* Catch-all selectors for any label-related classes - exclude section labels */
+        .mermaid-diagram svg [class*="label"]:not([class*="section-"]) { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="Label"]:not([class*="section-"]) { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="text"]:not([class*="section-"]) { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="Text"]:not([class*="section-"]) { color: #e5e7eb !important; fill: #e5e7eb !important; }
 
         /* Packet Diagram - fix text visibility (exact Mermaid class names) */
         .mermaid-diagram svg .packetBlock { fill: #374151 !important; stroke: #6b7280 !important; }
@@ -1034,6 +1042,13 @@
         /* Architecture Diagram - improve border and text visibility */
         .mermaid-diagram svg .node-bkg { stroke: #9ca3af !important; stroke-width: 2px !important; }
         .mermaid-diagram svg .architecture-service text { fill: #e5e7eb !important; }
+        /* Architecture labels - smaller, lighter font (prevent word-art look) */
+        .mermaid-diagram svg[aria-roledescription="architecture"] text,
+        .mermaid-diagram svg[aria-roledescription="architecture"] tspan {
+            font-size: 14px !important;
+            font-weight: 400 !important;
+            font-style: normal !important;
+        }
 
         /* ER Diagram - transparent relationship labels (cleaner look) */
         .mermaid-diagram svg .relationshipLabelBox { fill: transparent !important; stroke: none !important; }
@@ -1060,6 +1075,28 @@
             --color-border-base: #6b7280;
             --color-border-frame: #6b7280;
             --color-skin-message-arrow: #9ca3af;
+        }
+        /* ZenUML fix: SVG and container auto-size to content, fix alignment */
+        .mermaid-diagram svg[aria-roledescription="zenuml"] {
+            width: auto !important;
+            max-width: fit-content !important;
+        }
+        /* ZenUML inner container - prevent excessive width calculation */
+        .mermaid-diagram svg[aria-roledescription="zenuml"] foreignObject {
+            width: auto !important;
+        }
+        .mermaid-diagram svg[aria-roledescription="zenuml"] foreignObject > div {
+            display: inline-flex !important;
+            width: auto !important;
+        }
+        .mermaid-diagram .zenuml .sequence-diagram {
+            width: auto !important;
+            min-width: 0 !important;
+        }
+        /* Ensure lifeline layer matches message layer positioning */
+        .mermaid-diagram .zenuml .lifeline-layer {
+            width: auto !important;
+            min-width: auto !important;
         }
         .mermaid-diagram .zenuml .bg-skin-canvas { background-color: #1f2937 !important; }
         .mermaid-diagram .zenuml .bg-skin-frame { background-color: #374151 !important; }
