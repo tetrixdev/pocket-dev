@@ -634,13 +634,202 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
             integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I"
             crossorigin="anonymous"></script>
+    <!--
+        ===================================================================================
+        MERMAID DARK THEME CONFIGURATION
+        ===================================================================================
+
+        This configuration ensures Mermaid diagrams render correctly in PocketDev's dark UI.
+
+        WHY 'base' THEME:
+        - Only the 'base' theme allows full customization via themeVariables
+        - Other themes (dark, forest, etc.) have hardcoded values that can't be overridden
+        - Source: https://mermaid.js.org/config/theming.html
+
+        WHY htmlLabels: false:
+        - By default, Mermaid uses <foreignObject> with HTML <span> elements for text
+        - This makes CSS styling difficult because the text isn't in SVG <text> elements
+        - Setting htmlLabels: false forces pure SVG <text> elements
+        - Source: https://github.com/mermaid-js/mermaid/issues/2688
+
+        WHY themeCSS:
+        - Mermaid embeds inline styles in the SVG that override external CSS
+        - themeCSS injects rules directly into Mermaid's rendering context
+        - We use !important to override Mermaid's inline styles
+        - Source: https://mermaid.js.org/config/schema-docs/config.html
+
+        COLOR PALETTE (Tailwind Gray):
+        - #1f2937 (gray-800) - darkest, used for backgrounds
+        - #374151 (gray-700) - medium dark, used for node fills
+        - #4b5563 (gray-600) - medium, used for secondary elements
+        - #6b7280 (gray-500) - borders and strokes
+        - #9ca3af (gray-400) - lines and subtle elements
+        - #e5e7eb (gray-200) - text color (light on dark)
+
+        DIAGRAM-SPECIFIC VARIABLES:
+        - Some diagram types ignore general themeVariables and need specific ones
+        - Flowcharts need: mainBkg, nodeTextColor (not just primaryColor)
+        - State diagrams need: labelColor, altBackground
+        - Class diagrams need: classText
+        - Git graphs need: git0-7, gitBranchLabel0-7, commitLabelBackground
+        - Pie charts need: pie1-12 (distinct colors for segments)
+
+        KNOWN ISSUES:
+        - Git graph branch labels may still show white backgrounds in some versions
+        - Workaround: inspect rendered SVG for class names and add to themeCSS
+
+        SOURCES:
+        - https://mermaid.js.org/config/theming.html
+        - https://github.com/mermaid-js/mermaid/blob/develop/docs/syntax/gitgraph.md
+        - https://forum.obsidian.md/t/mermaid-dark-light-theme-css-snippet/73147
+        - https://discourse.devontechnologies.com/t/mermaid-dark-theme-tutorial/66935
+        ===================================================================================
+    -->
     <script>
         if (typeof mermaid !== 'undefined') {
             mermaid.initialize({
                 startOnLoad: false,
-                theme: 'dark',
+                theme: 'base',  // Only 'base' allows full customization
                 securityLevel: 'strict',
-                fontFamily: 'ui-sans-serif, system-ui, sans-serif'
+                fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+
+                // Use pure SVG <text> elements instead of foreignObject/HTML
+                // This gives us better CSS control over text styling
+                flowchart: { htmlLabels: false },
+
+                // Inject CSS directly into Mermaid's rendering context
+                // Required because Mermaid applies inline styles that override external CSS
+                themeCSS: `
+                    /* Flowchart nodes and labels */
+                    .nodeLabel, .edgeLabel, .label { color: #e5e7eb !important; }
+                    .node rect, .node circle, .node ellipse, .node polygon, .node path { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .cluster rect { fill: #1f2937 !important; stroke: #4b5563 !important; }
+
+                    /* Force all SVG text to be light colored */
+                    text, tspan { fill: #e5e7eb !important; }
+
+                    /* State diagram */
+                    .statediagram-state rect { fill: #374151 !important; }
+                    .stateLabel { fill: #e5e7eb !important; }
+
+                    /* Git graph - branch labels
+                       The actual class is .branchLabelBkg (found via DOM inspection) */
+                    .branchLabelBkg { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .branchLabel text, .branch-label text { fill: #e5e7eb !important; }
+                    .gitTitleLabel { fill: #e5e7eb !important; }
+
+                    /* Git graph - commit labels */
+                    .commit-label-bkg { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .commit-label { fill: #e5e7eb !important; }
+
+                    /* Generic label elements (fallback selectors) */
+                    .labelRect { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .labelText { fill: #e5e7eb !important; }
+                    .label rect { fill: #374151 !important; }
+                `,
+
+                themeVariables: {
+                    // === CORE DARK MODE ===
+                    darkMode: true,
+                    background: '#1f2937',
+
+                    // === PRIMARY COLORS (used by most diagram types) ===
+                    primaryColor: '#374151',        // Node backgrounds
+                    primaryTextColor: '#e5e7eb',    // Text on primary elements
+                    primaryBorderColor: '#6b7280',  // Borders
+                    secondaryColor: '#4b5563',
+                    secondaryTextColor: '#e5e7eb',
+                    secondaryBorderColor: '#6b7280',
+                    tertiaryColor: '#1f2937',
+                    tertiaryTextColor: '#e5e7eb',
+
+                    // === GENERIC ===
+                    lineColor: '#9ca3af',
+                    textColor: '#e5e7eb',
+
+                    // === FLOWCHART ===
+                    // Flowcharts use these instead of primaryColor
+                    mainBkg: '#374151',              // Node fill (critical for flowcharts!)
+                    nodeTextColor: '#e5e7eb',        // Text inside nodes
+                    nodeBorder: '#6b7280',
+                    clusterBkg: '#1f2937',           // Subgraph background
+                    clusterBorder: '#4b5563',
+                    edgeLabelBackground: '#374151',  // Background behind edge labels
+                    titleColor: '#e5e7eb',
+
+                    // === CLASS DIAGRAM ===
+                    classText: '#e5e7eb',            // Text in class boxes
+
+                    // === STATE DIAGRAM ===
+                    labelColor: '#e5e7eb',           // State labels
+                    altBackground: '#374151',        // Alternate state background
+
+                    // === SEQUENCE DIAGRAM ===
+                    actorBkg: '#374151',
+                    actorTextColor: '#e5e7eb',
+                    actorBorder: '#6b7280',
+                    signalColor: '#9ca3af',
+                    signalTextColor: '#e5e7eb',
+                    labelBoxBkgColor: '#374151',
+                    labelBoxBorderColor: '#6b7280',
+                    labelTextColor: '#e5e7eb',
+                    loopTextColor: '#e5e7eb',
+                    noteBkgColor: '#4b5563',
+                    noteTextColor: '#e5e7eb',
+                    noteBorderColor: '#6b7280',
+                    activationBkgColor: '#4b5563',
+                    activationBorderColor: '#6b7280',
+
+                    // === PIE CHART ===
+                    // Using Tailwind's vibrant colors for distinct segments
+                    pie1: '#60a5fa',   // blue-400
+                    pie2: '#34d399',   // emerald-400
+                    pie3: '#f472b6',   // pink-400
+                    pie4: '#fbbf24',   // amber-400
+                    pie5: '#a78bfa',   // violet-400
+                    pie6: '#fb923c',   // orange-400
+                    pie7: '#2dd4bf',   // teal-400
+                    pie8: '#f87171',   // red-400
+                    pie9: '#818cf8',   // indigo-400
+                    pie10: '#4ade80',  // green-400
+                    pie11: '#e879f9',  // fuchsia-400
+                    pie12: '#38bdf8',  // sky-400
+                    pieStrokeColor: '#1f2937',
+                    pieTitleTextColor: '#e5e7eb',
+                    pieLegendTextColor: '#e5e7eb',
+                    pieSectionTextColor: '#1f2937',  // Dark text on bright pie segments
+
+                    // === GIT GRAPH ===
+                    // Branch line colors (using same vibrant palette)
+                    git0: '#60a5fa',   // blue - main branch
+                    git1: '#34d399',   // green - feature branches
+                    git2: '#f472b6',   // pink
+                    git3: '#fbbf24',   // amber
+                    git4: '#a78bfa',   // violet
+                    git5: '#fb923c',   // orange
+                    git6: '#2dd4bf',   // teal
+                    git7: '#f87171',   // red
+                    // Branch label text colors (dark text on light branch-colored backgrounds)
+                    gitBranchLabel0: '#1f2937',
+                    gitBranchLabel1: '#1f2937',
+                    gitBranchLabel2: '#1f2937',
+                    gitBranchLabel3: '#1f2937',
+                    gitBranchLabel4: '#1f2937',
+                    gitBranchLabel5: '#1f2937',
+                    gitBranchLabel6: '#1f2937',
+                    gitBranchLabel7: '#1f2937',
+                    // Commit labels
+                    commitLabelColor: '#e5e7eb',
+                    commitLabelBackground: '#374151',
+                    // Tag labels
+                    tagLabelBackground: '#374151',
+                    tagLabelBorder: '#6b7280',
+                    tagLabelColor: '#e5e7eb',
+
+                    // === ER DIAGRAM ===
+                    attributeBackgroundColorEven: '#374151',
+                    attributeBackgroundColorOdd: '#4b5563'
+                }
             });
         }
     </script>
@@ -672,10 +861,29 @@
         .table-wrapper { overflow-x: auto; margin: 1em 0; -webkit-overflow-scrolling: touch; }
         .table-wrapper table { margin: 0; }
 
-        /* Mermaid diagram styles */
+        /*
+         * =======================================================================
+         * MERMAID DIAGRAM EXTERNAL CSS
+         * =======================================================================
+         *
+         * These styles apply to the container wrapping Mermaid SVGs.
+         * They work in combination with the themeCSS injected in mermaid.initialize().
+         *
+         * WHY EXTERNAL CSS:
+         * - Container styling (background, padding, scrolling) is handled here
+         * - themeCSS handles internal SVG element styling
+         *
+         * WHY !important:
+         * - Mermaid applies inline styles that need to be overridden
+         * - External CSS has lower specificity than inline styles
+         *
+         * NOTE: If text is still invisible after themeCSS changes, inspect the
+         * rendered SVG in browser DevTools to find the correct class names.
+         * =======================================================================
+         */
         .mermaid-placeholder { margin: 1em 0; }
         .mermaid-diagram {
-            background: #1f2937;
+            background: #1f2937;  /* Same as Mermaid's background themeVariable */
             border-radius: 0.5em;
             padding: 1em;
             overflow-x: auto;
@@ -684,6 +892,19 @@
             justify-content: center;
         }
         .mermaid-diagram svg { max-width: 100%; height: auto; }
+
+        /* SVG text elements - force light text color */
+        .mermaid-diagram svg text,
+        .mermaid-diagram svg tspan { fill: #e5e7eb !important; }
+
+        /* foreignObject contains HTML <span> elements (when htmlLabels: true) */
+        .mermaid-diagram svg foreignObject * { color: #e5e7eb !important; }
+
+        /* Catch-all selectors for any label-related classes */
+        .mermaid-diagram svg [class*="label"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="Label"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="text"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="Text"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
         .mermaid-loading {
             background: #374151;
             border-radius: 0.5em;
@@ -1220,44 +1441,68 @@
                        'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry',
                        'transform', 'points', 'class', 'id', 'style', 'marker-end',
                        'text-anchor', 'dominant-baseline', 'font-size', 'opacity',
-                       'xmlns', 'preserveAspectRatio', 'clip-path', 'data-mermaid']
+                       'xmlns', 'preserveAspectRatio', 'clip-path',
+                       // Text attributes for Mermaid labels
+                       'font-family', 'font-weight', 'font-style', 'dx', 'dy',
+                       'alignment-baseline', 'letter-spacing', 'fill-opacity',
+                       'stroke-opacity', 'data-id', 'data-node', 'data-label-type',
+                       'requiredFeatures', 'requiredExtensions', 'systemLanguage']
         };
+
+        // Global cache for rendered Mermaid SVGs (prevents flicker on re-render)
+        // Shared between marked.js renderer and Alpine component
+        window._mermaidSvgCache = new Map();
 
         // Configure marked.js with custom renderer for mermaid and syntax highlighting
         // Note: marked.js v5+ removed the highlight option, use renderer instead
-        const renderer = new marked.Renderer();
-        const originalCodeRenderer = renderer.code.bind(renderer);
-        renderer.code = function(code, language, escaped) {
-            // Handle both old signature (code, lang) and new signature ({text, lang})
-            let text = code;
-            let lang = language;
-            if (typeof code === 'object') {
-                text = code.text;
-                lang = code.lang;
-            }
+        marked.use({
+            renderer: {
+                code(token) {
+                    // token is {type, raw, text, lang, escaped} in marked v15
+                    const text = token.text || '';
+                    const lang = token.lang || '';
 
-            // Mermaid blocks: return placeholder for post-processing
-            if (lang === 'mermaid') {
-                const escapedCode = String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                                   .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-                return `<div class="mermaid-placeholder" data-mermaid="${escapedCode}"></div>`;
-            }
+                    console.log('[Mermaid Debug] code renderer called:', { lang, textLength: text.length });
 
-            // Regular code: apply syntax highlighting
-            let highlighted;
-            if (lang && hljs.getLanguage(lang)) {
-                try { highlighted = hljs.highlight(String(text), { language: lang }).value; } catch (err) {}
+                    // Mermaid blocks: check cache first, then return placeholder for post-processing
+                    if (lang === 'mermaid') {
+                        // Simple hash for cache lookup (djb2 algorithm)
+                        let hash = 5381;
+                        for (let i = 0; i < text.length; i++) {
+                            hash = ((hash << 5) + hash) + text.charCodeAt(i);
+                        }
+                        const hashStr = (hash >>> 0).toString(36);
+
+                        // Check global cache - if found, output SVG directly (no flicker!)
+                        if (window._mermaidSvgCache && window._mermaidSvgCache.has(hashStr)) {
+                            console.log('[Mermaid Debug] Cache hit in renderer for hash:', hashStr);
+                            return `<div class="mermaid-placeholder mermaid-rendered"><div class="mermaid-diagram">${window._mermaidSvgCache.get(hashStr)}</div></div>`;
+                        }
+
+                        // Not in cache - output placeholder for async rendering
+                        // Use base64 encoding to prevent DOMPurify from sanitizing the attribute value
+                        const base64Code = btoa(unescape(encodeURIComponent(String(text))));
+                        return `<div class="mermaid-placeholder" data-mermaid-b64="${base64Code}" data-mermaid-hash="${hashStr}"></div>`;
+                    }
+
+                    // Regular code: apply syntax highlighting
+                    let highlighted;
+                    if (lang && hljs.getLanguage(lang)) {
+                        try { highlighted = hljs.highlight(String(text), { language: lang }).value; } catch (err) {}
+                    }
+                    if (!highlighted) {
+                        try { highlighted = hljs.highlightAuto(String(text)).value; } catch (err) {
+                            highlighted = String(text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        }
+                    }
+                    return `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`;
+                }
             }
-            if (!highlighted) {
-                highlighted = hljs.highlightAuto(String(text)).value;
-            }
-            return `<pre><code class="hljs language-${lang || ''}">${highlighted}</code></pre>`;
-        };
+        });
 
         marked.setOptions({
             breaks: true,
-            gfm: true,
-            renderer: renderer
+            gfm: true
         });
 
         function chatApp() {
@@ -1752,6 +1997,15 @@
 
                         await this.loadSession(urlSessionId);
 
+                        // Trigger initial mermaid rendering after session load
+                        setTimeout(() => {
+                            this.$nextTick(() => {
+                                const container = document.getElementById('messages');
+                                console.log('[Mermaid Debug] Initial render after loadSession');
+                                if (container) this.renderMermaidDiagrams(container);
+                            });
+                        }, 500);
+
                         // Scroll to bottom if returning from settings
                         if (returningFromSettings) {
                             this.$nextTick(() => this.scrollToBottom());
@@ -1898,11 +2152,17 @@
 
                     // Trigger mermaid diagram rendering after message updates (debounced for streaming)
                     this.$watch('messages', () => {
+                        console.log('[Mermaid Debug] messages watcher fired, message count:', this.messages?.length);
                         clearTimeout(this._mermaidTimeout);
                         this._mermaidTimeout = setTimeout(() => {
                             this.$nextTick(() => {
                                 const container = document.getElementById('messages');
-                                if (container) this.renderMermaidDiagrams(container);
+                                console.log('[Mermaid Debug] Looking for container #messages:', !!container);
+                                if (container) {
+                                    const placeholders = container.querySelectorAll('.mermaid-placeholder');
+                                    console.log('[Mermaid Debug] Found placeholders:', placeholders.length);
+                                    this.renderMermaidDiagrams(container);
+                                }
                             });
                         }, 300);
                     }, { deep: true });
@@ -5340,28 +5600,77 @@
                 renderMarkdown(text) {
                     if (!text) return '';
 
+                    // Hide unclosed mermaid code blocks during streaming
+                    // Only render mermaid when the closing ``` is present
+                    let processedText = text;
+                    const lowerText = text.toLowerCase();
+                    const lastMermaidStart = lowerText.lastIndexOf('```mermaid');
+
+                    if (lastMermaidStart !== -1) {
+                        // Find where the ```mermaid line ends (after any trailing chars like \n)
+                        const openingLineEnd = text.indexOf('\n', lastMermaidStart);
+                        if (openingLineEnd === -1) {
+                            // No newline after ```mermaid yet - definitely incomplete
+                            console.log('[Mermaid Debug] Hiding unclosed block: no newline after opening');
+                            processedText = text.substring(0, lastMermaidStart);
+                        } else {
+                            // Check if there's a closing ``` on its own line after the opening
+                            const contentAfterOpening = text.substring(openingLineEnd);
+                            // Match ``` that's at the start of a line (after \n) and followed by newline or end
+                            if (!/\n```\s*(?:\n|$)/.test(contentAfterOpening)) {
+                                // Unclosed mermaid block - hide it completely until closed
+                                console.log('[Mermaid Debug] Hiding unclosed block: no closing fence found');
+                                processedText = text.substring(0, lastMermaidStart);
+                            }
+                        }
+                    }
+
                     // Parse markdown, linkify file paths, then sanitize
-                    let html = marked.parse(text);
+                    let html = marked.parse(processedText);
                     html = window.linkifyFilePaths(html);
 
                     // Wrap tables in scrollable container for mobile
                     html = html.replace(/<table>/g, '<div class="table-wrapper"><table>');
                     html = html.replace(/<\/table>/g, '</table></div>');
 
-                    return DOMPurify.sanitize(html);
+                    // Debug: Check if mermaid placeholder exists before sanitization
+                    const hasMermaidBefore = html.includes('data-mermaid-b64=');
+
+                    // Allow data-mermaid-b64 and data-mermaid-hash attributes for mermaid placeholders
+                    // Using base64 encoding prevents DOMPurify from inspecting/stripping the content
+                    // Hash is used for caching rendered diagrams to prevent flicker on re-render
+                    const result = DOMPurify.sanitize(html, { ADD_ATTR: ['data-mermaid-b64', 'data-mermaid-hash'] });
+
+                    // Debug: Check if mermaid placeholder still has data-mermaid-b64 after sanitization
+                    const hasMermaidAfter = result.includes('data-mermaid-b64=');
+                    if (hasMermaidBefore || hasMermaidAfter) {
+                        console.log('[Mermaid Debug] renderMarkdown: before sanitize has data-mermaid-b64:', hasMermaidBefore, ', after:', hasMermaidAfter);
+                    }
+
+                    return result;
                 },
 
                 // Mermaid diagram rendering
                 async renderMermaidDiagrams(containerEl) {
+                    console.log('[Mermaid Debug] renderMermaidDiagrams called, mermaid defined:', typeof mermaid !== 'undefined');
+
+                    // Debug: Check what's actually in the DOM
+                    const allPlaceholders = containerEl?.querySelectorAll('.mermaid-placeholder') || [];
+                    console.log('[Mermaid Debug] Total .mermaid-placeholder in DOM:', allPlaceholders.length);
+                    if (allPlaceholders.length === 0 && containerEl) {
+                        // Check if data-mermaid-b64 attribute exists anywhere
+                        const dataMermaid = containerEl.querySelectorAll('[data-mermaid-b64]');
+                        console.log('[Mermaid Debug] Elements with data-mermaid-b64:', dataMermaid.length);
+                    }
+
                     // Fallback: if Mermaid CDN failed to load, show code blocks instead
                     if (typeof mermaid === 'undefined') {
                         if (!containerEl) return;
                         const placeholders = containerEl.querySelectorAll('.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error)');
                         for (const placeholder of placeholders) {
-                            const code = placeholder.dataset.mermaid;
-                            if (!code) continue;
-                            const decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-                                               .replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+                            const b64 = placeholder.dataset.mermaidB64;
+                            if (!b64) continue;
+                            const decoded = decodeURIComponent(escape(atob(b64)));
                             placeholder.innerHTML = `<div class="mermaid-error">
                                 <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation"></i> Mermaid library unavailable</div>
                                 <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
@@ -5375,26 +5684,32 @@
                     const placeholders = containerEl.querySelectorAll(
                         '.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error):not(.mermaid-processing)'
                     );
+                    console.log('[Mermaid Debug] Filtered placeholders to process:', placeholders.length);
 
                     for (const placeholder of placeholders) {
-                        const code = placeholder.dataset.mermaid;
-                        if (!code) continue;
+                        const b64 = placeholder.dataset.mermaidB64;
+                        const hash = placeholder.dataset.mermaidHash;
+                        console.log('[Mermaid Debug] Processing placeholder, has data-mermaid-b64:', !!b64, 'hash:', hash);
+                        if (!b64) continue;
 
-                        // Decode HTML entities
-                        const decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-                                           .replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-
-                        // Check if complete (not mid-stream)
-                        if (!this.isMermaidComplete(decoded)) {
-                            placeholder.innerHTML = '<div class="mermaid-loading"><i class="fa-solid fa-spinner fa-spin"></i> Rendering diagram...</div>';
+                        // Check global cache first - instantly restore without flicker
+                        if (hash && window._mermaidSvgCache.has(hash)) {
+                            console.log('[Mermaid Debug] Cache hit for hash:', hash);
+                            placeholder.innerHTML = `<div class="mermaid-diagram">${window._mermaidSvgCache.get(hash)}</div>`;
+                            placeholder.classList.add('mermaid-rendered');
                             continue;
                         }
 
+                        // Decode base64 (UTF-8 safe)
+                        const decoded = decodeURIComponent(escape(atob(b64)));
+
                         // Mark as processing to prevent race conditions
                         placeholder.classList.add('mermaid-processing');
+                        console.log('[Mermaid Debug] Processing placeholder, decoded length:', decoded.length);
 
                         try {
                             const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
+                            console.log('[Mermaid Debug] Calling mermaid.render with id:', id);
 
                             // Render with timeout to prevent hanging on complex/malicious diagrams
                             const { svg } = await Promise.race([
@@ -5404,12 +5719,22 @@
                                 )
                             ]);
 
-                            // Sanitize Mermaid SVG output with permissive config (scoped to Mermaid only)
-                            const sanitizedSvg = DOMPurify.sanitize(svg, mermaidSanitizeConfig);
-                            placeholder.innerHTML = `<div class="mermaid-diagram">${sanitizedSvg}</div>`;
+                            console.log('[Mermaid Debug] mermaid.render succeeded, svg length:', svg?.length);
+
+                            // Cache the rendered SVG in global cache for future re-renders (prevents flicker)
+                            if (hash) {
+                                window._mermaidSvgCache.set(hash, svg);
+                                console.log('[Mermaid Debug] Cached SVG for hash:', hash);
+                            }
+
+                            // Mermaid's securityLevel: 'strict' already sanitizes the output
+                            // Skipping DOMPurify here since it strips Mermaid's label elements
+                            placeholder.innerHTML = `<div class="mermaid-diagram">${svg}</div>`;
                             placeholder.classList.remove('mermaid-processing');
                             placeholder.classList.add('mermaid-rendered');
+                            console.log('[Mermaid Debug] Placeholder rendered successfully');
                         } catch (err) {
+                            console.error('[Mermaid Debug] Render error:', err);
                             console.error('Mermaid render error:', err);
                             placeholder.innerHTML = `<div class="mermaid-error">
                                 <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation"></i> ${err.message === 'Diagram render timeout' ? 'Diagram render timeout' : 'Diagram syntax error'}</div>
@@ -5419,39 +5744,6 @@
                             placeholder.classList.add('mermaid-error');
                         }
                     }
-                },
-
-                isMermaidComplete(code) {
-                    if (!code?.trim()) return false;
-                    const trimmed = code.trim();
-
-                    // Must start with valid diagram type (comprehensive list for Mermaid v11)
-                    const types = [
-                        'graph', 'flowchart', 'sequenceDiagram', 'classDiagram',
-                        'stateDiagram', 'erDiagram', 'journey', 'gantt', 'pie',
-                        'gitGraph', 'mindmap', 'timeline', 'quadrantChart', 'xychart', 'block',
-                        'sankey', 'requirement', 'c4Context', 'c4Container', 'c4Component', 'c4Dynamic',
-                        'architecture', 'zenuml', 'packet'
-                    ];
-                    if (!types.some(t => trimmed.toLowerCase().startsWith(t.toLowerCase()))) {
-                        // Unknown type - let Mermaid try to render it (handles future types)
-                        // But require at least 2 lines to avoid rendering mid-stream
-                        return trimmed.includes('\n');
-                    }
-
-                    // Check for incomplete patterns (mid-stream)
-                    const incompletePatterns = [
-                        /-->?\s*$/,           // Ends with arrow
-                        /\|\s*$/,             // Ends mid-label
-                        /[\[\(\{<]\s*$/,      // Ends with open bracket
-                        /:\s*$/,              // Ends with colon (incomplete label/definition)
-                        /participant\s*$/i,   // Incomplete participant declaration
-                        /Note\s+(left|right|over)?\s*$/i,  // Incomplete note
-                        /subgraph\s*$/i,      // Incomplete subgraph
-                    ];
-                    if (incompletePatterns.some(p => p.test(trimmed))) return false;
-
-                    return true;
                 },
 
                 escapeHtmlForMermaid(text) {
