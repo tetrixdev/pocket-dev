@@ -66,7 +66,10 @@
                 <!-- Tabs -->
                 <div class="flex space-x-2 mb-6 border-b border-gray-700">
                     <button onclick="switchTab('device')" id="tab-device" class="tab-btn px-4 py-2 -mb-px border-b-2 border-blue-500 text-blue-400">
-                        Subscription (Recommended)
+                        Via PocketDev UI
+                    </button>
+                    <button onclick="switchTab('laptop')" id="tab-laptop" class="tab-btn px-4 py-2 -mb-px border-b-2 border-transparent text-gray-400 hover:text-gray-300">
+                        Via laptop / SSH
                     </button>
                     <button onclick="switchTab('json')" id="tab-json" class="tab-btn px-4 py-2 -mb-px border-b-2 border-transparent text-gray-400 hover:text-gray-300">
                         API Key
@@ -191,19 +194,64 @@
                         </div>
                         <!-- Org restriction help -->
                         <div class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 text-sm">
-                            <p class="text-yellow-400 font-semibold mb-1">💡 Is your organisation blocking device auth?</p>
-                            <p class="text-yellow-200/70 mb-2">
-                                If you see <em>"Contact your workspace administrator to enable device code authentication"</em> on the OpenAI page,
-                                your organisation has disabled this flow. Use the <strong class="text-white">API Key tab</strong> instead:
+                            <p class="text-yellow-400 font-semibold mb-1">💡 Ziet je de fout "neem contact op met je werkruimtebeheerder"?</p>
+                            <p class="text-yellow-200/70 mb-3">
+                                Jouw OpenAI-organisatie heeft device-auth uitgeschakeld. Gebruik dan de <strong class="text-white">Via laptop / SSH</strong> tab —
+                                twee copy-paste commando's die werken zonder die beperking.
                             </p>
-                            <ol class="list-decimal list-inside text-yellow-200/70 space-y-1 mb-3">
-                                <li>On a machine with a browser, run: <code class="bg-black/30 px-1.5 py-0.5 rounded text-xs">codex login</code></li>
-                                <li>Copy the resulting <code class="bg-black/30 px-1.5 py-0.5 rounded text-xs">~/.codex/auth.json</code> file contents</li>
-                                <li>Paste it in the <strong class="text-white">API Key tab</strong> below</li>
-                            </ol>
-                            <button onclick="switchTab('json')" class="px-4 py-1.5 bg-yellow-700/60 hover:bg-yellow-700 rounded text-xs font-medium text-yellow-100 transition-colors">
-                                Switch to API Key tab →
+                            <button onclick="switchTab('laptop')" class="px-4 py-1.5 bg-yellow-700/60 hover:bg-yellow-700 rounded text-xs font-medium text-yellow-100 transition-colors">
+                                Naar "Via laptop / SSH" →
                             </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Via laptop / SSH tab -->
+                <div id="content-laptop" class="tab-content hidden">
+                    <p class="text-gray-300 mb-1">Draai deze twee commando's op je <strong class="text-white">laptop, desktop of via SSH</strong>.</p>
+                    <p class="text-sm text-gray-400 mb-6">Werkt altijd — geen org-restricties, geen device-auth nodig. Vereist alleen Node.js en Python3.</p>
+
+                    <!-- Stap 1 -->
+                    <div class="mb-5">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Stap 1 — Installeer Codex en log in</p>
+                        <div class="flex items-center gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
+                            <code class="text-green-400 text-sm flex-1 select-all">npm install -g @openai/codex && codex login</code>
+                            <button
+                                onclick="copyCmd(this, 'npm install -g @openai/codex && codex login')"
+                                class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all"
+                            >📋 Copy</button>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1.5">Dit opent een browser om in te loggen met je ChatGPT-account.</p>
+                    </div>
+
+                    <!-- Stap 2 -->
+                    <div class="mb-5">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Stap 2 — Upload auth.json naar PocketDev</p>
+                        @php
+                            $uploadCmd = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '" . url('/') . "/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
+                        @endphp
+                        <div class="flex items-start gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
+                            <code class="text-green-400 text-sm flex-1 break-all select-all">{{ $uploadCmd }}</code>
+                            <button
+                                onclick="copyCmd(this, {{ json_encode($uploadCmd) }})"
+                                class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all mt-0.5"
+                            >📋 Copy</button>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1.5">Voert stap 2 pas uit nadat je bent ingelogd in stap 1.</p>
+                    </div>
+
+                    <!-- Of alles in één -->
+                    <div class="border-t border-gray-700 pt-4">
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Of alles in één commando</p>
+                        @php
+                            $oneCmd = "npm install -g @openai/codex && codex login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '" . url('/') . "/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
+                        @endphp
+                        <div class="flex items-start gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
+                            <code class="text-green-400 text-sm flex-1 break-all select-all">{{ $oneCmd }}</code>
+                            <button
+                                onclick="copyCmd(this, {{ json_encode($oneCmd) }})"
+                                class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all mt-0.5"
+                            >📋 Copy</button>
                         </div>
                     </div>
                 </div>
@@ -289,13 +337,25 @@
 
     <script>
         // ── Copy script command ────────────────────────────────────────────────────
+        // Generic copy-with-feedback for any button
+        function copyCmd(btn, text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = btn.textContent;
+                btn.textContent = '✓ Gekopieerd!';
+                btn.classList.add('bg-green-700', 'text-green-200');
+                btn.classList.remove('bg-gray-700', 'text-gray-300');
+                setTimeout(() => {
+                    btn.textContent = orig;
+                    btn.classList.remove('bg-green-700', 'text-green-200');
+                    btn.classList.add('bg-gray-700', 'text-gray-300');
+                }, 2000);
+            });
+        }
+
         function copyScriptCmd(btn) {
             const text = btn.previousElementSibling.textContent.trim()
                 .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-            navigator.clipboard.writeText(text).then(() => {
-                btn.textContent = '✓ Copied!';
-                setTimeout(() => { btn.textContent = '📋 Copy'; }, 2000);
-            });
+            copyCmd(btn, text);
         }
 
         // ── Tab switching ──────────────────────────────────────────────────────────
