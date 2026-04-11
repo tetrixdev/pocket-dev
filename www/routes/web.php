@@ -26,6 +26,11 @@ Route::get("/codex/auth", [CodexAuthController::class, "index"])->name("codex.au
 Route::get("/codex/auth/status", [CodexAuthController::class, "status"])->name("codex.auth.status");
 Route::post("/codex/auth/upload-json", [CodexAuthController::class, "uploadJson"])->name("codex.auth.uploadJson");
 Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->name("codex.auth.logout");
+// Inline device auth flow (no terminal/sudo required)
+Route::post("/codex/auth/device-start", [CodexAuthController::class, "startDeviceAuth"])->name("codex.auth.deviceStart");
+Route::get("/codex/auth/device-status", [CodexAuthController::class, "deviceStatus"])->name("codex.auth.deviceStatus");
+// Serve the local-run upload script (pre-filled with this instance's URL)
+Route::get("/codex/auth/upload-script", [CodexAuthController::class, "downloadScript"])->name("codex.auth.downloadScript");
 
 // Chat - Multi-provider conversation interface
 Route::get("/", [ChatController::class, "index"])->name("chat.index");
@@ -145,14 +150,9 @@ Route::get("/config/backup/download/{filename}", [\App\Http\Controllers\BackupCo
 Route::delete("/config/backup/{filename}", [\App\Http\Controllers\BackupController::class, "delete"])->name("config.backup.delete");
 Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::class, "restore"])->name("config.backup.restore");
 
-// System management (available in both environments)
-Route::get("/config/system", [ConfigController::class, "showSystem"])->name("config.system");
-Route::post("/config/system/restart", [ConfigController::class, "restartContainers"])->name("config.system.restart");
-Route::post("/config/system/check-update", [ConfigController::class, "checkUpdate"])->name("config.system.check-update");
-Route::post("/config/system/apply-update", [ConfigController::class, "applyUpdate"])->name("config.system.apply-update");
-
-// Local-only operations (rebuild from scratch, git pull)
+// Developer tools (only available in local environment)
 if (app()->environment('local')) {
-    Route::post("/config/system/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.system.rebuild");
-    Route::post("/config/system/pull-main", [ConfigController::class, "pullFromMain"])->name("config.system.pull-main");
+    Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");
+    Route::post("/config/developer/force-recreate", [ConfigController::class, "forceRecreate"])->name("config.developer.force-recreate");
+    Route::post("/config/developer/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.developer.rebuild");
 }
