@@ -572,12 +572,9 @@ class CodexProvider extends AbstractCliProvider
                 }
             }
 
-            if (empty($mcpServers)) {
-                return; // No MCP servers to sync
-            }
-
             // 3. Read existing Codex config (preserve non-MCP settings)
             $nonMcpLines = [];
+            $hadMcpSections = false;
             if (is_readable($codexConfigPath)) {
                 $existingToml = file_get_contents($codexConfigPath);
                 // Extract lines that are NOT part of [mcp_servers.*] sections
@@ -586,6 +583,7 @@ class CodexProvider extends AbstractCliProvider
                 foreach ($lines as $line) {
                     if (preg_match('/^\[mcp_servers\b/', $line)) {
                         $inMcpSection = true;
+                        $hadMcpSections = true;
                         continue;
                     }
                     if ($inMcpSection && preg_match('/^\[(?!mcp_servers)/', $line)) {
@@ -595,6 +593,12 @@ class CodexProvider extends AbstractCliProvider
                         $nonMcpLines[] = $line;
                     }
                 }
+            }
+
+            // If Claude has no MCP servers and Codex config has no MCP sections,
+            // there is nothing to update.
+            if (empty($mcpServers) && !$hadMcpSections) {
+                return;
             }
 
             // 4. Build TOML content for MCP servers
