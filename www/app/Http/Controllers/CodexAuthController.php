@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\CodexAgentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -12,9 +13,12 @@ use Illuminate\Support\Facades\Validator;
 class CodexAuthController extends Controller
 {
     protected string $credentialsPath;
+    protected CodexAgentService $codexAgentService;
 
-    public function __construct()
+    public function __construct(CodexAgentService $codexAgentService)
     {
+        $this->codexAgentService = $codexAgentService;
+
         // Credentials path - use HOME environment variable from PHP-FPM process
         $home = getenv('HOME') ?: '/home/appuser';
         $this->credentialsPath = "{$home}/.codex/auth.json";
@@ -88,7 +92,7 @@ class CodexAuthController extends Controller
             // Create default agent for all workspaces that don't have one
             $workspaces = \App\Models\Workspace::all();
             foreach ($workspaces as $workspace) {
-                $this->ensureDefaultAgentExists($workspace->id);
+                $this->codexAgentService->ensureDefaultAgentExists($workspace->id);
             }
 
             return response()->json([
@@ -250,7 +254,16 @@ class CodexAuthController extends Controller
     public function downloadScript(): Response
     {
         $scriptPath = public_path('scripts/codex-auth.sh');
+        if (!file_exists($scriptPath) || !is_readable($scriptPath)) {
+            Log::error('[Codex Auth] Upload script missing or unreadable', ['path' => $scriptPath]);
+            return response('Upload script not found', 404);
+        }
+
         $script = file_get_contents($scriptPath);
+        if ($script === false) {
+            Log::error('[Codex Auth] Failed to read upload script', ['path' => $scriptPath]);
+            return response('Failed to read upload script', 500);
+        }
 
         // Pre-fill the PocketDev URL so the user doesn't have to type it
         $instanceUrl = rtrim(url('/'), '/');
@@ -373,46 +386,6 @@ class CodexAuthController extends Controller
      */
     public function ensureDefaultAgentExists(string $workspaceId): ?\App\Models\Agent
     {
-        // Check if a default Codex agent already exists
-        $existing = \App\Models\Agent::where('workspace_id', $workspaceId)
-            ->where('provider', 'codex')
-            ->where('is_default', true)
-            ->first();
-
-        if ($existing) {
-            return $existing;
-        }
-
-        // Check if ANY Codex agent exists
-        $anyCodex = \App\Models\Agent::where('workspace_id', $workspaceId)
-            ->where('provider', 'codex')
-            ->first();
-
-        if ($anyCodex) {
-            return $anyCodex;
-        }
-
-        // Create default agent
-        try {
-            return \App\Models\Agent::create([
-                'workspace_id' => $workspaceId,
-                'name' => 'Codex',
-                'slug' => 'codex-default',
-                'description' => 'Default Codex agent',
-                'provider' => 'codex',
-                'model' => config('ai.providers.codex.default_model', 'gpt-5.3-codex'),
-                'reasoning_config' => ['effort' => 'medium'],
-                'response_level' => 1,
-                'enabled' => true,
-                'is_default' => true,
-                'inherit_workspace_tools' => true,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('[Codex Auth] Failed to create default agent', [
-                'workspace_id' => $workspaceId,
-                'error' => $e->getMessage(),
-            ]);
-            return null;
-        }
+        return $this->codexAgentService->ensureDefaultAgentExists($workspaceId);
     }
 }

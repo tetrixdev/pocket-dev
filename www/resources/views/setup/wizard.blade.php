@@ -115,13 +115,14 @@
                     Run this command in your terminal to authenticate with your Claude Pro/Team subscription:
                 </p>
                 @if(config('backup.user_id') !== null)
+                    @php($queueContainerName = config('pocketdev.project_name', 'pocket-dev') . '-queue')
                     <div class="relative">
                         <div
-                            @click="copyCommand('docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude', 'claude')"
+                            @click="copyCommand('docker exec -it -u {{ config('backup.user_id') }} {{ $queueContainerName }} claude', 'claude')"
                             class="bg-gray-900 rounded p-3 font-mono text-sm text-green-400 cursor-pointer hover:bg-gray-800 transition-colors mb-3"
                             title="Click to copy"
                         >
-                            docker exec -it -u {{ config('backup.user_id') }} pocket-dev-queue claude
+                            docker exec -it -u {{ config('backup.user_id') }} {{ $queueContainerName }} claude
                         </div>
                         <div
                             x-show="copiedCommand === 'claude'"
@@ -167,7 +168,7 @@
                         @click="startAuth()"
                         class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold transition-colors"
                     >
-                        Login met ChatGPT
+                        Login with ChatGPT
                     </button>
                     <p class="text-xs text-gray-500 mt-3">
                         If you prefer to use an API key instead, select "OpenAI API" above.

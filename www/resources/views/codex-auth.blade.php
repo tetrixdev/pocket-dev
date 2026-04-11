@@ -91,7 +91,7 @@
                             @click="startAuth()"
                             class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors"
                         >
-                            Login met ChatGPT
+                            Login with ChatGPT
                         </button>
                     </div>
 
@@ -194,13 +194,13 @@
                         </div>
                         <!-- Org restriction help -->
                         <div class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 text-sm">
-                            <p class="text-yellow-400 font-semibold mb-1">💡 Ziet je de fout "neem contact op met je werkruimtebeheerder"?</p>
+                            <p class="text-yellow-400 font-semibold mb-1">💡 Seeing the error "contact your workspace administrator"?</p>
                             <p class="text-yellow-200/70 mb-3">
-                                Jouw OpenAI-organisatie heeft device-auth uitgeschakeld. Gebruik dan de <strong class="text-white">Via laptop / SSH</strong> tab —
-                                twee copy-paste commando's die werken zonder die beperking.
+                                Your OpenAI organization has disabled device auth. Use the <strong class="text-white">Via laptop / SSH</strong> tab instead —
+                                two copy-paste commands that work without that restriction.
                             </p>
                             <button onclick="switchTab('laptop')" class="px-4 py-1.5 bg-yellow-700/60 hover:bg-yellow-700 rounded text-xs font-medium text-yellow-100 transition-colors">
-                                Naar "Via laptop / SSH" →
+                                Go to "Via laptop / SSH" →
                             </button>
                         </div>
                     </div>
@@ -210,15 +210,15 @@
                 @php
                     $pdUrl = url('/');
                     $linux1 = 'npm install -g @openai/codex && codex login';
-                    $linux2 = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
-                    $linuxAll = "npm install -g @openai/codex && codex login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
+                    $linux2 = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Done!'";
+                    $linuxAll = "npm install -g @openai/codex && codex login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Done!'";
                     $win1 = 'npm install -g @openai/codex; codex login';
-                    $win2 = "\$auth = (Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body \$body; Write-Host '✓ Klaar!'";
-                    $winAll = "npm install -g @openai/codex; codex login; \$auth = (Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body \$body; Write-Host '✓ Klaar!'";
+                    $win2 = "\$auth = (Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body \$body; Write-Host '✓ Done!'";
+                    $winAll = "npm install -g @openai/codex; codex login; \$auth = (Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body \$body; Write-Host '✓ Done!'";
                 @endphp
                 <div id="content-laptop" class="tab-content hidden" x-data="{ os: 'linux' }">
-                    <p class="text-gray-300 mb-1">Draai deze commando's op je <strong class="text-white">laptop, desktop of via SSH</strong>.</p>
-                    <p class="text-sm text-gray-400 mb-4">Werkt altijd — geen org-restricties, geen device-auth nodig.</p>
+                    <p class="text-gray-300 mb-1">Run these commands on your <strong class="text-white">laptop, desktop, or via SSH</strong>.</p>
+                    <p class="text-sm text-gray-400 mb-4">Always works — no org restrictions, no device auth required.</p>
 
                     <!-- OS toggle -->
                     <div class="flex gap-2 mb-6">
@@ -234,9 +234,9 @@
                         >🪟 Windows (PowerShell)</button>
                     </div>
 
-                    <!-- Stap 1 -->
+                    <!-- Step 1 -->
                     <div class="mb-5">
-                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Stap 1 — Installeer Codex en log in</p>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 1 — Install Codex and log in</p>
                         <div class="flex items-center gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
                             <code class="text-green-400 text-sm flex-1 select-all" x-text="os === 'linux' ? {{ json_encode($linux1) }} : {{ json_encode($win1) }}"></code>
                             <button
@@ -244,12 +244,12 @@
                                 class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all"
                             >📋 Copy</button>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1.5">Dit opent een browser om in te loggen met je ChatGPT-account.</p>
+                        <p class="text-xs text-gray-500 mt-1.5">This opens a browser to sign in with your ChatGPT account.</p>
                     </div>
 
-                    <!-- Stap 2 -->
+                    <!-- Step 2 -->
                     <div class="mb-5">
-                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Stap 2 — Upload auth.json naar PocketDev</p>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 2 — Upload auth.json to PocketDev</p>
                         <div class="flex items-start gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
                             <code class="text-green-400 text-sm flex-1 break-all select-all" x-text="os === 'linux' ? {{ json_encode($linux2) }} : {{ json_encode($win2) }}"></code>
                             <button
@@ -257,12 +257,12 @@
                                 class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all mt-0.5"
                             >📋 Copy</button>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1.5">Voert stap 2 pas uit nadat je bent ingelogd in stap 1.</p>
+                        <p class="text-xs text-gray-500 mt-1.5">Run step 2 only after you complete sign-in in step 1.</p>
                     </div>
 
-                    <!-- Alles in één -->
+                    <!-- All in one -->
                     <div class="border-t border-gray-700 pt-4">
-                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Of alles in één commando</p>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Or run everything in one command</p>
                         <div class="flex items-start gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
                             <code class="text-green-400 text-sm flex-1 break-all select-all" x-text="os === 'linux' ? {{ json_encode($linuxAll) }} : {{ json_encode($winAll) }}"></code>
                             <button
@@ -278,11 +278,11 @@
 
                     <!-- Option A: one-liner script (recommended) -->
                     <div class="mb-6">
-                        <p class="text-gray-300 font-medium mb-1">Optie A — Automatisch (aanbevolen)</p>
+                        <p class="text-gray-300 font-medium mb-1">Option A — Automatic (recommended)</p>
                         <p class="text-sm text-gray-400 mb-3">
-                            Draai dit commando op je <strong class="text-white">laptop of desktop</strong> met een browser.
-                            Het script installeert Codex, doet <code class="text-green-400">codex login</code> en
-                            uploadt <code class="text-green-400">auth.json</code> automatisch naar PocketDev.
+                            Run this command on your <strong class="text-white">laptop or desktop</strong> with a browser.
+                            The script installs Codex, runs <code class="text-green-400">codex login</code>, and
+                            uploads <code class="text-green-400">auth.json</code> to PocketDev automatically.
                         </p>
                         <div class="relative group">
                             <div class="bg-gray-900 rounded-lg border border-gray-700 p-3 font-mono text-sm text-green-400 overflow-x-auto pr-24">
@@ -294,38 +294,38 @@
                             >📋 Copy</button>
                         </div>
                         <p class="text-xs text-gray-500 mt-2">
-                            Werkt op macOS en Linux. Vereist Node.js/npm.
-                            Voeg je Basic Auth credentials toe als je die hebt:
+                            Works on macOS and Linux. Requires Node.js/npm.
+                            Add your Basic Auth credentials if needed:
                             <code class="text-gray-400">bash &lt;(curl ...) https://user:pass@{{ request()->getHost() }}</code>
                         </p>
                     </div>
 
                     <div class="flex items-center gap-3 my-4">
                         <div class="flex-1 border-t border-gray-700"></div>
-                        <span class="text-xs text-gray-500">of handmatig</span>
+                        <span class="text-xs text-gray-500">or manual</span>
                         <div class="flex-1 border-t border-gray-700"></div>
                     </div>
 
                     <!-- Option B: file upload or manual paste -->
                     <div>
-                        <p class="text-gray-300 font-medium mb-1">Optie B — Bestand uploaden of plakken</p>
+                        <p class="text-gray-300 font-medium mb-1">Option B — Upload or paste file</p>
                         <p class="text-sm text-gray-400 mb-3">
-                            Draai <code class="text-green-400">codex login</code> op een machine met browser.
-                            Selecteer daarna het <code class="text-green-400">auth.json</code> bestand, of plak de inhoud hieronder.
+                            Run <code class="text-green-400">codex login</code> on a machine with a browser.
+                            Then select the <code class="text-green-400">auth.json</code> file, or paste the contents below.
                         </p>
                         <form id="json-form" class="space-y-3">
                             <!-- File picker -->
                             <div class="flex items-center gap-3">
                                 <label class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded cursor-pointer text-sm text-gray-200 transition-colors">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                                    Selecteer auth.json
+                                    Select auth.json
                                     <input type="file" id="json-file" accept=".json,application/json" class="hidden">
                                 </label>
-                                <span id="file-name" class="text-xs text-gray-500">Geen bestand geselecteerd</span>
+                                <span id="file-name" class="text-xs text-gray-500">No file selected</span>
                             </div>
                             <!-- Path hints with copy buttons -->
                             <div class="bg-gray-900/60 rounded-lg border border-gray-700/50 p-3 space-y-2">
-                                <p class="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Bestandslocatie</p>
+                                <p class="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">File location</p>
                                 <div class="flex items-center gap-2">
                                     <span class="text-xs text-gray-500 w-24 shrink-0">🪟 Windows</span>
                                     <code class="text-xs text-gray-300 flex-1">%USERPROFILE%\.codex\auth.json</code>
@@ -341,7 +341,7 @@
                             <textarea id="json-input" rows="4" placeholder='{"OPENAI_API_KEY": "sk-proj-..."}'
                                 class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
                             <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded">
-                                Opslaan
+                                Save
                             </button>
                         </form>
                         <div id="json-result" class="mt-4"></div>
