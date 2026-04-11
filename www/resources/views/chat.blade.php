@@ -4771,17 +4771,21 @@
                     }
 
                     // Block unmatched /commands - if prompt starts with / but no skill is active
+                    // Native Claude Code commands are passed through directly (compact, clear, etc.)
+                    const nativeClaudeCommands = ['compact', 'clear', 'help', 'review', 'init', 'vim', 'config'];
                     if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
                         const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0];
-                        const matchedSkill = this.findSkillByName(potentialSkillName);
-                        if (!matchedSkill) {
-                            this.showError(`Unknown skill: /${potentialSkillName}. Type / to see available skills.`);
-                            return;
+                        if (!nativeClaudeCommands.includes(potentialSkillName.toLowerCase())) {
+                            const matchedSkill = this.findSkillByName(potentialSkillName);
+                            if (!matchedSkill) {
+                                this.showError(`Unknown skill: /${potentialSkillName}. Type / to see available skills.`);
+                                return;
+                            }
+                            // If it matches, activate it and continue
+                            this.activeSkill = matchedSkill;
+                            // Remove the /command from prompt, keep any text after it
+                            this.prompt = this.prompt.trim().slice(1 + potentialSkillName.length).trim();
                         }
-                        // If it matches, activate it and continue
-                        this.activeSkill = matchedSkill;
-                        // Remove the /command from prompt, keep any text after it
-                        this.prompt = this.prompt.trim().slice(1 + potentialSkillName.length).trim();
                     }
 
                     // Block if uploads still in progress
