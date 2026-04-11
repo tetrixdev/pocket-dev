@@ -365,7 +365,7 @@ class SystemPackageCommand extends Command
         }
 
         // Check if docker CLI is available
-        exec('which docker 2>/dev/null', $dockerCheck, $dockerReturn);
+        exec('which docker 2>/dev/null', $_dockerCheckOutput, $dockerReturn);
         if ($dockerReturn !== 0) {
             return ['success' => false, 'error' => 'Docker CLI not available for hot-install', 'output' => null];
         }
@@ -379,62 +379,70 @@ class SystemPackageCommand extends Command
         if ($tempScript === false) {
             return ['success' => false, 'error' => 'Failed to create temp file for install script', 'output' => null];
         }
-        file_put_contents($tempScript, "#!/bin/bash\nset -e\n" . $installScript);
-        chmod($tempScript, 0755);
-
-        $package->update(['status' => SystemPackage::STATUS_INSTALLING]);
-
-        // Install in the queue container (where Claude Code and MCP servers run)
-        $containers = ['pocket-dev-queue', 'pocket-dev-php'];
         $lastError = null;
         $queueSuccess = false;
 
-        foreach ($containers as $container) {
-            // Copy script into the target container, then execute as root
-            $copyCmd = sprintf(
-                'docker cp %s %s:/var/tmp/pkg_install.sh 2>&1',
-                escapeshellarg($tempScript),
-                escapeshellarg($container)
-            );
-            exec($copyCmd, $copyOutput, $copyReturn);
-
-            if ($copyReturn !== 0) {
-                $lastError = "Failed to copy install script to {$container}: " . implode(' ', $copyOutput);
-                Log::warning("Hot-install: {$lastError}");
-                continue;
+        try {
+            if (file_put_contents($tempScript, "#!/bin/bash\nset -e\n" . $installScript) === false) {
+                return ['success' => false, 'error' => 'Failed to write temp install script', 'output' => null];
+            }
+            if (!chmod($tempScript, 0755)) {
+                return ['success' => false, 'error' => 'Failed to set executable permissions on temp install script', 'output' => null];
             }
 
-            $execCmd = sprintf(
-                'docker exec -u root %s bash -c %s 2>&1',
-                escapeshellarg($container),
-                escapeshellarg('chmod +x /var/tmp/pkg_install.sh && /var/tmp/pkg_install.sh && rm -f /var/tmp/pkg_install.sh')
-            );
+            $package->update(['status' => SystemPackage::STATUS_INSTALLING]);
 
-            exec($execCmd, $execOutput, $execReturn);
-            $output = implode("\n", $execOutput);
+            // Install in the queue container (where Claude Code and MCP servers run)
+            $containers = ['pocket-dev-queue', 'pocket-dev-php'];
 
-            if ($execReturn !== 0) {
-                // Extract last few lines for error message
-                $errorLines = array_slice($execOutput, -3);
-                $lastError = "Install failed in {$container}: " . implode(' ', $errorLines);
-                Log::warning("Hot-install: {$lastError}", ['output' => $output]);
+            foreach ($containers as $container) {
+                // Copy script into the target container, then execute as root
+                $copyCmd = sprintf(
+                    'docker cp %s %s:/var/tmp/pkg_install.sh 2>&1',
+                    escapeshellarg($tempScript),
+                    escapeshellarg($container)
+                );
+                exec($copyCmd, $copyOutput, $copyReturn);
+
+                if ($copyReturn !== 0) {
+                    $lastError = "Failed to copy install script to {$container}: " . implode(' ', $copyOutput);
+                    Log::warning("Hot-install: {$lastError}");
+                    continue;
+                }
+
+                $execCmd = sprintf(
+                    'docker exec -u root %s bash -c %s 2>&1',
+                    escapeshellarg($container),
+                    escapeshellarg('chmod +x /var/tmp/pkg_install.sh && /var/tmp/pkg_install.sh && rm -f /var/tmp/pkg_install.sh')
+                );
+
+                exec($execCmd, $execOutput, $execReturn);
+                $output = implode("\n", $execOutput);
+
+                if ($execReturn !== 0) {
+                    // Extract last few lines for error message
+                    $errorLines = array_slice($execOutput, -3);
+                    $lastError = "Install failed in {$container}: " . implode(' ', $errorLines);
+                    Log::warning("Hot-install: {$lastError}", ['output' => $output]);
+
+                    if ($container === 'pocket-dev-queue') {
+                        // Queue container is critical — if it fails, the package won't work
+                        break;
+                    }
+                    continue;
+                }
 
                 if ($container === 'pocket-dev-queue') {
-                    // Queue container is critical — if it fails, the package won't work
-                    break;
+                    $queueSuccess = true;
                 }
-                continue;
-            }
 
-            if ($container === 'pocket-dev-queue') {
-                $queueSuccess = true;
+                Log::info("Hot-install: {$package->name} installed in {$container}");
             }
-
-            Log::info("Hot-install: {$package->name} installed in {$container}");
+        } finally {
+            if (file_exists($tempScript)) {
+                @unlink($tempScript);
+            }
         }
-
-        // Clean up temp file
-        @unlink($tempScript);
 
         if ($queueSuccess) {
             $package->update([
