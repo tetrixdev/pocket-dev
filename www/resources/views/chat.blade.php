@@ -717,15 +717,20 @@
                     .statediagram-state rect { fill: #374151 !important; }
                     .stateLabel { fill: #e5e7eb !important; }
 
-                    /* Git graph - branch labels */
-                    .branchLabelBkg { fill: #374151 !important; stroke: #6b7280 !important; }
-                    .branchLabel text, .branch-label text { fill: #e5e7eb !important; }
+                    /* Git graph - branch labels (solid background, not transparent) */
+                    .branchLabelBkg { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
+                    .branchLabel { fill: #374151 !important; fill-opacity: 1 !important; }
+                    .branchLabel rect { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
+                    .branchLabel text, .branch-label text { fill: #1f2937 !important; }
                     .gitTitleLabel { fill: #e5e7eb !important; }
+                    /* Branch name labels on the diagram itself */
+                    g.branch-label rect { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
+                    g.branch-label text { fill: #e5e7eb !important; }
 
                     /* Git graph - commit and tag labels */
-                    .commit-label-bkg { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .commit-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
                     .commit-label { fill: #e5e7eb !important; }
-                    .tag-label-bkg { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .tag-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
                     .tag-label { fill: #e5e7eb !important; }
 
                     /* Sequence diagram - loop/alt/opt boxes (labelBox can be rect or polygon) */
@@ -761,10 +766,12 @@
 
                     /* Architecture Diagram - improve border and text visibility */
                     .architecture-service { fill: #374151 !important; stroke: #60a5fa !important; stroke-width: 2px !important; }
-                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; }
+                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; font-weight: 400 !important; letter-spacing: 0.02em !important; }
                     .architecture-group { fill: transparent !important; stroke: #9ca3af !important; stroke-width: 2px !important; stroke-dasharray: 8 4 !important; }
                     .architecture-edge { stroke: #9ca3af !important; stroke-width: 1.5px !important; }
                     .node-bkg { stroke: #9ca3af !important; }
+                    /* Architecture labels - prevent squishing, improve readability */
+                    [id*="architecture"] text, [aria-roledescription="architecture"] text { font-weight: 400 !important; letter-spacing: 0.03em !important; }
 
                     /* Sankey Diagram - brighter flow colors */
                     .sankey-node rect { fill: #60a5fa !important; stroke: #3b82f6 !important; }
@@ -803,7 +810,7 @@
                     nodeBorder: '#6b7280',
                     clusterBkg: '#1f2937',           // Subgraph background
                     clusterBorder: '#4b5563',
-                    edgeLabelBackground: '#374151',  // Background behind edge labels
+                    edgeLabelBackground: 'transparent',  // No background on edge labels (cleaner)
                     titleColor: '#e5e7eb',
 
                     // === CLASS DIAGRAM ===
@@ -1030,6 +1037,37 @@
         /* Sankey Diagram - make flows more visible */
         .mermaid-diagram svg .sankey-link { stroke-opacity: 0.5 !important; }
         .mermaid-diagram svg .sankey-node rect { fill: #60a5fa !important; }
+
+        /* ZenUML Dark Theme - Override skin CSS variables for dark mode */
+        .mermaid-diagram .zenuml {
+            --color-skin-canvas: #1f2937;
+            --color-skin-frame: #374151;
+            --color-skin-title: #374151;
+            --color-skin-participant: #374151;
+            --color-skin-base: #e5e7eb;
+            --color-border-base: #6b7280;
+            --color-border-frame: #6b7280;
+            --color-skin-message-arrow: #9ca3af;
+        }
+        .mermaid-diagram .zenuml .bg-skin-canvas { background-color: #1f2937 !important; }
+        .mermaid-diagram .zenuml .bg-skin-frame { background-color: #374151 !important; }
+        .mermaid-diagram .zenuml .bg-skin-title { background-color: #374151 !important; }
+        .mermaid-diagram .zenuml .bg-skin-participant { background-color: #4b5563 !important; }
+        .mermaid-diagram .zenuml .text-skin-base { color: #e5e7eb !important; }
+        .mermaid-diagram .zenuml .text-skin-title { color: #e5e7eb !important; }
+        .mermaid-diagram .zenuml .text-skin-participant { color: #e5e7eb !important; }
+        .mermaid-diagram .zenuml .text-skin-message { color: #e5e7eb !important; }
+        .mermaid-diagram .zenuml .text-skin-control { color: #9ca3af !important; }
+        .mermaid-diagram .zenuml .border-skin-frame { border-color: #6b7280 !important; }
+        .mermaid-diagram .zenuml .border-skin-participant { border-color: #6b7280 !important; }
+        .mermaid-diagram .zenuml .border-skin-message-arrow { border-color: #9ca3af !important; }
+        .mermaid-diagram .zenuml .text-skin-message-arrow { color: #9ca3af !important; }
+        /* ZenUML shadow override - remove light shadow, use subtle dark */
+        .mermaid-diagram .zenuml .shadow-participant { box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important; }
+        /* ZenUML line numbers and subtle text */
+        .mermaid-diagram .zenuml .text-gray-500 { color: #9ca3af !important; }
+        /* ZenUML lifeline dashed line - use CSS variable */
+        .mermaid-diagram .zenuml .lifeline .line { background: linear-gradient(to bottom, transparent 50%, #6b7280 50%) !important; background-size: 1px 10px !important; }
 
         .mermaid-loading {
             background: #374151;
