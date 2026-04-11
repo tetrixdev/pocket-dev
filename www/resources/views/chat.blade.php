@@ -632,6 +632,13 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
             integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I"
             crossorigin="anonymous"></script>
+    <!-- ZenUML external plugin for Mermaid (sequence diagram alternative syntax) -->
+    <script type="module">
+        import zenuml from 'https://cdn.jsdelivr.net/npm/@mermaid-js/mermaid-zenuml@0.2.2/dist/mermaid-zenuml.esm.min.mjs';
+        if (typeof mermaid !== 'undefined') {
+            await mermaid.registerExternalDiagrams([zenuml]);
+        }
+    </script>
     <!--
         ===================================================================================
         MERMAID DARK THEME CONFIGURATION
