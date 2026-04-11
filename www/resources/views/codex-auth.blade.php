@@ -213,8 +213,8 @@
                     $linux2 = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
                     $linuxAll = "npm install -g @openai/codex && codex login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Klaar!'";
                     $win1 = 'npm install -g @openai/codex; codex login';
-                    $win2 = "Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body (@{json=(Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw)} | ConvertTo-Json); Write-Host '✓ Klaar!'";
-                    $winAll = "npm install -g @openai/codex; codex login; Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body (@{json=(Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw)} | ConvertTo-Json); Write-Host '✓ Klaar!'";
+                    $win2 = "\$auth = (Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body \$body; Write-Host '✓ Klaar!'";
+                    $winAll = "npm install -g @openai/codex; codex login; \$auth = (Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body \$body; Write-Host '✓ Klaar!'";
                 @endphp
                 <div id="content-laptop" class="tab-content hidden" x-data="{ os: 'linux' }">
                     <p class="text-gray-300 mb-1">Draai deze commando's op je <strong class="text-white">laptop, desktop of via SSH</strong>.</p>
@@ -306,19 +306,29 @@
                         <div class="flex-1 border-t border-gray-700"></div>
                     </div>
 
-                    <!-- Option B: manual paste -->
+                    <!-- Option B: file upload or manual paste -->
                     <div>
-                        <p class="text-gray-300 font-medium mb-1">Optie B — Handmatig plakken</p>
+                        <p class="text-gray-300 font-medium mb-1">Optie B — Bestand uploaden of plakken</p>
                         <p class="text-sm text-gray-400 mb-3">
-                            Draai <code class="text-green-400">codex login</code> op een machine met browser,
-                            kopieer <code class="text-green-400">~/.codex/auth.json</code> en plak de inhoud hieronder.
-                            Werkt voor zowel API keys als subscription tokens.
+                            Draai <code class="text-green-400">codex login</code> op een machine met browser.
+                            Selecteer daarna het <code class="text-green-400">auth.json</code> bestand, of plak de inhoud hieronder.
                         </p>
                         <form id="json-form" class="space-y-3">
+                            <!-- File picker -->
+                            <div class="flex items-center gap-3">
+                                <label class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded cursor-pointer text-sm text-gray-200 transition-colors">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                                    Selecteer auth.json
+                                    <input type="file" id="json-file" accept=".json,application/json" class="hidden">
+                                </label>
+                                <span id="file-name" class="text-xs text-gray-500">Geen bestand geselecteerd</span>
+                            </div>
+                            <p class="text-xs text-gray-600">Pad op Windows: <code class="text-gray-500">%USERPROFILE%\.codex\auth.json</code> &nbsp;|&nbsp; macOS/Linux: <code class="text-gray-500">~/.codex/auth.json</code></p>
+                            <!-- Textarea (filled by file picker, or paste manually) -->
                             <textarea id="json-input" rows="4" placeholder='{"OPENAI_API_KEY": "sk-proj-..."}'
                                 class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
                             <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded">
-                                Save Credentials
+                                Opslaan
                             </button>
                         </form>
                         <div id="json-result" class="mt-4"></div>
@@ -387,6 +397,18 @@
             activeTab.classList.remove('border-transparent', 'text-gray-400');
             activeTab.classList.add('border-blue-500', 'text-blue-400');
         }
+
+        // ── File picker → textarea ────────────────────────────────────────────────
+        document.getElementById('json-file')?.addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('file-name').textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                document.getElementById('json-input').value = ev.target.result;
+            };
+            reader.readAsText(file, 'UTF-8');
+        });
 
         // ── Device auth Alpine component ───────────────────────────────────────────
         function codexDeviceAuth() {
