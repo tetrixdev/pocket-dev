@@ -626,7 +626,7 @@ class ConversationController extends Controller
                     }
                 },
             ],
-            'tab_label' => 'nullable|string|max:6',
+            'tab_label' => 'nullable|string|max:50',
         ]);
 
         $updates = ['title' => $validated['title']];

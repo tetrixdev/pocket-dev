@@ -120,10 +120,6 @@ RUN chmod +x /usr/local/bin/pd /usr/local/bin/pocketdev
 COPY docker-laravel/shared/scripts/install-system-packages.sh /usr/local/bin/install-system-packages
 RUN chmod +x /usr/local/bin/install-system-packages
 
-# Install credential loading script (used by both PHP and queue containers)
-COPY docker-laravel/shared/scripts/load-credentials.sh /usr/local/bin/load-credentials
-RUN chmod +x /usr/local/bin/load-credentials
-
 # Set working directory
 WORKDIR /var/www
 

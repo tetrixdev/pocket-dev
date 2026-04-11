@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 class ServerAppCommand extends Command
 {
     protected $signature = 'server:app
-        {action : The action to perform (list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, scan-repos, get-deploy-config, read-env-key, update-env-key)}
+        {action : The action to perform (list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, remove-domain, request-ssl, scan-repos, get-deploy-config, read-env-key, update-env-key)}
         {--workspace= : Workspace ID or name}
         {--server= : Server ID (for list, add)}
         {--id= : Application ID (for deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, read-env-key, update-env-key)}
@@ -23,6 +23,9 @@ class ServerAppCommand extends Command
         {--domain= : Domain name (for add-domain, request-ssl)}
         {--upstream= : Upstream container name for proxy (for add-domain)}
         {--redirect= : Redirect target URL (for add-domain with redirect type)}
+        {--whitelist= : Comma-separated IP/CIDR allowlist (for add-domain)}
+        {--max-body-size=256M : Max upload size (for add-domain)}
+        {--websocket-timeout=600s : WebSocket/SSE timeout (for add-domain)}
         {--lines=100 : Number of log lines (for logs)}
         {--owner= : GitHub owner/org (for scan-repos, get-deploy-config)}
         {--repo= : GitHub repo name (for get-deploy-config)}
@@ -47,6 +50,7 @@ class ServerAppCommand extends Command
             'remove' => $this->removeApp(),
             'update-env' => $this->updateEnv(),
             'add-domain' => $this->addDomain(),
+            'remove-domain' => $this->removeDomain(),
             'request-ssl' => $this->requestSsl(),
             'scan-repos' => $this->scanGitHubRepos(),
             'get-deploy-config' => $this->getDeployConfig(),
@@ -400,12 +404,30 @@ class ServerAppCommand extends Command
         $domain = $this->option('domain');
         $upstream = $this->option('upstream');
         $redirect = $this->option('redirect');
+        $whitelist = $this->option('whitelist');
+        $maxBodySize = $this->option('max-body-size');
+        $websocketTimeout = $this->option('websocket-timeout');
 
         if (!$domain) {
             return $this->errorResponse('--domain is required');
         }
 
-        // Add domain to app's domain list
+        // If server has proxy-nginx, update the config FIRST (before saving to DB)
+        if ($app->server->has_proxy_nginx) {
+            try {
+                $ssh = $this->getSshConnection($app->server);
+                $this->updateProxyConfig($ssh, $app, $domain, [
+                    'redirect' => $redirect,
+                    'whitelist' => $whitelist,
+                    'max_body_size' => $maxBodySize,
+                    'websocket_timeout' => $websocketTimeout,
+                ]);
+            } catch (\Exception $e) {
+                return $this->errorResponse("Failed to update proxy config: " . $e->getMessage());
+            }
+        }
+
+        // Only persist to DB after remote config succeeded
         $domains = $app->domains ?? [];
         if (!in_array($domain, $domains)) {
             $domains[] = $domain;
@@ -418,18 +440,55 @@ class ServerAppCommand extends Command
 
         $app->save();
 
-        // If server has proxy-nginx, update the config
+        $this->outputJson([
+            'output' => "Domain '{$domain}' added to '{$app->name}'. Run 'server:app request-ssl' to enable HTTPS.",
+            'domains' => $app->domains,
+        ]);
+
+        return Command::SUCCESS;
+    }
+
+    private function removeDomain(): int
+    {
+        $app = $this->getApp();
+        if (!$app) {
+            return Command::FAILURE;
+        }
+
+        $domain = $this->option('domain');
+        if (!$domain) {
+            return $this->errorResponse('--domain is required');
+        }
+
+        // Remove domain from app's domain list
+        $domains = $app->domains ?? [];
+        $domains = array_values(array_filter($domains, fn($d) => $d !== $domain));
+        $app->domains = $domains;
+        $app->save();
+
+        // If server has proxy-nginx, remove from config
         if ($app->server->has_proxy_nginx) {
             try {
                 $ssh = $this->getSshConnection($app->server);
-                $this->updateProxyConfig($ssh, $app, $domain, $redirect);
+                $cmd = "docker exec proxy-nginx /scripts/domain.sh delete --domain=" . escapeshellarg($domain);
+                $result = $ssh->run($cmd, 30);
+
+                if (!$result->successful()) {
+                    // Log warning but don't fail - domain may not exist in nginx config
+                    $this->outputJson([
+                        'output' => "Domain '{$domain}' removed from app, but nginx config removal had issues: " . $result->output(),
+                        'domains' => $app->domains,
+                        'warning' => true,
+                    ]);
+                    return Command::SUCCESS;
+                }
             } catch (\Exception $e) {
-                return $this->errorResponse("Failed to update proxy config: " . $e->getMessage());
+                return $this->errorResponse("Failed to remove domain from proxy config: " . $e->getMessage());
             }
         }
 
         $this->outputJson([
-            'output' => "Domain '{$domain}' added to '{$app->name}'. Run 'server:app request-ssl' to enable HTTPS.",
+            'output' => "Domain '{$domain}' removed from '{$app->name}'.",
             'domains' => $app->domains,
         ]);
 
@@ -526,72 +585,42 @@ class ServerAppCommand extends Command
         ]);
     }
 
-    private function updateProxyConfig(SshConnection $ssh, ServerApplication $app, string $domain, ?string $redirect): void
+    private function updateProxyConfig(SshConnection $ssh, ServerApplication $app, string $domain, array $options = []): void
     {
-        // Validate domain format to prevent NGINX config injection
+        // Validate domain format to prevent injection
         // Allows: example.com, sub.example.com, *.example.com, example.com:8080
         if (!preg_match('/^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d+)?$/i', $domain)) {
             throw new \InvalidArgumentException("Invalid domain format: {$domain}");
         }
 
-        $configPath = "/home/{$app->server->ssh_user}/docker-apps/proxy-nginx/default.conf";
         $upstream = $app->upstream_container ?: "{$app->slug}-nginx";
+        $redirect = $options['redirect'] ?? null;
+        $whitelist = $options['whitelist'] ?? null;
+        $maxBodySize = $options['max_body_size'] ?? '256M';
+        $websocketTimeout = $options['websocket_timeout'] ?? '600s';
+
+        // Build the domain.sh command
+        $cmd = "docker exec proxy-nginx /scripts/domain.sh upsert";
+        $cmd .= " --domain=" . escapeshellarg($domain);
+        $cmd .= " --comment=" . escapeshellarg($app->name);
 
         if ($redirect) {
-            // Redirect server block
-            $block = <<<NGINX
-
-# {$app->name} - Redirect
-server {
-    server_name {$domain};
-    return 308 {$redirect}\$request_uri;
-    listen 80;
-}
-NGINX;
+            $cmd .= " --redirect=" . escapeshellarg($redirect);
         } else {
-            // Normal server block
-            $block = <<<NGINX
+            $cmd .= " --upstream=" . escapeshellarg($upstream);
+            $cmd .= " --max-body-size=" . escapeshellarg($maxBodySize);
+            $cmd .= " --websocket-timeout=" . escapeshellarg($websocketTimeout);
 
-# {$app->name}
-server {
-    server_name {$domain};
-    client_max_body_size 256M;
-    root /var/www/html;
-    ssl_buffer_size 1400;
-
-    location / {
-        set \$upstream http://{$upstream};
-        resolver 127.0.0.11 valid=30s;
-        proxy_pass \$upstream;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header Host \$host;
-        proxy_redirect off;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \$connection_upgrade;
-        proxy_read_timeout 600s;
-        proxy_send_timeout 600s;
-        proxy_intercept_errors on;
-        error_page 502 503 /maintenance.html;
-    }
-
-    location = /maintenance.html {
-        internal;
-        root /var/www/html;
-    }
-
-    listen 80;
-}
-NGINX;
+            if ($whitelist) {
+                $cmd .= " --whitelist=" . escapeshellarg($whitelist);
+            }
         }
 
-        // Append to config
-        $escapedBlock = base64_encode($block);
-        $ssh->run("echo " . escapeshellarg($escapedBlock) . " | base64 -d >> " . escapeshellarg($configPath));
+        $result = $ssh->run($cmd, 30);
 
-        // Reload nginx
-        $ssh->run("docker exec proxy-nginx nginx -s reload");
+        if (!$result->successful()) {
+            throw new \RuntimeException("Failed to configure domain: " . $result->errorOutput());
+        }
     }
 
     private function scanGitHubRepos(): int
@@ -956,7 +985,7 @@ NGINX;
 
     private function invalidAction(string $action): int
     {
-        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, request-ssl, scan-repos, get-deploy-config, read-env-key, update-env-key");
+        return $this->errorResponse("Invalid action '{$action}'. Valid: list, add, deploy, start, stop, restart, logs, remove, update-env, add-domain, remove-domain, request-ssl, scan-repos, get-deploy-config, read-env-key, update-env-key");
     }
 
     private function errorResponse(string $message): int

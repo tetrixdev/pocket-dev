@@ -40,8 +40,8 @@ echo "Created .env from template"
 # Detect USER_ID and GROUP_ID
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
-sedi "s|PD_USER_ID=1000|PD_USER_ID=$USER_ID|" .env
-sedi "s|PD_GROUP_ID=1000|PD_GROUP_ID=$GROUP_ID|" .env
+sedi "s|PD_USER_ID=.*|PD_USER_ID=$USER_ID|" .env
+sedi "s|PD_GROUP_ID=.*|PD_GROUP_ID=$GROUP_ID|" .env
 echo "Detected USER_ID=$USER_ID, GROUP_ID=$GROUP_ID"
 
 # Detect DOCKER_GID

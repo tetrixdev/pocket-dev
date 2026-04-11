@@ -30,7 +30,7 @@ pocket-dev/
 │   ├── local/             # Development Dockerfiles
 │   ├── production/        # Production Dockerfiles
 │   └── shared/            # Shared configs
-├── docker-proxy/           # Nginx proxy container
+├── docker-postgres/        # PostgreSQL container config
 ├── deploy/                 # Production deployment package
 │   ├── compose.yml        # Production compose file
 │   ├── setup.sh           # User setup script

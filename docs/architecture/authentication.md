@@ -23,40 +23,35 @@ For production deployments, use Tailscale to create a private network. This make
 
 ---
 
-## Proxy Authentication (Basic Auth)
+## Proxy Authentication (Basic Auth + IP Whitelist)
 
-> **Status**: Currently disabled. The entrypoint sets `AUTH_ENABLED="off"`.
+On server deployments, authentication is handled by **proxy-nginx** (an external reverse proxy), not a PocketDev container.
 
 ### How It Works
 
-The nginx proxy requires HTTP Basic Auth for all requests (except `/health`).
+The proxy-nginx service provides:
+- HTTP Basic Auth for all requests
+- IP whitelist support (e.g., Tailscale network only)
+- SSL/TLS termination
 
-**Configuration:**
-- `BASIC_AUTH_USER` - Username (required)
-- `BASIC_AUTH_PASS` - Password (required)
-
-**Source:** `docker-proxy/shared/entrypoint.sh:21-43`
-
+**Configuration via proxy-nginx:**
 ```bash
-# Credentials stored via htpasswd
-htpasswd -cb /etc/nginx/.htpasswd "$BASIC_AUTH_USER" "$BASIC_AUTH_PASS"
+# Add domain with Tailscale restriction
+docker exec proxy-nginx /scripts/domain.sh upsert \
+  --domain=pocketdev.example.com \
+  --upstream=pocket-dev-nginx \
+  --whitelist="100.64.0.0/10"
 ```
 
-### IP Whitelist (Optional)
+### IP Whitelist Examples
 
-Additional security layer that restricts access to specific IPs.
+| Use Case | Whitelist Value |
+|----------|-----------------|
+| Tailscale only | `100.64.0.0/10` |
+| Specific IPs | `192.168.1.100,10.0.0.50` |
+| No restriction | (omit whitelist) |
 
-**Configuration:**
-- `IP_WHITELIST` - Comma-separated list of allowed IPs (optional)
-
-**Example:**
-```env
-IP_WHITELIST=192.168.1.100,10.0.0.50
-```
-
-**Source:** `docker-proxy/shared/entrypoint.sh:46-71`
-
-When enabled, nginx creates a map that checks `$remote_addr` against the whitelist.
+**Note:** For local development without proxy-nginx, PocketDev's nginx is exposed directly on the configured port.
 
 ---
 
@@ -141,13 +136,14 @@ This deletes `/var/www/.claude/.credentials.json`.
 User visits /
     │
     ▼
-Proxy checks Basic Auth
-    │ ✗ 401 Unauthorized
+[proxy-nginx] (server only)
+    │ Basic Auth check
+    │ IP whitelist check
+    │ ✗ 401/403
     │ ✓
     ▼
-Proxy checks IP whitelist (if configured)
-    │ ✗ 403 Forbidden
-    │ ✓
+pocket-dev-nginx
+    │
     ▼
 Laravel checks Claude credentials
     │ ✗ Redirect to /claude/auth

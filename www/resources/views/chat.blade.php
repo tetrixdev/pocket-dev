@@ -2753,12 +2753,6 @@
                         return;
                     }
 
-                    // Enforce tab label max length (6 chars)
-                    if (this.renameTabLabel.trim().length > 6) {
-                        this.showError('Tab label cannot exceed 6 characters');
-                        return;
-                    }
-
                     this.renameSaving = true;
                     try {
                         const response = await fetch(`/api/conversations/${this.currentConversationUuid}/title`, {
@@ -2818,6 +2812,19 @@
                     }
 
                     this.showSessionEditModal = true;
+
+                    // Auto-focus and select session name input on desktop only
+                    // Use setTimeout to wait for modal transition (200ms) to complete
+                    // Note: Can't use $refs because modal has its own x-data scope
+                    if (this.windowWidth >= 768) {
+                        setTimeout(() => {
+                            const input = document.getElementById('session-edit-name-input');
+                            if (input) {
+                                input.focus();
+                                input.select();
+                            }
+                        }, 250);
+                    }
                 },
 
                 async saveSessionEdit() {
@@ -2827,14 +2834,6 @@
                     if (this.sessionEditName.trim().length > window.TITLE_MAX_LENGTH) {
                         this.showError(`Session name cannot exceed ${window.TITLE_MAX_LENGTH} characters`);
                         return;
-                    }
-
-                    // Enforce tab label max length (6 chars)
-                    for (const chat of this.sessionEditChats) {
-                        if (chat.label.trim().length > 6) {
-                            this.showError('Tab label cannot exceed 6 characters');
-                            return;
-                        }
                     }
 
                     this.sessionEditSaving = true;

@@ -101,14 +101,6 @@ find /var/www/storage -type f -exec chmod 664 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
 find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
-# Fix permissions for mounted config volumes (for config editor)
-if [ -d "/etc/nginx-proxy-config" ]; then
-    echo "Setting permissions on /etc/nginx-proxy-config..."
-    chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
-    find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
-    find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
-fi
-
 # Fix /tmp permissions for cross-group access (shared volume between containers)
 # Ensures files created by any user are accessible by www-data group
 chgrp -R 33 /tmp 2>/dev/null || true
@@ -164,23 +156,6 @@ if [ -n "$CLAUDE_CODE_VERSION" ]; then
         fi
     else
         echo "Claude Code already at requested version $CLAUDE_CODE_VERSION"
-    fi
-fi
-
-# =============================================================================
-# CREDENTIAL LOADING (requires DB ready)
-# =============================================================================
-# Export user-configured credentials as environment variables.
-# These will be inherited by all worker processes.
-if [ -x /usr/local/bin/load-credentials ]; then
-    if ! cred_output=$(/usr/local/bin/load-credentials 2>&1); then
-        echo "Credential loading failed - aborting startup"
-        echo "$cred_output"
-        exit 1
-    fi
-    cred_exports=$(echo "$cred_output" | grep '^export ' || true)
-    if [ -n "$cred_exports" ]; then
-        eval "$cred_exports"
     fi
 fi
 

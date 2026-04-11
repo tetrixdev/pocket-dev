@@ -100,14 +100,6 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     find /var/www/bootstrap/cache -type d -exec chmod 775 {} \; 2>/dev/null || true
     find /var/www/bootstrap/cache -type f -exec chmod 664 {} \; 2>/dev/null || true
 
-    # Fix permissions for mounted config volumes (for config editor)
-    if [ -d "/etc/nginx-proxy-config" ]; then
-        echo "Setting permissions on /etc/nginx-proxy-config..."
-        chgrp -R 33 /etc/nginx-proxy-config 2>/dev/null || true
-        find /etc/nginx-proxy-config -type d -exec chmod 775 {} \; 2>/dev/null || true
-        find /etc/nginx-proxy-config -type f -exec chmod 664 {} \; 2>/dev/null || true
-    fi
-
     # Fix permissions for pocketdev storage volume
     if [ -d "/var/www/storage/pocketdev" ]; then
         echo "Setting permissions on /var/www/storage/pocketdev..."
@@ -172,23 +164,6 @@ if [ $# -eq 0 ] || [ "$1" = "php-fpm" ]; then
     # Install user-configured system packages so they're available for workers.
     if [ -x /usr/local/bin/install-system-packages ]; then
         /usr/local/bin/install-system-packages || echo "Warning: System package installation had errors"
-    fi
-
-    # =============================================================================
-    # CREDENTIAL LOADING (requires DB ready)
-    # =============================================================================
-    # Export user-configured credentials as environment variables.
-    # These will be inherited by all worker processes.
-    if [ -x /usr/local/bin/load-credentials ]; then
-        if ! cred_output=$(/usr/local/bin/load-credentials 2>&1); then
-            echo "Credential loading failed - aborting startup"
-            echo "$cred_output"
-            exit 1
-        fi
-        cred_exports=$(echo "$cred_output" | grep '^export ' || true)
-        if [ -n "$cred_exports" ]; then
-            eval "$cred_exports"
-        fi
     fi
 
     # =============================================================================

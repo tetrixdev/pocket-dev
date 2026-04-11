@@ -80,7 +80,7 @@
                     </p>
                     @if(config('backup.user_id') !== null && config('backup.group_id') !== null)
                         <div class="bg-gray-900 rounded p-4 mb-4 overflow-x-auto">
-                            <code class="text-sm text-green-400">sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json pocket-dev-queue:/home/appuser/.codex/auth.json && docker exec -u root pocket-dev-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec pocket-dev-queue chmod 660 /home/appuser/.codex/auth.json</code>
+                            <code class="text-sm text-green-400">sudo npm install -g @openai/codex && codex login && docker cp ~/.codex/auth.json {{ config('pocketdev.project_name', 'pocket-dev') }}-queue:/home/appuser/.codex/auth.json && docker exec -u root {{ config('pocketdev.project_name', 'pocket-dev') }}-queue chown {{ config('backup.user_id') }}:{{ config('backup.group_id') }} /home/appuser/.codex/auth.json && docker exec {{ config('pocketdev.project_name', 'pocket-dev') }}-queue chmod 660 /home/appuser/.codex/auth.json</code>
                         </div>
                         <ol class="list-decimal list-inside space-y-2 text-sm text-gray-300 mb-4">
                             <li>Copy the command above and run it in your terminal</li>

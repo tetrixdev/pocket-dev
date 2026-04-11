@@ -3,6 +3,21 @@
 return [
     /*
     |--------------------------------------------------------------------------
+    | Project Name
+    |--------------------------------------------------------------------------
+    |
+    | The project name used for Docker container and volume naming. This allows
+    | running multiple PocketDev instances on the same server with different
+    | container/volume prefixes.
+    |
+    */
+    // Handle both unset and empty string to match Docker Compose ${VAR:-default} behavior
+    'project_name' => (($projectName = env('PD_PROJECT_NAME')) !== null && $projectName !== '')
+        ? $projectName
+        : 'pocket-dev',
+
+    /*
+    |--------------------------------------------------------------------------
     | Allowed Path Prefixes
     |--------------------------------------------------------------------------
     |

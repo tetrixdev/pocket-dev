@@ -14,7 +14,7 @@ Administrative interface for editing Claude configuration files.
 
 | Category | Files | Storage Location |
 |----------|-------|------------------|
-| Files | CLAUDE.md, settings.json, nginx.conf | Various (see below) |
+| Files | CLAUDE.md, settings.json | Various (see below) |
 | Agents | `*.md` files | `/home/appuser/.claude/agents/` |
 | Commands | `*.md` files | `/home/appuser/.claude/commands/` |
 | Hooks | JSON in settings.json | `/home/appuser/.claude/settings.json` |
@@ -26,7 +26,6 @@ Administrative interface for editing Claude configuration files.
 |------|----------------|--------------|
 | CLAUDE.md | `/home/appuser/.claude/CLAUDE.md` | Text editor |
 | settings.json | `/home/appuser/.claude/settings.json` | Text editor (JSON) |
-| nginx.conf | `/etc/nginx-proxy-config/nginx.conf.template` | Text editor |
 
 **Note:** All paths are in PHP container context (`/home/appuser/`).
 
@@ -38,8 +37,6 @@ GET  /config/claude                 → Edit CLAUDE.md
 POST /config/claude                 → Save CLAUDE.md
 GET  /config/settings               → Edit settings.json
 POST /config/settings               → Save settings.json
-GET  /config/nginx                  → Edit nginx.conf
-POST /config/nginx                  → Save nginx.conf
 
 GET  /config/agents                 → List agents
 GET  /config/agents/create          → Create agent form
