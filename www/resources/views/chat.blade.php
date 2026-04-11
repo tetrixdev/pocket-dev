@@ -721,41 +721,43 @@
                     .tag-label-bkg { fill: #374151 !important; stroke: #6b7280 !important; }
                     .tag-label { fill: #e5e7eb !important; }
 
-                    /* Sequence diagram - loop/alt/opt boxes */
+                    /* Sequence diagram - loop/alt/opt boxes (labelBox can be rect or polygon) */
                     .loopLine { stroke: #6b7280 !important; }
                     .loopText, .loopText tspan { fill: #e5e7eb !important; }
-                    rect.labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    polygon.labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
                     .labelText { fill: #e5e7eb !important; }
 
-                    /* ER Diagram - relationship labels */
+                    /* ER Diagram - clean relationship labels (no background) */
                     .er.relationshipLabel { fill: #e5e7eb !important; }
-                    .er.relationshipLabelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .er.relationshipLabelBox, .relationshipLabelBox { fill: transparent !important; stroke: none !important; background: transparent !important; }
                     .er.entityBox { fill: #374151 !important; stroke: #6b7280 !important; }
                     .er.attributeBoxEven { fill: #374151 !important; }
                     .er.attributeBoxOdd { fill: #4b5563 !important; }
 
-                    /* Requirement Diagram */
+                    /* Requirement Diagram - fix white label box */
                     .reqBox { fill: #374151 !important; stroke: #6b7280 !important; }
                     .reqTitle, .reqTitle tspan { fill: #e5e7eb !important; }
                     .reqLabelBox { fill: #374151 !important; stroke: #6b7280 !important; }
-                    .reqLabel { fill: #e5e7eb !important; }
+                    .reqLabel, .relationshipLabel { fill: #e5e7eb !important; }
                     g.requirement rect, g.element rect { fill: #374151 !important; stroke: #6b7280 !important; }
                     g.relationship rect { fill: #374151 !important; stroke: #6b7280 !important; }
                     g.relationship text { fill: #e5e7eb !important; }
+                    rect[fill="white"], rect[fill="#ffffff"] { fill: #374151 !important; }
 
-                    /* Packet Diagram - fix text on light background */
-                    .packetByte { fill: #374151 !important; stroke: #6b7280 !important; }
-                    .packetByte text, .packetByte tspan { fill: #e5e7eb !important; }
+                    /* Packet Diagram - fix text visibility (target actual Mermaid classes) */
+                    .packetBlock { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .packetLabel { fill: #e5e7eb !important; }
+                    .packetByte { fill: #e5e7eb !important; }
+                    .packetByte.start, .packetByte.end { fill: #9ca3af !important; }
                     .packetTitle { fill: #e5e7eb !important; }
-                    g.packet rect { fill: #374151 !important; stroke: #6b7280 !important; }
-                    g.packet text { fill: #e5e7eb !important; }
-                    .packet-row rect { fill: #374151 !important; stroke: #6b7280 !important; }
-                    .packet-row text { fill: #e5e7eb !important; }
 
-                    /* Architecture Diagram - improve border visibility */
+                    /* Architecture Diagram - improve border and text visibility */
                     .architecture-service { fill: #374151 !important; stroke: #60a5fa !important; stroke-width: 2px !important; }
-                    .architecture-group { fill: transparent !important; stroke: #6b7280 !important; stroke-width: 2px !important; stroke-dasharray: 8 4 !important; }
+                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; }
+                    .architecture-group { fill: transparent !important; stroke: #9ca3af !important; stroke-width: 2px !important; stroke-dasharray: 8 4 !important; }
                     .architecture-edge { stroke: #9ca3af !important; stroke-width: 1.5px !important; }
+                    .node-bkg { stroke: #9ca3af !important; }
 
                     /* Sankey Diagram - brighter flow colors */
                     .sankey-node rect { fill: #60a5fa !important; stroke: #3b82f6 !important; }
@@ -820,36 +822,39 @@
                     activationBkgColor: '#4b5563',
                     activationBorderColor: '#6b7280',
 
+                    // === UNIFIED PASTEL COLOR PALETTE ===
+                    // Softer colors that work well on dark backgrounds with good contrast
+                    // Used consistently across pie, git, timeline, mindmap, sankey, xy charts
+
                     // === PIE CHART ===
-                    // Using Tailwind's vibrant colors for distinct segments
-                    pie1: '#60a5fa',   // blue-400
-                    pie2: '#34d399',   // emerald-400
-                    pie3: '#f472b6',   // pink-400
-                    pie4: '#fbbf24',   // amber-400
-                    pie5: '#a78bfa',   // violet-400
-                    pie6: '#fb923c',   // orange-400
-                    pie7: '#2dd4bf',   // teal-400
-                    pie8: '#f87171',   // red-400
-                    pie9: '#818cf8',   // indigo-400
-                    pie10: '#4ade80',  // green-400
-                    pie11: '#e879f9',  // fuchsia-400
-                    pie12: '#38bdf8',  // sky-400
+                    pie1: '#93c5fd',   // blue-300 (softer)
+                    pie2: '#6ee7b7',   // emerald-300
+                    pie3: '#f9a8d4',   // pink-300
+                    pie4: '#fcd34d',   // amber-300
+                    pie5: '#c4b5fd',   // violet-300
+                    pie6: '#fdba74',   // orange-300
+                    pie7: '#5eead4',   // teal-300
+                    pie8: '#fca5a5',   // red-300
+                    pie9: '#a5b4fc',   // indigo-300
+                    pie10: '#86efac',  // green-300
+                    pie11: '#f0abfc',  // fuchsia-300
+                    pie12: '#7dd3fc',  // sky-300
                     pieStrokeColor: '#1f2937',
                     pieTitleTextColor: '#e5e7eb',
                     pieLegendTextColor: '#e5e7eb',
-                    pieSectionTextColor: '#1f2937',  // Dark text on bright pie segments
+                    pieSectionTextColor: '#1f2937',  // Dark text on pastel segments
 
                     // === GIT GRAPH ===
-                    // Branch line colors (using same vibrant palette)
-                    git0: '#60a5fa',   // blue - main branch
-                    git1: '#34d399',   // green - feature branches
-                    git2: '#f472b6',   // pink
-                    git3: '#fbbf24',   // amber
-                    git4: '#a78bfa',   // violet
-                    git5: '#fb923c',   // orange
-                    git6: '#2dd4bf',   // teal
-                    git7: '#f87171',   // red
-                    // Branch label text colors (dark text on light branch-colored backgrounds)
+                    // Branch line colors (using same pastel palette)
+                    git0: '#93c5fd',   // blue - main branch
+                    git1: '#6ee7b7',   // green - feature branches
+                    git2: '#f9a8d4',   // pink
+                    git3: '#fcd34d',   // amber
+                    git4: '#c4b5fd',   // violet
+                    git5: '#fdba74',   // orange
+                    git6: '#5eead4',   // teal
+                    git7: '#fca5a5',   // red
+                    // Branch label text colors (dark text on pastel backgrounds)
                     gitBranchLabel0: '#1f2937',
                     gitBranchLabel1: '#1f2937',
                     gitBranchLabel2: '#1f2937',
@@ -879,30 +884,44 @@
                     relationLabelColor: '#e5e7eb',
 
                     // === SANKEY DIAGRAM ===
-                    // Use brighter, more distinct colors for flows
-                    sankeyNodeColor: '#60a5fa',
-                    sankeyLinkColor: '#60a5fa',
+                    // Use pastel colors for nodes, semi-transparent for flows
+                    sankeyNodeColor: '#93c5fd',
+                    sankeyLinkColor: '#93c5fd',
 
                     // === MINDMAP ===
-                    // Add distinct branch colors (uses pie colors as fallback)
+                    // Uses cScale colors (same as timeline) for branch colors
 
-                    // === TIMELINE ===
-                    cScale0: '#60a5fa',  // period colors
-                    cScale1: '#34d399',
-                    cScale2: '#f472b6',
-                    cScale3: '#fbbf24',
-                    cScale4: '#a78bfa',
-                    cScale5: '#fb923c',
-                    cScale6: '#2dd4bf',
-                    cScale7: '#f87171',
-                    cScaleLabel0: '#1f2937',  // dark text on light backgrounds
+                    // === TIMELINE / MINDMAP / XY CHART ===
+                    // Period and category colors (unified pastel palette)
+                    cScale0: '#93c5fd',  // blue
+                    cScale1: '#6ee7b7',  // green
+                    cScale2: '#f9a8d4',  // pink
+                    cScale3: '#fcd34d',  // amber
+                    cScale4: '#c4b5fd',  // violet
+                    cScale5: '#fdba74',  // orange
+                    cScale6: '#5eead4',  // teal
+                    cScale7: '#fca5a5',  // red
+                    cScale8: '#a5b4fc',  // indigo
+                    cScale9: '#86efac',  // green-light
+                    cScale10: '#f0abfc', // fuchsia
+                    cScale11: '#7dd3fc', // sky
+                    cScaleLabel0: '#1f2937',  // dark text on pastel backgrounds
                     cScaleLabel1: '#1f2937',
                     cScaleLabel2: '#1f2937',
                     cScaleLabel3: '#1f2937',
                     cScaleLabel4: '#1f2937',
                     cScaleLabel5: '#1f2937',
                     cScaleLabel6: '#1f2937',
-                    cScaleLabel7: '#1f2937'
+                    cScaleLabel7: '#1f2937',
+                    cScaleLabel8: '#1f2937',
+                    cScaleLabel9: '#1f2937',
+                    cScaleLabel10: '#1f2937',
+                    cScaleLabel11: '#1f2937',
+
+                    // === XY CHART specific ===
+                    xyChart: {
+                        plotColorPalette: '#93c5fd,#6ee7b7,#f9a8d4,#fcd34d,#c4b5fd,#fdba74,#5eead4,#fca5a5'
+                    }
                 }
             });
         }
@@ -980,22 +999,25 @@
         .mermaid-diagram svg [class*="text"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
         .mermaid-diagram svg [class*="Text"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
 
-        /* Packet Diagram - specific fixes for text visibility */
-        .mermaid-diagram svg .packet rect,
-        .mermaid-diagram svg [class*="packet"] rect { fill: #374151 !important; stroke: #6b7280 !important; }
-        .mermaid-diagram svg .packet text,
-        .mermaid-diagram svg [class*="packet"] text { fill: #e5e7eb !important; }
+        /* Packet Diagram - fix text visibility (exact Mermaid class names) */
+        .mermaid-diagram svg .packetBlock { fill: #374151 !important; stroke: #6b7280 !important; }
+        .mermaid-diagram svg .packetLabel { fill: #e5e7eb !important; }
+        .mermaid-diagram svg .packetByte { fill: #9ca3af !important; }
+        .mermaid-diagram svg .packetTitle { fill: #e5e7eb !important; }
 
-        /* Architecture Diagram - improve border visibility */
-        .mermaid-diagram svg .architecture-group rect,
-        .mermaid-diagram svg [class*="group"] > rect { stroke: #6b7280 !important; stroke-width: 2px !important; }
-        .mermaid-diagram svg .architecture-service rect { stroke: #60a5fa !important; }
+        /* Architecture Diagram - improve border and text visibility */
+        .mermaid-diagram svg .node-bkg { stroke: #9ca3af !important; stroke-width: 2px !important; }
+        .mermaid-diagram svg .architecture-service text { fill: #e5e7eb !important; }
 
-        /* ER Diagram - relationship label boxes */
-        .mermaid-diagram svg .er.relationshipLabel rect { fill: #374151 !important; }
+        /* ER Diagram - transparent relationship labels (cleaner look) */
+        .mermaid-diagram svg .relationshipLabelBox { fill: transparent !important; stroke: none !important; }
 
-        /* Sequence Diagram - loop/alt/opt box labels */
+        /* Sequence Diagram - loop/alt/opt box labels (polygon and rect) */
         .mermaid-diagram svg .loopLine { stroke: #6b7280 !important; }
+        .mermaid-diagram svg .labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+
+        /* Requirement Diagram - fix white label box */
+        .mermaid-diagram svg .reqLabelBox { fill: #374151 !important; stroke: #6b7280 !important; }
         .mermaid-diagram svg rect.labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
 
         /* Sankey Diagram - make flows more visible */
