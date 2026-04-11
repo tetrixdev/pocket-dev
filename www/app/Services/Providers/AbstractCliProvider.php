@@ -567,6 +567,16 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                     yield from $this->closeOpenBlocks($state);
                     yield from $this->emitUsage($state);
 
+                    // Run provider cleanup hooks (e.g., Codex temp prompt file cleanup)
+                    // even on early abort paths where normal completion isn't reached.
+                    try {
+                        $this->onProcessComplete($conversation, $state, -1);
+                    } catch (\Throwable $cleanupError) {
+                        Log::channel('api')->warning($this->getProviderType() . ': Cleanup hook failed during abort', [
+                            'error' => $cleanupError->getMessage(),
+                        ]);
+                    }
+
                     return; // Generator ends — outer loop in ProcessConversationStream handles abort
                 }
             }
@@ -663,6 +673,15 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             if (is_resource($pipes[2])) fclose($pipes[2]);
             if (is_resource($process)) {
                 $this->killProcessGroup($process);
+            }
+
+            // Run provider cleanup hooks on exception paths too.
+            try {
+                $this->onProcessComplete($conversation, $state, -1);
+            } catch (\Throwable $cleanupError) {
+                Log::channel('api')->warning($this->getProviderType() . ': Cleanup hook failed after exception', [
+                    'error' => $cleanupError->getMessage(),
+                ]);
             }
         }
     }
