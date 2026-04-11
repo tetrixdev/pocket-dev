@@ -632,12 +632,20 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
             integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I"
             crossorigin="anonymous"></script>
-    <!-- ZenUML external plugin for Mermaid (sequence diagram alternative syntax) -->
-    <script type="module">
-        import zenuml from 'https://cdn.jsdelivr.net/npm/@mermaid-js/mermaid-zenuml@0.2.2/dist/mermaid-zenuml.esm.min.mjs';
-        if (typeof mermaid !== 'undefined') {
-            await mermaid.registerExternalDiagrams([zenuml]);
-        }
+    <!-- ZenUML external plugin for Mermaid - loaded dynamically before first render -->
+    <script>
+        // Flag to track ZenUML registration (loaded on-demand before first zenuml diagram)
+        window.zenUmlRegistered = false;
+        window.registerZenUml = async function() {
+            if (window.zenUmlRegistered) return;
+            try {
+                const { default: zenuml } = await import('https://cdn.jsdelivr.net/npm/@mermaid-js/mermaid-zenuml@0.2.2/dist/mermaid-zenuml.esm.min.mjs');
+                await mermaid.registerExternalDiagrams([zenuml]);
+                window.zenUmlRegistered = true;
+            } catch (e) {
+                console.warn('ZenUML registration failed:', e);
+            }
+        };
     </script>
     <!--
         ===================================================================================
@@ -709,9 +717,13 @@
                     .nodeLabel, .edgeLabel, .label { color: #e5e7eb !important; }
                     .node rect, .node circle, .node ellipse, .node polygon, .node path { fill: #374151 !important; stroke: #6b7280 !important; }
                     .cluster rect { fill: #1f2937 !important; stroke: #4b5563 !important; }
+                    /* Flowchart edge labels - make background fully transparent */
+                    .edgeLabel .label rect, .edgeLabel rect.background { fill: transparent !important; opacity: 0 !important; }
 
-                    /* Force all SVG text to be light colored */
-                    text, tspan { fill: #e5e7eb !important; }
+                    /* Force all SVG text to be light colored - EXCEPT mindmap which uses dark text on colored nodes */
+                    text:not([class*="section-"]), tspan { fill: #e5e7eb !important; }
+                    /* Mind map explicitly uses dark text on pastel backgrounds */
+                    [class*="section-"] text { fill: #1f2937 !important; }
 
                     /* State diagram */
                     .statediagram-state rect { fill: #374151 !important; }
@@ -766,12 +778,12 @@
 
                     /* Architecture Diagram - improve border and text visibility */
                     .architecture-service { fill: #374151 !important; stroke: #60a5fa !important; stroke-width: 2px !important; }
-                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; font-weight: 400 !important; letter-spacing: 0.02em !important; }
+                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; font-weight: 400 !important; font-style: normal !important; letter-spacing: 0.05em !important; }
                     .architecture-group { fill: transparent !important; stroke: #9ca3af !important; stroke-width: 2px !important; stroke-dasharray: 8 4 !important; }
                     .architecture-edge { stroke: #9ca3af !important; stroke-width: 1.5px !important; }
                     .node-bkg { stroke: #9ca3af !important; }
-                    /* Architecture labels - prevent squishing, improve readability */
-                    [id*="architecture"] text, [aria-roledescription="architecture"] text { font-weight: 400 !important; letter-spacing: 0.03em !important; }
+                    /* Architecture labels - prevent italic, improve readability */
+                    [id*="architecture"] text, [aria-roledescription="architecture"] text { font-weight: 400 !important; font-style: normal !important; letter-spacing: 0.05em !important; }
 
                     /* Sankey Diagram - brighter flow colors */
                     .sankey-node rect { fill: #60a5fa !important; stroke: #3b82f6 !important; }
@@ -5843,6 +5855,12 @@
                         try {
                             const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
                             console.log('[Mermaid Debug] Calling mermaid.render with id:', id);
+
+                            // Register ZenUML plugin on-demand if this is a ZenUML diagram
+                            if (decoded.trim().toLowerCase().startsWith('zenuml') && window.registerZenUml) {
+                                console.log('[Mermaid Debug] Registering ZenUML plugin for zenuml diagram');
+                                await window.registerZenUml();
+                            }
 
                             // Render with timeout to prevent hanging on complex/malicious diagrams
                             const { svg } = await Promise.race([
