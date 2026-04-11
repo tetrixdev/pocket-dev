@@ -139,26 +139,201 @@ We track all work in the [PocketDev GitHub Project](https://github.com/orgs/tetr
    - PR is merged
    - Release is created and published
 
-### Plan Structure (Ready for Plan Review)
+### Issue Types
 
-When moving an item to "Ready for Plan Review", ensure it contains:
+Every issue must be labeled as exactly ONE of:
+- **`bug`** - Something is broken or not working as expected
+- **`enhancement`** - New feature or improvement to existing functionality
+
+An issue cannot have both labels, and cannot have neither. The label determines which format to use below.
+
+---
+
+## Feature Request Format (`enhancement` label)
+
+Use this format for new features, improvements, or enhancements. When moving to "Ready for Plan Review", the issue should contain all sections below.
 
 ```markdown
-## Goal
-[1-2 sentences: What are we trying to achieve?]
+## User Story
 
-## Problem
-[What issue does this solve? Why does it matter?]
+**As a** [type of user],
+**I want** [goal/desire],
+**So that** [benefit/value].
 
-## Plan
-[Step-by-step approach to implementation]
+Example: "As a mobile user, I want to install PocketDev as a PWA, so that I can access it quickly from my home screen without opening a browser."
 
-## Files Involved
-[Key files that will be modified]
+## Problem Statement
+
+[Describe the current limitation, pain point, or gap. Why does this matter? What's the impact on users? Be specific about the user experience problem, not just the technical gap.]
+
+## Success Criteria
+
+- [ ] [Measurable outcome 1]
+- [ ] [Measurable outcome 2]
+- [ ] [Measurable outcome 3]
+
+## Options Considered
+
+### Option A: [Name]
+**Description:** [Brief explanation]
+**Pros:** [Benefits]
+**Cons:** [Drawbacks]
+
+### Option B: [Name]
+**Description:** [Brief explanation]
+**Pros:** [Benefits]
+**Cons:** [Drawbacks]
+
+### Option C: [Name] (if applicable)
+**Description:** [Brief explanation]
+**Pros:** [Benefits]
+**Cons:** [Drawbacks]
+
+## Chosen Approach
+
+**Selected:** Option [X] — [Name]
+
+**Rationale:** [Why this option was chosen over the others. What trade-offs were accepted?]
+
+## Technical Plan
+
+### Architecture Overview
+[High-level description of how this will be implemented. Describe the components, data flow, and how they interact. Keep it architectural — focus on the "what" and "why", not line-by-line details.]
+
+### Implementation Steps
+1. [Step 1 — what will be done and why]
+2. [Step 2 — what will be done and why]
+3. [Step 3 — what will be done and why]
+...
+
+### Files Involved
+- `path/to/file1.php` — [what changes]
+- `path/to/file2.blade.php` — [what changes]
+- `path/to/file3.js` — [what changes]
+
+### Database Changes
+[New tables, columns, or migrations needed. "None" if not applicable.]
+
+### API Changes
+[New endpoints, changed signatures, or breaking changes. "None" if not applicable.]
 
 ## Effort Estimate
-[Small / Medium / Large]
+
+**Size:** [Small (< 1 day) / Medium (1-3 days) / Large (3+ days)]
+
+**Complexity:** [Low / Medium / High]
+
+**Risk Areas:** [What could go wrong? What needs extra attention?]
+
+## Open Questions
+
+- [Any unresolved questions that need input before or during development]
 ```
+
+---
+
+## Bug Report Format (`bug` label)
+
+Use this format for bugs, defects, or unexpected behavior. When moving to "Ready for Plan Review", the issue should contain all sections below.
+
+```markdown
+## Bug Summary
+
+[One sentence describing what's broken and the impact]
+
+## Current Behavior
+
+[What happens now? Be specific. Include error messages, screenshots, or logs if available.]
+
+## Expected Behavior
+
+[What should happen instead?]
+
+## Steps to Reproduce
+
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
+4. [Observe: what goes wrong]
+
+**Environment:**
+- Browser/Device: [e.g., Chrome 120, iPhone 15]
+- PocketDev version: [e.g., v0.50.1]
+- Relevant settings: [if applicable]
+
+## Impact Assessment
+
+**Severity:** [Critical / High / Medium / Low]
+- **Critical:** System unusable, data loss, security vulnerability
+- **High:** Major feature broken, significant UX degradation
+- **Medium:** Feature partially broken, workaround exists
+- **Low:** Minor inconvenience, cosmetic issue
+
+**Affected Users:** [All users / Specific subset / Edge case]
+
+## Root Cause Analysis
+
+[What's causing this bug? Include your investigation findings. Reference specific code if known.]
+
+**Hypothesis:** [Your best understanding of why this happens]
+
+**Evidence:** [Logs, code references, or observations that support the hypothesis]
+
+## Options Considered
+
+### Option A: [Name]
+**Description:** [Brief explanation]
+**Pros:** [Benefits]
+**Cons:** [Drawbacks]
+
+### Option B: [Name]
+**Description:** [Brief explanation]
+**Pros:** [Benefits]
+**Cons:** [Drawbacks]
+
+## Chosen Fix
+
+**Selected:** Option [X] — [Name]
+
+**Rationale:** [Why this approach? What trade-offs?]
+
+## Technical Plan
+
+### Fix Overview
+[High-level description of how the bug will be fixed. Focus on the architectural approach.]
+
+### Implementation Steps
+1. [Step 1 — what will be changed and why]
+2. [Step 2 — what will be changed and why]
+3. [Step 3 — what will be changed and why]
+
+### Files Involved
+- `path/to/file1.php` — [what changes]
+- `path/to/file2.blade.php` — [what changes]
+
+### Testing Plan
+- [ ] [How to verify the fix works]
+- [ ] [Edge cases to test]
+- [ ] [Regression tests needed]
+
+## Effort Estimate
+
+**Size:** [Small (< 1 day) / Medium (1-3 days) / Large (3+ days)]
+
+**Risk Areas:** [What could break? What needs careful testing?]
+
+## Open Questions
+
+- [Any unresolved questions]
+
+---
+
+## Original Description
+
+[If this issue was migrated from a rough description, preserve the original text here for context.]
+```
+
+---
 
 ## Troubleshooting
 
