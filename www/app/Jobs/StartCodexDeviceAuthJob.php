@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Services\CodexAgentService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -51,7 +52,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
         // Start device auth in background, redirect stdout+stderr to log file
         $cmd = 'nohup ' . escapeshellarg($codexPath) . ' login --device-auth > '
             . escapeshellarg($logFile) . ' 2>&1 &';
-        exec($cmd, $execOutput, $exitCode);
+        exec($cmd);
 
         // Poll log file for URL and code (up to 30 seconds)
         $verificationUrl = null;
@@ -201,10 +202,10 @@ class StartCodexDeviceAuthJob implements ShouldQueue
     private function createDefaultAgents(): void
     {
         try {
-            $controller = new \App\Http\Controllers\CodexAuthController();
+            $agentService = app(CodexAgentService::class);
             $workspaces = \App\Models\Workspace::all();
             foreach ($workspaces as $workspace) {
-                $controller->ensureDefaultAgentExists($workspace->id);
+                $agentService->ensureDefaultAgentExists($workspace->id);
             }
         } catch (\Exception $e) {
             Log::error('[Codex Device Auth] Failed to create default agents', [

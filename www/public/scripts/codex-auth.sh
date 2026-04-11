@@ -91,9 +91,7 @@ print(json.dumps({'json': content}))
 elif command -v jq > /dev/null 2>&1; then
     PAYLOAD=$(jq -n --arg content "$AUTH_CONTENT" '{"json": $content}')
 else
-    # Last resort: manual escaping (works for standard auth.json)
-    ESCAPED=$(printf '%s' "$AUTH_CONTENT" | sed 's/\\/\\\\/g; s/"/\\"/g; s/$/\\n/g' | tr -d '\n')
-    PAYLOAD="{\"json\": \"${ESCAPED}\"}"
+    error "Could not build JSON payload safely. Please install python3 or jq and try again."
 fi
 
 # ── Step 5: Upload to PocketDev ───────────────────────────────────────────────
@@ -111,18 +109,18 @@ rm -f /tmp/pd_codex_response.json
 # ── Step 6: Check result ──────────────────────────────────────────────────────
 if echo "$RESPONSE" | grep -q '"success":true'; then
     echo ""
-    success "${BOLD}Codex is nu gekoppeld aan PocketDev!${RESET}"
+    success "${BOLD}Codex is now linked to PocketDev!${RESET}"
     echo ""
-    echo "  Je kunt nu Codex gebruiken in PocketDev."
-    echo "  Ga naar ${PD_URL} om te beginnen."
+    echo "  You can now use Codex in PocketDev."
+    echo "  Go to ${PD_URL} to get started."
     echo ""
 elif [ "$HTTP_CODE" = "400" ] && echo "$RESPONSE" | grep -q '"message"'; then
     MSG=$(echo "$RESPONSE" | grep -o '"message":"[^"]*"' | head -1 | cut -d'"' -f4)
     error "Server error: $MSG"
 elif [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
-    error "Toegang geweigerd (HTTP $HTTP_CODE). Voeg je Basic Auth credentials toe aan de URL:\n    $0 https://user:wachtwoord@jouw-pocketdev.com"
+    error "Access denied (HTTP $HTTP_CODE). Add your Basic Auth credentials to the URL:\n    $0 https://user:password@your-pocketdev.com"
 elif [ "$HTTP_CODE" = "000" ]; then
-    error "Kon PocketDev niet bereiken. Controleer de URL en je internetverbinding:\n    ${PD_URL}"
+    error "Could not reach PocketDev. Check the URL and your internet connection:\n    ${PD_URL}"
 else
-    error "Upload mislukt (HTTP $HTTP_CODE):\n$RESPONSE"
+    error "Upload failed (HTTP $HTTP_CODE):\n$RESPONSE"
 fi
