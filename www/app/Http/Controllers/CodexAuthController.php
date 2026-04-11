@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -240,6 +241,30 @@ class CodexAuthController extends Controller
         }
 
         return false;
+    }
+
+    /**
+     * Serve the local upload script with this instance's URL pre-filled.
+     * Users can pipe it directly: bash <(curl -s https://pocketdev/codex/auth/upload-script)
+     */
+    public function downloadScript(): Response
+    {
+        $scriptPath = public_path('scripts/codex-auth.sh');
+        $script = file_get_contents($scriptPath);
+
+        // Pre-fill the PocketDev URL so the user doesn't have to type it
+        $instanceUrl = rtrim(url('/'), '/');
+        $script = str_replace(
+            'PD_URL="${1:-${POCKETDEV_URL:-}}"',
+            'PD_URL="${1:-${POCKETDEV_URL:-' . $instanceUrl . '}}"',
+            $script
+        );
+
+        return response($script, 200, [
+            'Content-Type' => 'text/plain; charset=utf-8',
+            'Content-Disposition' => 'inline; filename="codex-auth.sh"',
+            'Cache-Control' => 'no-store',
+        ]);
     }
 
     /**

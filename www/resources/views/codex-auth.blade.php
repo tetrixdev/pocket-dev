@@ -208,24 +208,56 @@
                     </div>
                 </div>
 
-                <!-- API Key / Manual Upload Tab -->
+                <!-- Upload script / Manual tab -->
                 <div id="content-json" class="tab-content hidden">
-                    <p class="text-gray-300 mb-1">Paste your <code class="text-blue-400 text-sm">~/.codex/auth.json</code> file contents below.</p>
-                    <p class="text-sm text-gray-500 mb-4">
-                        Works for both API keys (<code>{"OPENAI_API_KEY": "sk-..."}</code>) and
-                        subscription tokens obtained via <code>codex login</code> on another machine.
-                    </p>
-                    <p class="text-gray-400 mb-2"><strong>Paste auth.json content below</strong></p>
-                    <form id="json-form" class="space-y-4">
-                        <div>
+
+                    <!-- Option A: one-liner script (recommended) -->
+                    <div class="mb-6">
+                        <p class="text-gray-300 font-medium mb-1">Optie A — Automatisch (aanbevolen)</p>
+                        <p class="text-sm text-gray-400 mb-3">
+                            Draai dit commando op je <strong class="text-white">laptop of desktop</strong> met een browser.
+                            Het script installeert Codex, doet <code class="text-green-400">codex login</code> en
+                            uploadt <code class="text-green-400">auth.json</code> automatisch naar PocketDev.
+                        </p>
+                        <div class="relative group">
+                            <div class="bg-gray-900 rounded-lg border border-gray-700 p-3 font-mono text-sm text-green-400 overflow-x-auto pr-24">
+                                bash &lt;(curl -sL {{ route('codex.auth.downloadScript') }})
+                            </div>
+                            <button
+                                onclick="copyScriptCmd(this)"
+                                class="absolute right-2 top-2 px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300 transition-all"
+                            >📋 Copy</button>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">
+                            Werkt op macOS en Linux. Vereist Node.js/npm.
+                            Voeg je Basic Auth credentials toe als je die hebt:
+                            <code class="text-gray-400">bash &lt;(curl ...) https://user:pass@{{ request()->getHost() }}</code>
+                        </p>
+                    </div>
+
+                    <div class="flex items-center gap-3 my-4">
+                        <div class="flex-1 border-t border-gray-700"></div>
+                        <span class="text-xs text-gray-500">of handmatig</span>
+                        <div class="flex-1 border-t border-gray-700"></div>
+                    </div>
+
+                    <!-- Option B: manual paste -->
+                    <div>
+                        <p class="text-gray-300 font-medium mb-1">Optie B — Handmatig plakken</p>
+                        <p class="text-sm text-gray-400 mb-3">
+                            Draai <code class="text-green-400">codex login</code> op een machine met browser,
+                            kopieer <code class="text-green-400">~/.codex/auth.json</code> en plak de inhoud hieronder.
+                            Werkt voor zowel API keys als subscription tokens.
+                        </p>
+                        <form id="json-form" class="space-y-3">
                             <textarea id="json-input" rows="4" placeholder='{"OPENAI_API_KEY": "sk-proj-..."}'
                                 class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
-                        </div>
-                        <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded">
-                            Save Credentials
-                        </button>
-                    </form>
-                    <div id="json-result" class="mt-4"></div>
+                            <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded">
+                                Save Credentials
+                            </button>
+                        </form>
+                        <div id="json-result" class="mt-4"></div>
+                    </div>
                 </div>
             </div>
 
@@ -256,6 +288,16 @@
     </div>
 
     <script>
+        // ── Copy script command ────────────────────────────────────────────────────
+        function copyScriptCmd(btn) {
+            const text = btn.previousElementSibling.textContent.trim()
+                .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+            navigator.clipboard.writeText(text).then(() => {
+                btn.textContent = '✓ Copied!';
+                setTimeout(() => { btn.textContent = '📋 Copy'; }, 2000);
+            });
+        }
+
         // ── Tab switching ──────────────────────────────────────────────────────────
         function switchTab(tab) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
