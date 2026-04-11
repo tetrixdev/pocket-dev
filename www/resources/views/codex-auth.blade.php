@@ -112,6 +112,13 @@
                             <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 1 — Open this link</p>
                             <div class="flex items-center gap-3 bg-gray-900 rounded-lg p-3 border border-gray-700">
                                 <span class="text-blue-400 text-sm font-mono flex-1 truncate" x-text="verificationUrl"></span>
+                                <a
+                                    :href="verificationUrl"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="flex-shrink-0 px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 transition-all"
+                                    title="Open in new tab"
+                                >↗ Open</a>
                                 <button
                                     @click="copyUrl()"
                                     class="flex-shrink-0 px-3 py-1.5 rounded text-sm transition-all"
@@ -174,19 +181,40 @@
                             </p>
                             <p class="text-red-300 text-sm" x-text="error || (state === 'expired' ? 'The code expired before authentication completed.' : 'Please try again.')"></p>
                         </div>
-                        <button
-                            @click="reset(); startAuth()"
-                            class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors"
-                        >
-                            Try again
-                        </button>
+                        <div class="flex gap-3 flex-wrap mb-6">
+                            <button
+                                @click="reset(); startAuth()"
+                                class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors text-sm"
+                            >
+                                Try again
+                            </button>
+                        </div>
+                        <!-- Org restriction help -->
+                        <div class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 text-sm">
+                            <p class="text-yellow-400 font-semibold mb-1">💡 Is your organisation blocking device auth?</p>
+                            <p class="text-yellow-200/70 mb-2">
+                                If you see <em>"Contact your workspace administrator to enable device code authentication"</em> on the OpenAI page,
+                                your organisation has disabled this flow. Use the <strong class="text-white">API Key tab</strong> instead:
+                            </p>
+                            <ol class="list-decimal list-inside text-yellow-200/70 space-y-1 mb-3">
+                                <li>On a machine with a browser, run: <code class="bg-black/30 px-1.5 py-0.5 rounded text-xs">codex login</code></li>
+                                <li>Copy the resulting <code class="bg-black/30 px-1.5 py-0.5 rounded text-xs">~/.codex/auth.json</code> file contents</li>
+                                <li>Paste it in the <strong class="text-white">API Key tab</strong> below</li>
+                            </ol>
+                            <button onclick="switchTab('json')" class="px-4 py-1.5 bg-yellow-700/60 hover:bg-yellow-700 rounded text-xs font-medium text-yellow-100 transition-colors">
+                                Switch to API Key tab →
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- API Key Tab -->
+                <!-- API Key / Manual Upload Tab -->
                 <div id="content-json" class="tab-content hidden">
-                    <p class="text-gray-300 mb-4">Use an OpenAI API key for pay-per-use access:</p>
-
+                    <p class="text-gray-300 mb-1">Paste your <code class="text-blue-400 text-sm">~/.codex/auth.json</code> file contents below.</p>
+                    <p class="text-sm text-gray-500 mb-4">
+                        Works for both API keys (<code>{"OPENAI_API_KEY": "sk-..."}</code>) and
+                        subscription tokens obtained via <code>codex login</code> on another machine.
+                    </p>
                     <p class="text-gray-400 mb-2"><strong>Paste auth.json content below</strong></p>
                     <form id="json-form" class="space-y-4">
                         <div>

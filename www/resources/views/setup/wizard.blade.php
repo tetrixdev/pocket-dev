@@ -171,6 +171,7 @@
                     </button>
                     <p class="text-xs text-gray-500 mt-3">
                         If you prefer to use an API key instead, select "OpenAI API" above.
+                        You can also skip this and authenticate later via <strong class="text-gray-400">Settings → Codex Auth</strong>.
                     </p>
                 </div>
 
@@ -193,6 +194,13 @@
                         <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">Step 1 — Open this link</p>
                         <div class="flex items-center gap-2 bg-gray-900 rounded p-2 border border-gray-700">
                             <span class="text-blue-400 text-xs font-mono flex-1 truncate" x-text="verificationUrl"></span>
+                            <a
+                                :href="verificationUrl"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="flex-shrink-0 px-2 py-1 rounded text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 transition-all"
+                                title="Open in new tab"
+                            >↗</a>
                             <button
                                 type="button"
                                 @click="copyUrl()"
@@ -239,13 +247,28 @@
                         </p>
                         <p class="text-red-300 text-xs mt-1" x-text="error || 'Please try again.'"></p>
                     </div>
-                    <button
-                        type="button"
-                        @click="reset(); startAuth()"
-                        class="px-5 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium"
-                    >
-                        Try again
-                    </button>
+                    <div class="flex gap-2 mb-4">
+                        <button
+                            type="button"
+                            @click="reset(); startAuth()"
+                            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium"
+                        >
+                            Try again
+                        </button>
+                        <button
+                            type="button"
+                            @click="reset()"
+                            class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm text-gray-300"
+                        >
+                            Skip — auth later
+                        </button>
+                    </div>
+                    <!-- Org restriction hint -->
+                    <p class="text-xs text-yellow-400/80">
+                        💡 If your organisation blocks device auth, run <code class="bg-black/20 px-1 rounded">codex login</code> on another machine,
+                        then upload <code class="bg-black/20 px-1 rounded">~/.codex/auth.json</code> via
+                        <a href="{{ route('codex.auth') }}" target="_blank" class="underline">Settings → Codex Auth</a>.
+                    </p>
                 </div>
             </div>
             @endif
