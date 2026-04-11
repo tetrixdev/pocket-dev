@@ -53,13 +53,17 @@ echo "$packages_json" | jq -c '.[]' 2>/dev/null | while read -r pkg; do
     # This avoids re-running expensive install scripts (e.g. dotnet, az) on every container restart.
     if [ "$pkg_status" = "installed" ] && [ -n "$pkg_cli" ]; then
         all_present=true
+        checked=0
         for cmd in $(echo "$pkg_cli" | tr ',' '\n' | tr -d ' '); do
-            if [ -n "$cmd" ] && ! command -v "$cmd" > /dev/null 2>&1; then
+            [ -z "$cmd" ] && continue
+            checked=$((checked + 1))
+            if ! command -v "$cmd" > /dev/null 2>&1; then
                 all_present=false
                 break
             fi
         done
-        if [ "$all_present" = "true" ]; then
+        # Only skip if at least one command was verified (guards against empty/whitespace cli_commands)
+        if [ "$all_present" = "true" ] && [ "$checked" -gt 0 ]; then
             echo "  ✓ $pkg_name already installed (skipping)"
             continue
         fi
