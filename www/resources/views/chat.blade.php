@@ -710,15 +710,57 @@
                     .statediagram-state rect { fill: #374151 !important; }
                     .stateLabel { fill: #e5e7eb !important; }
 
-                    /* Git graph - branch labels
-                       The actual class is .branchLabelBkg (found via DOM inspection) */
+                    /* Git graph - branch labels */
                     .branchLabelBkg { fill: #374151 !important; stroke: #6b7280 !important; }
                     .branchLabel text, .branch-label text { fill: #e5e7eb !important; }
                     .gitTitleLabel { fill: #e5e7eb !important; }
 
-                    /* Git graph - commit labels */
+                    /* Git graph - commit and tag labels */
                     .commit-label-bkg { fill: #374151 !important; stroke: #6b7280 !important; }
                     .commit-label { fill: #e5e7eb !important; }
+                    .tag-label-bkg { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .tag-label { fill: #e5e7eb !important; }
+
+                    /* Sequence diagram - loop/alt/opt boxes */
+                    .loopLine { stroke: #6b7280 !important; }
+                    .loopText, .loopText tspan { fill: #e5e7eb !important; }
+                    rect.labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .labelText { fill: #e5e7eb !important; }
+
+                    /* ER Diagram - relationship labels */
+                    .er.relationshipLabel { fill: #e5e7eb !important; }
+                    .er.relationshipLabelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .er.entityBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .er.attributeBoxEven { fill: #374151 !important; }
+                    .er.attributeBoxOdd { fill: #4b5563 !important; }
+
+                    /* Requirement Diagram */
+                    .reqBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .reqTitle, .reqTitle tspan { fill: #e5e7eb !important; }
+                    .reqLabelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .reqLabel { fill: #e5e7eb !important; }
+                    g.requirement rect, g.element rect { fill: #374151 !important; stroke: #6b7280 !important; }
+                    g.relationship rect { fill: #374151 !important; stroke: #6b7280 !important; }
+                    g.relationship text { fill: #e5e7eb !important; }
+
+                    /* Packet Diagram - fix text on light background */
+                    .packetByte { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .packetByte text, .packetByte tspan { fill: #e5e7eb !important; }
+                    .packetTitle { fill: #e5e7eb !important; }
+                    g.packet rect { fill: #374151 !important; stroke: #6b7280 !important; }
+                    g.packet text { fill: #e5e7eb !important; }
+                    .packet-row rect { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .packet-row text { fill: #e5e7eb !important; }
+
+                    /* Architecture Diagram - improve border visibility */
+                    .architecture-service { fill: #374151 !important; stroke: #60a5fa !important; stroke-width: 2px !important; }
+                    .architecture-group { fill: transparent !important; stroke: #6b7280 !important; stroke-width: 2px !important; stroke-dasharray: 8 4 !important; }
+                    .architecture-edge { stroke: #9ca3af !important; stroke-width: 1.5px !important; }
+
+                    /* Sankey Diagram - brighter flow colors */
+                    .sankey-node rect { fill: #60a5fa !important; stroke: #3b82f6 !important; }
+                    .sankey-link { opacity: 0.6 !important; }
+                    .sankey-link-path { stroke-opacity: 0.6 !important; }
 
                     /* Generic label elements (fallback selectors) */
                     .labelRect { fill: #374151 !important; stroke: #6b7280 !important; }
@@ -826,7 +868,41 @@
 
                     // === ER DIAGRAM ===
                     attributeBackgroundColorEven: '#374151',
-                    attributeBackgroundColorOdd: '#4b5563'
+                    attributeBackgroundColorOdd: '#4b5563',
+
+                    // === REQUIREMENT DIAGRAM ===
+                    requirementBackground: '#374151',
+                    requirementBorderColor: '#6b7280',
+                    requirementTextColor: '#e5e7eb',
+                    relationColor: '#9ca3af',
+                    relationLabelBackground: '#374151',
+                    relationLabelColor: '#e5e7eb',
+
+                    // === SANKEY DIAGRAM ===
+                    // Use brighter, more distinct colors for flows
+                    sankeyNodeColor: '#60a5fa',
+                    sankeyLinkColor: '#60a5fa',
+
+                    // === MINDMAP ===
+                    // Add distinct branch colors (uses pie colors as fallback)
+
+                    // === TIMELINE ===
+                    cScale0: '#60a5fa',  // period colors
+                    cScale1: '#34d399',
+                    cScale2: '#f472b6',
+                    cScale3: '#fbbf24',
+                    cScale4: '#a78bfa',
+                    cScale5: '#fb923c',
+                    cScale6: '#2dd4bf',
+                    cScale7: '#f87171',
+                    cScaleLabel0: '#1f2937',  // dark text on light backgrounds
+                    cScaleLabel1: '#1f2937',
+                    cScaleLabel2: '#1f2937',
+                    cScaleLabel3: '#1f2937',
+                    cScaleLabel4: '#1f2937',
+                    cScaleLabel5: '#1f2937',
+                    cScaleLabel6: '#1f2937',
+                    cScaleLabel7: '#1f2937'
                 }
             });
         }
@@ -903,6 +979,29 @@
         .mermaid-diagram svg [class*="Label"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
         .mermaid-diagram svg [class*="text"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
         .mermaid-diagram svg [class*="Text"] { color: #e5e7eb !important; fill: #e5e7eb !important; }
+
+        /* Packet Diagram - specific fixes for text visibility */
+        .mermaid-diagram svg .packet rect,
+        .mermaid-diagram svg [class*="packet"] rect { fill: #374151 !important; stroke: #6b7280 !important; }
+        .mermaid-diagram svg .packet text,
+        .mermaid-diagram svg [class*="packet"] text { fill: #e5e7eb !important; }
+
+        /* Architecture Diagram - improve border visibility */
+        .mermaid-diagram svg .architecture-group rect,
+        .mermaid-diagram svg [class*="group"] > rect { stroke: #6b7280 !important; stroke-width: 2px !important; }
+        .mermaid-diagram svg .architecture-service rect { stroke: #60a5fa !important; }
+
+        /* ER Diagram - relationship label boxes */
+        .mermaid-diagram svg .er.relationshipLabel rect { fill: #374151 !important; }
+
+        /* Sequence Diagram - loop/alt/opt box labels */
+        .mermaid-diagram svg .loopLine { stroke: #6b7280 !important; }
+        .mermaid-diagram svg rect.labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+
+        /* Sankey Diagram - make flows more visible */
+        .mermaid-diagram svg .sankey-link { stroke-opacity: 0.5 !important; }
+        .mermaid-diagram svg .sankey-node rect { fill: #60a5fa !important; }
+
         .mermaid-loading {
             background: #374151;
             border-radius: 0.5em;
