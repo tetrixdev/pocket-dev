@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 
@@ -79,7 +81,7 @@ class CodexAuthController extends Controller
 
             // Save the file
             file_put_contents($this->credentialsPath, json_encode($data, JSON_PRETTY_PRINT));
-            chmod($this->credentialsPath, 0600);
+            chmod($this->credentialsPath, 0660);
 
             Log::info("[Codex Auth] Credentials saved from JSON input");
 
@@ -168,24 +170,40 @@ class CodexAuthController extends Controller
                 ];
             }
 
-            // Check for OAuth format (accessToken indicates OAuth login)
-            if (isset($data["accessToken"])) {
-                $expiresAt = $data["expiresAt"] ?? null;
-                $now = time() * 1000; // Convert to milliseconds
+            // Check for OAuth format (tokens.access_token indicates OAuth login)
+            if (isset($data["tokens"]["access_token"])) {
+                $lastRefresh = $data["last_refresh"] ?? null;
+                // Codex source uses TOKEN_REFRESH_INTERVAL = 8 days (codex-rs/core/src/auth.rs)
+                $refreshIntervalDays = (int) config('ai.providers.codex.token_refresh_days', 8);
 
-                if ($expiresAt && $expiresAt < $now) {
+                if ($lastRefresh) {
+                    $refreshDate = new \DateTime($lastRefresh);
+                    $now = new \DateTime();
+                    $expiryDate = (clone $refreshDate)->modify("+{$refreshIntervalDays} days");
+
+                    if ($now > $expiryDate) {
+                        return [
+                            "authenticated" => false,
+                            "message" => "Token expired",
+                            "expired_at" => $expiryDate->format("Y-m-d H:i:s"),
+                        ];
+                    }
+
+                    $daysUntilExpiry = round(($expiryDate->getTimestamp() - $now->getTimestamp()) / 86400, 1);
+
                     return [
-                        "authenticated" => false,
-                        "message" => "Token expired",
-                        "expired_at" => date("Y-m-d H:i:s", $expiresAt / 1000),
+                        "authenticated" => true,
+                        "auth_type" => "subscription",
+                        "expires_at" => $expiryDate->format("Y-m-d H:i:s"),
+                        "days_until_expiry" => $daysUntilExpiry,
                     ];
                 }
 
                 return [
                     "authenticated" => true,
                     "auth_type" => "subscription",
-                    "expires_at" => $expiresAt ? date("Y-m-d H:i:s", $expiresAt / 1000) : null,
-                    "days_until_expiry" => $expiresAt ? round(($expiresAt - $now) / (1000 * 60 * 60 * 24), 1) : null,
+                    "expires_at" => null,
+                    "days_until_expiry" => null,
                 ];
             }
 
@@ -217,12 +235,131 @@ class CodexAuthController extends Controller
             return true;
         }
 
-        // Valid if has accessToken (OAuth format)
-        if (isset($data["accessToken"]) && !empty($data["accessToken"])) {
+        // Valid if has tokens.access_token (OAuth format)
+        if (isset($data["tokens"]["access_token"]) && !empty($data["tokens"]["access_token"])) {
             return true;
         }
 
         return false;
+    }
+
+    /**
+     * Serve the local upload script with this instance's URL pre-filled.
+     * Users can pipe it directly: bash <(curl -s https://pocketdev/codex/auth/upload-script)
+     */
+    public function downloadScript(): Response
+    {
+        $scriptPath = public_path('scripts/codex-auth.sh');
+        $script = file_get_contents($scriptPath);
+
+        // Pre-fill the PocketDev URL so the user doesn't have to type it
+        $instanceUrl = rtrim(url('/'), '/');
+        $script = str_replace(
+            'PD_URL="${1:-${POCKETDEV_URL:-}}"',
+            'PD_URL="${1:-${POCKETDEV_URL:-' . $instanceUrl . '}}"',
+            $script
+        );
+
+        return response($script, 200, [
+            'Content-Type' => 'text/plain; charset=utf-8',
+            'Content-Disposition' => 'inline; filename="codex-auth.sh"',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    /**
+     * Start device auth flow — dispatches a background job that runs codex login.
+     * The job parses the URL/code from codex output and stores them in cache.
+     * Frontend polls deviceStatus() to get the URL and code to show the user.
+     */
+    public function startDeviceAuth(): JsonResponse
+    {
+        // Already authenticated — no need to start a new session
+        if (file_exists($this->credentialsPath)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Already authenticated. Logout first if you want to switch accounts.',
+            ], 400);
+        }
+
+        // Check if there's already an active session in progress
+        $existing = Cache::get('codex_device_auth');
+        if ($existing && in_array($existing['status'], ['starting', 'ready'], true)) {
+            $expiresAt = $existing['expires_at'] ?? 0;
+            if ($expiresAt > time()) {
+                return response()->json([
+                    'success' => true,
+                    'status' => $existing['status'],
+                    'verification_url' => $existing['verification_url'] ?? null,
+                    'user_code' => $existing['user_code'] ?? null,
+                    'expires_in' => max(0, $expiresAt - time()),
+                ]);
+            }
+        }
+
+        // Store initial "starting" state so the polling endpoint can respond immediately
+        Cache::put('codex_device_auth', [
+            'status' => 'starting',
+            'started_at' => time(),
+            'expires_at' => time() + 960,
+        ], 960);
+
+        // Dispatch the long-running job to the queue container
+        \App\Jobs\StartCodexDeviceAuthJob::dispatch();
+
+        Log::info('[Codex Device Auth] Job dispatched');
+
+        return response()->json([
+            'success' => true,
+            'status' => 'starting',
+        ]);
+    }
+
+    /**
+     * Return the current device auth session status.
+     * Frontend polls this every 2-3 seconds after calling startDeviceAuth().
+     */
+    public function deviceStatus(): JsonResponse
+    {
+        // Auth.json already exists — authentication complete
+        if (file_exists($this->credentialsPath)) {
+            // Clear any leftover session cache
+            Cache::forget('codex_device_auth');
+
+            return response()->json([
+                'success' => true,
+                'status' => 'authenticated',
+            ]);
+        }
+
+        $session = Cache::get('codex_device_auth');
+
+        if (!$session) {
+            return response()->json(['success' => true, 'status' => 'none']);
+        }
+
+        // Check expiry
+        if (($session['expires_at'] ?? 0) <= time()) {
+            Cache::forget('codex_device_auth');
+            return response()->json(['success' => true, 'status' => 'expired']);
+        }
+
+        // Propagate job-reported "authenticated" status even if auth.json isn't visible here
+        if ($session['status'] === 'authenticated') {
+            return response()->json([
+                'success' => true,
+                'status' => 'authenticated',
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'status' => $session['status'],
+            'verification_url' => $session['verification_url'] ?? null,
+            'user_code' => $session['user_code'] ?? null,
+            'expires_in' => max(0, ($session['expires_at'] ?? 0) - time()),
+            'error' => $session['error'] ?? null,
+        ]);
     }
 
     /**
@@ -264,7 +401,7 @@ class CodexAuthController extends Controller
                 'description' => 'Default Codex agent',
                 'provider' => 'codex',
                 'model' => config('ai.providers.codex.default_model', 'gpt-5.3-codex'),
-                'reasoning_config' => ['effort' => 'minimal'],
+                'reasoning_config' => ['effort' => 'medium'],
                 'response_level' => 1,
                 'enabled' => true,
                 'is_default' => true,

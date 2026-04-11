@@ -135,6 +135,11 @@ Route::get("/codex/auth/status", [CodexAuthController::class, "status"])->name("
 Route::middleware(['auth', 'throttle:10,1'])->group(function () {
     Route::post("/codex/auth/upload-json", [CodexAuthController::class, "uploadJson"])->name("codex.auth.uploadJson");
     Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->name("codex.auth.logout");
+    // Inline device auth flow (no terminal/sudo required)
+    Route::post("/codex/auth/device-start", [CodexAuthController::class, "startDeviceAuth"])->name("codex.auth.deviceStart");
+    Route::get("/codex/auth/device-status", [CodexAuthController::class, "deviceStatus"])->name("codex.auth.deviceStatus");
+    // Serve the local-run upload script (pre-filled with this instance's URL)
+    Route::get("/codex/auth/upload-script", [CodexAuthController::class, "downloadScript"])->name("codex.auth.downloadScript");
 });
 
 // Chat - Multi-provider conversation interface
