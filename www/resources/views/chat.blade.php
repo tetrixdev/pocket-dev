@@ -739,10 +739,10 @@
                     g.branch-label rect { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
                     g.branch-label text { fill: #e5e7eb !important; }
 
-                    /* Git graph - commit and tag labels */
-                    .commit-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
+                    /* Git graph - commit and tag labels (override Mermaid's opacity: 0.5) */
+                    .commit-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; opacity: 1 !important; stroke: #6b7280 !important; }
                     .commit-label { fill: #e5e7eb !important; }
-                    .tag-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
+                    .tag-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; opacity: 1 !important; stroke: #6b7280 !important; }
                     .tag-label { fill: #e5e7eb !important; }
 
                     /* Sequence diagram - loop/alt/opt boxes (labelBox can be rect or polygon) */
