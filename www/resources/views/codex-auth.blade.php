@@ -323,7 +323,20 @@
                                 </label>
                                 <span id="file-name" class="text-xs text-gray-500">Geen bestand geselecteerd</span>
                             </div>
-                            <p class="text-xs text-gray-600">Pad op Windows: <code class="text-gray-500">%USERPROFILE%\.codex\auth.json</code> &nbsp;|&nbsp; macOS/Linux: <code class="text-gray-500">~/.codex/auth.json</code></p>
+                            <!-- Path hints with copy buttons -->
+                            <div class="bg-gray-900/60 rounded-lg border border-gray-700/50 p-3 space-y-2">
+                                <p class="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Bestandslocatie</p>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-gray-500 w-24 shrink-0">🪟 Windows</span>
+                                    <code class="text-xs text-gray-300 flex-1">%USERPROFILE%\.codex\auth.json</code>
+                                    <button type="button" onclick="copyCmd(this, '%USERPROFILE%\\.codex\\auth.json')" class="text-xs px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded transition-all">📋</button>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-gray-500 w-24 shrink-0">🐧 macOS/Linux</span>
+                                    <code class="text-xs text-gray-300 flex-1">~/.codex/auth.json</code>
+                                    <button type="button" onclick="copyCmd(this, '~/.codex/auth.json')" class="text-xs px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded transition-all">📋</button>
+                                </div>
+                            </div>
                             <!-- Textarea (filled by file picker, or paste manually) -->
                             <textarea id="json-input" rows="4" placeholder='{"OPENAI_API_KEY": "sk-proj-..."}'
                                 class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
