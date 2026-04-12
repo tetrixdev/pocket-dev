@@ -49,3 +49,98 @@ If a PocketDev tool returns an unexpected error or response:
 ## Hooks (File Protection)
 
 Claude Code CLI loads settings from `~/.claude/settings.json`. Users can view and configure settings via Settings → Hooks in the PocketDev UI. You can also edit this file on the user's request. See docs.anthropic.com/en/docs/claude-code/settings for available options.
+
+## Mermaid Diagrams
+
+PocketDev renders Mermaid diagrams in chat messages with a **dark theme**. Diagrams are automatically styled - no custom colors are needed in any cases. Custom colors can optionally be used for semantic meaning (e.g., success/failure states, status indicators).
+
+### General Purpose
+
+Use these for any discussion - explaining concepts, visualizing data, or organizing ideas:
+
+| Type | Syntax | When to Use |
+|------|--------|-------------|
+| Flowchart | `flowchart LR` | Explaining logic, decision trees, process flows, algorithms |
+| Mindmap | `mindmap` | Organizing ideas, hierarchical concepts, brainstorming |
+| Pie | `pie` | Showing proportions, distributions, breakdowns |
+| XY Chart | `xychart-beta` | Bar charts, line charts, data visualization |
+| Kanban | `kanban` | Task boards, workflow stages, status tracking |
+
+### Programming & Architecture
+
+Use these for technical contexts - code design, system communication, version control:
+
+| Type | Syntax | When to Use |
+|------|--------|-------------|
+| Sequence | `sequenceDiagram` | API interactions, request/response flows, system communication |
+| ERD | `erDiagram` | Database design, table relationships, data modeling |
+| Git Graph | `gitGraph` | Explaining branching strategies, release flows, merge patterns |
+| State | `stateDiagram-v2` | State machines, component lifecycles, status transitions |
+
+### Project Planning
+
+Use these for timelines, scheduling, and historical events:
+
+| Type | Syntax | When to Use |
+|------|--------|-------------|
+| Gantt | `gantt` | Project timelines, task scheduling, sprint planning |
+| Timeline | `timeline` | Historical events, chronological sequences |
+
+### Secondary Diagrams — Use When Appropriate
+
+Use these when they fit the specific use case:
+
+| Type | Syntax | When to Use |
+|------|--------|-------------|
+| Quadrant | `quadrantChart` | Priority matrices, comparison grids (effort vs impact) |
+| Sankey | `sankey-beta` | Showing flow quantities, resource allocation |
+| Block | `block-beta` | System architecture, component layouts |
+| User Journey | `journey` | User experience flows, satisfaction tracking |
+
+### Diagrams to Avoid
+
+| Type | Reason |
+|------|--------|
+| ZenUML | Not installed - will not render. Use `sequenceDiagram` instead. |
+| Class | ERD is preferred - cleaner style, same functionality. Use only if specifically showing inheritance/polymorphism. |
+| C4 | Limited styling support in dark theme |
+| Architecture | Limited styling support in dark theme |
+| Requirement | Rarely useful, complex syntax |
+
+### Styling Guidelines
+
+- **Default styling is preferred** - the dark theme handles colors automatically
+- **Text is white** on colored backgrounds - avoid light colors that would reduce contrast
+- **Only use custom colors when semantically meaningful**, such as:
+  - Success/failure flows (green/red)
+  - Status indicators (warning yellow, error red)
+  - Highlighting specific paths or elements
+
+### Color Palette (When Custom Colors Are Needed)
+
+Use these Tailwind 500-shade colors for good contrast with white text:
+
+| Color | Hex | Use For |
+|-------|-----|---------|
+| Blue | `#3b82f6` | Primary, info, default |
+| Emerald | `#10b981` | Success, positive |
+| Pink | `#ec4899` | Accent, highlight |
+| Amber | `#f59e0b` | Warning, caution |
+| Violet | `#8b5cf6` | Secondary accent |
+| Orange | `#f97316` | Attention |
+| Teal | `#14b8a6` | Alternative positive |
+| Red | `#ef4444` | Error, danger, negative |
+| Indigo | `#6366f1` | Alternative primary |
+| Green | `#22c55e` | Alternative success |
+
+### Example with Custom Colors
+
+```mermaid
+flowchart LR
+    A[Start] --> B{Valid?}
+    B -->|Yes| C[Process]
+    B -->|No| D[Error]
+
+    style C fill:#10b981,stroke:#059669
+    style D fill:#ef4444,stroke:#dc2626
+```

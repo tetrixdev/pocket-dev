@@ -632,21 +632,6 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
             integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I"
             crossorigin="anonymous"></script>
-    <!-- ZenUML external plugin for Mermaid - loaded dynamically before first render -->
-    <script>
-        // Flag to track ZenUML registration (loaded on-demand before first zenuml diagram)
-        window.zenUmlRegistered = false;
-        window.registerZenUml = async function() {
-            if (window.zenUmlRegistered) return;
-            try {
-                const { default: zenuml } = await import('https://cdn.jsdelivr.net/npm/@mermaid-js/mermaid-zenuml@0.2.2/dist/mermaid-zenuml.esm.min.mjs');
-                await mermaid.registerExternalDiagrams([zenuml]);
-                window.zenUmlRegistered = true;
-            } catch (e) {
-                console.warn('ZenUML registration failed:', e);
-            }
-        };
-    </script>
     <!--
         ===================================================================================
         MERMAID DARK THEME CONFIGURATION
@@ -722,8 +707,8 @@
 
                     /* Force all SVG text to be light colored - EXCEPT mindmap which uses dark text on colored nodes */
                     text:not([class*="section-"]), tspan { fill: #e5e7eb !important; }
-                    /* Mind map explicitly uses dark text on pastel backgrounds */
-                    [class*="section-"] text { fill: #1f2937 !important; }
+                    /* Mind map uses white text on 500-shade backgrounds */
+                    [class*="section-"] text { fill: #ffffff !important; }
 
                     /* State diagram */
                     .statediagram-state rect { fill: #374151 !important; }
@@ -733,7 +718,7 @@
                     .branchLabelBkg { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
                     .branchLabel { fill: #374151 !important; fill-opacity: 1 !important; }
                     .branchLabel rect { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
-                    .branchLabel text, .branch-label text { fill: #1f2937 !important; }
+                    .branchLabel text, .branch-label text { fill: #e5e7eb !important; }
                     .gitTitleLabel { fill: #e5e7eb !important; }
                     /* Branch name labels on the diagram itself */
                     g.branch-label rect { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
@@ -744,6 +729,9 @@
                     .commit-label { fill: #e5e7eb !important; }
                     .tag-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; opacity: 1 !important; stroke: #6b7280 !important; }
                     .tag-label { fill: #e5e7eb !important; }
+                    /* Git graph - HIGHLIGHT commits (gray fill, red border to stand out) */
+                    .commit-highlight-outer { fill: #374151 !important; stroke: #ef4444 !important; stroke-width: 2px !important; rx: 6 !important; ry: 6 !important; }
+                    .commit-highlight-inner { fill: #374151 !important; stroke: none !important; }
 
                     /* Sequence diagram - loop/alt/opt boxes (labelBox can be rect or polygon) */
                     .loopLine { stroke: #6b7280 !important; }
@@ -778,15 +766,15 @@
 
                     /* Architecture Diagram - improve border and text visibility */
                     .architecture-service { fill: #374151 !important; stroke: #60a5fa !important; stroke-width: 2px !important; }
-                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; font-size: 14px !important; font-weight: 400 !important; font-style: normal !important; }
+                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; font-size: 14px !important; font-weight: 300 !important; font-style: normal !important; }
                     .architecture-group { fill: transparent !important; stroke: #9ca3af !important; stroke-width: 2px !important; stroke-dasharray: 8 4 !important; }
                     .architecture-edge { stroke: #9ca3af !important; stroke-width: 1.5px !important; }
                     .node-bkg { stroke: #9ca3af !important; }
-                    /* Architecture labels - smaller font, prevent word-art look */
-                    [id*="architecture"] text, [aria-roledescription="architecture"] text { font-size: 14px !important; font-weight: 400 !important; font-style: normal !important; }
+                    /* Architecture labels - smaller font, lighter weight (prevent word-art look) */
+                    [id*="architecture"] text, [aria-roledescription="architecture"] text { font-size: 14px !important; font-weight: 300 !important; font-style: normal !important; }
 
                     /* Sankey Diagram - brighter flow colors */
-                    .sankey-node rect { fill: #60a5fa !important; stroke: #3b82f6 !important; }
+                    .sankey-node rect { fill: #3b82f6 !important; stroke: #1d4ed8 !important; }
                     .sankey-link { opacity: 0.6 !important; }
                     .sankey-link-path { stroke-opacity: 0.6 !important; }
 
@@ -848,47 +836,47 @@
                     activationBkgColor: '#4b5563',
                     activationBorderColor: '#6b7280',
 
-                    // === UNIFIED PASTEL COLOR PALETTE ===
-                    // Softer colors that work well on dark backgrounds with good contrast
+                    // === UNIFIED COLOR PALETTE (500 shades) ===
+                    // Darker, more saturated colors for good contrast with dark text
                     // Used consistently across pie, git, timeline, mindmap, sankey, xy charts
 
                     // === PIE CHART ===
-                    pie1: '#93c5fd',   // blue-300 (softer)
-                    pie2: '#6ee7b7',   // emerald-300
-                    pie3: '#f9a8d4',   // pink-300
-                    pie4: '#fcd34d',   // amber-300
-                    pie5: '#c4b5fd',   // violet-300
-                    pie6: '#fdba74',   // orange-300
-                    pie7: '#5eead4',   // teal-300
-                    pie8: '#fca5a5',   // red-300
-                    pie9: '#a5b4fc',   // indigo-300
-                    pie10: '#86efac',  // green-300
-                    pie11: '#f0abfc',  // fuchsia-300
-                    pie12: '#7dd3fc',  // sky-300
+                    pie1: '#3b82f6',   // blue-500
+                    pie2: '#10b981',   // emerald-500
+                    pie3: '#ec4899',   // pink-500
+                    pie4: '#f59e0b',   // amber-500
+                    pie5: '#8b5cf6',   // violet-500
+                    pie6: '#f97316',   // orange-500
+                    pie7: '#14b8a6',   // teal-500
+                    pie8: '#ef4444',   // red-500
+                    pie9: '#6366f1',   // indigo-500
+                    pie10: '#22c55e',  // green-500
+                    pie11: '#d946ef',  // fuchsia-500
+                    pie12: '#0ea5e9',  // sky-500
                     pieStrokeColor: '#1f2937',
                     pieTitleTextColor: '#e5e7eb',
                     pieLegendTextColor: '#e5e7eb',
-                    pieSectionTextColor: '#1f2937',  // Dark text on pastel segments
+                    pieSectionTextColor: '#ffffff',  // White text on 500-shade segments
 
                     // === GIT GRAPH ===
-                    // Branch line colors (using same pastel palette)
-                    git0: '#93c5fd',   // blue - main branch
-                    git1: '#6ee7b7',   // green - feature branches
-                    git2: '#f9a8d4',   // pink
-                    git3: '#fcd34d',   // amber
-                    git4: '#c4b5fd',   // violet
-                    git5: '#fdba74',   // orange
-                    git6: '#5eead4',   // teal
-                    git7: '#fca5a5',   // red
-                    // Branch label text colors (dark text on pastel backgrounds)
-                    gitBranchLabel0: '#1f2937',
-                    gitBranchLabel1: '#1f2937',
-                    gitBranchLabel2: '#1f2937',
-                    gitBranchLabel3: '#1f2937',
-                    gitBranchLabel4: '#1f2937',
-                    gitBranchLabel5: '#1f2937',
-                    gitBranchLabel6: '#1f2937',
-                    gitBranchLabel7: '#1f2937',
+                    // Branch line colors (using same 500-shade palette)
+                    git0: '#3b82f6',   // blue-500 - main branch
+                    git1: '#10b981',   // emerald-500 - feature branches
+                    git2: '#ec4899',   // pink-500
+                    git3: '#f59e0b',   // amber-500
+                    git4: '#8b5cf6',   // violet-500
+                    git5: '#f97316',   // orange-500
+                    git6: '#14b8a6',   // teal-500
+                    git7: '#ef4444',   // red-500
+                    // Branch label text colors (white text on 500-shade backgrounds)
+                    gitBranchLabel0: '#ffffff',
+                    gitBranchLabel1: '#ffffff',
+                    gitBranchLabel2: '#ffffff',
+                    gitBranchLabel3: '#ffffff',
+                    gitBranchLabel4: '#ffffff',
+                    gitBranchLabel5: '#ffffff',
+                    gitBranchLabel6: '#ffffff',
+                    gitBranchLabel7: '#ffffff',
                     // Commit labels
                     commitLabelColor: '#e5e7eb',
                     commitLabelBackground: '#374151',
@@ -910,43 +898,43 @@
                     relationLabelColor: '#e5e7eb',
 
                     // === SANKEY DIAGRAM ===
-                    // Use pastel colors for nodes, semi-transparent for flows
-                    sankeyNodeColor: '#93c5fd',
-                    sankeyLinkColor: '#93c5fd',
+                    // Use 500-shade colors for nodes, semi-transparent for flows
+                    sankeyNodeColor: '#3b82f6',
+                    sankeyLinkColor: '#3b82f6',
 
                     // === MINDMAP ===
                     // Uses cScale colors (same as timeline) for branch colors
 
                     // === TIMELINE / MINDMAP / XY CHART ===
-                    // Period and category colors (unified pastel palette)
-                    cScale0: '#93c5fd',  // blue
-                    cScale1: '#6ee7b7',  // green
-                    cScale2: '#f9a8d4',  // pink
-                    cScale3: '#fcd34d',  // amber
-                    cScale4: '#c4b5fd',  // violet
-                    cScale5: '#fdba74',  // orange
-                    cScale6: '#5eead4',  // teal
-                    cScale7: '#fca5a5',  // red
-                    cScale8: '#a5b4fc',  // indigo
-                    cScale9: '#86efac',  // green-light
-                    cScale10: '#f0abfc', // fuchsia
-                    cScale11: '#7dd3fc', // sky
-                    cScaleLabel0: '#1f2937',  // dark text on pastel backgrounds
-                    cScaleLabel1: '#1f2937',
-                    cScaleLabel2: '#1f2937',
-                    cScaleLabel3: '#1f2937',
-                    cScaleLabel4: '#1f2937',
-                    cScaleLabel5: '#1f2937',
-                    cScaleLabel6: '#1f2937',
-                    cScaleLabel7: '#1f2937',
-                    cScaleLabel8: '#1f2937',
-                    cScaleLabel9: '#1f2937',
-                    cScaleLabel10: '#1f2937',
-                    cScaleLabel11: '#1f2937',
+                    // Period and category colors (unified 500-shade palette)
+                    cScale0: '#3b82f6',  // blue-500
+                    cScale1: '#10b981',  // emerald-500
+                    cScale2: '#ec4899',  // pink-500
+                    cScale3: '#f59e0b',  // amber-500
+                    cScale4: '#8b5cf6',  // violet-500
+                    cScale5: '#f97316',  // orange-500
+                    cScale6: '#14b8a6',  // teal-500
+                    cScale7: '#ef4444',  // red-500
+                    cScale8: '#6366f1',  // indigo-500
+                    cScale9: '#22c55e',  // green-500
+                    cScale10: '#d946ef', // fuchsia-500
+                    cScale11: '#0ea5e9', // sky-500
+                    cScaleLabel0: '#ffffff',  // white text on 500-shade backgrounds
+                    cScaleLabel1: '#ffffff',
+                    cScaleLabel2: '#ffffff',
+                    cScaleLabel3: '#ffffff',
+                    cScaleLabel4: '#ffffff',
+                    cScaleLabel5: '#ffffff',
+                    cScaleLabel6: '#ffffff',
+                    cScaleLabel7: '#ffffff',
+                    cScaleLabel8: '#ffffff',
+                    cScaleLabel9: '#ffffff',
+                    cScaleLabel10: '#ffffff',
+                    cScaleLabel11: '#ffffff',
 
                     // === XY CHART specific ===
                     xyChart: {
-                        plotColorPalette: '#93c5fd,#6ee7b7,#f9a8d4,#fcd34d,#c4b5fd,#fdba74,#5eead4,#fca5a5'
+                        plotColorPalette: '#3b82f6,#10b981,#ec4899,#f59e0b,#8b5cf6,#f97316,#14b8a6,#ef4444'
                     }
                 }
             });
@@ -1012,17 +1000,17 @@
         }
         .mermaid-diagram svg { max-width: 100%; height: auto; }
 
-        /* SVG text elements - force light text color EXCEPT for diagrams with colored backgrounds */
-        /* Mind maps, pie charts use dark text on pastel backgrounds */
+        /* SVG text elements - force light text color */
         .mermaid-diagram svg text { fill: #e5e7eb !important; }
         .mermaid-diagram svg tspan { fill: #e5e7eb !important; }
-        /* Mind map sections need dark text on colored backgrounds */
+        /* Mind map sections - white text on 500-shade colored backgrounds */
         .mermaid-diagram svg [class*="section-"] text,
         .mermaid-diagram svg [class*="section-"] tspan,
         .mermaid-diagram svg .mindmap-node text,
-        .mermaid-diagram svg .mindmap-node tspan { fill: #1f2937 !important; }
-        /* Pie chart slice labels need dark text */
-        .mermaid-diagram svg .slice { fill: #1f2937 !important; }
+        .mermaid-diagram svg .mindmap-node tspan { fill: #ffffff !important; }
+        /* Pie chart - remove opacity (now using 500 shades), white text on slices */
+        .mermaid-diagram svg .pieCircle { opacity: 1 !important; }
+        .mermaid-diagram svg .slice { fill: #ffffff !important; }
 
         /* foreignObject contains HTML <span> elements (when htmlLabels: true) */
         .mermaid-diagram svg foreignObject * { color: #e5e7eb !important; }
@@ -1046,7 +1034,7 @@
         .mermaid-diagram svg[aria-roledescription="architecture"] text,
         .mermaid-diagram svg[aria-roledescription="architecture"] tspan {
             font-size: 14px !important;
-            font-weight: 400 !important;
+            font-weight: 300 !important;
             font-style: normal !important;
         }
 
@@ -1061,62 +1049,14 @@
         .mermaid-diagram svg .reqLabelBox { fill: #374151 !important; stroke: #6b7280 !important; }
         .mermaid-diagram svg rect.labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
 
+        /* Git graph - HIGHLIGHT commits (red border and exclamation mark) */
+        .mermaid-diagram svg .commit-highlight-outer { fill: #374151 !important; stroke: #ef4444 !important; stroke-width: 2px !important; rx: 6 !important; ry: 6 !important; }
+        .mermaid-diagram svg .commit-highlight-inner { fill: #374151 !important; stroke: none !important; }
+        .mermaid-diagram svg .highlight-icon { fill: #ef4444 !important; }
+
         /* Sankey Diagram - make flows more visible */
         .mermaid-diagram svg .sankey-link { stroke-opacity: 0.5 !important; }
-        .mermaid-diagram svg .sankey-node rect { fill: #60a5fa !important; }
-
-        /* ZenUML Dark Theme - Override skin CSS variables for dark mode */
-        .mermaid-diagram .zenuml {
-            --color-skin-canvas: #1f2937;
-            --color-skin-frame: #374151;
-            --color-skin-title: #374151;
-            --color-skin-participant: #374151;
-            --color-skin-base: #e5e7eb;
-            --color-border-base: #6b7280;
-            --color-border-frame: #6b7280;
-            --color-skin-message-arrow: #9ca3af;
-        }
-        /* ZenUML fix: SVG and container auto-size to content, fix alignment */
-        .mermaid-diagram svg[aria-roledescription="zenuml"] {
-            width: auto !important;
-            max-width: fit-content !important;
-        }
-        /* ZenUML inner container - prevent excessive width calculation */
-        .mermaid-diagram svg[aria-roledescription="zenuml"] foreignObject {
-            width: auto !important;
-        }
-        .mermaid-diagram svg[aria-roledescription="zenuml"] foreignObject > div {
-            display: inline-flex !important;
-            width: auto !important;
-        }
-        .mermaid-diagram .zenuml .sequence-diagram {
-            width: auto !important;
-            min-width: 0 !important;
-        }
-        /* Ensure lifeline layer matches message layer positioning */
-        .mermaid-diagram .zenuml .lifeline-layer {
-            width: auto !important;
-            min-width: auto !important;
-        }
-        .mermaid-diagram .zenuml .bg-skin-canvas { background-color: #1f2937 !important; }
-        .mermaid-diagram .zenuml .bg-skin-frame { background-color: #374151 !important; }
-        .mermaid-diagram .zenuml .bg-skin-title { background-color: #374151 !important; }
-        .mermaid-diagram .zenuml .bg-skin-participant { background-color: #4b5563 !important; }
-        .mermaid-diagram .zenuml .text-skin-base { color: #e5e7eb !important; }
-        .mermaid-diagram .zenuml .text-skin-title { color: #e5e7eb !important; }
-        .mermaid-diagram .zenuml .text-skin-participant { color: #e5e7eb !important; }
-        .mermaid-diagram .zenuml .text-skin-message { color: #e5e7eb !important; }
-        .mermaid-diagram .zenuml .text-skin-control { color: #9ca3af !important; }
-        .mermaid-diagram .zenuml .border-skin-frame { border-color: #6b7280 !important; }
-        .mermaid-diagram .zenuml .border-skin-participant { border-color: #6b7280 !important; }
-        .mermaid-diagram .zenuml .border-skin-message-arrow { border-color: #9ca3af !important; }
-        .mermaid-diagram .zenuml .text-skin-message-arrow { color: #9ca3af !important; }
-        /* ZenUML shadow override - remove light shadow, use subtle dark */
-        .mermaid-diagram .zenuml .shadow-participant { box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important; }
-        /* ZenUML line numbers and subtle text */
-        .mermaid-diagram .zenuml .text-gray-500 { color: #9ca3af !important; }
-        /* ZenUML lifeline dashed line - use CSS variable */
-        .mermaid-diagram .zenuml .lifeline .line { background: linear-gradient(to bottom, transparent 50%, #6b7280 50%) !important; background-size: 1px 10px !important; }
+        .mermaid-diagram svg .sankey-node rect { fill: #3b82f6 !important; }
 
         .mermaid-loading {
             background: #374151;
@@ -5878,6 +5818,7 @@
                         if (hash && window._mermaidSvgCache.has(hash)) {
                             console.log('[Mermaid Debug] Cache hit for hash:', hash);
                             placeholder.innerHTML = `<div class="mermaid-diagram">${window._mermaidSvgCache.get(hash)}</div>`;
+                            this.addHighlightIcons(placeholder);
                             placeholder.classList.add('mermaid-rendered');
                             continue;
                         }
@@ -5892,12 +5833,6 @@
                         try {
                             const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
                             console.log('[Mermaid Debug] Calling mermaid.render with id:', id);
-
-                            // Register ZenUML plugin on-demand if this is a ZenUML diagram
-                            if (decoded.trim().toLowerCase().startsWith('zenuml') && window.registerZenUml) {
-                                console.log('[Mermaid Debug] Registering ZenUML plugin for zenuml diagram');
-                                await window.registerZenUml();
-                            }
 
                             // Render with timeout to prevent hanging on complex/malicious diagrams
                             const { svg } = await Promise.race([
@@ -5916,6 +5851,10 @@
                             }
 
                             placeholder.innerHTML = `<div class="mermaid-diagram">${svg}</div>`;
+
+                            // Add exclamation marks to HIGHLIGHT commits in gitgraph
+                            this.addHighlightIcons(placeholder);
+
                             placeholder.classList.remove('mermaid-processing');
                             placeholder.classList.add('mermaid-rendered');
                             console.log('[Mermaid Debug] Placeholder rendered successfully');
@@ -5930,6 +5869,46 @@
                             placeholder.classList.add('mermaid-error');
                         }
                     }
+
+                    // Final pass: add icons to ALL gitgraph diagrams (including cached ones from marked renderer)
+                    this.addHighlightIcons(containerEl);
+                },
+
+                // Add exclamation mark icons to gitgraph HIGHLIGHT commits
+                addHighlightIcons(containerEl) {
+                    const highlights = containerEl.querySelectorAll('.commit-highlight-outer');
+                    highlights.forEach(rect => {
+                        // Skip if icon already exists (check parent for .highlight-icon)
+                        const parent = rect.parentNode;
+                        if (parent && parent.querySelector('.highlight-icon')) return;
+
+                        // Get position and size of the outer rect
+                        const x = parseFloat(rect.getAttribute('x')) || 0;
+                        const y = parseFloat(rect.getAttribute('y')) || 0;
+                        const width = parseFloat(rect.getAttribute('width')) || 20;
+                        const height = parseFloat(rect.getAttribute('height')) || 20;
+
+                        // Create exclamation mark text element
+                        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                        text.setAttribute('x', x + width / 2 - 0.5);
+                        text.setAttribute('y', y + height / 2 + 1.5);
+                        text.setAttribute('text-anchor', 'middle');
+                        text.setAttribute('dominant-baseline', 'middle');
+                        text.setAttribute('font-size', '14');
+                        text.setAttribute('font-weight', 'bold');
+                        text.setAttribute('class', 'highlight-icon');
+                        // Use style attribute to ensure red color isn't overridden
+                        text.setAttribute('style', 'fill: #ef4444 !important;');
+                        text.textContent = '!';
+
+                        // Insert after the inner rect (so it's on top)
+                        const inner = parent.querySelector('.commit-highlight-inner');
+                        if (inner && inner.nextSibling) {
+                            parent.insertBefore(text, inner.nextSibling);
+                        } else {
+                            parent.appendChild(text);
+                        }
+                    });
                 },
 
                 escapeHtmlForMermaid(text) {
