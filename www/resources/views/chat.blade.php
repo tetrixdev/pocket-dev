@@ -1598,8 +1598,6 @@
                     const text = token.text || '';
                     const lang = token.lang || '';
 
-                    console.log('[Mermaid Debug] code renderer called:', { lang, textLength: text.length });
-
                     // Mermaid blocks: check cache first, then return placeholder for post-processing
                     if (lang === 'mermaid') {
                         // Simple hash for cache lookup (djb2 algorithm)
@@ -1611,7 +1609,6 @@
 
                         // Check global cache - if found, output SVG directly (no flicker!)
                         if (window._mermaidSvgCache && window._mermaidSvgCache.has(hashStr)) {
-                            console.log('[Mermaid Debug] Cache hit in renderer for hash:', hashStr);
                             return `<div class="mermaid-placeholder mermaid-rendered"><div class="mermaid-diagram">${window._mermaidSvgCache.get(hashStr)}</div></div>`;
                         }
 
@@ -2137,7 +2134,6 @@
                         setTimeout(() => {
                             this.$nextTick(() => {
                                 const container = document.getElementById('messages');
-                                console.log('[Mermaid Debug] Initial render after loadSession');
                                 if (container) this.renderMermaidDiagrams(container);
                             });
                         }, 500);
@@ -2288,15 +2284,11 @@
 
                     // Trigger mermaid diagram rendering after message updates (debounced for streaming)
                     this.$watch('messages', () => {
-                        console.log('[Mermaid Debug] messages watcher fired, message count:', this.messages?.length);
                         clearTimeout(this._mermaidTimeout);
                         this._mermaidTimeout = setTimeout(() => {
                             this.$nextTick(() => {
                                 const container = document.getElementById('messages');
-                                console.log('[Mermaid Debug] Looking for container #messages:', !!container);
                                 if (container) {
-                                    const placeholders = container.querySelectorAll('.mermaid-placeholder');
-                                    console.log('[Mermaid Debug] Found placeholders:', placeholders.length);
                                     this.renderMermaidDiagrams(container);
                                 }
                             });
@@ -5745,7 +5737,6 @@
                         const openingLineEnd = text.indexOf('\n', lastMermaidStart);
                         if (openingLineEnd === -1) {
                             // No newline after ```mermaid yet - definitely incomplete
-                            console.log('[Mermaid Debug] Hiding unclosed block: no newline after opening');
                             processedText = text.substring(0, lastMermaidStart);
                         } else {
                             // Check if there's a closing ``` on its own line after the opening
@@ -5753,7 +5744,6 @@
                             // Match ``` that's at the start of a line (after \n) and followed by newline or end
                             if (!/\n```\s*(?:\n|$)/.test(contentAfterOpening)) {
                                 // Unclosed mermaid block - hide it completely until closed
-                                console.log('[Mermaid Debug] Hiding unclosed block: no closing fence found');
                                 processedText = text.substring(0, lastMermaidStart);
                             }
                         }
@@ -5773,18 +5763,11 @@
                 },
 
                 // Mermaid diagram rendering
+                // NOTE: The marked.js renderer is globally configured, but this render function
+                // only targets #messages container. Other markdown UIs (config pages) don't
+                // call this function, so mermaid placeholders would remain unrendered there.
+                // This is acceptable since those pages don't contain mermaid diagrams.
                 async renderMermaidDiagrams(containerEl) {
-                    console.log('[Mermaid Debug] renderMermaidDiagrams called, mermaid defined:', typeof mermaid !== 'undefined');
-
-                    // Debug: Check what's actually in the DOM
-                    const allPlaceholders = containerEl?.querySelectorAll('.mermaid-placeholder') || [];
-                    console.log('[Mermaid Debug] Total .mermaid-placeholder in DOM:', allPlaceholders.length);
-                    if (allPlaceholders.length === 0 && containerEl) {
-                        // Check if data-mermaid-b64 attribute exists anywhere
-                        const dataMermaid = containerEl.querySelectorAll('[data-mermaid-b64]');
-                        console.log('[Mermaid Debug] Elements with data-mermaid-b64:', dataMermaid.length);
-                    }
-
                     // Fallback: if Mermaid CDN failed to load, show code blocks instead
                     if (typeof mermaid === 'undefined') {
                         if (!containerEl) return;
@@ -5794,7 +5777,7 @@
                             if (!b64) continue;
                             const decoded = decodeURIComponent(escape(atob(b64)));
                             placeholder.innerHTML = `<div class="mermaid-error">
-                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation"></i> Mermaid library unavailable</div>
+                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mermaid library unavailable</div>
                                 <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
                             </div>`;
                             placeholder.classList.add('mermaid-error');
@@ -5806,17 +5789,14 @@
                     const placeholders = containerEl.querySelectorAll(
                         '.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error):not(.mermaid-processing)'
                     );
-                    console.log('[Mermaid Debug] Filtered placeholders to process:', placeholders.length);
 
                     for (const placeholder of placeholders) {
                         const b64 = placeholder.dataset.mermaidB64;
                         const hash = placeholder.dataset.mermaidHash;
-                        console.log('[Mermaid Debug] Processing placeholder, has data-mermaid-b64:', !!b64, 'hash:', hash);
                         if (!b64) continue;
 
                         // Check global cache first - instantly restore without flicker
                         if (hash && window._mermaidSvgCache.has(hash)) {
-                            console.log('[Mermaid Debug] Cache hit for hash:', hash);
                             placeholder.innerHTML = `<div class="mermaid-diagram">${window._mermaidSvgCache.get(hash)}</div>`;
                             this.addHighlightIcons(placeholder);
                             placeholder.classList.add('mermaid-rendered');
@@ -5828,11 +5808,9 @@
 
                         // Mark as processing to prevent race conditions
                         placeholder.classList.add('mermaid-processing');
-                        console.log('[Mermaid Debug] Processing placeholder, decoded length:', decoded.length);
 
                         try {
                             const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
-                            console.log('[Mermaid Debug] Calling mermaid.render with id:', id);
 
                             // Render with timeout to prevent hanging on complex/malicious diagrams
                             const { svg } = await Promise.race([
@@ -5842,12 +5820,9 @@
                                 )
                             ]);
 
-                            console.log('[Mermaid Debug] mermaid.render succeeded, svg length:', svg?.length);
-
                             // Cache the rendered SVG in global cache for future re-renders (prevents flicker)
                             if (hash) {
                                 window._mermaidSvgCache.set(hash, svg);
-                                console.log('[Mermaid Debug] Cached SVG for hash:', hash);
                             }
 
                             placeholder.innerHTML = `<div class="mermaid-diagram">${svg}</div>`;
@@ -5857,12 +5832,10 @@
 
                             placeholder.classList.remove('mermaid-processing');
                             placeholder.classList.add('mermaid-rendered');
-                            console.log('[Mermaid Debug] Placeholder rendered successfully');
                         } catch (err) {
-                            console.error('[Mermaid Debug] Render error:', err);
                             console.error('Mermaid render error:', err);
                             placeholder.innerHTML = `<div class="mermaid-error">
-                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation"></i> ${err.message === 'Diagram render timeout' ? 'Diagram render timeout' : 'Diagram syntax error'}</div>
+                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ${err.message === 'Diagram render timeout' ? 'Diagram render timeout' : 'Diagram syntax error'}</div>
                                 <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
                             </div>`;
                             placeholder.classList.remove('mermaid-processing');
@@ -5889,6 +5862,7 @@
                         const height = parseFloat(rect.getAttribute('height')) || 20;
 
                         // Create exclamation mark text element
+                        // Position offsets (-0.5, +1.5) are visual fine-tuning for centering the "!" character
                         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
                         text.setAttribute('x', x + width / 2 - 0.5);
                         text.setAttribute('y', y + height / 2 + 1.5);
