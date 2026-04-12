@@ -132,9 +132,24 @@ if [ -n "$max_window" ] && [ "$max_window" -ge 900000 ]; then
   adaptive_allowed=true
 fi
 
+overall_ok=false
+for result in "$result_standard" "$result_suffix" "$result_beta"; do
+  case "$result" in
+    *"\"status\":\"ok\""*)
+      overall_ok=true
+      break
+      ;;
+  esac
+done
+
+probe_status="failed"
+if [ "$overall_ok" = true ]; then
+  probe_status="ok"
+fi
+
 cat > "$OUTPUT_JSON" <<JSON
 {
-  "ok": true,
+  "ok": $overall_ok,
   "claude_version": "$claude_version",
   "adaptive_allowed": $adaptive_allowed,
   "max_context_window": ${max_window:-0},
@@ -148,7 +163,7 @@ JSON
 
 cat > "$OUTPUT_ENV" <<ENV
 PD_CLAUDE_ADAPTIVE_ALLOWED=$adaptive_allowed
-PD_CLAUDE_PROBE_STATUS=ok
+PD_CLAUDE_PROBE_STATUS=$probe_status
 ENV
 
 exit 0

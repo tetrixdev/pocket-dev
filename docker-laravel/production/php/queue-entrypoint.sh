@@ -220,10 +220,13 @@ if [ -x /usr/local/bin/claude-capability-probe.sh ]; then
     /usr/local/bin/claude-capability-probe.sh || true
 
     if [ -f /tmp/claude-capability-probe.env ]; then
-        # shellcheck source=/dev/null
-        . /tmp/claude-capability-probe.env
-        export PD_CLAUDE_ADAPTIVE_ALLOWED
-        export PD_CLAUDE_PROBE_STATUS
+        while IFS='=' read -r key value; do
+            case "$key" in
+                PD_CLAUDE_ADAPTIVE_ALLOWED|PD_CLAUDE_PROBE_STATUS)
+                    export "$key=$value"
+                    ;;
+            esac
+        done < /tmp/claude-capability-probe.env
     fi
 
     if [ -f /tmp/claude-capability-probe.json ]; then

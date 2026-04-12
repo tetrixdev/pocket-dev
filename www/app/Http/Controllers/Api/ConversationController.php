@@ -386,17 +386,24 @@ class ConversationController extends Controller
             ], 409);
         }
 
-        $this->streamManager->startStream($conversation->uuid, [
-            'model' => $conversation->model,
-            'provider' => $conversation->provider_type,
-            'command' => 'compact',
-        ]);
+        try {
+            $this->streamManager->startStream($conversation->uuid, [
+                'model' => $conversation->model,
+                'provider' => $conversation->provider_type,
+                'command' => 'compact',
+            ]);
 
-        ProcessConversationStream::dispatch(
-            $conversation->uuid,
-            '/compact',
-            []
-        );
+            ProcessConversationStream::dispatch(
+                $conversation->uuid,
+                '/compact',
+                []
+            );
+        } catch (\Throwable $e) {
+            $this->streamManager->cleanup($conversation->uuid);
+            RequestFlowLogger::logError('controller.compact.exception', 'Compact request failed', $e);
+            RequestFlowLogger::endRequest('error');
+            throw $e;
+        }
 
         RequestFlowLogger::endRequest('success');
         return response()->json([

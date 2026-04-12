@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Conversation;
 use App\Models\Setting;
+use Illuminate\Support\Facades\DB;
 
 class ClaudeContextPolicyService
 {
@@ -147,19 +148,42 @@ class ClaudeContextPolicyService
             return false;
         }
 
-        $demotions = $this->getWorkspaceDemotions();
-        if (isset($demotions[$workspaceId])) {
-            return false;
-        }
+        return DB::transaction(function () use ($workspaceId, $reason): bool {
+            $setting = Setting::where('key', self::WORKSPACE_DEMOTIONS_KEY)
+                ->lockForUpdate()
+                ->first();
 
-        $demotions[$workspaceId] = [
-            'demoted_at' => now()->toIso8601String(),
-            'reason' => $reason,
-        ];
+            $demotions = [];
+            if ($setting) {
+                $decoded = json_decode((string) $setting->value, true);
+                if (is_array($decoded)) {
+                    $demotions = $decoded;
+                }
+            }
 
-        Setting::set(self::WORKSPACE_DEMOTIONS_KEY, $demotions);
+            if (isset($demotions[$workspaceId])) {
+                return false;
+            }
 
-        return true;
+            $demotions[$workspaceId] = [
+                'demoted_at' => now()->toIso8601String(),
+                'reason' => $reason,
+            ];
+
+            $storedValue = json_encode($demotions);
+
+            if ($setting) {
+                $setting->value = $storedValue;
+                $setting->save();
+            } else {
+                Setting::create([
+                    'key' => self::WORKSPACE_DEMOTIONS_KEY,
+                    'value' => $storedValue,
+                ]);
+            }
+
+            return true;
+        });
     }
 
     public function isHardPromptLimitError(string $message): bool
