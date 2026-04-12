@@ -14,6 +14,12 @@
         window.TITLE_MAX_LENGTH = 50;      // Maximum allowed characters
         window.TITLE_MOBILE_LENGTH = 25;   // Approximate mobile truncation point
 
+        // Strip Alpine.js directives from HTML to prevent infinite re-initialization
+        // loops when injected via x-html (e.g. code examples containing x-data, @click, etc.)
+        window.stripAlpineDirectives = function(html) {
+            return html.replace(/\s(?:x-(?:data|init|show|bind|on|text|html|model|for|if|transition|effect|ref|cloak|teleport|ignore|id|trap|collapse|intersect|mask|anchor)\b(?::[a-z0-9._-]+)?(?:\.[a-z0-9._-]+)*|@[a-z][a-z0-9._-]*(?:\.[a-z0-9._-]+)*|:[a-z][a-z0-9._-]*)(?:="[^"]*"|='[^']*')?/gi, '');
+        };
+
         // Global helper to linkify file paths in HTML content
         window.linkifyFilePaths = function(html) {
             // Allowed paths from Laravel config (single source of truth)
@@ -189,28 +195,23 @@
 
                                 // Render content based on type
                                 if (updatedEntry.isHtml) {
-                                    // Sanitize HTML for safe rendering in iframe
-                                    let sanitized = DOMPurify.sanitize(updatedEntry.content, {
-                                        WHOLE_DOCUMENT: true,
-                                        ADD_TAGS: ['style', 'link', 'base'],
-                                        ADD_ATTR: ['target'],
-                                    });
                                     // Inject target="_blank" for links - preserve existing <base href> if present
-                                    if (/<base\s[^>]*href=/i.test(sanitized)) {
+                                    let html = updatedEntry.content;
+                                    if (/<base\s[^>]*href=/i.test(html)) {
                                         // Existing base tag with href - add target attribute to it
-                                        sanitized = sanitized.replace(/<base(\s[^>]*)(href="[^"]*")([^>]*)>/i, '<base$1$2$3 target="_blank">');
-                                    } else if (sanitized.includes('<head>')) {
-                                        sanitized = sanitized.replace('<head>', '<head><base target="_blank">');
-                                    } else if (sanitized.includes('<head ')) {
-                                        sanitized = sanitized.replace(/<head([^>]*)>/, '<head$1><base target="_blank">');
+                                        html = html.replace(/<base(\s[^>]*)(href="[^"]*")([^>]*)>/i, '<base$1$2$3 target="_blank">');
+                                    } else if (html.includes('<head>')) {
+                                        html = html.replace('<head>', '<head><base target="_blank">');
+                                    } else if (html.includes('<head ')) {
+                                        html = html.replace(/<head([^>]*)>/, '<head$1><base target="_blank">');
                                     } else {
-                                        sanitized = '<base target="_blank">' + sanitized;
+                                        html = '<base target="_blank">' + html;
                                     }
-                                    updatedEntry.sanitizedHtml = sanitized;
+                                    updatedEntry.sanitizedHtml = html;
                                 } else if (updatedEntry.isMarkdown) {
                                     let html = marked.parse(updatedEntry.content);
                                     html = window.linkifyFilePaths(html);
-                                    updatedEntry.renderedContent = DOMPurify.sanitize(html);
+                                    updatedEntry.renderedContent = window.stripAlpineDirectives(html);
                                 } else {
                                     // Syntax highlight then linkify
                                     const ext = data.extension;
@@ -359,7 +360,7 @@
                                 if (currentEntry.isMarkdown) {
                                     let html = marked.parse(this.editContent);
                                     html = window.linkifyFilePaths(html);
-                                    currentEntry.renderedContent = DOMPurify.sanitize(html);
+                                    currentEntry.renderedContent = window.stripAlpineDirectives(html);
                                 } else {
                                     let highlighted;
                                     if (ext && hljs.getLanguage(ext)) {
@@ -626,11 +627,319 @@
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
             integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
             crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.3.1/dist/purify.min.js"
-            integrity="sha384-80VlBZnyAwkkqtSfg5NhPyZff6nU4K/qniLBL8Jnm4KDv6jZhLiYtJbhglg/i9ww"
-            crossorigin="anonymous"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
+            integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I"
+            crossorigin="anonymous"></script>
+    <!--
+        ===================================================================================
+        MERMAID DARK THEME CONFIGURATION
+        ===================================================================================
+
+        This configuration ensures Mermaid diagrams render correctly in PocketDev's dark UI.
+
+        WHY 'base' THEME:
+        - Only the 'base' theme allows full customization via themeVariables
+        - Other themes (dark, forest, etc.) have hardcoded values that can't be overridden
+        - Source: https://mermaid.js.org/config/theming.html
+
+        WHY htmlLabels: false:
+        - By default, Mermaid uses <foreignObject> with HTML <span> elements for text
+        - This makes CSS styling difficult because the text isn't in SVG <text> elements
+        - Setting htmlLabels: false forces pure SVG <text> elements
+        - Source: https://github.com/mermaid-js/mermaid/issues/2688
+
+        WHY themeCSS:
+        - Mermaid embeds inline styles in the SVG that override external CSS
+        - themeCSS injects rules directly into Mermaid's rendering context
+        - We use !important to override Mermaid's inline styles
+        - Source: https://mermaid.js.org/config/schema-docs/config.html
+
+        COLOR PALETTE (Tailwind Gray):
+        - #1f2937 (gray-800) - darkest, used for backgrounds
+        - #374151 (gray-700) - medium dark, used for node fills
+        - #4b5563 (gray-600) - medium, used for secondary elements
+        - #6b7280 (gray-500) - borders and strokes
+        - #9ca3af (gray-400) - lines and subtle elements
+        - #e5e7eb (gray-200) - text color (light on dark)
+
+        DIAGRAM-SPECIFIC VARIABLES:
+        - Some diagram types ignore general themeVariables and need specific ones
+        - Flowcharts need: mainBkg, nodeTextColor (not just primaryColor)
+        - State diagrams need: labelColor, altBackground
+        - Class diagrams need: classText
+        - Git graphs need: git0-7, gitBranchLabel0-7, commitLabelBackground
+        - Pie charts need: pie1-12 (distinct colors for segments)
+
+        KNOWN ISSUES:
+        - Git graph branch labels may still show white backgrounds in some versions
+        - Workaround: inspect rendered SVG for class names and add to themeCSS
+
+        SOURCES:
+        - https://mermaid.js.org/config/theming.html
+        - https://github.com/mermaid-js/mermaid/blob/develop/docs/syntax/gitgraph.md
+        - https://forum.obsidian.md/t/mermaid-dark-light-theme-css-snippet/73147
+        - https://discourse.devontechnologies.com/t/mermaid-dark-theme-tutorial/66935
+        ===================================================================================
+    -->
+    <script>
+        if (typeof mermaid !== 'undefined') {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'base',  // Only 'base' allows full customization
+                securityLevel: 'strict',
+                fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+
+                // Use pure SVG <text> elements instead of foreignObject/HTML
+                // This gives us better CSS control over text styling
+                flowchart: { htmlLabels: false },
+
+                // Inject CSS directly into Mermaid's rendering context
+                // Required because Mermaid applies inline styles that override external CSS
+                themeCSS: `
+                    /* Flowchart nodes and labels */
+                    .nodeLabel, .edgeLabel, .label { color: #e5e7eb !important; }
+                    .node rect, .node circle, .node ellipse, .node polygon, .node path { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .cluster rect { fill: #1f2937 !important; stroke: #4b5563 !important; }
+                    /* Flowchart edge labels - make background fully transparent */
+                    .edgeLabel .label rect, .edgeLabel rect.background { fill: transparent !important; opacity: 0 !important; }
+
+                    /* Force all SVG text to be light colored - EXCEPT mindmap which uses dark text on colored nodes */
+                    text:not([class*="section-"]), tspan { fill: #e5e7eb !important; }
+                    /* Mind map uses white text on 500-shade backgrounds */
+                    [class*="section-"] text { fill: #ffffff !important; }
+
+                    /* State diagram */
+                    .statediagram-state rect { fill: #374151 !important; }
+                    .stateLabel { fill: #e5e7eb !important; }
+
+                    /* Git graph - branch labels (solid background, not transparent) */
+                    .branchLabelBkg { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
+                    .branchLabel { fill: #374151 !important; fill-opacity: 1 !important; }
+                    .branchLabel rect { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
+                    .branchLabel text, .branch-label text { fill: #e5e7eb !important; }
+                    .gitTitleLabel { fill: #e5e7eb !important; }
+                    /* Branch name labels on the diagram itself */
+                    g.branch-label rect { fill: #374151 !important; fill-opacity: 1 !important; stroke: #6b7280 !important; }
+                    g.branch-label text { fill: #e5e7eb !important; }
+
+                    /* Git graph - commit and tag labels (override Mermaid's opacity: 0.5) */
+                    .commit-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; opacity: 1 !important; stroke: #6b7280 !important; }
+                    .commit-label { fill: #e5e7eb !important; }
+                    .tag-label-bkg { fill: #374151 !important; fill-opacity: 1 !important; opacity: 1 !important; stroke: #6b7280 !important; }
+                    .tag-label { fill: #e5e7eb !important; }
+                    /* Git graph - HIGHLIGHT commits (gray fill, red border to stand out) */
+                    .commit-highlight-outer { fill: #374151 !important; stroke: #ef4444 !important; stroke-width: 2px !important; rx: 6 !important; ry: 6 !important; }
+                    .commit-highlight-inner { fill: #374151 !important; stroke: none !important; }
+
+                    /* Sequence diagram - loop/alt/opt boxes (labelBox can be rect or polygon) */
+                    .loopLine { stroke: #6b7280 !important; }
+                    .loopText, .loopText tspan { fill: #e5e7eb !important; }
+                    .labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    polygon.labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .labelText { fill: #e5e7eb !important; }
+
+                    /* ER Diagram - clean relationship labels (no background) */
+                    .er.relationshipLabel { fill: #e5e7eb !important; }
+                    .er.relationshipLabelBox, .relationshipLabelBox { fill: transparent !important; stroke: none !important; background: transparent !important; }
+                    .er.entityBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .er.attributeBoxEven { fill: #374151 !important; }
+                    .er.attributeBoxOdd { fill: #4b5563 !important; }
+
+                    /* Requirement Diagram - fix white label box */
+                    .reqBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .reqTitle, .reqTitle tspan { fill: #e5e7eb !important; }
+                    .reqLabelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .reqLabel, .relationshipLabel { fill: #e5e7eb !important; }
+                    g.requirement rect, g.element rect { fill: #374151 !important; stroke: #6b7280 !important; }
+                    g.relationship rect { fill: #374151 !important; stroke: #6b7280 !important; }
+                    g.relationship text { fill: #e5e7eb !important; }
+                    rect[fill="white"], rect[fill="#ffffff"] { fill: #374151 !important; }
+
+                    /* Packet Diagram - fix text visibility (target actual Mermaid classes) */
+                    .packetBlock { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .packetLabel { fill: #e5e7eb !important; }
+                    .packetByte { fill: #e5e7eb !important; }
+                    .packetByte.start, .packetByte.end { fill: #9ca3af !important; }
+                    .packetTitle { fill: #e5e7eb !important; }
+
+                    /* Architecture Diagram - improve border and text visibility */
+                    .architecture-service { fill: #374151 !important; stroke: #60a5fa !important; stroke-width: 2px !important; }
+                    .architecture-service text, .architecture-service tspan { fill: #e5e7eb !important; font-size: 14px !important; font-weight: 300 !important; font-style: normal !important; }
+                    .architecture-group { fill: transparent !important; stroke: #9ca3af !important; stroke-width: 2px !important; stroke-dasharray: 8 4 !important; }
+                    .architecture-edge { stroke: #9ca3af !important; stroke-width: 1.5px !important; }
+                    .node-bkg { stroke: #9ca3af !important; }
+                    /* Architecture labels - smaller font, lighter weight (prevent word-art look) */
+                    [id*="architecture"] text, [aria-roledescription="architecture"] text { font-size: 14px !important; font-weight: 300 !important; font-style: normal !important; }
+
+                    /* Sankey Diagram - brighter flow colors */
+                    .sankey-node rect { fill: #3b82f6 !important; stroke: #1d4ed8 !important; }
+                    .sankey-link { opacity: 0.6 !important; }
+                    .sankey-link-path { stroke-opacity: 0.6 !important; }
+
+                    /* Generic label elements (fallback selectors) */
+                    .labelRect { fill: #374151 !important; stroke: #6b7280 !important; }
+                    .labelText { fill: #e5e7eb !important; }
+                    .label rect { fill: #374151 !important; }
+                `,
+
+                themeVariables: {
+                    // === CORE DARK MODE ===
+                    darkMode: true,
+                    background: '#1f2937',
+
+                    // === PRIMARY COLORS (used by most diagram types) ===
+                    primaryColor: '#374151',        // Node backgrounds
+                    primaryTextColor: '#e5e7eb',    // Text on primary elements
+                    primaryBorderColor: '#6b7280',  // Borders
+                    secondaryColor: '#4b5563',
+                    secondaryTextColor: '#e5e7eb',
+                    secondaryBorderColor: '#6b7280',
+                    tertiaryColor: '#1f2937',
+                    tertiaryTextColor: '#e5e7eb',
+
+                    // === GENERIC ===
+                    lineColor: '#9ca3af',
+                    textColor: '#e5e7eb',
+
+                    // === FLOWCHART ===
+                    // Flowcharts use these instead of primaryColor
+                    mainBkg: '#374151',              // Node fill (critical for flowcharts!)
+                    nodeTextColor: '#e5e7eb',        // Text inside nodes
+                    nodeBorder: '#6b7280',
+                    clusterBkg: '#1f2937',           // Subgraph background
+                    clusterBorder: '#4b5563',
+                    edgeLabelBackground: 'transparent',  // No background on edge labels (cleaner)
+                    titleColor: '#e5e7eb',
+
+                    // === CLASS DIAGRAM ===
+                    classText: '#e5e7eb',            // Text in class boxes
+
+                    // === STATE DIAGRAM ===
+                    labelColor: '#e5e7eb',           // State labels
+                    altBackground: '#374151',        // Alternate state background
+
+                    // === SEQUENCE DIAGRAM ===
+                    actorBkg: '#374151',
+                    actorTextColor: '#e5e7eb',
+                    actorBorder: '#6b7280',
+                    signalColor: '#9ca3af',
+                    signalTextColor: '#e5e7eb',
+                    labelBoxBkgColor: '#374151',
+                    labelBoxBorderColor: '#6b7280',
+                    labelTextColor: '#e5e7eb',
+                    loopTextColor: '#e5e7eb',
+                    noteBkgColor: '#4b5563',
+                    noteTextColor: '#e5e7eb',
+                    noteBorderColor: '#6b7280',
+                    activationBkgColor: '#4b5563',
+                    activationBorderColor: '#6b7280',
+
+                    // === UNIFIED COLOR PALETTE (500 shades) ===
+                    // Darker, more saturated colors for good contrast with dark text
+                    // Used consistently across pie, git, timeline, mindmap, sankey, xy charts
+
+                    // === PIE CHART ===
+                    pie1: '#3b82f6',   // blue-500
+                    pie2: '#10b981',   // emerald-500
+                    pie3: '#ec4899',   // pink-500
+                    pie4: '#f59e0b',   // amber-500
+                    pie5: '#8b5cf6',   // violet-500
+                    pie6: '#f97316',   // orange-500
+                    pie7: '#14b8a6',   // teal-500
+                    pie8: '#ef4444',   // red-500
+                    pie9: '#6366f1',   // indigo-500
+                    pie10: '#22c55e',  // green-500
+                    pie11: '#d946ef',  // fuchsia-500
+                    pie12: '#0ea5e9',  // sky-500
+                    pieStrokeColor: '#1f2937',
+                    pieTitleTextColor: '#e5e7eb',
+                    pieLegendTextColor: '#e5e7eb',
+                    pieSectionTextColor: '#ffffff',  // White text on 500-shade segments
+
+                    // === GIT GRAPH ===
+                    // Branch line colors (using same 500-shade palette)
+                    git0: '#3b82f6',   // blue-500 - main branch
+                    git1: '#10b981',   // emerald-500 - feature branches
+                    git2: '#ec4899',   // pink-500
+                    git3: '#f59e0b',   // amber-500
+                    git4: '#8b5cf6',   // violet-500
+                    git5: '#f97316',   // orange-500
+                    git6: '#14b8a6',   // teal-500
+                    git7: '#ef4444',   // red-500
+                    // Branch label text colors (white text on 500-shade backgrounds)
+                    gitBranchLabel0: '#ffffff',
+                    gitBranchLabel1: '#ffffff',
+                    gitBranchLabel2: '#ffffff',
+                    gitBranchLabel3: '#ffffff',
+                    gitBranchLabel4: '#ffffff',
+                    gitBranchLabel5: '#ffffff',
+                    gitBranchLabel6: '#ffffff',
+                    gitBranchLabel7: '#ffffff',
+                    // Commit labels
+                    commitLabelColor: '#e5e7eb',
+                    commitLabelBackground: '#374151',
+                    // Tag labels
+                    tagLabelBackground: '#374151',
+                    tagLabelBorder: '#6b7280',
+                    tagLabelColor: '#e5e7eb',
+
+                    // === ER DIAGRAM ===
+                    attributeBackgroundColorEven: '#374151',
+                    attributeBackgroundColorOdd: '#4b5563',
+
+                    // === REQUIREMENT DIAGRAM ===
+                    requirementBackground: '#374151',
+                    requirementBorderColor: '#6b7280',
+                    requirementTextColor: '#e5e7eb',
+                    relationColor: '#9ca3af',
+                    relationLabelBackground: '#374151',
+                    relationLabelColor: '#e5e7eb',
+
+                    // === SANKEY DIAGRAM ===
+                    // Use 500-shade colors for nodes, semi-transparent for flows
+                    sankeyNodeColor: '#3b82f6',
+                    sankeyLinkColor: '#3b82f6',
+
+                    // === MINDMAP ===
+                    // Uses cScale colors (same as timeline) for branch colors
+
+                    // === TIMELINE / MINDMAP / XY CHART ===
+                    // Period and category colors (unified 500-shade palette)
+                    cScale0: '#3b82f6',  // blue-500
+                    cScale1: '#10b981',  // emerald-500
+                    cScale2: '#ec4899',  // pink-500
+                    cScale3: '#f59e0b',  // amber-500
+                    cScale4: '#8b5cf6',  // violet-500
+                    cScale5: '#f97316',  // orange-500
+                    cScale6: '#14b8a6',  // teal-500
+                    cScale7: '#ef4444',  // red-500
+                    cScale8: '#6366f1',  // indigo-500
+                    cScale9: '#22c55e',  // green-500
+                    cScale10: '#d946ef', // fuchsia-500
+                    cScale11: '#0ea5e9', // sky-500
+                    cScaleLabel0: '#ffffff',  // white text on 500-shade backgrounds
+                    cScaleLabel1: '#ffffff',
+                    cScaleLabel2: '#ffffff',
+                    cScaleLabel3: '#ffffff',
+                    cScaleLabel4: '#ffffff',
+                    cScaleLabel5: '#ffffff',
+                    cScaleLabel6: '#ffffff',
+                    cScaleLabel7: '#ffffff',
+                    cScaleLabel8: '#ffffff',
+                    cScaleLabel9: '#ffffff',
+                    cScaleLabel10: '#ffffff',
+                    cScaleLabel11: '#ffffff',
+
+                    // === XY CHART specific ===
+                    xyChart: {
+                        plotColorPalette: '#3b82f6,#10b981,#ec4899,#f59e0b,#8b5cf6,#f97316,#14b8a6,#ef4444'
+                    }
+                }
+            });
+        }
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
           integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA=="
           crossorigin="anonymous" referrerpolicy="no-referrer" />
@@ -658,6 +967,133 @@
         /* Wrapper for horizontal scroll on tables - applied via JS */
         .table-wrapper { overflow-x: auto; margin: 1em 0; -webkit-overflow-scrolling: touch; }
         .table-wrapper table { margin: 0; }
+
+        /*
+         * =======================================================================
+         * MERMAID DIAGRAM EXTERNAL CSS
+         * =======================================================================
+         *
+         * These styles apply to the container wrapping Mermaid SVGs.
+         * They work in combination with the themeCSS injected in mermaid.initialize().
+         *
+         * WHY EXTERNAL CSS:
+         * - Container styling (background, padding, scrolling) is handled here
+         * - themeCSS handles internal SVG element styling
+         *
+         * WHY !important:
+         * - Mermaid applies inline styles that need to be overridden
+         * - External CSS has lower specificity than inline styles
+         *
+         * NOTE: If text is still invisible after themeCSS changes, inspect the
+         * rendered SVG in browser DevTools to find the correct class names.
+         * =======================================================================
+         */
+        .mermaid-placeholder { margin: 1em 0; }
+        .mermaid-diagram {
+            background: #1f2937;  /* Same as Mermaid's background themeVariable */
+            border-radius: 0.5em;
+            padding: 1em;
+            overflow-x: auto;
+            margin: 1em 0;
+            display: flex;
+            justify-content: center;
+        }
+        .mermaid-diagram svg { max-width: 100%; height: auto; }
+
+        /* SVG text elements - force light text color */
+        .mermaid-diagram svg text { fill: #e5e7eb !important; }
+        .mermaid-diagram svg tspan { fill: #e5e7eb !important; }
+        /* Mind map sections - white text on 500-shade colored backgrounds */
+        .mermaid-diagram svg [class*="section-"] text,
+        .mermaid-diagram svg [class*="section-"] tspan,
+        .mermaid-diagram svg .mindmap-node text,
+        .mermaid-diagram svg .mindmap-node tspan { fill: #ffffff !important; }
+        /* Pie chart - remove opacity (now using 500 shades), white text on slices */
+        .mermaid-diagram svg .pieCircle { opacity: 1 !important; }
+        .mermaid-diagram svg .slice { fill: #ffffff !important; }
+
+        /* foreignObject contains HTML <span> elements (when htmlLabels: true) */
+        .mermaid-diagram svg foreignObject * { color: #e5e7eb !important; }
+
+        /* Catch-all selectors for any label-related classes - exclude section labels */
+        .mermaid-diagram svg [class*="label"]:not([class*="section-"]) { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="Label"]:not([class*="section-"]) { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="text"]:not([class*="section-"]) { color: #e5e7eb !important; fill: #e5e7eb !important; }
+        .mermaid-diagram svg [class*="Text"]:not([class*="section-"]) { color: #e5e7eb !important; fill: #e5e7eb !important; }
+
+        /* Packet Diagram - fix text visibility (exact Mermaid class names) */
+        .mermaid-diagram svg .packetBlock { fill: #374151 !important; stroke: #6b7280 !important; }
+        .mermaid-diagram svg .packetLabel { fill: #e5e7eb !important; }
+        .mermaid-diagram svg .packetByte { fill: #9ca3af !important; }
+        .mermaid-diagram svg .packetTitle { fill: #e5e7eb !important; }
+
+        /* Architecture Diagram - improve border and text visibility */
+        .mermaid-diagram svg .node-bkg { stroke: #9ca3af !important; stroke-width: 2px !important; }
+        .mermaid-diagram svg .architecture-service text { fill: #e5e7eb !important; }
+        /* Architecture labels - smaller, lighter font (prevent word-art look) */
+        .mermaid-diagram svg[aria-roledescription="architecture"] text,
+        .mermaid-diagram svg[aria-roledescription="architecture"] tspan {
+            font-size: 14px !important;
+            font-weight: 300 !important;
+            font-style: normal !important;
+        }
+
+        /* ER Diagram - transparent relationship labels (cleaner look) */
+        .mermaid-diagram svg .relationshipLabelBox { fill: transparent !important; stroke: none !important; }
+
+        /* Sequence Diagram - loop/alt/opt box labels (polygon and rect) */
+        .mermaid-diagram svg .loopLine { stroke: #6b7280 !important; }
+        .mermaid-diagram svg .labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+
+        /* Requirement Diagram - fix white label box */
+        .mermaid-diagram svg .reqLabelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+        .mermaid-diagram svg rect.labelBox { fill: #374151 !important; stroke: #6b7280 !important; }
+
+        /* Git graph - HIGHLIGHT commits (red border and exclamation mark) */
+        .mermaid-diagram svg .commit-highlight-outer { fill: #374151 !important; stroke: #ef4444 !important; stroke-width: 2px !important; rx: 6 !important; ry: 6 !important; }
+        .mermaid-diagram svg .commit-highlight-inner { fill: #374151 !important; stroke: none !important; }
+        .mermaid-diagram svg .highlight-icon { fill: #ef4444 !important; }
+
+        /* Sankey Diagram - make flows more visible */
+        .mermaid-diagram svg .sankey-link { stroke-opacity: 0.5 !important; }
+        .mermaid-diagram svg .sankey-node rect { fill: #3b82f6 !important; }
+
+        .mermaid-loading {
+            background: #374151;
+            border-radius: 0.5em;
+            padding: 1em;
+            text-align: center;
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+        .mermaid-loading i { margin-right: 0.5em; }
+        .mermaid-error {
+            background: #1f2937;
+            border: 1px solid #dc2626;
+            border-radius: 0.5em;
+            overflow: hidden;
+            margin: 1em 0;
+        }
+        .mermaid-error-header {
+            background: rgba(220, 38, 38, 0.2);
+            padding: 0.5em 1em;
+            color: #fca5a5;
+            font-size: 0.875rem;
+        }
+        .mermaid-error-header i { margin-right: 0.5em; }
+        .mermaid-error-code {
+            margin: 0;
+            padding: 1em;
+            background: #1f2937;
+            overflow-x: auto;
+        }
+        .mermaid-error-code code {
+            background: none !important;
+            padding: 0 !important;
+            color: #d1d5db;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+        }
 
         /* File path links - clickable paths that open file preview modal */
         .file-path-link {
@@ -1149,16 +1585,57 @@
     @include('partials.chat.modals')
 
     <script>
-        // Configure marked.js
+        // Global cache for rendered Mermaid SVGs (prevents flicker on re-render)
+        // Shared between marked.js renderer and Alpine component
+        window._mermaidSvgCache = new Map();
+
+        // Configure marked.js with custom renderer for mermaid and syntax highlighting
+        // Note: marked.js v5+ removed the highlight option, use renderer instead
+        marked.use({
+            renderer: {
+                code(token) {
+                    // token is {type, raw, text, lang, escaped} in marked v15
+                    const text = token.text || '';
+                    const lang = token.lang || '';
+
+                    // Mermaid blocks: check cache first, then return placeholder for post-processing
+                    if (lang === 'mermaid') {
+                        // Simple hash for cache lookup (djb2 algorithm)
+                        let hash = 5381;
+                        for (let i = 0; i < text.length; i++) {
+                            hash = ((hash << 5) + hash) + text.charCodeAt(i);
+                        }
+                        const hashStr = (hash >>> 0).toString(36);
+
+                        // Check global cache - if found, output SVG directly (no flicker!)
+                        if (window._mermaidSvgCache && window._mermaidSvgCache.has(hashStr)) {
+                            return `<div class="mermaid-placeholder mermaid-rendered"><div class="mermaid-diagram">${window._mermaidSvgCache.get(hashStr)}</div></div>`;
+                        }
+
+                        // Not in cache - output placeholder for async rendering
+                        // Use base64 encoding to safely embed the mermaid code in an attribute
+                        const base64Code = btoa(unescape(encodeURIComponent(String(text))));
+                        return `<div class="mermaid-placeholder" data-mermaid-b64="${base64Code}" data-mermaid-hash="${hashStr}"></div>`;
+                    }
+
+                    // Regular code: apply syntax highlighting
+                    let highlighted;
+                    if (lang && hljs.getLanguage(lang)) {
+                        try { highlighted = hljs.highlight(String(text), { language: lang }).value; } catch (err) {}
+                    }
+                    if (!highlighted) {
+                        try { highlighted = hljs.highlightAuto(String(text)).value; } catch (err) {
+                            highlighted = String(text).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        }
+                    }
+                    return `<pre><code class="hljs language-${lang}">${highlighted}</code></pre>`;
+                }
+            }
+        });
+
         marked.setOptions({
             breaks: true,
-            gfm: true,
-            highlight: function(code, lang) {
-                if (lang && hljs.getLanguage(lang)) {
-                    try { return hljs.highlight(code, { language: lang }).value; } catch (err) {}
-                }
-                return hljs.highlightAuto(code).value;
-            }
+            gfm: true
         });
 
         function chatApp() {
@@ -1653,6 +2130,14 @@
 
                         await this.loadSession(urlSessionId);
 
+                        // Trigger initial mermaid rendering after session load
+                        setTimeout(() => {
+                            this.$nextTick(() => {
+                                const container = document.getElementById('messages');
+                                if (container) this.renderMermaidDiagrams(container);
+                            });
+                        }, 500);
+
                         // Scroll to bottom if returning from settings
                         if (returningFromSettings) {
                             this.$nextTick(() => this.scrollToBottom());
@@ -1778,7 +2263,7 @@
                         }
                     });
 
-                    // Event delegation for file path links (DOMPurify strips onclick attributes)
+                    // Event delegation for file path links (using data attributes instead of onclick)
                     document.addEventListener('click', (e) => {
                         const link = e.target.closest('.file-path-link');
                         if (link) {
@@ -1796,6 +2281,19 @@
                             }
                         }
                     });
+
+                    // Trigger mermaid diagram rendering after message updates (debounced for streaming)
+                    this.$watch('messages', () => {
+                        clearTimeout(this._mermaidTimeout);
+                        this._mermaidTimeout = setTimeout(() => {
+                            this.$nextTick(() => {
+                                const container = document.getElementById('messages');
+                                if (container) {
+                                    this.renderMermaidDiagrams(container);
+                                }
+                            });
+                        }, 300);
+                    }, { deep: true });
                 },
 
                 // Extract session ID from URL path (strict UUID validation)
@@ -2281,9 +2779,7 @@
 
                 parseMarkdownForSystemPrompt(text) {
                     if (!text) return '';
-                    // Use marked + DOMPurify for rendering
-                    let html = marked.parse(text);
-                    return DOMPurify.sanitize(html);
+                    return window.stripAlpineDirectives(marked.parse(text));
                 },
 
                 // ==================== Workspace Methods ====================
@@ -5230,15 +5726,168 @@
                 renderMarkdown(text) {
                     if (!text) return '';
 
+                    // Hide unclosed mermaid code blocks during streaming
+                    // Only render mermaid when the closing ``` is present
+                    let processedText = text;
+                    const lowerText = text.toLowerCase();
+                    const lastMermaidStart = lowerText.lastIndexOf('```mermaid');
+
+                    if (lastMermaidStart !== -1) {
+                        // Find where the ```mermaid line ends (after any trailing chars like \n)
+                        const openingLineEnd = text.indexOf('\n', lastMermaidStart);
+                        if (openingLineEnd === -1) {
+                            // No newline after ```mermaid yet - definitely incomplete
+                            processedText = text.substring(0, lastMermaidStart);
+                        } else {
+                            // Check if there's a closing ``` on its own line after the opening
+                            const contentAfterOpening = text.substring(openingLineEnd);
+                            // Match ``` that's at the start of a line (after \n) and followed by newline or end
+                            if (!/\n```\s*(?:\n|$)/.test(contentAfterOpening)) {
+                                // Unclosed mermaid block - hide it completely until closed
+                                processedText = text.substring(0, lastMermaidStart);
+                            }
+                        }
+                    }
+
                     // Parse markdown, linkify file paths, then sanitize
-                    let html = marked.parse(text);
+                    let html = marked.parse(processedText);
                     html = window.linkifyFilePaths(html);
 
                     // Wrap tables in scrollable container for mobile
                     html = html.replace(/<table>/g, '<div class="table-wrapper"><table>');
                     html = html.replace(/<\/table>/g, '</table></div>');
 
-                    return DOMPurify.sanitize(html);
+                    html = window.stripAlpineDirectives(html);
+
+                    return html;
+                },
+
+                // Mermaid diagram rendering
+                // NOTE: The marked.js renderer is globally configured, but this render function
+                // only targets #messages container. Other markdown UIs (config pages) don't
+                // call this function, so mermaid placeholders would remain unrendered there.
+                // This is acceptable since those pages don't contain mermaid diagrams.
+                async renderMermaidDiagrams(containerEl) {
+                    // Fallback: if Mermaid CDN failed to load, show code blocks instead
+                    if (typeof mermaid === 'undefined') {
+                        if (!containerEl) return;
+                        const placeholders = containerEl.querySelectorAll('.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error)');
+                        for (const placeholder of placeholders) {
+                            const b64 = placeholder.dataset.mermaidB64;
+                            if (!b64) continue;
+                            const decoded = decodeURIComponent(escape(atob(b64)));
+                            placeholder.innerHTML = `<div class="mermaid-error">
+                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mermaid library unavailable</div>
+                                <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
+                            </div>`;
+                            placeholder.classList.add('mermaid-error');
+                        }
+                        return;
+                    }
+                    if (!containerEl) return;
+
+                    const placeholders = containerEl.querySelectorAll(
+                        '.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error):not(.mermaid-processing)'
+                    );
+
+                    for (const placeholder of placeholders) {
+                        const b64 = placeholder.dataset.mermaidB64;
+                        const hash = placeholder.dataset.mermaidHash;
+                        if (!b64) continue;
+
+                        // Check global cache first - instantly restore without flicker
+                        if (hash && window._mermaidSvgCache.has(hash)) {
+                            placeholder.innerHTML = `<div class="mermaid-diagram">${window._mermaidSvgCache.get(hash)}</div>`;
+                            this.addHighlightIcons(placeholder);
+                            placeholder.classList.add('mermaid-rendered');
+                            continue;
+                        }
+
+                        // Decode base64 (UTF-8 safe)
+                        const decoded = decodeURIComponent(escape(atob(b64)));
+
+                        // Mark as processing to prevent race conditions
+                        placeholder.classList.add('mermaid-processing');
+
+                        try {
+                            const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
+
+                            // Render with timeout to prevent hanging on complex/malicious diagrams
+                            const { svg } = await Promise.race([
+                                mermaid.render(id, decoded),
+                                new Promise((_, reject) =>
+                                    setTimeout(() => reject(new Error('Diagram render timeout')), 5000)
+                                )
+                            ]);
+
+                            // Cache the rendered SVG in global cache for future re-renders (prevents flicker)
+                            if (hash) {
+                                window._mermaidSvgCache.set(hash, svg);
+                            }
+
+                            placeholder.innerHTML = `<div class="mermaid-diagram">${svg}</div>`;
+
+                            // Add exclamation marks to HIGHLIGHT commits in gitgraph
+                            this.addHighlightIcons(placeholder);
+
+                            placeholder.classList.remove('mermaid-processing');
+                            placeholder.classList.add('mermaid-rendered');
+                        } catch (err) {
+                            console.error('Mermaid render error:', err);
+                            placeholder.innerHTML = `<div class="mermaid-error">
+                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ${err.message === 'Diagram render timeout' ? 'Diagram render timeout' : 'Diagram syntax error'}</div>
+                                <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
+                            </div>`;
+                            placeholder.classList.remove('mermaid-processing');
+                            placeholder.classList.add('mermaid-error');
+                        }
+                    }
+
+                    // Final pass: add icons to ALL gitgraph diagrams (including cached ones from marked renderer)
+                    this.addHighlightIcons(containerEl);
+                },
+
+                // Add exclamation mark icons to gitgraph HIGHLIGHT commits
+                addHighlightIcons(containerEl) {
+                    const highlights = containerEl.querySelectorAll('.commit-highlight-outer');
+                    highlights.forEach(rect => {
+                        // Skip if icon already exists (check parent for .highlight-icon)
+                        const parent = rect.parentNode;
+                        if (parent && parent.querySelector('.highlight-icon')) return;
+
+                        // Get position and size of the outer rect
+                        const x = parseFloat(rect.getAttribute('x')) || 0;
+                        const y = parseFloat(rect.getAttribute('y')) || 0;
+                        const width = parseFloat(rect.getAttribute('width')) || 20;
+                        const height = parseFloat(rect.getAttribute('height')) || 20;
+
+                        // Create exclamation mark text element
+                        // Position offsets (-0.5, +1.5) are visual fine-tuning for centering the "!" character
+                        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                        text.setAttribute('x', x + width / 2 - 0.5);
+                        text.setAttribute('y', y + height / 2 + 1.5);
+                        text.setAttribute('text-anchor', 'middle');
+                        text.setAttribute('dominant-baseline', 'middle');
+                        text.setAttribute('font-size', '14');
+                        text.setAttribute('font-weight', 'bold');
+                        text.setAttribute('class', 'highlight-icon');
+                        // Use style attribute to ensure red color isn't overridden
+                        text.setAttribute('style', 'fill: #ef4444 !important;');
+                        text.textContent = '!';
+
+                        // Insert after the inner rect (so it's on top)
+                        const inner = parent.querySelector('.commit-highlight-inner');
+                        if (inner && inner.nextSibling) {
+                            parent.insertBefore(text, inner.nextSibling);
+                        } else {
+                            parent.appendChild(text);
+                        }
+                    });
+                },
+
+                escapeHtmlForMermaid(text) {
+                    if (!text) return '';
+                    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 },
 
                 formatTimestamp(ts) {

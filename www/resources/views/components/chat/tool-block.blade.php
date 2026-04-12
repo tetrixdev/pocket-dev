@@ -63,7 +63,7 @@
                 </template>
                 {{-- Case 3: Has valid parsed input (interrupted or not) --}}
                 <template x-if="!msg.toolInterrupted || (msg.toolInput && !msg.toolPartialInput && !(typeof msg.toolInput === 'object' && Object.keys(msg.toolInput).length === 0))">
-                    <div x-html="DOMPurify.sanitize(formatToolContent(msg))"></div>
+                    <div x-html="formatToolContent(msg)"></div>
                 </template>
                 {{-- Show full/less toggle --}}
                 <template x-if="isToolContentTruncated(msg)">
