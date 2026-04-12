@@ -23,6 +23,18 @@ class CodexProvider extends AbstractCliProvider
      */
     private const PROJECT_DOC_MAX_BYTES = 500000; // ~488KB
 
+    /**
+     * Unique per-run system prompt filename to avoid overwriting user files.
+     * Generated in buildCliCommand(), used by write/cleanup methods.
+     */
+    private ?string $systemPromptFile = null;
+
+    /**
+     * Previous turn context tokens for compaction detection baseline.
+     * Seeded from Conversation::last_context_tokens when each stream starts.
+     */
+    private int $previousTurnInputTokens = 0;
+
     public function __construct(ModelRepository $models)
     {
         parent::__construct($models);
@@ -129,6 +141,10 @@ class CodexProvider extends AbstractCliProvider
         // Working directory
         $workingDir = $conversation->working_directory ?? base_path();
 
+        // Seed compaction baseline from the previous completed turn.
+        // This value is persisted on the conversation by ProcessConversationStream.
+        $this->previousTurnInputTokens = max(0, (int) ($conversation->last_context_tokens ?? 0));
+
         // Sync MCP servers from Claude Code config to Codex config.toml
         // This ensures Codex has access to the same MCP servers configured in the PocketDev UI
         $this->syncMcpServersFromClaudeCode($workingDir);
@@ -199,7 +215,7 @@ class CodexProvider extends AbstractCliProvider
             // summarization prompt. The only observable signal is a significant drop
             // in input_tokens between turn.completed events. We track the previous
             // turn's input_tokens to detect this.
-            'previousTurnInputTokens' => 0,
+            'previousTurnInputTokens' => $this->previousTurnInputTokens,
             'compactionDetected' => false,
         ];
     }
@@ -426,6 +442,7 @@ class CodexProvider extends AbstractCliProvider
 
                 $state['inputTokens'] = $currentInputTokens;
                 $state['previousTurnInputTokens'] = $currentInputTokens;
+                $this->previousTurnInputTokens = $currentInputTokens;
 
                 Log::channel('api')->info('CodexProvider: Turn completed', [
                     'input_tokens' => $state['inputTokens'],
