@@ -17,6 +17,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->alias([
+            'developer.access' => \App\Http\Middleware\EnsureDeveloperAccess::class,
+        ]);
+
         // Trust Docker network proxies and localhost
         // PocketDev runs behind its own proxy container and may be behind additional proxies
         $middleware->trustProxies(at: [

@@ -146,13 +146,15 @@ Route::delete("/config/backup/{filename}", [\App\Http\Controllers\BackupControll
 Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::class, "restore"])->name("config.backup.restore");
 
 // System management (available in both environments)
-Route::get("/config/system", [ConfigController::class, "showSystem"])->name("config.system");
-Route::post("/config/system/restart", [ConfigController::class, "restartContainers"])->name("config.system.restart");
-Route::post("/config/system/check-update", [ConfigController::class, "checkUpdate"])->name("config.system.check-update");
-Route::post("/config/system/apply-update", [ConfigController::class, "applyUpdate"])->name("config.system.apply-update");
+Route::middleware('developer.access')->group(function () {
+    Route::get("/config/system", [ConfigController::class, "showSystem"])->name("config.system");
+    Route::post("/config/system/restart", [ConfigController::class, "restartContainers"])->name("config.system.restart");
+    Route::post("/config/system/check-update", [ConfigController::class, "checkUpdate"])->name("config.system.check-update");
+    Route::post("/config/system/apply-update", [ConfigController::class, "applyUpdate"])->name("config.system.apply-update");
 
-// Local-only operations (rebuild from scratch, git pull)
-if (app()->environment('local')) {
-    Route::post("/config/system/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.system.rebuild");
-    Route::post("/config/system/pull-main", [ConfigController::class, "pullFromMain"])->name("config.system.pull-main");
-}
+    // Local-only operations (rebuild from scratch, git pull)
+    if (app()->environment('local')) {
+        Route::post("/config/system/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.system.rebuild");
+        Route::post("/config/system/pull-main", [ConfigController::class, "pullFromMain"])->name("config.system.pull-main");
+    }
+});
