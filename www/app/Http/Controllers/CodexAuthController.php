@@ -171,7 +171,8 @@ class CodexAuthController extends Controller
             // Check for OAuth format (tokens.access_token indicates OAuth login)
             if (isset($data["tokens"]["access_token"])) {
                 $lastRefresh = $data["last_refresh"] ?? null;
-                // Codex source uses TOKEN_REFRESH_INTERVAL = 8 days (codex-rs/core/src/auth.rs)
+                // Codex source default is TOKEN_REFRESH_INTERVAL = 8 days (codex-rs/core/src/auth.rs).
+                // PocketDev exposes this via ai.providers.codex.token_refresh_days.
                 $refreshIntervalDays = (int) config('ai.providers.codex.token_refresh_days', 8);
 
                 if ($lastRefresh) {

@@ -56,6 +56,8 @@ return [
         'codex' => [
             // No API key needed - uses Codex CLI authentication (setup via `codex login`)
             'default_model' => 'gpt-5.3-codex',
+            // Codex refreshes subscription tokens every 8 days by default.
+            'token_refresh_days' => env('PD_CODEX_TOKEN_REFRESH_DAYS', 8),
         ],
 
         'openai_compatible' => [
