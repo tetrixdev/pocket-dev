@@ -42,7 +42,6 @@
                       style="height: 40px; min-height: 40px; max-height: 168px; overflow-y: hidden;"
                       x-effect="prompt; $nextTick(() => { $el.style.height = 'auto'; const sh = $el.scrollHeight; $el.style.height = Math.min(sh, 168) + 'px'; $el.style.overflowY = sh > 168 ? 'auto' : 'hidden'; if (prompt) $el.scrollTop = $el.scrollHeight; }); updateSkillSuggestions();"
                       @keydown="handleSkillKeydown($event)"
-                      @keydown.enter="if (!$event.shiftKey && !showSkillSuggestions) { $event.preventDefault(); sendMessage(); }"
                       @paste="
                           const items = $event.clipboardData?.items;
                           if (items) {
