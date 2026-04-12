@@ -18,7 +18,7 @@
     },
     focusVisiblePromptInput() {
         this.$nextTick(() => {
-            const promptInputs = Array.from(document.querySelectorAll('textarea[x-ref=\"promptInput\"]'));
+            const promptInputs = Array.from(document.querySelectorAll('textarea[x-ref=promptInput]'));
             const visiblePromptInput = promptInputs.find((input) => input.offsetParent !== null);
             visiblePromptInput?.focus();
         });
