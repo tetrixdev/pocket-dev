@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\Screen;
 use App\Models\Session;
 use App\Models\Workspace;
+use App\Services\ClaudeContextPolicyService;
 use App\Services\ConversationFactory;
 use App\Services\ConversationStreamLogger;
 use App\Services\NativeToolService;
@@ -31,6 +32,7 @@ class ConversationController extends Controller
         private ProviderFactory $providerFactory,
         private StreamManager $streamManager,
         private ConversationFactory $conversationFactory,
+        private ClaudeContextPolicyService $claudeContextPolicy,
     ) {}
 
     /**
@@ -140,6 +142,10 @@ class ConversationController extends Controller
             'context' => [
                 'last_context_tokens' => $conversation->last_context_tokens,
                 'context_window_size' => $conversation->context_window_size,
+                'effective_context_window' => $conversation->effective_context_window,
+                'is_effective_context_mismatch' => $conversation->context_window_size !== null
+                    && $conversation->effective_context_window !== null
+                    && $conversation->context_window_size !== $conversation->effective_context_window,
                 'usage_percentage' => $conversation->getContextUsagePercentage(),
                 'warning_level' => $conversation->getContextWarningLevel(),
             ],
@@ -335,6 +341,70 @@ class ConversationController extends Controller
             RequestFlowLogger::endRequest('error');
             throw $e;
         }
+    }
+
+    /**
+     * Trigger a manual Claude Code /compact command.
+     *
+     * Guarded by PD_ENABLE_COMPACT_COMMAND and only valid for Claude Code
+     * conversations with an existing provider session.
+     */
+    public function compact(Request $request, Conversation $conversation): JsonResponse
+    {
+        RequestFlowLogger::startRequest($conversation->uuid, 'compact');
+        RequestFlowLogger::log('controller.compact.entry', 'Compact request received');
+
+        if (!$this->claudeContextPolicy->compactCommandEnabled()) {
+            RequestFlowLogger::endRequest('compact_disabled');
+            return response()->json([
+                'success' => false,
+                'error' => 'Compact command is disabled by policy.',
+            ], 400);
+        }
+
+        if ($conversation->provider_type !== 'claude_code') {
+            RequestFlowLogger::endRequest('invalid_provider');
+            return response()->json([
+                'success' => false,
+                'error' => 'Compact is only supported for Claude Code conversations.',
+            ], 400);
+        }
+
+        if (empty($conversation->provider_session_id)) {
+            RequestFlowLogger::endRequest('missing_session');
+            return response()->json([
+                'success' => false,
+                'error' => 'Compact requires an active Claude Code session.',
+            ], 409);
+        }
+
+        if ($this->streamManager->isStreaming($conversation->uuid)) {
+            RequestFlowLogger::endRequest('already_streaming');
+            return response()->json([
+                'success' => false,
+                'error' => 'Conversation is already streaming',
+            ], 409);
+        }
+
+        $this->streamManager->startStream($conversation->uuid, [
+            'model' => $conversation->model,
+            'provider' => $conversation->provider_type,
+            'command' => 'compact',
+        ]);
+
+        ProcessConversationStream::dispatch(
+            $conversation->uuid,
+            '/compact',
+            []
+        );
+
+        RequestFlowLogger::endRequest('success');
+        return response()->json([
+            'success' => true,
+            'conversation_uuid' => $conversation->uuid,
+            'started_at' => now()->toIso8601String(),
+            'message' => 'Compaction started. Connect to /stream-events to receive updates.',
+        ]);
     }
 
     /**
@@ -574,6 +644,7 @@ class ConversationController extends Controller
             'total_input_tokens' => $conversation->total_input_tokens,
             'total_output_tokens' => $conversation->total_output_tokens,
             'context_window' => $provider->getContextWindow($conversation->model),
+            'effective_context_window' => $conversation->effective_context_window,
             'last_activity_at' => $conversation->last_activity_at,
         ]);
     }

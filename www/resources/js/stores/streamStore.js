@@ -901,6 +901,7 @@ export function createStreamStore(callbacks) {
                         // Update context window tracking
                         callbacks.updateContext({
                             contextWindowSize: event.metadata.context_window_size,
+                            effectiveContextWindow: event.metadata.effective_context_window,
                             contextPercentage: event.metadata.context_percentage,
                             lastContextTokens: input + output
                         });

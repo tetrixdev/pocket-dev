@@ -43,6 +43,18 @@ return [
             'default_model' => 'opus',
             // When set, overrides the per-conversation/agent model selection entirely
             'override_model' => env('CLAUDE_CODE_OVERRIDE_MODEL'),
+            // Runtime context policy:
+            // - safe: keep current CLI behavior (default)
+            // - adaptive: apply overrides only when runtime 1M capability is proven
+            // - force_legacy: explicitly keep v0.61.1-compatible behavior
+            'context_policy' => env('PD_CLAUDE_CONTEXT_POLICY', 'safe'),
+            // Re-enable /compact command for Claude Code conversations
+            'enable_compact_command' => env('PD_ENABLE_COMPACT_COMMAND', false),
+            // Adaptive policy gates/limits
+            'adaptive_context_threshold' => (int) env('PD_CLAUDE_ADAPTIVE_CONTEXT_THRESHOLD', 900000),
+            'adaptive_blocking_limit_override' => (int) env('PD_CLAUDE_ADAPTIVE_BLOCKING_LIMIT_OVERRIDE', 977000),
+            // Set by queue-entrypoint probe gate. If false, adaptive mode is blocked.
+            'adaptive_allowed' => env('PD_CLAUDE_ADAPTIVE_ALLOWED', false),
             // Available tools that can be enabled/disabled via UI
             // Empty array = all tools allowed (default behavior)
             'available_tools' => [

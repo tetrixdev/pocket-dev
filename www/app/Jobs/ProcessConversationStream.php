@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Contracts\AIProviderInterface;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Services\ClaudeContextPolicyService;
 use App\Services\Providers\AbstractCliProvider;
 use App\Services\ModelRepository;
 use App\Services\ProviderFactory;
@@ -312,6 +313,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // (cumulative tokens above are for billing, context tokens below are for context % calculation)
         $contextInputTokens = null;
         $contextOutputTokens = null;
+        $effectiveContextWindow = $conversation->effective_context_window;
 
         // Get the model for cost calculation
         $aiModel = $modelRepository->findByModelId($conversation->model);
@@ -386,6 +388,16 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 // Use same preserve-previous pattern as billing tokens for consistency
                 $contextInputTokens = $event->metadata['context_input_tokens'] ?? $contextInputTokens;
                 $contextOutputTokens = $event->metadata['context_output_tokens'] ?? $contextOutputTokens;
+                $effectiveContextWindow = $event->metadata['effective_context_window'] ?? $effectiveContextWindow;
+
+                if (
+                    is_int($effectiveContextWindow)
+                    && $effectiveContextWindow > 0
+                    && $conversation->effective_context_window !== $effectiveContextWindow
+                ) {
+                    $conversation->update(['effective_context_window' => $effectiveContextWindow]);
+                    $conversation->refresh();
+                }
 
                 // Calculate cost using model pricing
                 $cost = null;
@@ -410,7 +422,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     $cost,
                     $conversation->context_window_size,
                     $contextInputTokens,
-                    $contextOutputTokens
+                    $contextOutputTokens,
+                    $effectiveContextWindow
                 );
                 $streamManager->appendEvent($this->conversationUuid, $enrichedEvent);
                 continue;
@@ -553,6 +566,22 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     break;
 
                 case StreamEvent::ERROR:
+                    if (
+                        $conversation->provider_type === 'claude_code'
+                        && $event->content
+                        && app(ClaudeContextPolicyService::class)->isHardPromptLimitError($event->content)
+                    ) {
+                        $demoted = app(ClaudeContextPolicyService::class)->demoteWorkspaceToSafe(
+                            $conversation->workspace_id,
+                            'hard_prompt_limit'
+                        );
+                        Log::warning('ProcessConversationStream: Auto-demoted workspace to safe policy', [
+                            'workspace_id' => $conversation->workspace_id,
+                            'conversation' => $this->conversationUuid,
+                            'demoted' => $demoted,
+                            'error' => $event->content,
+                        ]);
+                    }
                     RequestFlowLogger::logError('job.loop.error_event', 'Received ERROR event', null, [
                         'error_content' => $event->content,
                     ]);
@@ -623,7 +652,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $stopReason,
             $turnCost > 0 ? $turnCost : null,
             $contextInputTokens,
-            $contextOutputTokens
+            $contextOutputTokens,
+            $effectiveContextWindow
         );
 
         // Handle tool execution
@@ -718,7 +748,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         ?string $stopReason,
         ?float $cost = null,
         ?int $contextInputTokens = null,
-        ?int $contextOutputTokens = null
+        ?int $contextOutputTokens = null,
+        ?int $effectiveContextWindow = null
     ): Message {
         $message = Message::create([
             'conversation_id' => $conversation->id,
@@ -760,6 +791,14 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     ]);
                 }
             }
+        }
+
+        if (
+            is_int($effectiveContextWindow)
+            && $effectiveContextWindow > 0
+            && $conversation->effective_context_window !== $effectiveContextWindow
+        ) {
+            $conversation->update(['effective_context_window' => $effectiveContextWindow]);
         }
 
         return $message;
@@ -944,7 +983,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     'aborted',
                     $turnCost > 0 ? $turnCost : null,
                     $contextInputTokens,
-                    $contextOutputTokens
+                    $contextOutputTokens,
+                    $conversation->effective_context_window
                 );
 
                 // Determine whether to sync to CLI session based on content analysis.
