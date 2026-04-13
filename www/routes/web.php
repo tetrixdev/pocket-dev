@@ -156,3 +156,8 @@ if (app()->environment('local')) {
     Route::post("/config/system/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.system.rebuild");
     Route::post("/config/system/pull-main", [ConfigController::class, "pullFromMain"])->name("config.system.pull-main");
 }
+
+// Developer tools (restart/rebuild containers)
+Route::get("/config/developer", [ConfigController::class, "showDeveloper"])->name("config.developer");
+Route::post("/config/developer/force-recreate", [ConfigController::class, "forceRecreate"])->name("config.developer.force-recreate");
+Route::post("/config/developer/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.developer.rebuild");
