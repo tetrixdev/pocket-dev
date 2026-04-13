@@ -6275,6 +6275,11 @@
                             if (this.autoSendAfterTranscription) {
                                 this.autoSendAfterTranscription = false;
                                 setTimeout(() => this.sendMessage(), 100);
+                            } else {
+                                // Focus the chat input after transcription
+                                this.$nextTick(() => {
+                                    this.focusPromptInput();
+                                });
                             }
                         } else {
                             this.showError('Transcription failed: ' + (data.error || 'Unknown error'));
@@ -6517,10 +6522,15 @@
                     }
                     this.cleanupRealtimeSession();
 
-                    // Handle auto-send
+                    // Handle auto-send or focus input
                     if (this.autoSendAfterTranscription && this.prompt.trim()) {
                         this.autoSendAfterTranscription = false;
                         setTimeout(() => this.sendMessage(), 100);
+                    } else {
+                        // Focus the chat input after transcription
+                        this.$nextTick(() => {
+                            this.focusPromptInput();
+                        });
                     }
                 },
 
@@ -6617,6 +6627,24 @@
                             textarea.scrollTop = textarea.scrollHeight;
                         });
                     });
+                },
+
+                // Focus the prompt input (desktop only - on mobile it would trigger keyboard)
+                focusPromptInput() {
+                    // Skip on mobile to avoid keyboard popping up after voice transcription
+                    if (this.windowWidth < 768) {
+                        return;
+                    }
+
+                    // Find the visible textarea
+                    const textareas = this.$root.querySelectorAll('textarea[x-model="prompt"]');
+                    for (const textarea of textareas) {
+                        // Check if visible (not display:none and has dimensions)
+                        if (textarea.offsetParent !== null) {
+                            textarea.focus();
+                            return;
+                        }
+                    }
                 },
 
                 // ==================== Copy Conversation ====================
