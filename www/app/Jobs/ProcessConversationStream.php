@@ -84,12 +84,6 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             // Mark conversation as processing
             $conversation->startProcessing();
             RequestFlowLogger::log('job.handle.processing_started', 'Marked conversation as processing');
-            // Save user message and keep reference for abort sync
-            RequestFlowLogger::log('job.handle.saving_user_message', 'Saving user message');
-            $userMessage = $this->saveUserMessage($conversation, $this->prompt);
-            RequestFlowLogger::log('job.handle.user_message_saved', 'User message saved', [
-                'message_id' => $userMessage->id,
-            ]);
 
             // Get provider
             $provider = $providerFactory->make($conversation->provider_type);
@@ -102,19 +96,42 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 throw new \RuntimeException("Provider '{$conversation->provider_type}' is not available");
             }
 
-            // Stream with tool execution loop
-            RequestFlowLogger::log('job.handle.starting_stream_loop', 'Starting stream with tool loop');
-            $this->streamWithToolLoop(
-                $conversation,
-                $provider,
-                $streamManager,
-                $toolRegistry,
-                $systemPromptBuilder,
-                $modelRepository,
-                $this->options,
-                userMessage: $userMessage
-            );
-            RequestFlowLogger::log('job.handle.stream_loop_completed', 'Stream loop completed');
+            // /compact command: trigger CLI compaction without saving a user message turn
+            if (!empty($this->options['is_compact_command'])) {
+                RequestFlowLogger::log('job.handle.compact_command', 'Handling /compact command');
+                // Wire abort checker so /abort can interrupt the compact stream
+                if ($provider instanceof AbstractCliProvider) {
+                    $provider->setAbortChecker(fn() => $streamManager->checkAbortFlag($this->conversationUuid));
+                }
+                $this->handleCompactCommand(
+                    $conversation,
+                    $provider,
+                    $streamManager,
+                    $this->options,
+                );
+                RequestFlowLogger::log('job.handle.compact_command_completed', '/compact command completed');
+            } else {
+                // Save user message and keep reference for abort sync
+                RequestFlowLogger::log('job.handle.saving_user_message', 'Saving user message');
+                $userMessage = $this->saveUserMessage($conversation, $this->prompt);
+                RequestFlowLogger::log('job.handle.user_message_saved', 'User message saved', [
+                    'message_id' => $userMessage->id,
+                ]);
+
+                // Stream with tool execution loop
+                RequestFlowLogger::log('job.handle.starting_stream_loop', 'Starting stream with tool loop');
+                $this->streamWithToolLoop(
+                    $conversation,
+                    $provider,
+                    $streamManager,
+                    $toolRegistry,
+                    $systemPromptBuilder,
+                    $modelRepository,
+                    $this->options,
+                    userMessage: $userMessage
+                );
+                RequestFlowLogger::log('job.handle.stream_loop_completed', 'Stream loop completed');
+            }
 
             // Only finalize if not already completed/aborted inside streamWithToolLoop
             $currentStatus = $conversation->fresh()->status;
@@ -696,6 +713,92 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $this->saveToolResultMessage($conversation, $streamedToolResults);
         } else {
             RequestFlowLogger::log('job.loop.no_tools', 'No tool execution needed - loop complete');
+        }
+    }
+
+    /**
+     * Handle a /compact slash command for Claude Code sessions.
+     *
+     * Passes "/compact" as the prompt to the CLI (via override_user_message) so it triggers
+     * a context compaction. No user or assistant message is saved — only a compaction message
+     * if the CLI emits COMPACTION_SUMMARY.
+     */
+    private function handleCompactCommand(
+        Conversation $conversation,
+        AIProviderInterface $provider,
+        StreamManager $streamManager,
+        array $options,
+    ): void {
+        $streamOptions = array_merge($options, ['override_user_message' => '/compact']);
+        $compactionReceived = false;
+
+        foreach ($provider->streamMessage($conversation, $streamOptions) as $event) {
+            // Check abort flag before processing each event
+            if ($streamManager->checkAbortFlag($this->conversationUuid)) {
+                RequestFlowLogger::log('job.compact.aborted', 'Abort detected during compact stream');
+                $conversation->completeProcessing();
+                $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
+                $streamManager->completeStream($this->conversationUuid, 'aborted');
+                $streamManager->clearAbortFlag($this->conversationUuid);
+                // abort() may block on proc_close() — called after stream is already marked done
+                if ($provider instanceof AbstractCliProvider) {
+                    $provider->abort();
+                }
+                return;
+            }
+
+            RequestFlowLogger::log('job.compact.event', 'Compact stream event', [
+                'type' => $event->type,
+            ]);
+
+            switch ($event->type) {
+                case StreamEvent::COMPACTION_SUMMARY:
+                    $compactionReceived = true;
+                    RequestFlowLogger::log('job.compact.summary_received', 'Compaction summary received', [
+                        'summary_length' => strlen($event->content ?? ''),
+                        'pre_tokens' => $event->metadata['pre_tokens'] ?? null,
+                    ]);
+                    Message::create([
+                        'conversation_id' => $conversation->id,
+                        'role' => Message::ROLE_COMPACTION,
+                        'content' => [
+                            'summary' => $event->content,
+                            'pre_tokens' => $event->metadata['pre_tokens'] ?? null,
+                            'trigger' => 'manual',
+                        ],
+                    ]);
+                    // Forward the event so the frontend can display the compaction banner
+                    $streamManager->appendEvent($this->conversationUuid, $event);
+                    Log::channel('api')->info('ProcessConversationStream: Manual compaction saved', [
+                        'conversation' => $this->conversationUuid,
+                        'pre_tokens' => $event->metadata['pre_tokens'] ?? null,
+                    ]);
+                    break;
+
+                case StreamEvent::DONE:
+                    // Stream ended — fail if no compaction summary was received.
+                    // This catches timeout/no-op paths where the CLI exits without compacting.
+                    if (!$compactionReceived) {
+                        throw new \RuntimeException('Compact command completed without producing a compaction summary. The context may be too small to compact.');
+                    }
+                    break;
+
+                case StreamEvent::ERROR:
+                    throw new \RuntimeException($event->content ?? 'Compact command failed');
+            }
+        }
+
+        // Post-loop abort check: handles the case where the CLI's inner abort checker fired
+        // and the generator returned early without yielding another event.
+        if ($streamManager->checkAbortFlag($this->conversationUuid)) {
+            RequestFlowLogger::log('job.compact.aborted', 'Abort detected after compact stream ended');
+            $conversation->completeProcessing();
+            $streamManager->appendEvent($this->conversationUuid, StreamEvent::done('aborted'));
+            $streamManager->completeStream($this->conversationUuid, 'aborted');
+            $streamManager->clearAbortFlag($this->conversationUuid);
+            if ($provider instanceof AbstractCliProvider) {
+                $provider->abort();
+            }
         }
     }
 
