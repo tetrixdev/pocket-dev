@@ -1633,11 +1633,14 @@
         };
 
         // Global mermaid rendering function - used by chat messages and file preview
-        window.renderMermaidDiagrams = async function(containerEl) {
+        // @param {HTMLElement} containerEl - Container with .mermaid-placeholder elements
+        // @param {boolean} skipCache - If true, skip cache lookup and always render fresh (for file preview to avoid duplicate SVG IDs)
+        window.renderMermaidDiagrams = async function(containerEl, skipCache = false) {
             // Fallback: if Mermaid CDN failed to load, show code blocks instead
             if (typeof mermaid === 'undefined') {
                 if (!containerEl) return;
-                const placeholders = containerEl.querySelectorAll('.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error)');
+                // Allow retrying error placeholders in case Mermaid becomes available later
+                const placeholders = containerEl.querySelectorAll('.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-processing)');
                 for (const placeholder of placeholders) {
                     const b64 = placeholder.dataset.mermaidB64;
                     if (!b64) continue;
@@ -1646,14 +1649,16 @@
                         <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mermaid library unavailable</div>
                         <pre class="mermaid-error-code"><code>${window._escapeHtmlForMermaid(decoded)}</code></pre>
                     </div>`;
+                    placeholder.classList.remove('mermaid-error'); // Clear before re-adding to reset state
                     placeholder.classList.add('mermaid-error');
                 }
                 return;
             }
             if (!containerEl) return;
 
+            // Allow retrying error placeholders in case Mermaid recovered or syntax was fixed
             const placeholders = containerEl.querySelectorAll(
-                '.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error):not(.mermaid-processing)'
+                '.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-processing)'
             );
 
             for (const placeholder of placeholders) {
@@ -1662,9 +1667,11 @@
                 if (!b64) continue;
 
                 // Check global cache first - instantly restore without flicker
-                if (hash && window._mermaidSvgCache.has(hash)) {
+                // Skip cache for file preview to avoid duplicate SVG IDs when same diagram is in chat
+                if (!skipCache && hash && window._mermaidSvgCache.has(hash)) {
                     placeholder.innerHTML = `<div class="mermaid-diagram">${window._mermaidSvgCache.get(hash)}</div>`;
                     window._addMermaidHighlightIcons(placeholder);
+                    placeholder.classList.remove('mermaid-error');
                     placeholder.classList.add('mermaid-rendered');
                     continue;
                 }
@@ -1697,6 +1704,7 @@
                     window._addMermaidHighlightIcons(placeholder);
 
                     placeholder.classList.remove('mermaid-processing');
+                    placeholder.classList.remove('mermaid-error'); // Clear error state if retrying succeeded
                     placeholder.classList.add('mermaid-rendered');
                 } catch (err) {
                     console.error('Mermaid render error:', err);
