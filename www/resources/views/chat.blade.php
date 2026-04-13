@@ -1589,6 +1589,138 @@
         // Shared between marked.js renderer and Alpine component
         window._mermaidSvgCache = new Map();
 
+        // Global mermaid helper functions (used by both chat and file preview)
+        window._escapeHtmlForMermaid = function(text) {
+            if (!text) return '';
+            return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        };
+
+        window._addMermaidHighlightIcons = function(containerEl) {
+            const highlights = containerEl.querySelectorAll('.commit-highlight-outer');
+            highlights.forEach(rect => {
+                // Skip if icon already exists (check parent for .highlight-icon)
+                const parent = rect.parentNode;
+                if (parent && parent.querySelector('.highlight-icon')) return;
+
+                // Get position and size of the outer rect
+                const x = parseFloat(rect.getAttribute('x')) || 0;
+                const y = parseFloat(rect.getAttribute('y')) || 0;
+                const width = parseFloat(rect.getAttribute('width')) || 20;
+                const height = parseFloat(rect.getAttribute('height')) || 20;
+
+                // Create exclamation mark text element
+                // Position offsets (-0.5, +1.5) are visual fine-tuning for centering the "!" character
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', x + width / 2 - 0.5);
+                text.setAttribute('y', y + height / 2 + 1.5);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('dominant-baseline', 'middle');
+                text.setAttribute('font-size', '14');
+                text.setAttribute('font-weight', 'bold');
+                text.setAttribute('class', 'highlight-icon');
+                // Use style attribute to ensure red color isn't overridden
+                text.setAttribute('style', 'fill: #ef4444 !important;');
+                text.textContent = '!';
+
+                // Insert after the inner rect (so it's on top)
+                const inner = parent.querySelector('.commit-highlight-inner');
+                if (inner && inner.nextSibling) {
+                    parent.insertBefore(text, inner.nextSibling);
+                } else {
+                    parent.appendChild(text);
+                }
+            });
+        };
+
+        // Global mermaid rendering function - used by chat messages and file preview
+        // @param {HTMLElement} containerEl - Container with .mermaid-placeholder elements
+        // @param {boolean} skipCache - If true, skip cache lookup and always render fresh (for file preview to avoid duplicate SVG IDs)
+        window.renderMermaidDiagrams = async function(containerEl, skipCache = false) {
+            // Fallback: if Mermaid CDN failed to load, show code blocks instead
+            if (typeof mermaid === 'undefined') {
+                if (!containerEl) return;
+                // Allow retrying error placeholders in case Mermaid becomes available later
+                const placeholders = containerEl.querySelectorAll('.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-processing)');
+                for (const placeholder of placeholders) {
+                    const b64 = placeholder.dataset.mermaidB64;
+                    if (!b64) continue;
+                    const decoded = decodeURIComponent(escape(atob(b64)));
+                    placeholder.innerHTML = `<div class="mermaid-error">
+                        <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mermaid library unavailable</div>
+                        <pre class="mermaid-error-code"><code>${window._escapeHtmlForMermaid(decoded)}</code></pre>
+                    </div>`;
+                    placeholder.classList.remove('mermaid-error'); // Clear before re-adding to reset state
+                    placeholder.classList.add('mermaid-error');
+                }
+                return;
+            }
+            if (!containerEl) return;
+
+            // Allow retrying error placeholders in case Mermaid recovered or syntax was fixed
+            const placeholders = containerEl.querySelectorAll(
+                '.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-processing)'
+            );
+
+            for (const placeholder of placeholders) {
+                const b64 = placeholder.dataset.mermaidB64;
+                const hash = placeholder.dataset.mermaidHash;
+                if (!b64) continue;
+
+                // Check global cache first - instantly restore without flicker
+                // Skip cache for file preview to avoid duplicate SVG IDs when same diagram is in chat
+                if (!skipCache && hash && window._mermaidSvgCache.has(hash)) {
+                    placeholder.innerHTML = `<div class="mermaid-diagram">${window._mermaidSvgCache.get(hash)}</div>`;
+                    window._addMermaidHighlightIcons(placeholder);
+                    placeholder.classList.remove('mermaid-error');
+                    placeholder.classList.add('mermaid-rendered');
+                    continue;
+                }
+
+                // Decode base64 (UTF-8 safe)
+                const decoded = decodeURIComponent(escape(atob(b64)));
+
+                // Mark as processing to prevent race conditions
+                placeholder.classList.add('mermaid-processing');
+
+                try {
+                    const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
+
+                    // Render with timeout to prevent hanging on complex/malicious diagrams
+                    const { svg } = await Promise.race([
+                        mermaid.render(id, decoded),
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error('Diagram render timeout')), 5000)
+                        )
+                    ]);
+
+                    // Cache the rendered SVG in global cache for future re-renders (prevents flicker)
+                    if (hash) {
+                        window._mermaidSvgCache.set(hash, svg);
+                    }
+
+                    placeholder.innerHTML = `<div class="mermaid-diagram">${svg}</div>`;
+
+                    // Add exclamation marks to HIGHLIGHT commits in gitgraph
+                    window._addMermaidHighlightIcons(placeholder);
+
+                    placeholder.classList.remove('mermaid-processing');
+                    placeholder.classList.remove('mermaid-error'); // Clear error state if retrying succeeded
+                    placeholder.classList.add('mermaid-rendered');
+                } catch (err) {
+                    console.error('Mermaid render error:', err);
+                    placeholder.innerHTML = `<div class="mermaid-error">
+                        <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ${err.message === 'Diagram render timeout' ? 'Diagram render timeout' : 'Diagram syntax error'}</div>
+                        <pre class="mermaid-error-code"><code>${window._escapeHtmlForMermaid(decoded)}</code></pre>
+                    </div>`;
+                    placeholder.classList.remove('mermaid-processing');
+                    placeholder.classList.add('mermaid-error');
+                }
+            }
+
+            // Final pass: add icons to ALL gitgraph diagrams (including cached ones from marked renderer)
+            window._addMermaidHighlightIcons(containerEl);
+        };
+
         // Configure marked.js with custom renderer for mermaid and syntax highlighting
         // Note: marked.js v5+ removed the highlight option, use renderer instead
         marked.use({
@@ -5762,132 +5894,10 @@
                     return html;
                 },
 
-                // Mermaid diagram rendering
-                // NOTE: The marked.js renderer is globally configured, but this render function
-                // only targets #messages container. Other markdown UIs (config pages) don't
-                // call this function, so mermaid placeholders would remain unrendered there.
-                // This is acceptable since those pages don't contain mermaid diagrams.
+                // Mermaid diagram rendering - delegates to global function
+                // Used by chat messages; file preview calls window.renderMermaidDiagrams directly
                 async renderMermaidDiagrams(containerEl) {
-                    // Fallback: if Mermaid CDN failed to load, show code blocks instead
-                    if (typeof mermaid === 'undefined') {
-                        if (!containerEl) return;
-                        const placeholders = containerEl.querySelectorAll('.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error)');
-                        for (const placeholder of placeholders) {
-                            const b64 = placeholder.dataset.mermaidB64;
-                            if (!b64) continue;
-                            const decoded = decodeURIComponent(escape(atob(b64)));
-                            placeholder.innerHTML = `<div class="mermaid-error">
-                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Mermaid library unavailable</div>
-                                <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
-                            </div>`;
-                            placeholder.classList.add('mermaid-error');
-                        }
-                        return;
-                    }
-                    if (!containerEl) return;
-
-                    const placeholders = containerEl.querySelectorAll(
-                        '.mermaid-placeholder:not(.mermaid-rendered):not(.mermaid-error):not(.mermaid-processing)'
-                    );
-
-                    for (const placeholder of placeholders) {
-                        const b64 = placeholder.dataset.mermaidB64;
-                        const hash = placeholder.dataset.mermaidHash;
-                        if (!b64) continue;
-
-                        // Check global cache first - instantly restore without flicker
-                        if (hash && window._mermaidSvgCache.has(hash)) {
-                            placeholder.innerHTML = `<div class="mermaid-diagram">${window._mermaidSvgCache.get(hash)}</div>`;
-                            this.addHighlightIcons(placeholder);
-                            placeholder.classList.add('mermaid-rendered');
-                            continue;
-                        }
-
-                        // Decode base64 (UTF-8 safe)
-                        const decoded = decodeURIComponent(escape(atob(b64)));
-
-                        // Mark as processing to prevent race conditions
-                        placeholder.classList.add('mermaid-processing');
-
-                        try {
-                            const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
-
-                            // Render with timeout to prevent hanging on complex/malicious diagrams
-                            const { svg } = await Promise.race([
-                                mermaid.render(id, decoded),
-                                new Promise((_, reject) =>
-                                    setTimeout(() => reject(new Error('Diagram render timeout')), 5000)
-                                )
-                            ]);
-
-                            // Cache the rendered SVG in global cache for future re-renders (prevents flicker)
-                            if (hash) {
-                                window._mermaidSvgCache.set(hash, svg);
-                            }
-
-                            placeholder.innerHTML = `<div class="mermaid-diagram">${svg}</div>`;
-
-                            // Add exclamation marks to HIGHLIGHT commits in gitgraph
-                            this.addHighlightIcons(placeholder);
-
-                            placeholder.classList.remove('mermaid-processing');
-                            placeholder.classList.add('mermaid-rendered');
-                        } catch (err) {
-                            console.error('Mermaid render error:', err);
-                            placeholder.innerHTML = `<div class="mermaid-error">
-                                <div class="mermaid-error-header"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ${err.message === 'Diagram render timeout' ? 'Diagram render timeout' : 'Diagram syntax error'}</div>
-                                <pre class="mermaid-error-code"><code>${this.escapeHtmlForMermaid(decoded)}</code></pre>
-                            </div>`;
-                            placeholder.classList.remove('mermaid-processing');
-                            placeholder.classList.add('mermaid-error');
-                        }
-                    }
-
-                    // Final pass: add icons to ALL gitgraph diagrams (including cached ones from marked renderer)
-                    this.addHighlightIcons(containerEl);
-                },
-
-                // Add exclamation mark icons to gitgraph HIGHLIGHT commits
-                addHighlightIcons(containerEl) {
-                    const highlights = containerEl.querySelectorAll('.commit-highlight-outer');
-                    highlights.forEach(rect => {
-                        // Skip if icon already exists (check parent for .highlight-icon)
-                        const parent = rect.parentNode;
-                        if (parent && parent.querySelector('.highlight-icon')) return;
-
-                        // Get position and size of the outer rect
-                        const x = parseFloat(rect.getAttribute('x')) || 0;
-                        const y = parseFloat(rect.getAttribute('y')) || 0;
-                        const width = parseFloat(rect.getAttribute('width')) || 20;
-                        const height = parseFloat(rect.getAttribute('height')) || 20;
-
-                        // Create exclamation mark text element
-                        // Position offsets (-0.5, +1.5) are visual fine-tuning for centering the "!" character
-                        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                        text.setAttribute('x', x + width / 2 - 0.5);
-                        text.setAttribute('y', y + height / 2 + 1.5);
-                        text.setAttribute('text-anchor', 'middle');
-                        text.setAttribute('dominant-baseline', 'middle');
-                        text.setAttribute('font-size', '14');
-                        text.setAttribute('font-weight', 'bold');
-                        text.setAttribute('class', 'highlight-icon');
-                        // Use style attribute to ensure red color isn't overridden
-                        text.setAttribute('style', 'fill: #ef4444 !important;');
-                        text.textContent = '!';
-
-                        // Insert after the inner rect (so it's on top)
-                        const inner = parent.querySelector('.commit-highlight-inner');
-                        if (inner && inner.nextSibling) {
-                            parent.insertBefore(text, inner.nextSibling);
-                        } else {
-                            parent.appendChild(text);
-                        }
-                    });
-                },
-
-                escapeHtmlForMermaid(text) {
-                    if (!text) return '';
-                    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return window.renderMermaidDiagrams(containerEl);
                 },
 
                 formatTimestamp(ts) {

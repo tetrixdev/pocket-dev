@@ -221,7 +221,8 @@
                     {{-- Markdown rendering --}}
                     <template x-if="$store.filePreview.isMarkdown && !$store.filePreview.isHtml">
                         <div class="p-4 md:p-6 markdown-content text-sm"
-                             x-html="$store.filePreview.renderedContent"></div>
+                             x-html="$store.filePreview.renderedContent"
+                             x-effect="if ($store.filePreview.renderedContent && window.renderMermaidDiagrams) $nextTick(() => window.renderMermaidDiagrams($el, true))"></div>
                     </template>
 
                     {{-- Plain text / code --}}
