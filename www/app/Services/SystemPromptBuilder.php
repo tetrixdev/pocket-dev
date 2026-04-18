@@ -144,7 +144,7 @@ class SystemPromptBuilder
         // 12. Dedicated agent tools — injected last so it's in the recency zone
         // For CLI providers this is the equivalent of API agent_* tool definitions.
         if ($promptType === 'cli' && $agent) {
-            if ($agentToolsSection = $this->buildExposedAgentToolsSection($agent)) {
+            if ($agentToolsSection = $this->buildExposedAgentToolsSection($agent, $workspace)) {
                 $sections[] = $agentToolsSection;
             }
         }
@@ -531,13 +531,22 @@ PROMPT;
      * For CLI providers (Claude Code, Codex) the equivalent is text in the system prompt
      * describing each exposed agent as a callable tool via `pd subagent:run`.
      */
-    private function buildExposedAgentToolsSection(?Agent $callerAgent): ?string
+    private function buildExposedAgentToolsSection(?Agent $callerAgent, ?Workspace $workspace = null): ?string
     {
         if (!$callerAgent || !$callerAgent->can_call_subagents) {
             return null;
         }
 
-        $query = Agent::where('workspace_id', $callerAgent->workspace_id)
+        // Resolve the workspace to scope agent lookup.
+        // Agents without a workspace_id (global defaults) fall back to the
+        // conversation workspace so they can still see exposed agents.
+        $workspaceId = $callerAgent->workspace_id ?? $workspace?->id;
+
+        if (!$workspaceId) {
+            return null;
+        }
+
+        $query = Agent::where('workspace_id', $workspaceId)
             ->where('enabled', true)
             ->where('expose_as_tool', true)
             ->where('id', '!=', $callerAgent->id);
