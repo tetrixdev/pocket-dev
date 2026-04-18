@@ -218,6 +218,13 @@ Route::prefix('screens')->group(function () {
 
 Route::get('panels', [\App\Http\Controllers\Api\PanelController::class, 'availablePanels']);
 
+/*
+|--------------------------------------------------------------------------
+| Codex Auth (script upload — no CSRF required for CLI tools)
+|--------------------------------------------------------------------------
+*/
+Route::post('codex/auth/upload', [\App\Http\Controllers\CodexAuthController::class, 'uploadJson']);
+
 Route::prefix('panel/{panelState}')->group(function () {
     Route::get('render', [\App\Http\Controllers\Api\PanelController::class, 'render']);
     Route::get('state', [\App\Http\Controllers\Api\PanelController::class, 'getState']);

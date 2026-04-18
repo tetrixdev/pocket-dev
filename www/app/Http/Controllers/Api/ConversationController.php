@@ -11,6 +11,7 @@ use App\Models\Session;
 use App\Models\Workspace;
 use App\Services\ConversationFactory;
 use App\Services\ConversationStreamLogger;
+use App\Services\ModelRepository;
 use App\Services\NativeToolService;
 use App\Services\ProviderFactory;
 use App\Services\RequestFlowLogger;
@@ -31,6 +32,7 @@ class ConversationController extends Controller
         private ProviderFactory $providerFactory,
         private StreamManager $streamManager,
         private ConversationFactory $conversationFactory,
+        private ModelRepository $models,
     ) {}
 
     /**
@@ -248,14 +250,27 @@ class ConversationController extends Controller
 
             // If model changed, update cached context window size
             if (isset($updates['model'])) {
-                $provider = $this->providerFactory->make($conversation->provider_type);
                 try {
-                    $contextWindow = $provider->getContextWindow($updates['model']);
-                    $conversation->updateContextWindowSize($contextWindow);
-                    RequestFlowLogger::log('controller.stream.context_window_updated', 'Context window updated for new model', [
-                        'model' => $updates['model'],
-                        'context_window' => $contextWindow,
-                    ]);
+                    // For 1M context agents, use max_context_window (1M) instead of default (200K)
+                    $conversation->loadMissing('agent');
+                    if ($conversation->agent?->extended_context) {
+                        $maxContextWindow = $this->models->getMaxContextWindow($updates['model']);
+                        if ($maxContextWindow > 0) {
+                            $conversation->updateContextWindowSize($maxContextWindow);
+                            RequestFlowLogger::log('controller.stream.context_window_updated', 'Context window updated (1M agent)', [
+                                'model' => $updates['model'],
+                                'context_window' => $maxContextWindow,
+                            ]);
+                        }
+                    } else {
+                        $provider = $this->providerFactory->make($conversation->provider_type);
+                        $contextWindow = $provider->getContextWindow($updates['model']);
+                        $conversation->updateContextWindowSize($contextWindow);
+                        RequestFlowLogger::log('controller.stream.context_window_updated', 'Context window updated for new model', [
+                            'model' => $updates['model'],
+                            'context_window' => $contextWindow,
+                        ]);
+                    }
                 } catch (\Exception $e) {
                     // Model not found or config error - will be updated when we get actual token data
                     RequestFlowLogger::logError('controller.stream.context_window_error', 'Failed to update context window', $e);
@@ -768,9 +783,17 @@ class ConversationController extends Controller
         // Recalculate context window when model or provider changed
         if (isset($updates['model'])) {
             try {
-                $provider = $this->providerFactory->make($updates['provider_type'] ?? $conversation->provider_type);
-                $contextWindow = $provider->getContextWindow($updates['model']);
-                $conversation->updateContextWindowSize($contextWindow);
+                // For 1M context agents, use max_context_window (1M) instead of default (200K)
+                if ($newAgent->extended_context) {
+                    $maxContextWindow = $this->models->getMaxContextWindow($updates['model']);
+                    if ($maxContextWindow > 0) {
+                        $conversation->updateContextWindowSize($maxContextWindow);
+                    }
+                } else {
+                    $provider = $this->providerFactory->make($updates['provider_type'] ?? $conversation->provider_type);
+                    $contextWindow = $provider->getContextWindow($updates['model']);
+                    $conversation->updateContextWindowSize($contextWindow);
+                }
             } catch (\Exception $e) {
                 \Log::debug('[switchAgent] Failed to update context window', [
                     'error' => $e->getMessage(),

@@ -187,6 +187,16 @@ class ClaudeCodeProvider extends AbstractCliProvider
         // Enable tool_progress heartbeats during tool execution
         $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
 
+        // For 1M context agents, bypass the CLI's hard blocking limit (~177K tokens).
+        // Two env vars are required:
+        // 1. DISABLE_AUTO_COMPACT=1 — prevents auto-compact at ~167K tokens
+        // 2. CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE=977000 — bypasses the hard block at ~177K
+        //    (DISABLE_AUTO_COMPACT alone does NOT bypass this — separate code path)
+        if ($conversation->agent?->extended_context) {
+            $env['DISABLE_AUTO_COMPACT'] = '1';
+            $env['CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE'] = '977000';
+        }
+
         return $env;
     }
 

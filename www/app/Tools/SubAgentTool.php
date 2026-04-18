@@ -2,15 +2,8 @@
 
 namespace App\Tools;
 
-use App\Jobs\ProcessConversationStream;
 use App\Models\Agent;
-use App\Models\Conversation;
-use App\Models\SubAgentTask;
-use App\Models\Workspace;
-use App\Services\ConversationFactory;
-use App\Services\StreamManager;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use App\Services\SubAgentRunner;
 use Illuminate\Support\Str;
 
 class SubAgentTool extends Tool
@@ -36,6 +29,10 @@ class SubAgentTool extends Tool
                 'type' => 'boolean',
                 'description' => 'If true, return immediately with a task_id. If false (default), wait for the sub-agent to complete and return its output.',
             ],
+            'conversation_id' => [
+                'type' => 'string',
+                'description' => 'Optional: UUID of a previous conversation with this agent to resume. When provided, prompt is appended as the next user message.',
+            ],
         ],
         'required' => ['agent', 'prompt'],
     ];
@@ -47,6 +44,7 @@ Spawn a child PocketDev agent to handle a task using any configured provider. Th
 - Delegate specialized tasks to a different AI model or provider
 - Run multiple tasks in parallel using background mode
 - Break complex work into sub-tasks handled by purpose-built agents
+- For agents with `expose_as_tool = true`, prefer calling them directly by name (e.g. `agent_code_reviewer`) instead of using SubAgent
 
 ## Foreground Mode (default)
 Blocks until the sub-agent completes and returns its full output. Use for tasks where you need the result before continuing.
@@ -54,17 +52,22 @@ Blocks until the sub-agent completes and returns its full output. Use for tasks 
 ## Background Mode
 Returns immediately with a task_id. Use SubAgentOutput to check status and retrieve results later. Ideal for parallelism.
 
+## Resuming a Conversation
+Pass `conversation_id` from a previous response to continue from where you left off. The sub-agent will see the full conversation history.
+
 ## Parameters
 - agent: Agent slug or UUID (see "Available Agents" section in this prompt)
 - prompt: The task/prompt to send. Be specific and self-contained — the sub-agent has no context from your conversation
 - background: Optional boolean (default: false). Set to true for background execution
+- conversation_id: Optional UUID to resume an existing sub-agent conversation
 
 ## Important Notes
-- The sub-agent starts a fresh conversation — it does NOT see your conversation history
+- The sub-agent starts a fresh conversation (unless conversation_id is provided)
 - Write self-contained prompts with all necessary context
 - The sub-agent shares your working directory and workspace
 - Foreground mode has a 10-minute timeout
 - For background tasks, use SubAgentOutput to poll for completion
+- To stop a running background task, use SubAgentCancel with its task_id
 INSTRUCTIONS;
 
     public ?string $cliExamples = <<<'CLI'
@@ -104,6 +107,7 @@ API;
         $agentIdentifier = trim($input['agent'] ?? '');
         $prompt = trim($input['prompt'] ?? '');
         $isBackground = (bool) ($input['background'] ?? false);
+        $conversationId = isset($input['conversation_id']) ? trim($input['conversation_id']) : null;
 
         if (empty($agentIdentifier)) {
             return ToolResult::error('agent is required. See "Available Agents" in the system prompt.');
@@ -128,117 +132,12 @@ API;
             return ToolResult::error("Agent '{$agentIdentifier}' not found. Use an agent slug or UUID from the Available Agents list.");
         }
 
-        // Determine workspace (fall back to agent's workspace if context has none)
-        $workspace = $workspace ?? $agent->workspace;
-        $workspaceId = $workspace?->id;
-        $workingDirectory = $context->workingDirectory;
-
-        try {
-            // Create child conversation + task atomically
-            [$conversation, $task] = DB::transaction(function () use ($agent, $workingDirectory, $workspaceId, $prompt, $context, $isBackground) {
-                $factory = app(ConversationFactory::class);
-                $conversation = $factory->createFromAgent(
-                    $agent,
-                    $workingDirectory,
-                    $workspaceId,
-                    'Subagent: ' . Str::limit($prompt, 60)
-                );
-
-                $task = SubAgentTask::create([
-                    'parent_conversation_uuid' => $context->conversationUuid,
-                    'child_conversation_uuid' => $conversation->uuid,
-                    'agent_id' => $agent->id,
-                    'prompt' => $prompt,
-                    'is_background' => $isBackground,
-                ]);
-
-                return [$conversation, $task];
-            });
-
-            // Initialize the Redis stream (outside transaction — not DB state)
-            $streamManager = app(StreamManager::class);
-            $streamManager->startStream($conversation->uuid, [
-                'model' => $conversation->model,
-                'provider' => $conversation->provider_type,
-                'subagent_task_id' => $task->id,
-            ]);
-
-            // Dispatch the streaming job
-            ProcessConversationStream::dispatch(
-                $conversation->uuid,
-                $prompt,
-            );
-
-            Log::info('SubAgent task started', [
-                'task_id' => $task->id,
-                'parent_conversation' => $context->conversationUuid,
-                'child_conversation' => $conversation->uuid,
-                'agent' => $agent->slug,
-                'background' => $isBackground,
-            ]);
-
-            // Background mode: return immediately
-            if ($isBackground) {
-                return ToolResult::success(json_encode([
-                    'task_id' => $task->id,
-                    'status' => 'running',
-                    'agent' => $agent->slug,
-                    'provider' => $agent->provider,
-                    'model' => $conversation->model,
-                    'message' => "Background sub-agent started. Use SubAgentOutput with task_id '{$task->id}' to check status and retrieve output.",
-                ], JSON_PRETTY_PRINT));
-            }
-
-            // Foreground mode: poll until complete
-            return $this->waitForCompletion($task, $conversation);
-
-        } catch (\Exception $e) {
-            Log::error('SubAgent failed to start', [
-                'agent' => $agentIdentifier,
-                'error' => $e->getMessage(),
-            ]);
-            return ToolResult::error('Failed to start sub-agent: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Poll the conversation until it completes or times out.
-     */
-    private function waitForCompletion(SubAgentTask $task, Conversation $conversation): ToolResult
-    {
-        $maxWaitSeconds = 600; // 10 minutes
-        $pollIntervalMicroseconds = 1_000_000; // 1 second
-        $startTime = time();
-
-        while (time() - $startTime < $maxWaitSeconds) {
-            $conversation->refresh();
-
-            if (in_array($conversation->status, [Conversation::STATUS_IDLE, Conversation::STATUS_ARCHIVED], true)) {
-                // Reload task's relationship so collectOutput sees the final messages
-                $task->unsetRelation('childConversation');
-                $output = $task->collectOutput();
-                return ToolResult::success(json_encode([
-                    'task_id' => $task->id,
-                    'status' => 'completed',
-                    'output' => $output,
-                ], JSON_PRETTY_PRINT));
-            }
-
-            if ($conversation->status === Conversation::STATUS_FAILED) {
-                $task->unsetRelation('childConversation');
-                $error = $task->getError();
-                return ToolResult::error("Sub-agent task '{$task->id}' failed: {$error}");
-            }
-
-            usleep($pollIntervalMicroseconds);
-        }
-
-        // Timed out — returned as success because the task is still running
-        // and the caller can poll via SubAgentOutput later.
-        return ToolResult::success(json_encode([
-            'task_id' => $task->id,
-            'status' => 'timeout',
-            'message' => "Sub-agent did not complete within {$maxWaitSeconds} seconds. Use SubAgentOutput with task_id '{$task->id}' to check status later.",
-        ], JSON_PRETTY_PRINT));
+        return app(SubAgentRunner::class)->run(
+            $agent,
+            $prompt,
+            $isBackground,
+            $context,
+            $conversationId ?: null,
+        );
     }
 }

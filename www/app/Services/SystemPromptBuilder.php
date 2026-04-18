@@ -141,6 +141,14 @@ class SystemPromptBuilder
             $sections[] = $envSection;
         }
 
+        // 12. Dedicated agent tools — injected last so it's in the recency zone
+        // For CLI providers this is the equivalent of API agent_* tool definitions.
+        if ($promptType === 'cli' && $agent) {
+            if ($agentToolsSection = $this->buildExposedAgentToolsSection($agent, $workspace)) {
+                $sections[] = $agentToolsSection;
+            }
+        }
+
         // Note: Context usage section removed to improve prompt caching.
         // The percentage changed every message, invalidating cache.
         // Users can see context usage in the UI progress bar instead.
@@ -511,6 +519,77 @@ PROMPT;
                 $escapeCell($agent->model),
                 $escapeCell($desc),
             );
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Build a section describing exposed agents as dedicated named tools for CLI providers.
+     *
+     * For API providers this is handled via getDefinitions() injecting agent_* tool schemas.
+     * For CLI providers (Claude Code, Codex) the equivalent is text in the system prompt
+     * describing each exposed agent as a callable tool via `pd subagent:run`.
+     */
+    private function buildExposedAgentToolsSection(?Agent $callerAgent, ?Workspace $workspace = null): ?string
+    {
+        if (!$callerAgent || !$callerAgent->can_call_subagents) {
+            return null;
+        }
+
+        // Resolve the workspace to scope agent lookup.
+        // Agents without a workspace_id (global defaults) fall back to the
+        // conversation workspace so they can still see exposed agents.
+        $workspaceId = $callerAgent->workspace_id ?? $workspace?->id;
+
+        if (!$workspaceId) {
+            return null;
+        }
+
+        $query = Agent::where('workspace_id', $workspaceId)
+            ->where('enabled', true)
+            ->where('expose_as_tool', true)
+            ->where('id', '!=', $callerAgent->id);
+
+        $allowlist = $callerAgent->allowed_subagents;
+        if (!empty($allowlist)) {
+            $query->whereIn('id', $allowlist);
+        }
+
+        $agents = $query->orderBy('name')->get();
+
+        $lines = [];
+        $lines[] = "# AGENT ORCHESTRATION — STRICT RULES\n";
+        $lines[] = "## ❌ NEVER do any of these:";
+        $lines[] = "- Use your built-in `Task` tool to spawn subagents";
+        $lines[] = "- Use any native agent/subagent spawning mechanism";
+        $lines[] = "- Look up agents in memory";
+        $lines[] = "- Use the generic SubAgent tool\n";
+        $lines[] = "## ✅ ALWAYS use PocketDev's `pd subagent:run` via Bash for ALL agent calls:\n";
+        $lines[] = "```bash";
+        $lines[] = "pd subagent:run --agent=<slug> --prompt=\"<task>\"";
+        $lines[] = "```\n";
+        $lines[] = "PocketDev manages all agent orchestration, context, and output. Bypassing it breaks tracking and output capture.\n";
+
+        if ($agents->isEmpty()) {
+            return implode("\n", $lines);
+        }
+
+        $lines[] = "---\n";
+        $lines[] = "## Available PocketDev Agents\n";
+
+        foreach ($agents as $agent) {
+            $toolName = 'agent_' . $agent->slug;
+            $lines[] = "### `{$toolName}`";
+            if ($agent->description) {
+                $lines[] = trim($agent->description);
+            }
+            $lines[] = "**Run via Bash (the ONLY correct way):**";
+            $lines[] = "```bash";
+            $lines[] = "pd subagent:run --agent={$agent->slug} --prompt=\"<task>\"";
+            $lines[] = "```";
+            $lines[] = "❌ Wrong: using Task tool with `{$toolName}`";
+            $lines[] = "✅ Right: `pd subagent:run --agent={$agent->slug} --prompt=\"...\"`\n";
         }
 
         return implode("\n", $lines);

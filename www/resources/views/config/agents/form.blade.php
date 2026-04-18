@@ -219,6 +219,79 @@
                         <span class="text-sm">Default for provider</span>
                     </label>
                 </div>
+
+                <!-- Sub-agent Settings -->
+                <div
+                    x-data="{
+                        exposeAsTool: {{ old('expose_as_tool', ($agent->expose_as_tool ?? ($sourceAgent->expose_as_tool ?? false)) ? 'true' : 'false') }},
+                        canCallSubagents: {{ old('can_call_subagents', ($agent->can_call_subagents ?? ($sourceAgent->can_call_subagents ?? true)) ? 'true' : 'false') }},
+                        allowedSubagents: @js(old('allowed_subagents', $agent->allowed_subagents ?? [])),
+                    }"
+                    class="space-y-4 pt-2 border-t border-gray-700/50"
+                >
+                    <h4 class="text-sm font-semibold text-gray-300">Sub-agent Settings</h4>
+
+                    <!-- Expose as tool -->
+                    <label class="flex items-start gap-3 cursor-pointer group">
+                        <input
+                            type="checkbox"
+                            name="expose_as_tool"
+                            value="1"
+                            :checked="exposeAsTool"
+                            @change="exposeAsTool = $event.target.checked"
+                            class="mt-0.5 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                        >
+                        <div>
+                            <span class="text-sm text-white group-hover:text-blue-300">Expose as native tool</span>
+                            <p class="text-xs text-gray-400 mt-0.5">
+                                Adds this agent as a dedicated tool call (e.g. <code class="text-blue-400">agent_{{ Illuminate\Support\Str::slug($agent->name ?? 'my-agent') }}</code>) for other agents. Only enable for agents designed to be called as sub-agents.
+                            </p>
+                        </div>
+                    </label>
+
+                    <!-- Can call subagents -->
+                    <label class="flex items-start gap-3 cursor-pointer group">
+                        <input
+                            type="checkbox"
+                            name="can_call_subagents"
+                            value="1"
+                            :checked="canCallSubagents"
+                            @change="canCallSubagents = $event.target.checked"
+                            class="mt-0.5 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 focus:ring-blue-500"
+                        >
+                        <div>
+                            <span class="text-sm text-white group-hover:text-blue-300">Can call other agents</span>
+                            <p class="text-xs text-gray-400 mt-0.5">
+                                Allow this agent to spawn sub-agents via SubAgent tool or native agent tool calls. Disable to prevent any outbound sub-agent calls.
+                            </p>
+                        </div>
+                    </label>
+
+                    <!-- Allowed subagents allowlist -->
+                    @php $exposedAgents = $exposedAgents ?? collect(); @endphp
+                    <div x-show="canCallSubagents && {{ $exposedAgents->isNotEmpty() ? 'true' : 'false' }}" x-cloak class="ml-7">
+                        <label class="block text-xs font-medium text-gray-400 mb-2">
+                            Limit to specific agents
+                            <span class="text-gray-500 font-normal">(leave empty to allow all)</span>
+                        </label>
+                        <div class="flex flex-wrap gap-2">
+                            @foreach ($exposedAgents as $exposedAgent)
+                                <label class="flex items-center gap-1.5 px-2 py-1 bg-gray-800 border border-gray-700 rounded cursor-pointer hover:border-gray-600 text-xs">
+                                    <input
+                                        type="checkbox"
+                                        name="allowed_subagents[]"
+                                        value="{{ $exposedAgent->id }}"
+                                        {{ in_array($exposedAgent->id, old('allowed_subagents', $agent->allowed_subagents ?? [])) ? 'checked' : '' }}
+                                        class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
+                                    >
+                                    <span class="text-gray-300">{{ $exposedAgent->name }}</span>
+                                    <span class="text-gray-500 font-mono">{{ $exposedAgent->slug }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Only agents with "Expose as native tool" enabled are listed here.</p>
+                    </div>
+                </div>
             </div>
 
             <!-- Right Column: Reasoning Settings -->

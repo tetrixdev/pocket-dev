@@ -283,7 +283,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
         // Prepare provider options
         $getToolDefsStart = microtime(true);
-        $toolDefinitions = $toolRegistry->getDefinitions();
+        $toolDefinitions = $toolRegistry->getDefinitions($conversation->agent);
         $getToolDefsTime = (microtime(true) - $getToolDefsStart) * 1000;
         RequestFlowLogger::log('job.loop.tool_definitions', 'Tool definitions retrieved', [
             'duration_ms' => round($getToolDefsTime, 2),
@@ -666,6 +666,32 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             RequestFlowLogger::log('job.loop.saving_tool_results', 'Saving tool results message');
             $this->saveToolResultMessage($conversation, $toolResults);
 
+            // Check for end-turn signal from a tool (e.g. SubAgent in background mode).
+            // When present, finalize the parent turn immediately without a second AI call,
+            // saving a synthetic assistant message to keep the conversation history well-formed
+            // (avoids two consecutive user messages on the next turn).
+            $endTurnResult = null;
+            foreach ($toolResults as $r) {
+                if ($r['end_turn'] ?? false) {
+                    $endTurnResult = $r;
+                    break;
+                }
+            }
+
+            if ($endTurnResult !== null) {
+                $endTurnMessage = $endTurnResult['end_turn_message'] ?? 'Background agent started.';
+                RequestFlowLogger::log('job.loop.end_turn_signal', 'End-turn signal from tool — ending parent turn early', [
+                    'tool_use_id' => $endTurnResult['tool_use_id'],
+                ]);
+                $this->saveAssistantMessage(
+                    $conversation,
+                    [['type' => 'text', 'text' => $endTurnMessage]],
+                    0, 0, null, null,
+                    'end_turn',
+                );
+                return; // handle() will call completeProcessing()
+            }
+
             // Continue with tool results (recursive)
             // Pass the original user message for abort sync consistency
             RequestFlowLogger::log('job.loop.recursive_call', 'Making recursive call for tool results', [
@@ -746,10 +772,20 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
             // Ensure context_window_size is set (for existing conversations that don't have it)
             if (!$conversation->context_window_size) {
-                $provider = app(\App\Services\ProviderFactory::class)->make($conversation->provider_type);
                 try {
-                    $contextWindow = $provider->getContextWindow($conversation->model);
-                    $conversation->updateContextWindowSize($contextWindow);
+                    // For 1M context agents, use max_context_window (1M) instead of default (200K)
+                    $conversation->loadMissing('agent');
+                    if ($conversation->agent?->extended_context) {
+                        $models = app(\App\Services\ModelRepository::class);
+                        $maxContextWindow = $models->getMaxContextWindow($conversation->model);
+                        if ($maxContextWindow > 0) {
+                            $conversation->updateContextWindowSize($maxContextWindow);
+                        }
+                    } else {
+                        $provider = app(\App\Services\ProviderFactory::class)->make($conversation->provider_type);
+                        $contextWindow = $provider->getContextWindow($conversation->model);
+                        $conversation->updateContextWindowSize($contextWindow);
+                    }
                 } catch (\Exception $e) {
                     // Model not found or provider error - skip (will retry on next turn)
                     Log::debug('ProcessConversationStream: Failed to get context window', [
@@ -789,11 +825,12 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         // Get session from conversation's screen (for panel tools that need to create screens)
         $session = $conversation->screen?->session;
 
-        // Pass workspace, session, and stream context so tools can access workspace-specific credentials,
-        // create panel screens, and emit stream events when needed
+        // Pass workspace, agent, session, and stream context so tools can access workspace-specific
+        // credentials, create panel screens, emit stream events, and enforce sub-agent permissions
         $context = new ExecutionContext(
             $conversation->working_directory,
             workspace: $conversation->workspace,
+            agent: $conversation->agent,
             session: $session,
             streamManager: $streamManager,
             conversationUuid: $this->conversationUuid,
@@ -808,9 +845,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             );
 
             $results[] = [
-                'tool_use_id' => $toolUse['id'],
-                'content' => $result->output,
-                'is_error' => $result->isError,
+                'tool_use_id'      => $toolUse['id'],
+                'content'          => $result->output,
+                'is_error'         => $result->isError,
+                'end_turn'         => $result->endTurn,
+                'end_turn_message' => $result->endTurnMessage,
             ];
         }
 

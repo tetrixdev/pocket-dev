@@ -44,6 +44,9 @@ class Agent extends Model
         'system_prompt',
         'is_default',
         'enabled',
+        'expose_as_tool',
+        'can_call_subagents',
+        'allowed_subagents',
     ];
 
     protected $casts = [
@@ -54,6 +57,9 @@ class Agent extends Model
         'enabled' => 'boolean',
         'reasoning_config' => 'array',
         'response_level' => 'integer',
+        'expose_as_tool' => 'boolean',
+        'can_call_subagents' => 'boolean',
+        'allowed_subagents' => 'array',
     ];
 
     protected static function boot(): void
