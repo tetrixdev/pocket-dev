@@ -19,6 +19,10 @@
         <span class="absolute inset-0 flex items-center justify-center text-[10px] font-mono text-white font-medium"
               x-text="contextPercentage.toFixed(0) + '%'"></span>
     </div>
+    <span x-show="hasContextWindowMismatch()"
+          x-cloak
+          class="text-[10px] text-amber-300 font-medium"
+          title="Configured context differs from runtime-detected context">R</span>
 </div>
 @else
 {{-- Standard version for desktop --}}
@@ -35,6 +39,10 @@
         <span class="absolute inset-0 flex items-center justify-center text-xs font-mono text-white font-medium"
               x-text="contextPercentage.toFixed(0) + '%'"></span>
     </div>
+    <span x-show="hasContextWindowMismatch()"
+          x-cloak
+          class="text-[10px] text-amber-300 font-medium"
+          title="Configured context differs from runtime-detected context">Runtime</span>
     {{-- Warning icon for danger level --}}
     <svg x-show="contextWarningLevel === 'danger'"
          x-cloak

@@ -119,7 +119,8 @@ class StreamEvent
         ?float $cost = null,
         ?int $contextWindowSize = null,
         ?int $contextInputTokens = null,
-        ?int $contextOutputTokens = null
+        ?int $contextOutputTokens = null,
+        ?int $effectiveContextWindow = null
     ): self {
         $metadata = array_filter([
             'input_tokens' => $inputTokens,
@@ -128,6 +129,7 @@ class StreamEvent
             'cache_read_tokens' => $cacheRead,
             'cost' => $cost,
             'context_window_size' => $contextWindowSize,
+            'effective_context_window' => $effectiveContextWindow,
         ], fn($v) => $v !== null);
 
         // Include per-turn context tokens for updateContextUsage whenever provided

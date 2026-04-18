@@ -2006,6 +2006,7 @@
 
                 // Context window tracking
                 contextWindowSize: 0,
+                effectiveContextWindow: 0,
                 lastContextTokens: 0,
                 contextPercentage: 0,
                 contextWarningLevel: 'safe',
@@ -2136,6 +2137,7 @@
                         getCurrentAgent: () => this.currentAgent,
                         updateContext: (data) => {
                             if (data.contextWindowSize) this.contextWindowSize = data.contextWindowSize;
+                            if (data.effectiveContextWindow !== undefined) this.effectiveContextWindow = data.effectiveContextWindow;
                             if (data.contextPercentage !== undefined) {
                                 this.contextPercentage = data.contextPercentage;
                                 this.lastContextTokens = data.lastContextTokens || 0;
@@ -3663,6 +3665,7 @@
                         // Load context window tracking data
                         if (data.context) {
                             this.contextWindowSize = data.context.context_window_size || 0;
+                            this.effectiveContextWindow = data.context.effective_context_window || 0;
                             this.lastContextTokens = data.context.last_context_tokens || 0;
                             this.contextPercentage = data.context.usage_percentage || 0;
                             this.contextWarningLevel = data.context.warning_level || 'safe';
@@ -4024,9 +4027,12 @@
                         // Load context tracking
                         if (data.context) {
                             this.contextWindowSize = data.context.context_window_size || 0;
+                            this.effectiveContextWindow = data.context.effective_context_window || 0;
                             this.lastContextTokens = data.context.last_context_tokens || 0;
                             this.contextPercentage = data.context.usage_percentage || 0;
                             this.contextWarningLevel = data.context.warning_level || 'safe';
+                        } else {
+                            this.resetContextTracking();
                         }
 
                         // Load messages (pass targetTurn to center initial batch if searching)
@@ -5386,16 +5392,22 @@
 
                 async sendMessage() {
                     const attachments = Alpine.store('attachments');
-
-                    // Allow sending if there's text OR files OR active skill
-                    if (!this.prompt.trim() && !attachments.hasFiles && !this.activeSkill) return;
-                    if (this.isStreaming) return;
+                    const trimmedPrompt = this.prompt.trim();
 
                     // Block sending while conversation is being loaded (prevents race conditions)
                     if (this.loadingConversation) {
                         this.showError('Please wait for the conversation to load');
                         return;
                     }
+
+                    if (trimmedPrompt === '/compact' && !this.activeSkill) {
+                        await this.sendCompactCommand();
+                        return;
+                    }
+
+                    // Allow sending if there's text OR files OR active skill
+                    if (!this.prompt.trim() && !attachments.hasFiles && !this.activeSkill) return;
+                    if (this.isStreaming) return;
 
                     // Block unmatched /commands - if prompt starts with / but no skill is active
                     if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
@@ -5555,6 +5567,51 @@
                         this.showError('Failed to start streaming: ' + err.message);
                         this.isStreaming = false;
                         this.prompt = userPrompt; // Restore prompt so user can retry
+                    }
+                },
+
+                async sendCompactCommand() {
+                    if (this.loadingConversation) {
+                        this.showError('Please wait for the conversation to load');
+                        return;
+                    }
+
+                    if (!this.currentConversationUuid) {
+                        this.showError('/compact requires an existing conversation.');
+                        return;
+                    }
+
+                    if (this.isStreaming) {
+                        this.showError('Conversation is already streaming');
+                        return;
+                    }
+
+                    this.prompt = '';
+                    this.lastEventIndex = 0;
+                    this._justCompletedStream = false;
+                    this._streamStore.resetStreamState();
+
+                    try {
+                        const response = await fetch(`/api/conversations/${this.currentConversationUuid}/compact`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+
+                        const data = await response.json();
+                        if (!data.success) {
+                            this.showError(data.error || 'Failed to start /compact');
+                            this.prompt = '/compact';
+                            return;
+                        }
+
+                        if (data.started_at) {
+                            this._streamState.startedAt = data.started_at;
+                        }
+
+                        await this.connectToStreamEvents();
+                    } catch (err) {
+                        this.showError('Failed to start /compact: ' + err.message);
+                        this.prompt = '/compact';
                     }
                 },
 
@@ -5927,7 +5984,17 @@
                     if (!this.contextWindowSize) return 'Context: --';
                     const used = (this.lastContextTokens / 1000).toFixed(0);
                     const total = (this.contextWindowSize / 1000).toFixed(0);
+                    if (this.hasContextWindowMismatch()) {
+                        const effective = (this.effectiveContextWindow / 1000).toFixed(0);
+                        return `${used}k / ${total}k tokens (runtime: ${effective}k)`;
+                    }
                     return `${used}k / ${total}k tokens`;
+                },
+
+                hasContextWindowMismatch() {
+                    return this.contextWindowSize > 0
+                        && this.effectiveContextWindow > 0
+                        && this.contextWindowSize !== this.effectiveContextWindow;
                 },
 
                 updateContextWarningLevel() {
@@ -5942,6 +6009,7 @@
 
                 resetContextTracking() {
                     this.contextWindowSize = 0;
+                    this.effectiveContextWindow = 0;
                     this.lastContextTokens = 0;
                     this.contextPercentage = 0;
                     this.contextWarningLevel = 'safe';

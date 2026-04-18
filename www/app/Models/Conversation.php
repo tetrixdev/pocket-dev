@@ -33,6 +33,7 @@ class Conversation extends Model
         // Context window tracking
         'last_context_tokens',
         'context_window_size',
+        'effective_context_window',
         'status',
         'last_activity_at',
         // Unified reasoning config (JSON)
@@ -50,6 +51,7 @@ class Conversation extends Model
         'total_output_tokens' => 'integer',
         'last_context_tokens' => 'integer',
         'context_window_size' => 'integer',
+        'effective_context_window' => 'integer',
         'reasoning_config' => 'array',
         'response_level' => 'integer',
         'last_embedded_turn_number' => 'integer',

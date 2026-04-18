@@ -120,6 +120,10 @@ RUN chmod +x /usr/local/bin/pd /usr/local/bin/pocketdev
 COPY docker-laravel/shared/scripts/install-system-packages.sh /usr/local/bin/install-system-packages
 RUN chmod +x /usr/local/bin/install-system-packages
 
+# Install Claude capability probe script (queue startup gate for adaptive 1M policy)
+COPY docker-laravel/shared/scripts/claude-capability-probe.sh /usr/local/bin/claude-capability-probe.sh
+RUN chmod +x /usr/local/bin/claude-capability-probe.sh
+
 # Set working directory
 WORKDIR /var/www
 

@@ -144,6 +144,9 @@ fi
 # This is a fallback mechanism for pinning to a known-working version.
 # Example: CLAUDE_CODE_VERSION=2.1.17
 
+current_version=$(claude --version 2>/dev/null | head -1 | awk '{print $1}' || echo "unknown")
+echo "Claude Code CLI version: $current_version"
+
 if [ -n "$CLAUDE_CODE_VERSION" ]; then
     current_version=$(claude --version 2>/dev/null | head -1 | awk '{print $1}' || echo "unknown")
     if [ "$current_version" != "$CLAUDE_CODE_VERSION" ]; then
@@ -156,6 +159,32 @@ if [ -n "$CLAUDE_CODE_VERSION" ]; then
         fi
     else
         echo "Claude Code already at requested version $CLAUDE_CODE_VERSION"
+    fi
+fi
+
+
+# =============================================================================
+# CLAUDE CAPABILITY PROBE
+# =============================================================================
+# Probe runtime 1M capability paths and export PD_CLAUDE_ADAPTIVE_ALLOWED.
+# Adaptive context policy uses this as a startup gate.
+if [ -x /usr/local/bin/claude-capability-probe.sh ]; then
+    echo "🔎 Running Claude capability probe..."
+    /usr/local/bin/claude-capability-probe.sh || true
+
+    if [ -f /tmp/claude-capability-probe.env ]; then
+        while IFS='=' read -r key value; do
+            case "$key" in
+                PD_CLAUDE_ADAPTIVE_ALLOWED|PD_CLAUDE_PROBE_STATUS)
+                    export "$key=$value"
+                    ;;
+            esac
+        done < /tmp/claude-capability-probe.env
+    fi
+
+    if [ -f /tmp/claude-capability-probe.json ]; then
+        echo "Claude capability probe result:"
+        cat /tmp/claude-capability-probe.json
     fi
 fi
 

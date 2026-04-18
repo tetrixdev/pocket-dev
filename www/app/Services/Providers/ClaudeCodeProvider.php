@@ -4,6 +4,7 @@ namespace App\Services\Providers;
 
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Services\ClaudeContextPolicyService;
 use App\Services\ModelRepository;
 use App\Streaming\StreamEvent;
 use Generator;
@@ -187,6 +188,23 @@ class ClaudeCodeProvider extends AbstractCliProvider
         // Enable tool_progress heartbeats during tool execution
         $env['CLAUDE_CODE_CONTAINER_ID'] = 'pocketdev';
 
+        $policy = app(ClaudeContextPolicyService::class)->evaluateForConversation($conversation);
+        if ($policy['apply_overrides']) {
+            $env['DISABLE_AUTO_COMPACT'] = '1';
+            $env['CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE'] = (string) $policy['blocking_limit_override'];
+        }
+
+        Log::channel('api')->info('ClaudeCodeProvider: Context policy applied', [
+            'conversation' => $conversation->uuid,
+            'requested_mode' => $policy['requested_mode'],
+            'applied_mode' => $policy['applied_mode'],
+            'reason' => $policy['reason'],
+            'effective_context_window' => $policy['effective_context_window'],
+            'workspace_demoted' => $policy['workspace_demoted'],
+            'probe_allows_adaptive' => $policy['probe_allows_adaptive'],
+            'overrides_applied' => $policy['apply_overrides'],
+        ]);
+
         return $env;
     }
 
@@ -206,6 +224,7 @@ class ClaudeCodeProvider extends AbstractCliProvider
             'outputTokens' => 0,
             'cacheCreationTokens' => 0,
             'cacheReadTokens' => 0,
+            'effectiveContextWindow' => null,
         ];
     }
 
@@ -278,7 +297,11 @@ class ClaudeCodeProvider extends AbstractCliProvider
                 $state['outputTokens'],
                 $state['cacheCreationTokens'] ?: null,
                 $state['cacheReadTokens'] ?: null,
-                $state['totalCost']
+                $state['totalCost'],
+                null,
+                null,
+                null,
+                $state['effectiveContextWindow']
             );
         }
     }
@@ -291,6 +314,7 @@ class ClaudeCodeProvider extends AbstractCliProvider
             'total_cost' => $state['totalCost'],
             'input_tokens' => $state['inputTokens'],
             'output_tokens' => $state['outputTokens'],
+            'effective_context_window' => $state['effectiveContextWindow'],
         ];
     }
 
@@ -339,12 +363,17 @@ class ClaudeCodeProvider extends AbstractCliProvider
                 if (isset($data['total_cost_usd'])) {
                     $state['totalCost'] = (float) $data['total_cost_usd'];
                 }
+                $effectiveContextWindow = $this->extractEffectiveContextWindow($data);
+                if ($effectiveContextWindow !== null) {
+                    $state['effectiveContextWindow'] = $effectiveContextWindow;
+                }
                 Log::channel('api')->info('ClaudeCodeProvider: Result received', [
                     'subtype' => $data['subtype'] ?? 'unknown',
                     'is_error' => $data['is_error'] ?? false,
                     'session_id' => $state['sessionId'],
                     'total_cost' => $state['totalCost'],
                     'num_turns' => $data['num_turns'] ?? null,
+                    'effective_context_window' => $state['effectiveContextWindow'],
                 ]);
 
                 if (!empty($data['is_error'])) {
@@ -886,5 +915,43 @@ class ClaudeCodeProvider extends AbstractCliProvider
     {
         $reasoningConfig = $conversation->getReasoningConfig();
         return $reasoningConfig['thinking_tokens'] ?? 0;
+    }
+
+    private function extractEffectiveContextWindow(array $resultPayload): ?int
+    {
+        if (!isset($resultPayload['modelUsage']) || !is_array($resultPayload['modelUsage'])) {
+            return null;
+        }
+
+        $contextWindows = [];
+        $this->collectContextWindows($resultPayload['modelUsage'], $contextWindows);
+
+        if (empty($contextWindows)) {
+            return null;
+        }
+
+        return max($contextWindows);
+    }
+
+    /**
+     * @param mixed $node
+     * @param array<int, int> $collector
+     */
+    private function collectContextWindows(mixed $node, array &$collector): void
+    {
+        if (!is_array($node)) {
+            return;
+        }
+
+        foreach ($node as $key => $value) {
+            if ($key === 'contextWindow' && is_numeric($value)) {
+                $window = (int) $value;
+                if ($window > 0) {
+                    $collector[] = $window;
+                }
+                continue;
+            }
+            $this->collectContextWindows($value, $collector);
+        }
     }
 }
