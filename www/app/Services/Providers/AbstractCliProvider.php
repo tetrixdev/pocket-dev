@@ -559,13 +559,26 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                     if (is_resource($pipes[1])) fclose($pipes[1]);
                     if (is_resource($pipes[2])) fclose($pipes[2]);
 
-                    // Signal the process group to terminate (non-blocking — avoids proc_close which blocks)
-                    // The process resource will be cleaned up when the generator is garbage collected
+                    // Signal the process group first so the process begins shutting down immediately.
+                    // We still run full cleanup before returning to reset internal process state.
                     $this->signalProcessGroup($process);
 
                     // Close any open streaming blocks so the outer handler has clean content
                     yield from $this->closeOpenBlocks($state);
                     yield from $this->emitUsage($state);
+
+                    // Run provider cleanup hooks (e.g., Codex temp prompt file cleanup)
+                    // even on early abort paths where normal completion isn't reached.
+                    try {
+                        $this->onProcessComplete($conversation, $state, -1);
+                    } catch (\Throwable $cleanupError) {
+                        Log::channel('api')->warning($this->getProviderType() . ': Cleanup hook failed during abort', [
+                            'error' => $cleanupError->getMessage(),
+                        ]);
+                    }
+
+                    // Ensure process resources and signal state are fully reset.
+                    $this->killProcessGroup($process);
 
                     return; // Generator ends — outer loop in ProcessConversationStream handles abort
                 }
@@ -618,6 +631,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             $exitCode = proc_close($process);
             $this->activeProcess = null;
             $this->activeProcessPid = null;
+            $this->processSignaled = false;
 
             // Subclass cleanup hook
             $this->onProcessComplete($conversation, $state, $exitCode);
@@ -663,6 +677,15 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             if (is_resource($pipes[2])) fclose($pipes[2]);
             if (is_resource($process)) {
                 $this->killProcessGroup($process);
+            }
+
+            // Run provider cleanup hooks on exception paths too.
+            try {
+                $this->onProcessComplete($conversation, $state, -1);
+            } catch (\Throwable $cleanupError) {
+                Log::channel('api')->warning($this->getProviderType() . ': Cleanup hook failed after exception', [
+                    'error' => $cleanupError->getMessage(),
+                ]);
             }
         }
     }

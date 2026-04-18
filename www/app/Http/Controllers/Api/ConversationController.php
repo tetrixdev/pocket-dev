@@ -208,7 +208,7 @@ class ConversationController extends Controller
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
-            'codex_reasoning_effort' => 'nullable|string|in:minimal,low,medium,high,xhigh',
+            'codex_reasoning_effort' => 'nullable|string|in:none,minimal,low,medium,high,xhigh',
             'response_level' => 'nullable|integer|min:0|max:5',
             // Legacy support - will be converted to provider-specific
             'thinking_level' => 'nullable|integer|min:0|max:4',
