@@ -197,6 +197,12 @@ class ClaudeCodeProvider extends AbstractCliProvider
         // actual context window.
         $env['DISABLE_AUTO_COMPACT'] = '1';
 
+        // For 1M context agents, also bypass the CLI's hard blocking limit (~177K tokens).
+        // DISABLE_AUTO_COMPACT alone does NOT bypass this — separate code path.
+        if ($conversation->agent?->extended_context) {
+            $env['CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE'] = '977000';
+        }
+
         return $env;
     }
 

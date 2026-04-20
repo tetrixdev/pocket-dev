@@ -5443,10 +5443,12 @@
                     }
 
                     // Block unmatched /commands - if prompt starts with / but no skill is active
-                    // Built-in commands that bypass the skill system and are sent directly as messages
-                    // Only claude_code supports /compact — keep list empty for other providers
+                    // Built-in commands that bypass the skill system — provider-aware
+                    // claude_code supports a wider set of native CLI commands; other providers get none
                     const activeProvider = this.conversationProvider || this.provider;
-                    const builtInCommands = activeProvider === 'claude_code' ? ['compact'] : [];
+                    const builtInCommands = activeProvider === 'claude_code'
+                        ? ['compact', 'clear', 'help', 'review', 'init', 'vim', 'config']
+                        : [];
                     if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
                         const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0].toLowerCase();
                         if (!builtInCommands.includes(potentialSkillName)) {
