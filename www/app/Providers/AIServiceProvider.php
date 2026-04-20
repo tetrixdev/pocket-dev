@@ -12,9 +12,7 @@ use App\Services\Providers\OpenAIProvider;
 use App\Services\SystemPromptBuilder;
 use App\Services\SystemPromptService;
 use App\Services\ToolRegistry;
-use App\Tools\AgentTool;
 use App\Tools\Tool;
-use App\Tools\UserTool;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use ReflectionClass;
@@ -105,8 +103,8 @@ class AIServiceProvider extends ServiceProvider
                 continue;
             }
 
-            // Skip dynamic wrapper classes that require constructor arguments
-            if (in_array($className, [UserTool::class, AgentTool::class], true)) {
+            // Skip UserTool as it's a wrapper class
+            if ($className === UserTool::class) {
                 continue;
             }
 
