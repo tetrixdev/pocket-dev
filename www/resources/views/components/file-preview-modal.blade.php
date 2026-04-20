@@ -79,11 +79,11 @@
                             </template>
                         </button>
 
-                        {{-- Download button - show when file loaded --}}
+                        {{-- Download button - show whenever a path is known, even for binary/too_large/error files --}}
                         <button @click="$store.filePreview.downloadFile()"
                                 class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Download file"
-                                x-show="!$store.filePreview.loading && !$store.filePreview.stack.at(-1)?.error">
+                                x-show="!$store.filePreview.loading && $store.filePreview.stack.at(-1)?.path">
                             <i class="fa-solid fa-download"></i>
                         </button>
 
