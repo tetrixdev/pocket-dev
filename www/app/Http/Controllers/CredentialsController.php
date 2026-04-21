@@ -132,6 +132,13 @@ class CredentialsController extends Controller
      */
     public function processSetup(Request $request)
     {
+        // Mirror the guard in showSetup: once provider setup is complete, the only
+        // way to change keys is through /config — do not allow unauthenticated POSTs
+        // to overwrite live credentials.
+        if ($this->settings->isSetupComplete()) {
+            return redirect('/');
+        }
+
         try {
             $validated = $request->validate([
                 'provider' => 'required|in:claude_code,codex,anthropic,openai,openai_compatible',

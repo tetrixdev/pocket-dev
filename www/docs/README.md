@@ -6,6 +6,7 @@
 |---------------|-------|
 | Philosophy & design principles | [architecture/philosophy.md](architecture/philosophy.md) |
 | Provider system (Claude Code, Anthropic, etc.) | [architecture/providers.md](architecture/providers.md) |
+| Authentication & auth bypass | [architecture/authentication.md](architecture/authentication.md) |
 | Tool system (how tools work) | [tool-system-architecture.md](tool-system-architecture.md) |
 | Memory system (persistent storage) | [memory-system.md](memory-system.md) |
 | Testing plans | [tool-system-testing-plan.md](tool-system-testing-plan.md) |
@@ -132,5 +133,6 @@ See [memory-system.md](memory-system.md) for details.
 
 - [Philosophy & Principles](architecture/philosophy.md) - Why we made these choices
 - [Provider System](architecture/providers.md) - How providers work
+- [Authentication](architecture/authentication.md) - Auth, bypass modes, API protection
 - [Tool System](tool-system-architecture.md) - Complete tool architecture
 - [Memory System](memory-system.md) - Semantic storage system

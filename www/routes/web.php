@@ -1,5 +1,19 @@
 <?php
 
+use App\Http\Controllers\Api\AgentController;
+use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\ConversationSearchController;
+use App\Http\Controllers\Api\FilePreviewController;
+use App\Http\Controllers\Api\FileUploadController;
+use App\Http\Controllers\Api\PanelController;
+use App\Http\Controllers\Api\PricingController;
+use App\Http\Controllers\Api\ScreenController;
+use App\Http\Controllers\Api\SessionController;
+use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\TranscriptionController;
+use App\Http\Controllers\Api\WorkspaceController as ApiWorkspaceController;
+use App\Http\Controllers\Auth\SecuritySettingsController;
+use App\Http\Controllers\Auth\SetupController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ClaudeAuthController;
 use App\Http\Controllers\CodexAuthController;
@@ -10,22 +24,96 @@ use App\Http\Controllers\MemoryController;
 use App\Http\Controllers\SystemPromptController;
 use Illuminate\Support\Facades\Route;
 
-// Setup wizard (first-run)
-Route::get("/setup", [CredentialsController::class, "showSetup"])->name("setup");
-Route::post("/setup", [CredentialsController::class, "processSetup"])->name("setup.process");
+// ============================================================================
+// Authentication Routes
+// ============================================================================
+
+// User setup wizard (first-run - create admin account)
+// Throttled to prevent brute-forcing the first-run race window.
+Route::prefix('setup')->name('setup.')->middleware('throttle:30,1')->group(function () {
+    Route::get('/', [SetupController::class, 'index'])->name('index');
+    Route::post('/skip', [SetupController::class, 'skipAuth'])->name('skip');
+    Route::get('/credentials', [SetupController::class, 'showCredentials'])->name('credentials');
+    Route::post('/credentials', [SetupController::class, 'storeCredentials']);
+    Route::get('/totp', [SetupController::class, 'showTotp'])->name('totp');
+    Route::post('/totp', [SetupController::class, 'verifyTotp']);
+    Route::get('/recovery', [SetupController::class, 'showRecovery'])->name('recovery');
+    Route::post('/recovery', [SetupController::class, 'confirmRecovery']);
+});
+
+// Two-factor challenge cancel (clears pending login session without requiring auth)
+Route::post('/two-factor-challenge/cancel', function (\Illuminate\Http\Request $request) {
+    $request->session()->forget(['login.id', 'login.remember']);
+    return redirect()->route('login');
+})->name('two-factor.cancel');
+
+// Security settings
+// The index route is accessible without auth (to show bypass status).
+// Mutating routes require authentication AND are throttled to slow down
+// attackers who obtain a live session cookie.
+Route::prefix('settings')->name('settings.')->group(function () {
+    Route::get('/security', [SecuritySettingsController::class, 'index'])->name('security');
+
+    Route::middleware(['auth', 'throttle:10,1'])->group(function () {
+        // Add password (two-step: password → TOTP)
+        Route::get('/security/add-password', [SecuritySettingsController::class, 'showAddPassword'])->name('security.add-password');
+        Route::post('/security/add-password', [SecuritySettingsController::class, 'storeAddPasswordStep']);
+        Route::get('/security/add-password/totp', [SecuritySettingsController::class, 'showAddPasswordTotp'])->name('security.add-password.totp');
+        Route::post('/security/add-password/totp', [SecuritySettingsController::class, 'verifyAddPasswordTotp']);
+
+        // Recovery codes preview + commit
+        Route::get('/security/recovery-codes', [SecuritySettingsController::class, 'showRecoveryCodes'])->name('security.recovery-codes');
+        Route::post('/security/recovery-codes/acknowledge', [SecuritySettingsController::class, 'acknowledgeRecoveryCodes'])->name('security.recovery-codes.acknowledge');
+
+        // Regenerate recovery codes
+        Route::post('/security/regenerate-recovery', [SecuritySettingsController::class, 'regenerateRecovery'])->name('security.regenerate-recovery');
+
+        // Reset TOTP (two-step: verify current → setup new)
+        Route::get('/security/reset-totp', [SecuritySettingsController::class, 'showResetTotp'])->name('security.reset-totp');
+        Route::post('/security/reset-totp', [SecuritySettingsController::class, 'verifyCurrentTotp']);
+        Route::get('/security/reset-totp/new', [SecuritySettingsController::class, 'showResetTotpNew'])->name('security.reset-totp.new');
+        Route::post('/security/reset-totp/new', [SecuritySettingsController::class, 'confirmResetTotpNew']);
+        Route::post('/security/reset-totp/cancel', [SecuritySettingsController::class, 'cancelResetTotp'])->name('security.reset-totp.cancel');
+
+        // Session hygiene
+        Route::post('/security/logout-other-sessions', [SecuritySettingsController::class, 'logoutOtherSessions'])->name('security.logout-other-sessions');
+
+        // Change password
+        Route::get('/security/change-password', [SecuritySettingsController::class, 'showChangePassword'])->name('security.change-password');
+        Route::post('/security/change-password', [SecuritySettingsController::class, 'changePassword']);
+
+        // Disable authentication entirely
+        Route::delete('/security/disable-auth', [SecuritySettingsController::class, 'disableAuth'])->name('security.disable-auth');
+    });
+});
+
+// ============================================================================
+// Provider Setup (API keys, CLI tools)
+// ============================================================================
+
+// Provider setup wizard - configuring AI providers after user account exists
+Route::get("/setup/provider", [CredentialsController::class, "showSetup"])->name("setup.provider");
+Route::post("/setup/provider", [CredentialsController::class, "processSetup"])->name("setup.provider.process");
 
 // Claude authentication routes - MUST be before wildcard routes
 Route::get("/claude/auth", [ClaudeAuthController::class, "index"])->name("claude.auth");
 Route::get("/claude/auth/status", [ClaudeAuthController::class, "status"])->name("claude.auth.status");
-Route::post("/claude/auth/upload", [ClaudeAuthController::class, "upload"])->name("claude.auth.upload");
-Route::post("/claude/auth/upload-json", [ClaudeAuthController::class, "uploadJson"])->name("claude.auth.uploadJson");
-Route::delete("/claude/auth/logout", [ClaudeAuthController::class, "logout"])->name("claude.auth.logout");
+// Claude auth mutation routes (require authentication + throttle — these accept
+// file uploads that write into $HOME/.claude/).
+Route::middleware(['auth', 'throttle:10,1'])->group(function () {
+    Route::post("/claude/auth/upload", [ClaudeAuthController::class, "upload"])->name("claude.auth.upload");
+    Route::post("/claude/auth/upload-json", [ClaudeAuthController::class, "uploadJson"])->name("claude.auth.uploadJson");
+    Route::delete("/claude/auth/logout", [ClaudeAuthController::class, "logout"])->name("claude.auth.logout");
+});
 
 // Codex authentication routes
 Route::get("/codex/auth", [CodexAuthController::class, "index"])->name("codex.auth");
 Route::get("/codex/auth/status", [CodexAuthController::class, "status"])->name("codex.auth.status");
-Route::post("/codex/auth/upload-json", [CodexAuthController::class, "uploadJson"])->name("codex.auth.uploadJson");
-Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->name("codex.auth.logout");
+// Codex auth mutation routes (require authentication + throttle)
+Route::middleware(['auth', 'throttle:10,1'])->group(function () {
+    Route::post("/codex/auth/upload-json", [CodexAuthController::class, "uploadJson"])->name("codex.auth.uploadJson");
+    Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->name("codex.auth.logout");
+});
 
 // Chat - Multi-provider conversation interface
 Route::get("/", [ChatController::class, "index"])->name("chat.index");
@@ -156,3 +244,228 @@ if (app()->environment('local')) {
     Route::post("/config/system/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.system.rebuild");
     Route::post("/config/system/pull-main", [ConfigController::class, "pullFromMain"])->name("config.system.pull-main");
 }
+
+/*
+|--------------------------------------------------------------------------
+| API Routes (moved from routes/api.php)
+|--------------------------------------------------------------------------
+|
+| These are browser-only AJAX endpoints called from the SPA frontend.
+| They are web routes with full CSRF protection, grouped under /api prefix.
+|
+*/
+
+Route::prefix('api')->group(function () {
+
+    /*
+    |--------------------------------------------------------------------------
+    | Voice / Transcription Routes
+    |--------------------------------------------------------------------------
+    |
+    | Voice transcription and OpenAI key management.
+    | Kept at /api/claude/* for backward compatibility with existing frontend.
+    |
+    */
+
+    Route::prefix('claude')->group(function () {
+        Route::post('transcribe', [TranscriptionController::class, 'transcribe']);
+        Route::post('transcribe/realtime-session', [TranscriptionController::class, 'createRealtimeSession']);
+        Route::get('openai-key/check', [TranscriptionController::class, 'checkOpenAiKey']);
+        Route::post('openai-key', [TranscriptionController::class, 'setOpenAiKey']);
+        Route::delete('openai-key', [TranscriptionController::class, 'deleteOpenAiKey']);
+
+        // Anthropic API key for Claude Code CLI
+        Route::get('anthropic-key/check', [TranscriptionController::class, 'checkAnthropicKey']);
+        Route::post('anthropic-key', [TranscriptionController::class, 'setAnthropicKey']);
+        Route::delete('anthropic-key', [TranscriptionController::class, 'deleteAnthropicKey']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pricing Routes
+    |--------------------------------------------------------------------------
+    |
+    | Model pricing information (read-only, defined in config/ai.php).
+    |
+    */
+
+    Route::get('pricing', [PricingController::class, 'index']);
+    Route::get('pricing/{modelId}', [PricingController::class, 'show']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Provider Routes
+    |--------------------------------------------------------------------------
+    |
+    | AI provider information and availability.
+    |
+    */
+
+    Route::get('providers', [ConversationController::class, 'providers']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Conversation Routes
+    |--------------------------------------------------------------------------
+    |
+    | Conversation resource and related actions.
+    |
+    */
+
+    // Search conversations semantically (must be before resource route)
+    Route::get('conversations/search', [ConversationSearchController::class, 'search']);
+
+    // Latest activity timestamp for sidebar polling (must be before resource route)
+    Route::get('conversations/latest-activity', [ConversationController::class, 'latestActivity']);
+
+    // Resource routes: index, store, show, destroy
+    Route::apiResource('conversations', ConversationController::class)
+        ->only(['index', 'store', 'show', 'destroy']);
+
+    // Conversation actions
+    Route::prefix('conversations/{conversation}')->group(function () {
+        Route::get('status', [ConversationController::class, 'status']);
+        Route::post('stream', [ConversationController::class, 'stream']);
+        Route::post('abort', [ConversationController::class, 'abort']);
+        Route::get('stream-status', [ConversationController::class, 'streamStatus']);
+        Route::get('stream-events', [ConversationController::class, 'streamEvents']);
+        Route::post('archive', [ConversationController::class, 'archive']);
+        Route::post('unarchive', [ConversationController::class, 'unarchive']);
+        Route::patch('agent', [ConversationController::class, 'switchAgent']);
+        Route::patch('title', [ConversationController::class, 'updateTitle']);
+        Route::get('stream-log-path', [ConversationController::class, 'streamLogPath']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Settings Routes
+    |--------------------------------------------------------------------------
+    |
+    | Application settings management.
+    |
+    */
+
+    Route::prefix('settings')->group(function () {
+        Route::get('chat-defaults', [SettingsController::class, 'chatDefaults']);
+        Route::post('chat-defaults', [SettingsController::class, 'updateChatDefaults']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Workspace Routes
+    |--------------------------------------------------------------------------
+    |
+    | Workspace management and selection.
+    | IMPORTANT: Specific routes (like /active) must come BEFORE wildcard routes.
+    |
+    */
+
+    Route::get('workspaces', [ApiWorkspaceController::class, 'index']);
+
+    // Active workspace routes (must be before {workspace} routes)
+    Route::get('workspaces/active', [ApiWorkspaceController::class, 'getActive']);
+    Route::post('workspaces/active/{workspace}', [ApiWorkspaceController::class, 'setActive']);
+
+    // Wildcard routes must come last
+    Route::get('workspaces/{workspace}', [ApiWorkspaceController::class, 'show']);
+    Route::get('workspaces/{workspace}/agents', [ApiWorkspaceController::class, 'agents']);
+    Route::get('workspaces/{workspace}/memory-databases', [ApiWorkspaceController::class, 'memoryDatabases']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Agent Routes
+    |--------------------------------------------------------------------------
+    |
+    | Agent configuration and selection.
+    |
+    */
+
+    Route::get('agents', [AgentController::class, 'index']);
+    Route::get('agents/providers', [AgentController::class, 'providers']);
+    Route::get('agents/for-provider/{provider}', [AgentController::class, 'forProvider']);
+    Route::get('agents/default/{provider}', [AgentController::class, 'defaultForProvider']);
+    Route::get('agents/available-schemas', [AgentController::class, 'availableSchemas']);
+    Route::get('agents/{agent}/available-schemas', [AgentController::class, 'availableSchemas']);
+    Route::get('agents/{agent}/system-prompt-preview', [AgentController::class, 'agentSystemPromptPreview']);
+    Route::get('agents/{agent}', [AgentController::class, 'show']);
+    Route::get('tools', [AgentController::class, 'allTools']);
+    Route::get('tools/for-provider/{provider}', [AgentController::class, 'availableTools']);
+    Route::post('agents/preview-system-prompt', [AgentController::class, 'previewSystemPrompt']);
+    Route::post('agents/check-schema-affected', [AgentController::class, 'checkSchemaAffectedAgents']);
+    Route::post('agents/validate-clone', [AgentController::class, 'validateClone']);
+    Route::get('agents/{agent}/skills', [AgentController::class, 'skills']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | File Preview Routes
+    |--------------------------------------------------------------------------
+    |
+    | Preview file contents for clickable file paths in chat.
+    |
+    */
+
+    Route::prefix('file')->group(function () {
+        Route::post('preview', [FilePreviewController::class, 'preview']);
+        Route::post('write', [FilePreviewController::class, 'write']);
+        Route::post('check', [FilePreviewController::class, 'check']);
+        Route::get('download', [FilePreviewController::class, 'download']);
+        Route::post('upload', [FileUploadController::class, 'upload']);
+        Route::post('delete', [FileUploadController::class, 'delete']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Session & Screen Routes
+    |--------------------------------------------------------------------------
+    |
+    | Sessions group screens (chats + panels) into workspaces.
+    | Screens are individual tabs within a session.
+    |
+    */
+
+    Route::prefix('sessions')->group(function () {
+        Route::get('/', [SessionController::class, 'index']);
+        Route::get('latest-activity', [SessionController::class, 'latestActivity']);
+        Route::post('/', [SessionController::class, 'store']);
+        Route::get('{session}', [SessionController::class, 'show']);
+        Route::patch('{session}', [SessionController::class, 'update']);
+        Route::delete('{session}', [SessionController::class, 'destroy']);
+        Route::post('{session}/archive', [SessionController::class, 'archive']);
+        Route::post('{session}/restore', [SessionController::class, 'restore']);
+        Route::post('{session}/active', [SessionController::class, 'setActive']);
+        Route::post('{session}/save-as-default', [SessionController::class, 'saveAsDefault']);
+        Route::post('{session}/clear-default', [SessionController::class, 'clearDefault']);
+        Route::get('{session}/archived-conversations', [SessionController::class, 'archivedConversations']);
+
+        // Screen operations within a session
+        Route::post('{session}/screens/chat', [ScreenController::class, 'createChat']);
+        Route::post('{session}/screens/panel', [ScreenController::class, 'createPanel']);
+        Route::post('{session}/screens/reorder', [ScreenController::class, 'reorder']);
+    });
+
+    Route::prefix('screens')->group(function () {
+        Route::get('{screen}', [ScreenController::class, 'show']);
+        Route::post('{screen}/activate', [ScreenController::class, 'activate']);
+        Route::delete('{screen}', [ScreenController::class, 'destroy']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Panel Routes
+    |--------------------------------------------------------------------------
+    |
+    | Panel state management, rendering, and peek (AI awareness).
+    |
+    */
+
+    Route::get('panels', [PanelController::class, 'availablePanels']);
+
+    Route::prefix('panel/{panelState}')->group(function () {
+        Route::get('render', [PanelController::class, 'render']);
+        Route::get('state', [PanelController::class, 'getState']);
+        Route::post('state', [PanelController::class, 'updateState']);
+        Route::post('action', [PanelController::class, 'action']);
+        Route::get('peek', [PanelController::class, 'peek']);
+        Route::delete('/', [PanelController::class, 'destroy']);
+    });
+});

@@ -26,7 +26,9 @@ return Application::configure(basePath: dirname(__DIR__))
             '192.168.0.0/16',  // Private network range
         ]);
 
-        // Redirect to setup wizard if not complete
+        // Redirect to setup wizard if not complete (web routes)
+        // Note: API routes are now in web.php under /api prefix, so they get
+        // full web middleware (session, CSRF, cookies) automatically.
         $middleware->web(append: [
             \App\Http\Middleware\EnsureSetupComplete::class,
         ]);
