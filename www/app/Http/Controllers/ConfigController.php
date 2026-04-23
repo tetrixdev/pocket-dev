@@ -344,6 +344,18 @@ class ConfigController extends Controller
     {
         $request->session()->put('config_last_section', 'agents');
 
+        $selectedWorkspaceId = $request->query('workspace_id');
+
+        // Agents with expose_as_tool = true in the selected workspace (for allowlist multi-select)
+        $exposedAgents = collect();
+        if ($selectedWorkspaceId) {
+            $exposedAgents = Agent::where('workspace_id', $selectedWorkspaceId)
+                ->where('enabled', true)
+                ->where('expose_as_tool', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'slug']);
+        }
+
         $viewData = [
             'providers' => Agent::getProviders(),
             'modelsPerProvider' => collect(Agent::getProviders())
@@ -353,9 +365,10 @@ class ConfigController extends Controller
                 ->mapWithKeys(fn ($p) => [$p => $this->getMaxContextPerProvider($p)])
                 ->toArray(),
             'workspaces' => Workspace::orderBy('name')->get(),
-            'selectedWorkspaceId' => $request->query('workspace_id'),
+            'selectedWorkspaceId' => $selectedWorkspaceId,
             'sourceAgent' => null,
             'cloneWarnings' => null,
+            'exposedAgents' => $exposedAgents,
         ];
 
         // Handle "Create from" (cloning an existing agent)
@@ -430,7 +443,7 @@ class ConfigController extends Controller
                 'anthropic_thinking_budget' => 'nullable|integer|min:0',
                 'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'claude_code_thinking_tokens' => 'nullable|integer|min:0',
-                'codex_reasoning_effort' => 'nullable|string|in:minimal,low,medium,high,xhigh',
+                'codex_reasoning_effort' => 'nullable|string|in:none,minimal,low,medium,high,xhigh',
                 'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'inherit_workspace_tools' => 'nullable|in:0,1',
@@ -443,6 +456,10 @@ class ConfigController extends Controller
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
                 'extended_context' => 'nullable|in:0,1',
+                'expose_as_tool' => 'nullable|boolean',
+                'can_call_subagents' => 'nullable|boolean',
+                'allowed_subagents' => 'nullable|array',
+                'allowed_subagents.*' => 'uuid|exists:agents,id',
             ]);
 
             // Check for duplicate slug within workspace
@@ -484,6 +501,9 @@ class ConfigController extends Controller
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
                     'extended_context' => ($validated['extended_context'] ?? '1') === '1',
+                    'expose_as_tool' => $validated['expose_as_tool'] ?? false,
+                    'can_call_subagents' => (bool) ($validated['can_call_subagents'] ?? false),
+                    'allowed_subagents' => !empty($validated['allowed_subagents']) ? $validated['allowed_subagents'] : null,
                 ]);
 
                 // Sync memory schemas (only if not inheriting)
@@ -510,6 +530,15 @@ class ConfigController extends Controller
     {
         $request->session()->put('config_last_section', 'agents');
 
+        // Load other agents in this workspace that have expose_as_tool enabled
+        // (candidates for the caller-side allowed_subagents multi-select)
+        $exposedAgents = Agent::where('workspace_id', $agent->workspace_id)
+            ->where('enabled', true)
+            ->where('expose_as_tool', true)
+            ->where('id', '!=', $agent->id)
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug']);
+
         return view('config.agents.form', [
             'agent' => $agent,
             'providers' => Agent::getProviders(),
@@ -519,6 +548,7 @@ class ConfigController extends Controller
             'maxContextPerProvider' => collect(Agent::getProviders())
                 ->mapWithKeys(fn ($p) => [$p => $this->getMaxContextPerProvider($p)])
                 ->toArray(),
+            'exposedAgents' => $exposedAgents,
         ]);
     }
 
@@ -536,7 +566,7 @@ class ConfigController extends Controller
                 'anthropic_thinking_budget' => 'nullable|integer|min:0',
                 'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'claude_code_thinking_tokens' => 'nullable|integer|min:0',
-                'codex_reasoning_effort' => 'nullable|string|in:minimal,low,medium,high,xhigh',
+                'codex_reasoning_effort' => 'nullable|string|in:none,minimal,low,medium,high,xhigh',
                 'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
                 'response_level' => 'nullable|integer|min:1|max:5',
                 'inherit_workspace_tools' => 'nullable|in:0,1',
@@ -549,6 +579,10 @@ class ConfigController extends Controller
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
                 'extended_context' => 'nullable|in:0,1',
+                'expose_as_tool' => 'nullable|boolean',
+                'can_call_subagents' => 'nullable|boolean',
+                'allowed_subagents' => 'nullable|array',
+                'allowed_subagents.*' => 'uuid|exists:agents,id',
             ]);
 
             // Check for duplicate slug within workspace (excluding current agent)
@@ -590,6 +624,9 @@ class ConfigController extends Controller
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
                     'extended_context' => ($validated['extended_context'] ?? '1') === '1',
+                    'expose_as_tool' => $validated['expose_as_tool'] ?? false,
+                    'can_call_subagents' => (bool) ($validated['can_call_subagents'] ?? false),
+                    'allowed_subagents' => !empty($validated['allowed_subagents']) ? $validated['allowed_subagents'] : null,
                 ]);
 
                 // Sync memory schemas (only if not inheriting)
@@ -2331,10 +2368,16 @@ class ConfigController extends Controller
         // Get cached update info (don't fetch on page load - use explicit check button)
         $updateInfo = $versionService->checkForUpdates(forceRefresh: false);
 
+        $isLocal           = $versionService->isLocalEnvironment();
+        $branches          = $isLocal ? $versionService->getAvailableBranches() : [];
+        $availableReleases = $isLocal ? [] : $versionService->getAvailableReleases();
+
         return view('config.system', [
-            'processingCount' => $processingCount,
-            'version' => $version,
-            'updateInfo' => $updateInfo,
+            'processingCount'   => $processingCount,
+            'version'           => $version,
+            'updateInfo'        => $updateInfo,
+            'branches'          => $branches,
+            'availableReleases' => $availableReleases,
         ]);
     }
 
@@ -2444,6 +2487,92 @@ class ConfigController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to restart containers', ['error' => $e->getMessage()]);
             return redirect()->back()->with('error', 'Failed to restart: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Switch to a different git branch (local development only)
+     */
+    public function switchBranch(Request $request, VersionService $versionService)
+    {
+        $branch = $request->input('branch');
+
+        if (empty($branch)) {
+            return redirect()->route('config.system')->with('error', 'No branch selected.');
+        }
+
+        $result = $versionService->switchBranch($branch);
+
+        if (!$result['success']) {
+            return redirect()->route('config.system')->with('error', $result['error'] ?? 'Failed to switch branch.');
+        }
+
+        if ($result['already_on_branch'] ?? false) {
+            return redirect()->route('config.system')->with('success', "Already on branch '{$branch}'.");
+        }
+
+        $msg = "Switched to branch '{$branch}'.";
+        if ($result['stashed'] ?? false) {
+            $msg .= ' (Uncommitted changes were stashed.)';
+        }
+        if ($result['pull_warning'] ?? false) {
+            $msg .= ' (Could not pull latest: ' . $result['pull_warning'] . ')';
+        }
+
+        return redirect()->route('config.system')->with('success', $msg);
+    }
+
+    /**
+     * Switch to a specific GitHub release version (production only)
+     */
+    public function switchVersion(Request $request, VersionService $versionService)
+    {
+        if ($versionService->isLocalEnvironment()) {
+            return redirect()->route('config.system')->with('error', 'Version switching is only available in production.');
+        }
+
+        $tag = $request->input('version_tag');
+
+        if (empty($tag) || !preg_match('/^v[\d.]+(-[a-z0-9.]+)?$/', $tag)) {
+            return redirect()->route('config.system')->with('error', 'Invalid version tag.');
+        }
+
+        try {
+            $hostProjectPath = config('backup.host_project_path');
+
+            if (empty($hostProjectPath)) {
+                throw new \RuntimeException('PD_HOST_PROJECT_PATH environment variable is not set');
+            }
+
+            // Pull specific tagged images and recreate containers
+            $safeTag = escapeshellarg($tag);
+            $command = sprintf(
+                'docker run --rm -d ' .
+                '-v /var/run/docker.sock:/var/run/docker.sock ' .
+                '-v "%s:%s" ' .
+                '-w "%s" ' .
+                'docker:27-cli ' .
+                'sh -c "POCKETDEV_VERSION=%s docker compose pull && docker compose up -d --force-recreate" 2>&1',
+                $hostProjectPath,
+                $hostProjectPath,
+                $hostProjectPath,
+                $safeTag
+            );
+
+            exec($command, $output, $returnCode);
+
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
+            }
+
+            Cache::forget('pocketdev:latest_release');
+            Cache::forget('pocketdev:update_available');
+            Cache::forget('pocketdev:available_releases');
+
+            return redirect()->route('config.system')->with('success', "Switching to {$tag}. PocketDev will restart shortly.");
+        } catch (\Exception $e) {
+            Log::error('Failed to switch version', ['error' => $e->getMessage()]);
+            return redirect()->route('config.system')->with('error', 'Failed to switch version: ' . $e->getMessage());
         }
     }
 

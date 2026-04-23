@@ -26,6 +26,7 @@ class SystemPackage extends Model
     // Status constants
     public const STATUS_REQUIRES_RESTART = 'requires_restart';
     public const STATUS_PENDING = 'pending';
+    public const STATUS_INSTALLING = 'installing';
     public const STATUS_INSTALLED = 'installed';
     public const STATUS_FAILED = 'failed';
 

@@ -11,6 +11,7 @@ use App\Models\Session;
 use App\Models\Workspace;
 use App\Services\ConversationFactory;
 use App\Services\ConversationStreamLogger;
+use App\Services\ModelRepository;
 use App\Services\NativeToolService;
 use App\Services\ProviderFactory;
 use App\Services\RequestFlowLogger;
@@ -31,6 +32,7 @@ class ConversationController extends Controller
         private ProviderFactory $providerFactory,
         private StreamManager $streamManager,
         private ConversationFactory $conversationFactory,
+        private ModelRepository $models,
     ) {}
 
     /**
@@ -208,7 +210,7 @@ class ConversationController extends Controller
             'openai_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'openai_compatible_reasoning_effort' => 'nullable|string|in:none,low,medium,high',
             'claude_code_thinking_tokens' => 'nullable|integer|min:0|max:128000',
-            'codex_reasoning_effort' => 'nullable|string|in:minimal,low,medium,high,xhigh',
+            'codex_reasoning_effort' => 'nullable|string|in:none,minimal,low,medium,high,xhigh',
             'response_level' => 'nullable|integer|min:0|max:5',
             // Legacy support - will be converted to provider-specific
             'thinking_level' => 'nullable|integer|min:0|max:4',
@@ -248,14 +250,27 @@ class ConversationController extends Controller
 
             // If model changed, update cached context window size
             if (isset($updates['model'])) {
-                $provider = $this->providerFactory->make($conversation->provider_type);
                 try {
-                    $contextWindow = $provider->getContextWindow($updates['model']);
-                    $conversation->updateContextWindowSize($contextWindow);
-                    RequestFlowLogger::log('controller.stream.context_window_updated', 'Context window updated for new model', [
-                        'model' => $updates['model'],
-                        'context_window' => $contextWindow,
-                    ]);
+                    // For 1M context agents, use max_context_window (1M) instead of default (200K)
+                    $conversation->loadMissing('agent');
+                    if ($conversation->agent?->extended_context) {
+                        $maxContextWindow = $this->models->getMaxContextWindow($updates['model']);
+                        if ($maxContextWindow > 0) {
+                            $conversation->updateContextWindowSize($maxContextWindow);
+                            RequestFlowLogger::log('controller.stream.context_window_updated', 'Context window updated (1M agent)', [
+                                'model' => $updates['model'],
+                                'context_window' => $maxContextWindow,
+                            ]);
+                        }
+                    } else {
+                        $provider = $this->providerFactory->make($conversation->provider_type);
+                        $contextWindow = $provider->getContextWindow($updates['model']);
+                        $conversation->updateContextWindowSize($contextWindow);
+                        RequestFlowLogger::log('controller.stream.context_window_updated', 'Context window updated for new model', [
+                            'model' => $updates['model'],
+                            'context_window' => $contextWindow,
+                        ]);
+                    }
                 } catch (\Exception $e) {
                     // Model not found or config error - will be updated when we get actual token data
                     RequestFlowLogger::logError('controller.stream.context_window_error', 'Failed to update context window', $e);
@@ -297,6 +312,25 @@ class ConversationController extends Controller
             ], 409);
         }
 
+        // Detect /compact slash command for Claude Code CLI conversations.
+        // When triggered, the job bypasses the normal turn and sends /compact to the CLI directly.
+        // Must be checked BEFORE startStream() to avoid leaving an orphaned stream state on error.
+        $jobOptions = [];
+        $isCompactCommand = $conversation->provider_type === 'claude_code'
+            && strtolower(trim($validated['prompt'])) === '/compact';
+
+        if ($isCompactCommand) {
+            if (empty($conversation->provider_session_id)) {
+                RequestFlowLogger::log('controller.stream.compact_no_session', '/compact requires an active session');
+                RequestFlowLogger::endRequest('error');
+                return response()->json([
+                    'success' => false,
+                    'error' => '/compact requires an active Claude Code session. Send a message first to start one.',
+                ], 422);
+            }
+            $jobOptions['is_compact_command'] = true;
+        }
+
         // Initialize stream state BEFORE cleanup to prevent race condition
         // This ensures clients won't see 'not_found' after cleanup and before job starts
         RequestFlowLogger::log('controller.stream.initializing', 'Initializing stream state in Redis');
@@ -312,7 +346,7 @@ class ConversationController extends Controller
         ProcessConversationStream::dispatch(
             $conversation->uuid,
             $validated['prompt'],
-            [] // Options no longer needed for reasoning - stored on conversation
+            $jobOptions
         );
         RequestFlowLogger::log('controller.stream.job_dispatched', 'Job dispatched to queue');
 
@@ -768,9 +802,17 @@ class ConversationController extends Controller
         // Recalculate context window when model or provider changed
         if (isset($updates['model'])) {
             try {
-                $provider = $this->providerFactory->make($updates['provider_type'] ?? $conversation->provider_type);
-                $contextWindow = $provider->getContextWindow($updates['model']);
-                $conversation->updateContextWindowSize($contextWindow);
+                // For 1M context agents, use max_context_window (1M) instead of default (200K)
+                if ($newAgent->extended_context) {
+                    $maxContextWindow = $this->models->getMaxContextWindow($updates['model']);
+                    if ($maxContextWindow > 0) {
+                        $conversation->updateContextWindowSize($maxContextWindow);
+                    }
+                } else {
+                    $provider = $this->providerFactory->make($updates['provider_type'] ?? $conversation->provider_type);
+                    $contextWindow = $provider->getContextWindow($updates['model']);
+                    $conversation->updateContextWindowSize($contextWindow);
+                }
             } catch (\Exception $e) {
                 \Log::debug('[switchAgent] Failed to update context window', [
                     'error' => $e->getMessage(),

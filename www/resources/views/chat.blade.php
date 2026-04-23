@@ -47,6 +47,8 @@
                     stack: [],
                     loading: false,
                     copied: false,
+                    copiedPath: false,
+                    _copiedPathTimer: null,
 
                     // Edit mode state
                     editing: false,
@@ -119,6 +121,8 @@
                         }
                         this.loading = true;
                         this.copied = false;
+                        if (this._copiedPathTimer) { clearTimeout(this._copiedPathTimer); this._copiedPathTimer = null; }
+                        this.copiedPath = false;
 
                         // Generate unique ID for this entry to handle race conditions
                         // (if user opens/closes files while fetch is in-flight)
@@ -247,6 +251,8 @@
                         }
                         this.stack.pop();
                         this.copied = false;
+                        if (this._copiedPathTimer) { clearTimeout(this._copiedPathTimer); this._copiedPathTimer = null; }
+                        this.copiedPath = false;
                         if (window.debugLog) debugLog('filePreview._closeStack()', { remainingStack: this.stack.length });
                     },
 
@@ -278,6 +284,8 @@
                         }
                         this.stack = [];
                         this.copied = false;
+                        if (this._copiedPathTimer) { clearTimeout(this._copiedPathTimer); this._copiedPathTimer = null; }
+                        this.copiedPath = false;
                         if (window.debugLog) debugLog('filePreview.closeAll()');
                         if (history.state?.filePreview) {
                             // Go back through all preview history entries
@@ -298,6 +306,21 @@
                             setTimeout(() => { this.copied = false; }, 1500);
                         } catch (err) {
                             console.error('Copy failed:', err);
+                        }
+                    },
+
+                    async copyPath() {
+                        if (!this.path) return;
+                        try {
+                            await navigator.clipboard.writeText(this.path);
+                            if (this._copiedPathTimer) clearTimeout(this._copiedPathTimer);
+                            this.copiedPath = true;
+                            this._copiedPathTimer = setTimeout(() => {
+                                this.copiedPath = false;
+                                this._copiedPathTimer = null;
+                            }, 1500);
+                        } catch (err) {
+                            console.error('Copy path failed:', err);
                         }
                     },
 
@@ -1352,6 +1375,19 @@
                                 <i class="fa-solid fa-trash w-4 text-center"></i>
                                 Delete chat
                             </button>
+                            {{-- Version Info --}}
+                            @php $__vd = app(\App\Services\VersionService::class)->getCurrentVersion(); @endphp
+                            <div class="border-t border-gray-600">
+                                <a href="{{ route('config.system') }}"
+                                   class="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 hover:text-gray-400 hover:bg-gray-600/50">
+                                    <i class="fa-solid fa-tag w-4 text-center"></i>
+                                    @if($__vd['mode'] === 'local')
+                                        <span>{{ $__vd['branch'] ?? 'dev' }}{{ ($__vd['has_changes'] ?? false) ? '*' : '' }}</span>
+                                    @else
+                                        <span>{{ $__vd['tag'] ?? 'unknown' }}{{ ($__vd['build_date'] ?? null) ? ' · ' . \Carbon\Carbon::parse($__vd['build_date'])->format('M j') : '' }}</span>
+                                    @endif
+                                </a>
+                            </div>
                         </div>
                     </template>
                 </div>
@@ -2555,18 +2591,40 @@
 
                     const query = this.prompt.slice(1).toLowerCase();
 
+                    // Built-in commands for Claude Code — shown in autocomplete but sent
+                    // directly as /command rather than activating the skill system.
+                    const activeProvider = this.conversationProvider || this.provider;
+                    const builtInDefs = activeProvider === 'claude_code' ? [
+                        { name: 'compact', when_to_use: 'Compact conversation to reduce context usage', isBuiltin: true },
+                    ] : [];
+                    const builtInSuggestions = builtInDefs.filter(cmd =>
+                        cmd.name.includes(query) || cmd.when_to_use.toLowerCase().includes(query)
+                    );
+
                     // Filter skills matching the query (guard against null when_to_use)
-                    this.skillSuggestions = this.skills.filter(skill => {
+                    const skillSuggestions = this.skills.filter(skill => {
                         const name = (skill.name || '').toLowerCase();
                         const whenToUse = (skill.when_to_use || '').toLowerCase();
                         return name.includes(query) || whenToUse.includes(query);
-                    }).slice(0, 8);
+                    });
 
+                    this.skillSuggestions = [...builtInSuggestions, ...skillSuggestions].slice(0, 8);
                     this.showSkillSuggestions = this.skillSuggestions.length > 0;
                     this.selectedSkillIndex = 0;
                 },
 
                 selectSkill(skill) {
+                    // Built-in commands (e.g. /compact) are sent directly as /command text
+                    // rather than activating the skill system with instruction prepending.
+                    if (skill.isBuiltin) {
+                        this.prompt = '/' + skill.name;
+                        this.showSkillSuggestions = false;
+                        this.$nextTick(() => {
+                            this.$refs.promptInput?.focus();
+                        });
+                        return;
+                    }
+
                     // Set active skill and clear prompt (skill shown as chip above textarea)
                     this.activeSkill = skill;
                     this.prompt = '';
@@ -5398,17 +5456,25 @@
                     }
 
                     // Block unmatched /commands - if prompt starts with / but no skill is active
+                    // Built-in commands that bypass the skill system — provider-aware
+                    // claude_code supports a wider set of native CLI commands; other providers get none
+                    const activeProvider = this.conversationProvider || this.provider;
+                    const builtInCommands = activeProvider === 'claude_code'
+                        ? ['compact', 'clear', 'help', 'review', 'init', 'vim', 'config']
+                        : [];
                     if (this.prompt.trim().startsWith('/') && !this.activeSkill) {
-                        const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0];
-                        const matchedSkill = this.findSkillByName(potentialSkillName);
-                        if (!matchedSkill) {
-                            this.showError(`Unknown skill: /${potentialSkillName}. Type / to see available skills.`);
-                            return;
+                        const potentialSkillName = this.prompt.trim().slice(1).split(/\s+/)[0].toLowerCase();
+                        if (!builtInCommands.includes(potentialSkillName)) {
+                            const matchedSkill = this.findSkillByName(potentialSkillName);
+                            if (!matchedSkill) {
+                                this.showError(`Unknown skill: /${potentialSkillName}. Type / to see available skills.`);
+                                return;
+                            }
+                            // If it matches, activate it and continue
+                            this.activeSkill = matchedSkill;
+                            // Remove the /command from prompt, keep any text after it
+                            this.prompt = this.prompt.trim().slice(1 + potentialSkillName.length).trim();
                         }
-                        // If it matches, activate it and continue
-                        this.activeSkill = matchedSkill;
-                        // Remove the /command from prompt, keep any text after it
-                        this.prompt = this.prompt.trim().slice(1 + potentialSkillName.length).trim();
                     }
 
                     // Block if uploads still in progress
