@@ -155,7 +155,6 @@ Route::get("/config/system", [ConfigController::class, "showSystem"])->name("con
 Route::post("/config/system/restart", [ConfigController::class, "restartContainers"])->name("config.system.restart");
 Route::post("/config/system/check-update", [ConfigController::class, "checkUpdate"])->name("config.system.check-update");
 Route::post("/config/system/apply-update", [ConfigController::class, "applyUpdate"])->name("config.system.apply-update");
-Route::post("/config/system/switch-version", [ConfigController::class, "switchVersion"])->name("config.system.switch-version");
 
 // Local-only operations (rebuild from scratch, git pull, branch switch)
 if (app()->environment('local')) {

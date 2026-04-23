@@ -2368,20 +2368,16 @@ class ConfigController extends Controller
         // Get cached update info (don't fetch on page load - use explicit check button)
         $updateInfo = $versionService->checkForUpdates(forceRefresh: false);
 
-        // Branch list for dev, release list for prod
+        // Branch list for dev mode
         $branches = $versionService->isLocalEnvironment()
             ? $versionService->getAvailableBranches()
             : [];
-        $availableReleases = !$versionService->isLocalEnvironment()
-            ? $versionService->getAvailableReleases()
-            : [];
 
         return view('config.system', [
-            'processingCount'   => $processingCount,
-            'version'           => $version,
-            'updateInfo'        => $updateInfo,
-            'branches'          => $branches,
-            'availableReleases' => $availableReleases,
+            'processingCount' => $processingCount,
+            'version'         => $version,
+            'updateInfo'      => $updateInfo,
+            'branches'        => $branches,
         ]);
     }
 
@@ -2530,53 +2526,6 @@ class ConfigController extends Controller
     /**
      * Switch to a specific GitHub release version (production only)
      */
-    public function switchVersion(Request $request, VersionService $versionService)
-    {
-        $tag = $request->input('version_tag');
-
-        if (empty($tag) || !preg_match('/^v[\d.]+(-[a-z0-9.]+)?$/', $tag)) {
-            return redirect()->route('config.system')->with('error', 'Invalid version tag.');
-        }
-
-        try {
-            $hostProjectPath = config('backup.host_project_path');
-
-            if (empty($hostProjectPath)) {
-                throw new \RuntimeException('PD_HOST_PROJECT_PATH environment variable is not set');
-            }
-
-            // Pull specific tagged images and recreate containers
-            $command = sprintf(
-                'docker run --rm -d ' .
-                '-v /var/run/docker.sock:/var/run/docker.sock ' .
-                '-v "%s:%s" ' .
-                '-w "%s" ' .
-                'docker:27-cli ' .
-                'sh -c "POCKETDEV_VERSION=%s docker compose pull && POCKETDEV_VERSION=%s docker compose up -d --force-recreate" 2>&1',
-                $hostProjectPath,
-                $hostProjectPath,
-                $hostProjectPath,
-                escapeshellarg($tag),
-                escapeshellarg($tag)
-            );
-
-            exec($command, $output, $returnCode);
-
-            if ($returnCode !== 0) {
-                throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
-            }
-
-            \Illuminate\Support\Facades\Cache::forget('pocketdev:latest_release');
-            \Illuminate\Support\Facades\Cache::forget('pocketdev:update_available');
-            \Illuminate\Support\Facades\Cache::forget('pocketdev:available_releases');
-
-            return redirect()->route('config.system')->with('success', "Switching to {$tag}. PocketDev will restart shortly.");
-        } catch (\Exception $e) {
-            Log::error('Failed to switch version', ['error' => $e->getMessage()]);
-            return redirect()->route('config.system')->with('error', 'Failed to switch version: ' . $e->getMessage());
-        }
-    }
-
     /**
      * Rebuild all Docker containers (down + build + up)
      * Use this when Dockerfiles or entrypoint scripts have changed.
