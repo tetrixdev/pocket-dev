@@ -165,6 +165,32 @@
         </div>
         @endif
 
+        {{-- Version Switcher (production only) --}}
+        @if($version['mode'] === 'production' && count($availableReleases) > 0)
+        <div class="mt-4 pt-4 border-t border-gray-700">
+            <h3 class="text-sm font-medium text-gray-300 mb-2">Switch Version</h3>
+            <form method="POST" action="{{ route('config.system.switch-version') }}" class="flex gap-2">
+                @csrf
+                <select name="version_tag"
+                        class="flex-1 bg-gray-900 border border-gray-600 rounded px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-blue-500">
+                    @foreach($availableReleases as $release)
+                        <option value="{{ $release['tag'] }}" {{ $release['tag'] === ($version['tag'] ?? '') ? 'selected' : '' }}>
+                            {{ $release['tag'] }}{{ $release['prerelease'] ? ' (pre-release)' : '' }}
+                            @if($release['published_at'])
+                                — {{ \Carbon\Carbon::parse($release['published_at'])->format('M j, Y') }}
+                            @endif
+                            {{ $release['tag'] === ($version['tag'] ?? '') ? ' (current)' : '' }}
+                        </option>
+                    @endforeach
+                </select>
+                <x-button type="submit" variant="ghost" size="sm"
+                          onclick="return confirm('Switch to this version? PocketDev will restart.')">
+                    Switch
+                </x-button>
+            </form>
+        </div>
+        @endif
+
         {{-- Check for Updates Button --}}
         <div class="mt-4 pt-4 border-t border-gray-700">
             <form method="POST" action="{{ route('config.system.check-update') }}">

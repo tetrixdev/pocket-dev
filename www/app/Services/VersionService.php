@@ -401,6 +401,46 @@ class VersionService
     }
 
     /**
+     * Get list of recent GitHub releases for version switching (prod only).
+     */
+    public function getAvailableReleases(bool $forceRefresh = false): array
+    {
+        $cacheKey = 'pocketdev:available_releases';
+
+        if (!$forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'Accept' => 'application/vnd.github.v3+json',
+                'User-Agent' => 'PocketDev',
+            ])->timeout(10)->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases?per_page=10');
+
+            if (!$response->successful()) {
+                return [];
+            }
+
+            $releases = array_map(fn($r) => [
+                'tag'          => $r['tag_name'] ?? null,
+                'name'         => $r['name'] ?? null,
+                'published_at' => $r['published_at'] ?? null,
+                'prerelease'   => $r['prerelease'] ?? false,
+                'html_url'     => $r['html_url'] ?? null,
+            ], $response->json() ?? []);
+
+            Cache::put($cacheKey, $releases, self::CACHE_TTL);
+
+            return $releases;
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    /**
      * Get a short version label for display (branch name or version tag).
      */
     public function getVersionLabel(): string
