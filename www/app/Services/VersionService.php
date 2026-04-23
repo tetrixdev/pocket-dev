@@ -286,6 +286,161 @@ class VersionService
     }
 
     /**
+     * List all remote branches available for switching (local only).
+     * Returns array of branch name strings, current branch first.
+     */
+    public function getAvailableBranches(): array
+    {
+        $projectPath = $this->getProjectPath();
+
+        if (!$projectPath) {
+            return [];
+        }
+
+        // Fetch latest remote info silently
+        shell_exec("cd {$projectPath} && git fetch --prune 2>/dev/null");
+
+        // List origin/* remote branches only (skip upstream/* and other remotes)
+        $raw = shell_exec("cd {$projectPath} && git branch -r 2>/dev/null") ?? '';
+        $current = trim(shell_exec("cd {$projectPath} && git branch --show-current 2>/dev/null") ?? '');
+
+        $branches = [];
+        foreach (explode("\n", $raw) as $line) {
+            $line = trim($line);
+            // Only include origin/ branches, skip HEAD pointers
+            if (!$line || str_contains($line, '->') || !str_starts_with($line, 'origin/')) {
+                continue;
+            }
+            $branch = preg_replace('#^origin/#', '', $line);
+            if ($branch) {
+                $branches[] = $branch;
+            }
+        }
+
+        // Also include any local-only branches not on remote
+        $localRaw = shell_exec("cd {$projectPath} && git branch 2>/dev/null") ?? '';
+        foreach (explode("\n", $localRaw) as $line) {
+            $line = trim(ltrim($line, '* '));
+            if ($line && !in_array($line, $branches)) {
+                $branches[] = $line;
+            }
+        }
+
+        // Sort, deduplicate, put current branch first
+        $branches = array_unique($branches);
+        sort($branches);
+
+        if ($current && in_array($current, $branches)) {
+            $branches = array_merge([$current], array_filter($branches, fn($b) => $b !== $current));
+        }
+
+        return $branches;
+    }
+
+    /**
+     * Switch to a different git branch (local only).
+     */
+    public function switchBranch(string $branch): array
+    {
+        if (!$this->isLocalEnvironment()) {
+            return ['success' => false, 'error' => 'Only available in local environment'];
+        }
+
+        $projectPath = $this->getProjectPath();
+
+        if (!$projectPath) {
+            return ['success' => false, 'error' => 'Project path not found'];
+        }
+
+        // Sanitize branch name
+        if (!preg_match('#^[a-zA-Z0-9/_.\-]+$#', $branch)) {
+            return ['success' => false, 'error' => 'Invalid branch name'];
+        }
+
+        $current = trim(shell_exec("cd {$projectPath} && git branch --show-current 2>/dev/null") ?? '');
+
+        if ($current === $branch) {
+            return ['success' => true, 'branch' => $branch, 'already_on_branch' => true];
+        }
+
+        // Stash uncommitted changes if present so checkout succeeds
+        $status = trim(shell_exec("cd {$projectPath} && git status --porcelain 2>/dev/null") ?? '');
+        $stashed = false;
+        if (!empty($status)) {
+            shell_exec("cd {$projectPath} && git stash 2>/dev/null");
+            $stashed = true;
+        }
+
+        // Checkout (creates local tracking branch if needed)
+        $output = [];
+        $exitCode = 0;
+        exec("cd {$projectPath} && git checkout {$branch} 2>&1", $output, $exitCode);
+
+        if ($exitCode !== 0) {
+            // Try checking out as a remote tracking branch
+            $output = [];
+            exec("cd {$projectPath} && git checkout -b {$branch} origin/{$branch} 2>&1", $output, $exitCode);
+        }
+
+        if ($exitCode !== 0) {
+            // Restore stash if we stashed
+            if ($stashed) {
+                shell_exec("cd {$projectPath} && git stash pop 2>/dev/null");
+            }
+            return ['success' => false, 'error' => 'Checkout failed: ' . implode("\n", $output)];
+        }
+
+        // Pull latest for this branch
+        shell_exec("cd {$projectPath} && git pull origin {$branch} 2>/dev/null");
+
+        return [
+            'success' => true,
+            'branch' => $branch,
+            'stashed' => $stashed,
+        ];
+    }
+
+    /**
+     * Get list of recent GitHub releases for version switching (prod only).
+     */
+    public function getAvailableReleases(bool $forceRefresh = false): array
+    {
+        $cacheKey = 'pocketdev:available_releases';
+
+        if (!$forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'Accept' => 'application/vnd.github.v3+json',
+                'User-Agent' => 'PocketDev',
+            ])->timeout(10)->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases?per_page=10');
+
+            if (!$response->successful()) {
+                return [];
+            }
+
+            $releases = array_map(fn($r) => [
+                'tag'          => $r['tag_name'] ?? null,
+                'name'         => $r['name'] ?? null,
+                'published_at' => $r['published_at'] ?? null,
+                'prerelease'   => $r['prerelease'] ?? false,
+                'html_url'     => $r['html_url'] ?? null,
+            ], $response->json() ?? []);
+
+            Cache::put($cacheKey, $releases, self::CACHE_TTL);
+
+            return $releases;
+        } catch (\Exception $e) {
+            return [];
+        }
+    }
+
+    /**
      * Get a short version label for display (branch name or version tag).
      */
     public function getVersionLabel(): string
