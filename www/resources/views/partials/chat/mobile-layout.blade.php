@@ -133,6 +133,20 @@
                 <i class="fa-solid fa-trash w-4 text-center"></i>
                 Delete chat
             </button>
+            {{-- Version Info --}}
+            @php $__vd = app(\App\Services\VersionService::class)->getCurrentVersion(); @endphp
+            <div class="border-t border-gray-600">
+                <a href="/config/system"
+                   class="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 hover:text-gray-400 hover:bg-gray-600/50"
+                   role="menuitem">
+                    <i class="fa-solid fa-tag w-4 text-center"></i>
+                    @if($__vd['mode'] === 'local')
+                        <span>{{ $__vd['branch'] ?? 'dev' }}{{ ($__vd['has_changes'] ?? false) ? '*' : '' }}</span>
+                    @else
+                        <span>{{ $__vd['tag'] ?? 'unknown' }}{{ ($__vd['build_date'] ?? null) ? ' · ' . \Carbon\Carbon::parse($__vd['build_date'])->format('M j') : '' }}</span>
+                    @endif
+                </a>
+            </div>
             </div>
         </template>
     </div>
