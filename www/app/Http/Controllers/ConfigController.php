@@ -2515,6 +2515,9 @@ class ConfigController extends Controller
         if ($result['stashed'] ?? false) {
             $msg .= ' (Uncommitted changes were stashed.)';
         }
+        if ($result['pull_warning'] ?? false) {
+            $msg .= ' (Could not pull latest: ' . $result['pull_warning'] . ')';
+        }
 
         return redirect()->route('config.system')->with('success', $msg);
     }
@@ -2524,6 +2527,10 @@ class ConfigController extends Controller
      */
     public function switchVersion(Request $request, VersionService $versionService)
     {
+        if ($versionService->isLocalEnvironment()) {
+            return redirect()->route('config.system')->with('error', 'Version switching is only available in production.');
+        }
+
         $tag = $request->input('version_tag');
 
         if (empty($tag) || !preg_match('/^v[\d.]+(-[a-z0-9.]+)?$/', $tag)) {

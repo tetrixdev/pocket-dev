@@ -369,11 +369,11 @@ class VersionService
             return ['success' => true, 'branch' => $branch, 'already_on_branch' => true];
         }
 
-        // Stash uncommitted changes if present so checkout succeeds
+        // Stash uncommitted + untracked changes so checkout succeeds (-u includes untracked files)
         $status = trim(shell_exec("cd {$path} && git status --porcelain 2>/dev/null") ?? '');
         $stashed = false;
         if (!empty($status)) {
-            shell_exec("cd {$path} && git stash 2>/dev/null");
+            shell_exec("cd {$path} && git stash -u 2>/dev/null");
             $stashed = true;
         }
 
@@ -394,12 +394,16 @@ class VersionService
             return ['success' => false, 'error' => 'Checkout failed: ' . implode("\n", $output)];
         }
 
-        shell_exec("cd {$path} && git pull origin {$safeBranch} 2>/dev/null");
+        // Pull latest — non-fatal if it fails (e.g. local-only branch or no network)
+        $pullOutput = [];
+        $pullExit   = 0;
+        exec("cd {$path} && git pull origin {$safeBranch} 2>&1", $pullOutput, $pullExit);
+        $pullWarning = $pullExit !== 0 ? implode("\n", $pullOutput) : null;
 
         // Invalidate branch cache so the dropdown reflects the new current branch immediately
         Cache::forget(self::CACHE_KEY_BRANCHES);
 
-        return ['success' => true, 'branch' => $branch, 'stashed' => $stashed];
+        return ['success' => true, 'branch' => $branch, 'stashed' => $stashed, 'pull_warning' => $pullWarning];
     }
 
     /**
@@ -418,6 +422,7 @@ class VersionService
             $response = $this->githubHttp()->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases?per_page=10');
 
             if (!$response->successful()) {
+                Log::warning('Failed to fetch PocketDev releases', ['status' => $response->status()]);
                 return [];
             }
 
@@ -433,6 +438,7 @@ class VersionService
 
             return $releases;
         } catch (\Exception $e) {
+            Log::warning('Failed to fetch PocketDev releases', ['error' => $e->getMessage()]);
             return [];
         }
     }
