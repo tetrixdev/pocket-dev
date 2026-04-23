@@ -136,7 +136,7 @@
             {{-- Version Info --}}
             @php $__vd = app(\App\Services\VersionService::class)->getCurrentVersion(); @endphp
             <div class="border-t border-gray-600">
-                <a href="/config/system"
+                <a href="{{ route('config.system') }}"
                    class="flex items-center gap-2 px-4 py-2 text-xs text-gray-500 hover:text-gray-400 hover:bg-gray-600/50"
                    role="menuitem">
                     <i class="fa-solid fa-tag w-4 text-center"></i>

@@ -8,8 +8,12 @@ use Illuminate\Support\Facades\Log;
 
 class VersionService
 {
-    private const CACHE_KEY_LATEST_RELEASE = 'pocketdev:latest_release';
+    private const CACHE_KEY_LATEST_RELEASE   = 'pocketdev:latest_release';
+    private const CACHE_KEY_AVAILABLE_RELEASES = 'pocketdev:available_releases';
+    private const CACHE_KEY_UPDATE_AVAILABLE = 'pocketdev:update_available';
+    private const CACHE_KEY_BRANCHES         = 'pocketdev:branches';
     private const CACHE_TTL = 3600; // 1 hour
+    private const CACHE_TTL_BRANCHES = 60; // 1 minute — branches change frequently
 
     /**
      * Check if running in local development mode.
@@ -198,10 +202,7 @@ class VersionService
         }
 
         try {
-            $response = Http::withHeaders([
-                'Accept' => 'application/vnd.github.v3+json',
-                'User-Agent' => 'PocketDev',
-            ])->timeout(10)->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases/latest');
+            $response = $this->githubHttp()->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases/latest');
 
             if (!$response->successful()) {
                 Log::warning('Failed to fetch latest PocketDev release', [
@@ -297,44 +298,46 @@ class VersionService
             return [];
         }
 
-        // Fetch latest remote info silently
-        shell_exec("cd {$projectPath} && git fetch --prune 2>/dev/null");
+        return Cache::remember(self::CACHE_KEY_BRANCHES, self::CACHE_TTL_BRANCHES, function () use ($projectPath) {
+            $path = escapeshellarg($projectPath);
 
-        // List origin/* remote branches only (skip upstream/* and other remotes)
-        $raw = shell_exec("cd {$projectPath} && git branch -r 2>/dev/null") ?? '';
-        $current = trim(shell_exec("cd {$projectPath} && git branch --show-current 2>/dev/null") ?? '');
+            // Fetch latest remote info silently (runs inside cache closure, max once per minute)
+            shell_exec("cd {$path} && git fetch --prune 2>/dev/null");
 
-        $branches = [];
-        foreach (explode("\n", $raw) as $line) {
-            $line = trim($line);
-            // Only include origin/ branches, skip HEAD pointers
-            if (!$line || str_contains($line, '->') || !str_starts_with($line, 'origin/')) {
-                continue;
+            // List origin/* remote branches only (skip upstream/* and other remotes)
+            $raw     = shell_exec("cd {$path} && git branch -r 2>/dev/null") ?? '';
+            $current = trim(shell_exec("cd {$path} && git branch --show-current 2>/dev/null") ?? '');
+
+            $branches = [];
+            foreach (explode("\n", $raw) as $line) {
+                $line = trim($line);
+                if (!$line || str_contains($line, '->') || !str_starts_with($line, 'origin/')) {
+                    continue;
+                }
+                $branch = preg_replace('#^origin/#', '', $line);
+                if ($branch) {
+                    $branches[] = $branch;
+                }
             }
-            $branch = preg_replace('#^origin/#', '', $line);
-            if ($branch) {
-                $branches[] = $branch;
+
+            // Also include any local-only branches not on remote
+            $localRaw = shell_exec("cd {$path} && git branch 2>/dev/null") ?? '';
+            foreach (explode("\n", $localRaw) as $line) {
+                $line = trim(ltrim($line, '* '));
+                if ($line && !in_array($line, $branches)) {
+                    $branches[] = $line;
+                }
             }
-        }
 
-        // Also include any local-only branches not on remote
-        $localRaw = shell_exec("cd {$projectPath} && git branch 2>/dev/null") ?? '';
-        foreach (explode("\n", $localRaw) as $line) {
-            $line = trim(ltrim($line, '* '));
-            if ($line && !in_array($line, $branches)) {
-                $branches[] = $line;
+            $branches = array_unique($branches);
+            sort($branches);
+
+            if ($current && in_array($current, $branches)) {
+                $branches = array_merge([$current], array_filter($branches, fn($b) => $b !== $current));
             }
-        }
 
-        // Sort, deduplicate, put current branch first
-        $branches = array_unique($branches);
-        sort($branches);
-
-        if ($current && in_array($current, $branches)) {
-            $branches = array_merge([$current], array_filter($branches, fn($b) => $b !== $current));
-        }
-
-        return $branches;
+            return $branches;
+        });
     }
 
     /**
@@ -357,47 +360,46 @@ class VersionService
             return ['success' => false, 'error' => 'Invalid branch name'];
         }
 
-        $current = trim(shell_exec("cd {$projectPath} && git branch --show-current 2>/dev/null") ?? '');
+        $path   = escapeshellarg($projectPath);
+        $safeBranch = escapeshellarg($branch);
+
+        $current = trim(shell_exec("cd {$path} && git branch --show-current 2>/dev/null") ?? '');
 
         if ($current === $branch) {
             return ['success' => true, 'branch' => $branch, 'already_on_branch' => true];
         }
 
         // Stash uncommitted changes if present so checkout succeeds
-        $status = trim(shell_exec("cd {$projectPath} && git status --porcelain 2>/dev/null") ?? '');
+        $status = trim(shell_exec("cd {$path} && git status --porcelain 2>/dev/null") ?? '');
         $stashed = false;
         if (!empty($status)) {
-            shell_exec("cd {$projectPath} && git stash 2>/dev/null");
+            shell_exec("cd {$path} && git stash 2>/dev/null");
             $stashed = true;
         }
 
-        // Checkout (creates local tracking branch if needed)
-        $output = [];
+        // Checkout; if branch is remote-only, create a local tracking branch
+        $output   = [];
         $exitCode = 0;
-        exec("cd {$projectPath} && git checkout {$branch} 2>&1", $output, $exitCode);
+        exec("cd {$path} && git checkout {$safeBranch} 2>&1", $output, $exitCode);
 
         if ($exitCode !== 0) {
-            // Try checking out as a remote tracking branch
             $output = [];
-            exec("cd {$projectPath} && git checkout -b {$branch} origin/{$branch} 2>&1", $output, $exitCode);
+            exec("cd {$path} && git checkout -b {$safeBranch} origin/{$safeBranch} 2>&1", $output, $exitCode);
         }
 
         if ($exitCode !== 0) {
-            // Restore stash if we stashed
             if ($stashed) {
-                shell_exec("cd {$projectPath} && git stash pop 2>/dev/null");
+                shell_exec("cd {$path} && git stash pop 2>/dev/null");
             }
             return ['success' => false, 'error' => 'Checkout failed: ' . implode("\n", $output)];
         }
 
-        // Pull latest for this branch
-        shell_exec("cd {$projectPath} && git pull origin {$branch} 2>/dev/null");
+        shell_exec("cd {$path} && git pull origin {$safeBranch} 2>/dev/null");
 
-        return [
-            'success' => true,
-            'branch' => $branch,
-            'stashed' => $stashed,
-        ];
+        // Invalidate branch cache so the dropdown reflects the new current branch immediately
+        Cache::forget(self::CACHE_KEY_BRANCHES);
+
+        return ['success' => true, 'branch' => $branch, 'stashed' => $stashed];
     }
 
     /**
@@ -405,20 +407,15 @@ class VersionService
      */
     public function getAvailableReleases(bool $forceRefresh = false): array
     {
-        $cacheKey = 'pocketdev:available_releases';
-
         if (!$forceRefresh) {
-            $cached = Cache::get($cacheKey);
+            $cached = Cache::get(self::CACHE_KEY_AVAILABLE_RELEASES);
             if ($cached !== null) {
                 return $cached;
             }
         }
 
         try {
-            $response = Http::withHeaders([
-                'Accept' => 'application/vnd.github.v3+json',
-                'User-Agent' => 'PocketDev',
-            ])->timeout(10)->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases?per_page=10');
+            $response = $this->githubHttp()->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases?per_page=10');
 
             if (!$response->successful()) {
                 return [];
@@ -432,7 +429,7 @@ class VersionService
                 'html_url'     => $r['html_url'] ?? null,
             ], $response->json() ?? []);
 
-            Cache::put($cacheKey, $releases, self::CACHE_TTL);
+            Cache::put(self::CACHE_KEY_AVAILABLE_RELEASES, $releases, self::CACHE_TTL);
 
             return $releases;
         } catch (\Exception $e) {
@@ -463,12 +460,21 @@ class VersionService
      */
     public function isUpdateAvailable(): bool
     {
-        $cacheKey = 'pocketdev:update_available';
-
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () {
+        return Cache::remember(self::CACHE_KEY_UPDATE_AVAILABLE, self::CACHE_TTL, function () {
             $result = $this->checkForUpdates();
             return $result['update_available'] ?? false;
         });
+    }
+
+    /**
+     * Shared GitHub API HTTP client with common headers.
+     */
+    private function githubHttp(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::withHeaders([
+            'Accept'     => 'application/vnd.github.v3+json',
+            'User-Agent' => 'PocketDev',
+        ])->timeout(10);
     }
 
     /**

@@ -2368,13 +2368,9 @@ class ConfigController extends Controller
         // Get cached update info (don't fetch on page load - use explicit check button)
         $updateInfo = $versionService->checkForUpdates(forceRefresh: false);
 
-        // Branch list for dev, release list for prod
-        $branches = $versionService->isLocalEnvironment()
-            ? $versionService->getAvailableBranches()
-            : [];
-        $availableReleases = !$versionService->isLocalEnvironment()
-            ? $versionService->getAvailableReleases()
-            : [];
+        $isLocal           = $versionService->isLocalEnvironment();
+        $branches          = $isLocal ? $versionService->getAvailableBranches() : [];
+        $availableReleases = $isLocal ? [] : $versionService->getAvailableReleases();
 
         return view('config.system', [
             'processingCount'   => $processingCount,
@@ -2499,10 +2495,6 @@ class ConfigController extends Controller
      */
     public function switchBranch(Request $request, VersionService $versionService)
     {
-        if (!app()->environment('local')) {
-            return redirect()->route('config.system')->with('error', 'Branch switching is only available in local development.');
-        }
-
         $branch = $request->input('branch');
 
         if (empty($branch)) {
@@ -2546,18 +2538,18 @@ class ConfigController extends Controller
             }
 
             // Pull specific tagged images and recreate containers
+            $safeTag = escapeshellarg($tag);
             $command = sprintf(
                 'docker run --rm -d ' .
                 '-v /var/run/docker.sock:/var/run/docker.sock ' .
                 '-v "%s:%s" ' .
                 '-w "%s" ' .
                 'docker:27-cli ' .
-                'sh -c "POCKETDEV_VERSION=%s docker compose pull && POCKETDEV_VERSION=%s docker compose up -d --force-recreate" 2>&1',
+                'sh -c "POCKETDEV_VERSION=%s docker compose pull && docker compose up -d --force-recreate" 2>&1',
                 $hostProjectPath,
                 $hostProjectPath,
                 $hostProjectPath,
-                escapeshellarg($tag),
-                escapeshellarg($tag)
+                $safeTag
             );
 
             exec($command, $output, $returnCode);
@@ -2566,9 +2558,9 @@ class ConfigController extends Controller
                 throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
             }
 
-            \Illuminate\Support\Facades\Cache::forget('pocketdev:latest_release');
-            \Illuminate\Support\Facades\Cache::forget('pocketdev:update_available');
-            \Illuminate\Support\Facades\Cache::forget('pocketdev:available_releases');
+            Cache::forget('pocketdev:latest_release');
+            Cache::forget('pocketdev:update_available');
+            Cache::forget('pocketdev:available_releases');
 
             return redirect()->route('config.system')->with('success', "Switching to {$tag}. PocketDev will restart shortly.");
         } catch (\Exception $e) {
