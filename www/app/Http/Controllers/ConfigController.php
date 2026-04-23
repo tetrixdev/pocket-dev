@@ -2368,10 +2368,16 @@ class ConfigController extends Controller
         // Get cached update info (don't fetch on page load - use explicit check button)
         $updateInfo = $versionService->checkForUpdates(forceRefresh: false);
 
+        $isLocal           = $versionService->isLocalEnvironment();
+        $branches          = $isLocal ? $versionService->getAvailableBranches() : [];
+        $availableReleases = $isLocal ? [] : $versionService->getAvailableReleases();
+
         return view('config.system', [
-            'processingCount' => $processingCount,
-            'version' => $version,
-            'updateInfo' => $updateInfo,
+            'processingCount'   => $processingCount,
+            'version'           => $version,
+            'updateInfo'        => $updateInfo,
+            'branches'          => $branches,
+            'availableReleases' => $availableReleases,
         ]);
     }
 
@@ -2481,6 +2487,92 @@ class ConfigController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to restart containers', ['error' => $e->getMessage()]);
             return redirect()->back()->with('error', 'Failed to restart: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Switch to a different git branch (local development only)
+     */
+    public function switchBranch(Request $request, VersionService $versionService)
+    {
+        $branch = $request->input('branch');
+
+        if (empty($branch)) {
+            return redirect()->route('config.system')->with('error', 'No branch selected.');
+        }
+
+        $result = $versionService->switchBranch($branch);
+
+        if (!$result['success']) {
+            return redirect()->route('config.system')->with('error', $result['error'] ?? 'Failed to switch branch.');
+        }
+
+        if ($result['already_on_branch'] ?? false) {
+            return redirect()->route('config.system')->with('success', "Already on branch '{$branch}'.");
+        }
+
+        $msg = "Switched to branch '{$branch}'.";
+        if ($result['stashed'] ?? false) {
+            $msg .= ' (Uncommitted changes were stashed.)';
+        }
+        if ($result['pull_warning'] ?? false) {
+            $msg .= ' (Could not pull latest: ' . $result['pull_warning'] . ')';
+        }
+
+        return redirect()->route('config.system')->with('success', $msg);
+    }
+
+    /**
+     * Switch to a specific GitHub release version (production only)
+     */
+    public function switchVersion(Request $request, VersionService $versionService)
+    {
+        if ($versionService->isLocalEnvironment()) {
+            return redirect()->route('config.system')->with('error', 'Version switching is only available in production.');
+        }
+
+        $tag = $request->input('version_tag');
+
+        if (empty($tag) || !preg_match('/^v[\d.]+(-[a-z0-9.]+)?$/', $tag)) {
+            return redirect()->route('config.system')->with('error', 'Invalid version tag.');
+        }
+
+        try {
+            $hostProjectPath = config('backup.host_project_path');
+
+            if (empty($hostProjectPath)) {
+                throw new \RuntimeException('PD_HOST_PROJECT_PATH environment variable is not set');
+            }
+
+            // Pull specific tagged images and recreate containers
+            $safeTag = escapeshellarg($tag);
+            $command = sprintf(
+                'docker run --rm -d ' .
+                '-v /var/run/docker.sock:/var/run/docker.sock ' .
+                '-v "%s:%s" ' .
+                '-w "%s" ' .
+                'docker:27-cli ' .
+                'sh -c "POCKETDEV_VERSION=%s docker compose pull && docker compose up -d --force-recreate" 2>&1',
+                $hostProjectPath,
+                $hostProjectPath,
+                $hostProjectPath,
+                $safeTag
+            );
+
+            exec($command, $output, $returnCode);
+
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to spawn helper container: ' . implode("\n", $output));
+            }
+
+            Cache::forget('pocketdev:latest_release');
+            Cache::forget('pocketdev:update_available');
+            Cache::forget('pocketdev:available_releases');
+
+            return redirect()->route('config.system')->with('success', "Switching to {$tag}. PocketDev will restart shortly.");
+        } catch (\Exception $e) {
+            Log::error('Failed to switch version', ['error' => $e->getMessage()]);
+            return redirect()->route('config.system')->with('error', 'Failed to switch version: ' . $e->getMessage());
         }
     }
 

@@ -155,11 +155,13 @@ Route::get("/config/system", [ConfigController::class, "showSystem"])->name("con
 Route::post("/config/system/restart", [ConfigController::class, "restartContainers"])->name("config.system.restart");
 Route::post("/config/system/check-update", [ConfigController::class, "checkUpdate"])->name("config.system.check-update");
 Route::post("/config/system/apply-update", [ConfigController::class, "applyUpdate"])->name("config.system.apply-update");
+Route::post("/config/system/switch-version", [ConfigController::class, "switchVersion"])->name("config.system.switch-version");
 
-// Local-only operations (rebuild from scratch, git pull)
+// Local-only operations (rebuild from scratch, git pull, branch switch)
 if (app()->environment('local')) {
     Route::post("/config/system/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.system.rebuild");
     Route::post("/config/system/pull-main", [ConfigController::class, "pullFromMain"])->name("config.system.pull-main");
+    Route::post("/config/system/switch-branch", [ConfigController::class, "switchBranch"])->name("config.system.switch-branch");
 }
 
 // Developer tools (restart/rebuild containers)

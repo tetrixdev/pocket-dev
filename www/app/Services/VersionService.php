@@ -8,8 +8,12 @@ use Illuminate\Support\Facades\Log;
 
 class VersionService
 {
-    private const CACHE_KEY_LATEST_RELEASE = 'pocketdev:latest_release';
+    private const CACHE_KEY_LATEST_RELEASE   = 'pocketdev:latest_release';
+    private const CACHE_KEY_AVAILABLE_RELEASES = 'pocketdev:available_releases';
+    private const CACHE_KEY_UPDATE_AVAILABLE = 'pocketdev:update_available';
+    private const CACHE_KEY_BRANCHES         = 'pocketdev:branches';
     private const CACHE_TTL = 3600; // 1 hour
+    private const CACHE_TTL_BRANCHES = 60; // 1 minute — branches change frequently
 
     /**
      * Check if running in local development mode.
@@ -198,10 +202,7 @@ class VersionService
         }
 
         try {
-            $response = Http::withHeaders([
-                'Accept' => 'application/vnd.github.v3+json',
-                'User-Agent' => 'PocketDev',
-            ])->timeout(10)->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases/latest');
+            $response = $this->githubHttp()->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases/latest');
 
             if (!$response->successful()) {
                 Log::warning('Failed to fetch latest PocketDev release', [
@@ -286,6 +287,163 @@ class VersionService
     }
 
     /**
+     * List all remote branches available for switching (local only).
+     * Returns array of branch name strings, current branch first.
+     */
+    public function getAvailableBranches(): array
+    {
+        $projectPath = $this->getProjectPath();
+
+        if (!$projectPath) {
+            return [];
+        }
+
+        return Cache::remember(self::CACHE_KEY_BRANCHES, self::CACHE_TTL_BRANCHES, function () use ($projectPath) {
+            $path = escapeshellarg($projectPath);
+
+            // Fetch latest remote info silently (runs inside cache closure, max once per minute)
+            shell_exec("cd {$path} && git fetch --prune 2>/dev/null");
+
+            // List origin/* remote branches only (skip upstream/* and other remotes)
+            $raw     = shell_exec("cd {$path} && git branch -r 2>/dev/null") ?? '';
+            $current = trim(shell_exec("cd {$path} && git branch --show-current 2>/dev/null") ?? '');
+
+            $branches = [];
+            foreach (explode("\n", $raw) as $line) {
+                $line = trim($line);
+                if (!$line || str_contains($line, '->') || !str_starts_with($line, 'origin/')) {
+                    continue;
+                }
+                $branch = preg_replace('#^origin/#', '', $line);
+                if ($branch) {
+                    $branches[] = $branch;
+                }
+            }
+
+            // Also include any local-only branches not on remote
+            $localRaw = shell_exec("cd {$path} && git branch 2>/dev/null") ?? '';
+            foreach (explode("\n", $localRaw) as $line) {
+                $line = trim(ltrim($line, '* '));
+                if ($line && !in_array($line, $branches)) {
+                    $branches[] = $line;
+                }
+            }
+
+            $branches = array_unique($branches);
+            sort($branches);
+
+            if ($current && in_array($current, $branches)) {
+                $branches = array_merge([$current], array_filter($branches, fn($b) => $b !== $current));
+            }
+
+            return $branches;
+        });
+    }
+
+    /**
+     * Switch to a different git branch (local only).
+     */
+    public function switchBranch(string $branch): array
+    {
+        if (!$this->isLocalEnvironment()) {
+            return ['success' => false, 'error' => 'Only available in local environment'];
+        }
+
+        $projectPath = $this->getProjectPath();
+
+        if (!$projectPath) {
+            return ['success' => false, 'error' => 'Project path not found'];
+        }
+
+        // Sanitize branch name
+        if (!preg_match('#^[a-zA-Z0-9/_.\-]+$#', $branch)) {
+            return ['success' => false, 'error' => 'Invalid branch name'];
+        }
+
+        $path   = escapeshellarg($projectPath);
+        $safeBranch = escapeshellarg($branch);
+
+        $current = trim(shell_exec("cd {$path} && git branch --show-current 2>/dev/null") ?? '');
+
+        if ($current === $branch) {
+            return ['success' => true, 'branch' => $branch, 'already_on_branch' => true];
+        }
+
+        // Stash uncommitted + untracked changes so checkout succeeds (-u includes untracked files)
+        $status = trim(shell_exec("cd {$path} && git status --porcelain 2>/dev/null") ?? '');
+        $stashed = false;
+        if (!empty($status)) {
+            shell_exec("cd {$path} && git stash -u 2>/dev/null");
+            $stashed = true;
+        }
+
+        // Checkout; if branch is remote-only, create a local tracking branch
+        $output   = [];
+        $exitCode = 0;
+        exec("cd {$path} && git checkout {$safeBranch} 2>&1", $output, $exitCode);
+
+        if ($exitCode !== 0) {
+            $output = [];
+            exec("cd {$path} && git checkout -b {$safeBranch} origin/{$safeBranch} 2>&1", $output, $exitCode);
+        }
+
+        if ($exitCode !== 0) {
+            if ($stashed) {
+                shell_exec("cd {$path} && git stash pop 2>/dev/null");
+            }
+            return ['success' => false, 'error' => 'Checkout failed: ' . implode("\n", $output)];
+        }
+
+        // Pull latest — non-fatal if it fails (e.g. local-only branch or no network)
+        $pullOutput = [];
+        $pullExit   = 0;
+        exec("cd {$path} && git pull origin {$safeBranch} 2>&1", $pullOutput, $pullExit);
+        $pullWarning = $pullExit !== 0 ? implode("\n", $pullOutput) : null;
+
+        // Invalidate branch cache so the dropdown reflects the new current branch immediately
+        Cache::forget(self::CACHE_KEY_BRANCHES);
+
+        return ['success' => true, 'branch' => $branch, 'stashed' => $stashed, 'pull_warning' => $pullWarning];
+    }
+
+    /**
+     * Get list of recent GitHub releases for version switching (prod only).
+     */
+    public function getAvailableReleases(bool $forceRefresh = false): array
+    {
+        if (!$forceRefresh) {
+            $cached = Cache::get(self::CACHE_KEY_AVAILABLE_RELEASES);
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
+        try {
+            $response = $this->githubHttp()->get('https://api.github.com/repos/tetrixdev/pocket-dev/releases?per_page=10');
+
+            if (!$response->successful()) {
+                Log::warning('Failed to fetch PocketDev releases', ['status' => $response->status()]);
+                return [];
+            }
+
+            $releases = array_map(fn($r) => [
+                'tag'          => $r['tag_name'] ?? null,
+                'name'         => $r['name'] ?? null,
+                'published_at' => $r['published_at'] ?? null,
+                'prerelease'   => $r['prerelease'] ?? false,
+                'html_url'     => $r['html_url'] ?? null,
+            ], $response->json() ?? []);
+
+            Cache::put(self::CACHE_KEY_AVAILABLE_RELEASES, $releases, self::CACHE_TTL);
+
+            return $releases;
+        } catch (\Exception $e) {
+            Log::warning('Failed to fetch PocketDev releases', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
      * Get a short version label for display (branch name or version tag).
      */
     public function getVersionLabel(): string
@@ -308,12 +466,21 @@ class VersionService
      */
     public function isUpdateAvailable(): bool
     {
-        $cacheKey = 'pocketdev:update_available';
-
-        return Cache::remember($cacheKey, self::CACHE_TTL, function () {
+        return Cache::remember(self::CACHE_KEY_UPDATE_AVAILABLE, self::CACHE_TTL, function () {
             $result = $this->checkForUpdates();
             return $result['update_available'] ?? false;
         });
+    }
+
+    /**
+     * Shared GitHub API HTTP client with common headers.
+     */
+    private function githubHttp(): \Illuminate\Http\Client\PendingRequest
+    {
+        return Http::withHeaders([
+            'Accept'     => 'application/vnd.github.v3+json',
+            'User-Agent' => 'PocketDev',
+        ])->timeout(10);
     }
 
     /**
