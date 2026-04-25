@@ -215,6 +215,14 @@
                     </a>
                 </div>
 
+                <!-- Security (Authentication) -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('settings.security') }}"
+                       class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'settings.security') ? 'active' : '' }}">
+                        🔒 Security
+                    </a>
+                </div>
+
             </div>
         </div>
 
@@ -433,6 +441,15 @@
                    @click="showMobileDrawer = false"
                    class="category-button w-full block {{ Route::currentRouteName() == 'config.system' ? 'active' : '' }}">
                     ⚙️ System
+                </a>
+            </div>
+
+            <!-- Security (Authentication) -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('settings.security') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Str::startsWith(Route::currentRouteName(), 'settings.security') ? 'active' : '' }}">
+                    🔒 Security
                 </a>
             </div>
 

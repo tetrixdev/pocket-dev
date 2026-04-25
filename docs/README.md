@@ -116,6 +116,10 @@ What are you looking for?
 **Contents:**
 - `secure-server-setup.md` - Complete VPS deployment guide with Tailscale
 
+### 📝 Review Learnings
+
+- `review-learnings.md` - Decisions from code reviews that should not be re-flagged. Consult this before raising review findings to avoid duplicating previously accepted decisions.
+
 ### 🛠️ Development (`development/`)
 
 **TLDR:** Self-development mode allows developing PocketDev using PocketDev itself. Set `HOST_PROJECT_PATH` in `.env`, then use `pocketdev` CLI to restart/rebuild containers from inside. Most code changes (PHP, Blade, JS) don't require restarts.
