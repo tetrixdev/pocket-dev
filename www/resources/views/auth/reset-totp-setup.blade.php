@@ -67,17 +67,18 @@
                        placeholder="000000">
             </div>
 
+            {{-- Hidden default submit so Enter key fires Verify & Save, not Cancel --}}
+            <button type="submit" class="hidden" tabindex="-1" aria-hidden="true">Verify & Save</button>
+
             <div class="flex gap-3">
-                {{-- Verify first in DOM so Enter key submits the correct action.
-                     Cancel uses formaction to POST to the cancel route (clears session state). --}}
-                <button type="submit"
-                        class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors order-2">
-                    Verify & Save
-                </button>
                 <button type="submit"
                         formaction="{{ route('settings.security.reset-totp.cancel') }}"
-                        class="flex-1 px-4 py-2 text-center text-gray-300 hover:text-white border border-gray-600 rounded-lg transition-colors order-1">
+                        class="flex-1 px-4 py-2 text-center text-gray-300 hover:text-white border border-gray-600 rounded-lg transition-colors">
                     Cancel
+                </button>
+                <button type="submit"
+                        class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
+                    Verify & Save
                 </button>
             </div>
         </form>

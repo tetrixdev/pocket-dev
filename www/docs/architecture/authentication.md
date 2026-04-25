@@ -108,7 +108,7 @@ There is no `routes/api.php` file. Since all endpoints are browser-only, there i
 
 ## Fortify Configuration
 
-`Fortify::ignoreRoutes()` is called in `FortifyServiceProvider::boot()` to disable **all** default Fortify route registration. Only the minimal set of routes needed for login/logout/2FA challenge are registered manually in `routes/web.php`:
+`Fortify::ignoreRoutes()` is called in `FortifyServiceProvider::register()` to disable **all** default Fortify route registration. Only the minimal set of routes needed for login/logout/2FA challenge are registered manually in `routes/web.php`:
 
 ```php
 Route::get('/login', ...)->middleware('guest:web');
