@@ -63,3 +63,8 @@ Decisions made during code reviews that should not be re-flagged. Each entry doc
 - **Scope:** `www/resources/js/bootstrap.js`, `www/app/Http/Controllers/Api/PanelController.php`
 - **Finding:** The CSRF fetch wrapper is implemented twice: once in `bootstrap.js` for the main page and once as inline JavaScript in `PanelController.php` for panel iframes.
 - **Resolution:** The duplication is intentional. The main page version uses URL-based origin detection, while the panel version uses path-prefix detection because `srcdoc` iframes break `URL.origin`. Consolidation would require a build step or shared file serving mechanism that adds complexity for minimal benefit.
+
+## SEC-002 -- Modal validation errors display in global error container
+- **Scope:** `www/resources/views/auth/security.blade.php`
+- **Finding:** When a user enters an incorrect password in a security settings modal (logout other sessions, regenerate recovery codes, disable auth) and submits, the page reloads with the modal closed. The validation error appears in the global error container at the top of the page, disconnected from the modal where the action was taken.
+- **Resolution:** This is a common pattern in server-rendered modal forms. Fixing it would require either keeping the modal open on reload via a flash variable + Alpine.js state binding, or using AJAX form submission. Both add complexity for an edge case (incorrect password). The error message text is clear enough for the user to understand what happened.

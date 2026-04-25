@@ -104,14 +104,23 @@ Route::prefix('api')->group(function () {
 });
 ```
 
-The `routes/api.php` file is intentionally empty. Since all endpoints are browser-only, there is no reason to use Laravel's API middleware group (which lacks session and CSRF support).
+There is no `routes/api.php` file. Since all endpoints are browser-only, there is no reason to use Laravel's API middleware group (which lacks session and CSRF support).
 
 ## Fortify Configuration
 
-`config/fortify.php`:
+`Fortify::ignoreRoutes()` is called in `FortifyServiceProvider::boot()` to disable **all** default Fortify route registration. Only the minimal set of routes needed for login/logout/2FA challenge are registered manually in `routes/web.php`:
 
-- `features` — only `twoFactorAuthentication` is enabled (with `confirm: true`, `confirmPassword: true`). Registration, password reset, email verification, profile updates, and password updates are all disabled — the single-admin model and custom `SecuritySettingsController` flows replace them.
-- `confirmPassword: true` forces Fortify's built-in 2FA endpoints (`/user/two-factor-*`) to require password confirmation, closing the parallel API that would otherwise bypass our custom flows.
+```php
+Route::get('/login', ...)->middleware('guest:web');
+Route::post('/login', ...)->middleware(['guest:web', 'throttle:login']);
+Route::post('/logout', ...)->middleware('auth:web');
+Route::get('/two-factor-challenge', ...)->middleware('guest:web');
+Route::post('/two-factor-challenge', ...)->middleware(['guest:web', 'throttle:two-factor']);
+```
+
+Fortify's built-in 2FA management endpoints (`/user/two-factor-*`), password confirmation, registration, and all other routes are completely disabled — the single-admin model and custom `SecuritySettingsController` flows replace them entirely.
+
+`config/fortify.php` enables only `twoFactorAuthentication` (with `confirm: true`). Registration, password reset, email verification, profile updates, and password updates are all disabled.
 
 Rate limiters in `FortifyServiceProvider`:
 
