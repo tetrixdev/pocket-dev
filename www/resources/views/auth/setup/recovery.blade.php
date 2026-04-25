@@ -57,6 +57,8 @@
                 <label class="flex items-start gap-3 cursor-pointer mb-4">
                     <input
                         type="checkbox"
+                        name="confirmed"
+                        value="1"
                         x-model="confirmed"
                         class="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500"
                     >

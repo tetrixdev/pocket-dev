@@ -23,10 +23,32 @@ use App\Http\Controllers\EnvironmentController;
 use App\Http\Controllers\MemoryController;
 use App\Http\Controllers\SystemPromptController;
 use Illuminate\Support\Facades\Route;
+use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController;
+use Laravel\Fortify\Http\Controllers\TwoFactorAuthenticatedSessionController;
 
 // ============================================================================
 // Authentication Routes
 // ============================================================================
+
+// Fortify routes — only the minimal set needed for login/logout/2FA challenge.
+// All other Fortify routes (the /user/two-factor-* management endpoints,
+// password confirmation, etc.) are disabled via Fortify::ignoreRoutes() and
+// replaced by our custom SecuritySettingsController flows.
+Route::get('/login', [AuthenticatedSessionController::class, 'create'])
+    ->middleware('guest:web')
+    ->name('login');
+Route::post('/login', [AuthenticatedSessionController::class, 'store'])
+    ->middleware(['guest:web', 'throttle:login'])
+    ->name('login.store');
+Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
+    ->middleware('auth:web')
+    ->name('logout');
+Route::get('/two-factor-challenge', [TwoFactorAuthenticatedSessionController::class, 'create'])
+    ->middleware('guest:web')
+    ->name('two-factor.login');
+Route::post('/two-factor-challenge', [TwoFactorAuthenticatedSessionController::class, 'store'])
+    ->middleware(['guest:web', 'throttle:two-factor'])
+    ->name('two-factor.login.store');
 
 // User setup wizard (first-run - create admin account)
 // Throttled to prevent brute-forcing the first-run race window.
@@ -234,16 +256,20 @@ Route::delete("/config/backup/{filename}", [\App\Http\Controllers\BackupControll
 Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::class, "restore"])->name("config.backup.restore");
 
 // System management (available in both environments)
+// GET is accessible without explicit auth (EnsureSetupComplete handles it),
+// but mutation routes require auth middleware as defense-in-depth.
 Route::get("/config/system", [ConfigController::class, "showSystem"])->name("config.system");
-Route::post("/config/system/restart", [ConfigController::class, "restartContainers"])->name("config.system.restart");
-Route::post("/config/system/check-update", [ConfigController::class, "checkUpdate"])->name("config.system.check-update");
-Route::post("/config/system/apply-update", [ConfigController::class, "applyUpdate"])->name("config.system.apply-update");
+Route::middleware('auth')->group(function () {
+    Route::post("/config/system/restart", [ConfigController::class, "restartContainers"])->name("config.system.restart");
+    Route::post("/config/system/check-update", [ConfigController::class, "checkUpdate"])->name("config.system.check-update");
+    Route::post("/config/system/apply-update", [ConfigController::class, "applyUpdate"])->name("config.system.apply-update");
 
-// Local-only operations (rebuild from scratch, git pull)
-if (app()->environment('local')) {
-    Route::post("/config/system/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.system.rebuild");
-    Route::post("/config/system/pull-main", [ConfigController::class, "pullFromMain"])->name("config.system.pull-main");
-}
+    // Local-only operations (rebuild from scratch, git pull)
+    if (app()->environment('local')) {
+        Route::post("/config/system/rebuild", [ConfigController::class, "rebuildContainers"])->name("config.system.rebuild");
+        Route::post("/config/system/pull-main", [ConfigController::class, "pullFromMain"])->name("config.system.pull-main");
+    }
+});
 
 /*
 |--------------------------------------------------------------------------

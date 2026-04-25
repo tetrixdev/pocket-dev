@@ -17,6 +17,7 @@ PocketDev is a **Docker-based Laravel development environment** with integrated 
 | Auth (Basic Auth, API keys) | `docs/architecture/authentication.md` |
 | Reasoning/thinking settings | `docs/architecture/provider-specific-reasoning-settings.md` |
 | Config files (.env, ai.php) | `docs/configuration/README.md` |
+| Review learnings (accepted findings) | `docs/review-learnings.md` |
 
 ## Quick Reference
 

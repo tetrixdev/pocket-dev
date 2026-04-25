@@ -16,7 +16,12 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Disable Fortify's default route registration. We only need login,
+        // logout, and two-factor-challenge — all other Fortify routes (the
+        // /user/two-factor-* management endpoints, password confirmation, etc.)
+        // are replaced by our custom SecuritySettingsController flows.
+        // The needed routes are registered manually in routes/web.php.
+        Fortify::ignoreRoutes();
     }
 
     /**

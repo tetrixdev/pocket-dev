@@ -52,7 +52,7 @@
                        id="code"
                        name="code"
                        inputmode="numeric"
-                       pattern="[0-9]*"
+                       pattern="[0-9]{6}"
                        maxlength="6"
                        autocomplete="one-time-code"
                        class="w-full px-4 py-3 bg-gray-700 text-white text-center text-2xl tracking-widest border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -72,8 +72,4 @@
         </form>
     </div>
 </div>
-
-<style>
-    [x-cloak] { display: none !important; }
-</style>
 @endsection

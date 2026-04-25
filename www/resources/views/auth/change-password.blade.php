@@ -11,14 +11,15 @@
 
     <div class="bg-gray-800 rounded-lg p-6">
         @if($errors->any())
-            <div class="mb-4 p-3 bg-red-900 border-l-4 border-red-500 text-red-200 rounded text-sm">
+            <div class="mb-4 p-3 bg-red-900 border-l-4 border-red-500 text-red-200 rounded text-sm" role="alert" aria-live="polite">
                 @foreach($errors->all() as $error)
                     <p>{{ $error }}</p>
                 @endforeach
             </div>
         @endif
 
-        <form action="{{ route('settings.security.change-password') }}" method="POST" class="space-y-4">
+        <form action="{{ route('settings.security.change-password') }}" method="POST" class="space-y-4"
+              x-data="{ submitting: false }" @submit="submitting = true">
             @csrf
 
             <div>
@@ -61,8 +62,11 @@
                     Cancel
                 </a>
                 <button type="submit"
+                        :disabled="submitting"
+                        :class="{ 'opacity-50 cursor-not-allowed': submitting }"
                         class="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
-                    Change Password
+                    <span x-show="!submitting">Change Password</span>
+                    <span x-show="submitting" x-cloak>Changing…</span>
                 </button>
             </div>
         </form>

@@ -7,7 +7,7 @@
     $isAuthBypassed = $isAuthBypassPermanent || $isAuthBypassSession;
     $totpEnabled = $user && $user->hasTwoFactorEnabled();
 @endphp
-<div class="space-y-6" x-data="{ showDisableAuth: false, showRegenerate: false }">
+<div class="space-y-6" x-data="{ showDisableAuth: false, showRegenerate: false, showLogoutSessions: false }">
     <div>
         <h2 class="text-xl font-semibold mb-1">Security Settings</h2>
         <p class="text-gray-400 text-sm">Manage your authentication methods</p>
@@ -46,7 +46,7 @@
                             <span class="block mt-1 text-yellow-400/60">This bypass is temporary and will expire when your session ends.</span>
                         @endif
                     </p>
-                    <a href="{{ route('setup.credentials') }}"
+                    <a href="{{ route('setup.index') }}"
                        class="inline-flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-medium transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
@@ -117,14 +117,11 @@
                     <p class="font-medium">Other Browser Sessions</p>
                     <p class="text-sm text-gray-400">Log out of all other devices and browsers</p>
                 </div>
-                <form action="{{ route('settings.security.logout-other-sessions') }}" method="POST" class="inline">
-                    @csrf
-                    <button type="submit"
-                            onclick="return confirm('Are you sure you want to log out of all other sessions?')"
-                            class="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 border border-red-400/30 hover:border-red-300/50 rounded transition-colors">
-                        Logout other sessions
-                    </button>
-                </form>
+                <button type="button"
+                        @click="showLogoutSessions = true"
+                        class="px-3 py-1.5 text-sm text-red-400 hover:text-red-300 border border-red-400/30 hover:border-red-300/50 rounded transition-colors">
+                    Logout other sessions
+                </button>
             </div>
         </div>
 
@@ -176,6 +173,44 @@
                                     :class="{ 'opacity-50 cursor-not-allowed': submitting }"
                                     class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
                                 Continue
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </template>
+
+        {{-- Logout Other Sessions Modal --}}
+        <template x-teleport="body">
+            <div x-show="showLogoutSessions" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                 role="dialog" aria-modal="true" aria-labelledby="logout-sessions-title"
+                 @keydown.escape.window="showLogoutSessions = false">
+                <div class="absolute inset-0 bg-black/70" @click="showLogoutSessions = false"></div>
+                <div class="relative bg-gray-800 rounded-lg p-6 max-w-md w-full">
+                    <h3 id="logout-sessions-title" class="text-lg font-medium text-red-300 mb-2">Logout other sessions?</h3>
+                    <p class="text-gray-400 text-sm mb-4">
+                        This will log out all other devices and browsers. Your current session will not be affected.
+                    </p>
+                    <form action="{{ route('settings.security.logout-other-sessions') }}" method="POST"
+                          x-data="{ submitting: false }" @submit="submitting = true">
+                        @csrf
+                        <div class="mb-4">
+                            <label for="logout_sessions_password" class="block text-sm font-medium text-gray-300 mb-1">
+                                Enter your password to continue
+                            </label>
+                            <input type="password" name="current_password" id="logout_sessions_password" required
+                                   autocomplete="current-password"
+                                   class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent">
+                        </div>
+                        <div class="flex gap-3 justify-end">
+                            <button type="button" @click="showLogoutSessions = false" class="px-4 py-2 text-gray-300 hover:text-white transition-colors">
+                                Cancel
+                            </button>
+                            <button type="submit"
+                                    :disabled="submitting"
+                                    :class="{ 'opacity-50 cursor-not-allowed': submitting }"
+                                    class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors">
+                                Logout other sessions
                             </button>
                         </div>
                     </form>
@@ -257,7 +292,7 @@
             <p class="text-gray-400 text-sm mb-4">
                 Set up an admin account to secure your PocketDev instance.
             </p>
-            <a href="{{ route('setup.credentials') }}"
+            <a href="{{ route('setup.index') }}"
                class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
@@ -267,8 +302,4 @@
         </div>
     @endif
 </div>
-
-<style>
-    [x-cloak] { display: none !important; }
-</style>
 @endsection

@@ -17,6 +17,8 @@ use Illuminate\View\View;
 
 class SetupController extends Controller
 {
+    use RendersSensitiveViews;
+
     public function __construct(
         protected AppSettingsService $settings,
         protected TotpEnrollmentService $totp,
@@ -184,6 +186,10 @@ class SetupController extends Controller
             return redirect()->route('setup.credentials');
         }
 
+        $request->validate([
+            'confirmed' => 'required|accepted',
+        ]);
+
         $pendingUser = $request->session()->get('setup.pending_user');
         $secret = $request->session()->get('setup.totp_secret');
         $recoveryCodes = $request->session()->get('setup.recovery_codes');
@@ -211,18 +217,6 @@ class SetupController extends Controller
         $request->session()->regenerate();
 
         return redirect()->route('chat.index');
-    }
-
-    /**
-     * Render a view with cache-busting headers, matching SecuritySettingsController's
-     * helper. Used for pages that render TOTP secrets or recovery codes.
-     */
-    private function sensitiveView(string $view, array $data = []): Response
-    {
-        return response()
-            ->view($view, $data)
-            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0')
-            ->header('Pragma', 'no-cache');
     }
 
     private function redirectIfAlreadySetUp(Request $request): ?RedirectResponse

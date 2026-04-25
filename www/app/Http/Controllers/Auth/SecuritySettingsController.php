@@ -17,6 +17,8 @@ use Illuminate\View\View;
 
 class SecuritySettingsController extends Controller
 {
+    use RendersSensitiveViews;
+
     private const PENDING_KEY = 'pending_2fa_commit';
 
     /** Seconds a stashed recovery-code commit stays valid before requiring restart. */
@@ -34,19 +36,6 @@ class SecuritySettingsController extends Controller
             'isAuthBypassPermanent' => $this->settings->isAuthBypassPermanent(),
             'isAuthBypassSession' => (bool) $request->session()->get('auth_bypass_session', false),
         ]);
-    }
-
-    /**
-     * Render a view with cache-busting headers. Use for any page that renders
-     * secrets (TOTP secret, recovery codes) so bf-cache/disk-cache can't retain
-     * them after the user navigates away.
-     */
-    private function sensitiveView(string $view, array $data = []): Response
-    {
-        return response()
-            ->view($view, $data)
-            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0')
-            ->header('Pragma', 'no-cache');
     }
 
     /**
@@ -218,16 +207,7 @@ class SecuritySettingsController extends Controller
 
         if ($pending['flow'] === 'add_password') {
             $request->session()->regenerate();
-
-            // Kick other sessions for this user — a freshly set password should
-            // invalidate any concurrently-authenticated session (same policy as
-            // changePassword).
-            if (config('session.driver') === 'database') {
-                DB::table('sessions')
-                    ->where('user_id', $user->id)
-                    ->where('id', '!=', $request->session()->getId())
-                    ->delete();
-            }
+            $this->invalidateOtherSessions($request, $user);
         }
 
         return redirect()->route('settings.security')
@@ -383,14 +363,14 @@ class SecuritySettingsController extends Controller
             ]);
         }
 
+        $request->validate([
+            'current_password' => ['required', 'current_password'],
+        ]);
+
         /** @var User $user */
         $user = Auth::user();
-        $currentSessionId = $request->session()->getId();
 
-        DB::table('sessions')
-            ->where('user_id', $user->id)
-            ->where('id', '!=', $currentSessionId)
-            ->delete();
+        $this->invalidateOtherSessions($request, $user);
 
         return back()->with('success', 'All other sessions have been logged out.');
     }
@@ -420,9 +400,10 @@ class SecuritySettingsController extends Controller
 
         DB::transaction(function () use ($user, $validated) {
             // Rotate remember_token alongside the password so any "remember me" cookie
-            // issued before the change stops working.
+            // issued before the change stops working. The User model's 'hashed' cast
+            // handles bcrypt hashing automatically.
             $user->forceFill([
-                'password' => Hash::make($validated['password']),
+                'password' => $validated['password'],
                 'remember_token' => Str::random(60),
             ])->save();
         });
@@ -433,13 +414,7 @@ class SecuritySettingsController extends Controller
         // Rotate current session to prevent fixation, then drop all other sessions for this
         // user so a stolen cookie can't outlive a password change.
         $request->session()->regenerate();
-
-        if (config('session.driver') === 'database') {
-            DB::table('sessions')
-                ->where('user_id', $user->id)
-                ->where('id', '!=', $request->session()->getId())
-                ->delete();
-        }
+        $this->invalidateOtherSessions($request, $user);
 
         return redirect()->route('settings.security')->with('success', 'Password changed successfully.');
     }
@@ -485,5 +460,19 @@ class SecuritySettingsController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('chat.index');
+    }
+
+    /**
+     * Delete all other database sessions for this user, leaving only the
+     * current session alive. No-ops silently on non-database drivers.
+     */
+    private function invalidateOtherSessions(Request $request, User $user): void
+    {
+        if (config('session.driver') === 'database') {
+            DB::table('sessions')
+                ->where('user_id', $user->id)
+                ->where('id', '!=', $request->session()->getId())
+                ->delete();
+        }
     }
 }

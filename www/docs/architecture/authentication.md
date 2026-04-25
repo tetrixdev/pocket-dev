@@ -69,7 +69,11 @@ The `EnsureSetupComplete` middleware (`app/Http/Middleware/EnsureSetupComplete.p
 
 ```php
 $publicRoutes = [
-    'setup', 'setup/*',
+    'setup',                // First-run index
+    'setup/skip',           // "Skip auth" handler
+    'setup/credentials',    // Wizard step 1 (GET+POST)
+    'setup/totp',           // Wizard step 2 (GET+POST)
+    'setup/recovery',       // Wizard step 3 (GET+POST)
     'login',
     'logout',
     'two-factor-challenge', 'two-factor-challenge/*',
@@ -78,7 +82,7 @@ $publicRoutes = [
 ];
 ```
 
-Patterns are segment-exact: `setup` matches `/setup`, `setup/*` matches `/setup/credentials`, neither matches `/setup-export`. Routes inside public prefixes that require auth (e.g. `POST /claude/auth/upload`) apply `auth` middleware per-route.
+Setup routes are listed explicitly (not via `setup/*` glob) so that `/setup/provider` stays behind the normal auth flow. Adding a new first-run wizard step requires adding it here. Routes inside public prefixes that require auth (e.g. `POST /claude/auth/upload`) apply `auth` middleware per-route.
 
 ## API Routes Protection
 
