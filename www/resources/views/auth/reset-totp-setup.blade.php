@@ -58,6 +58,7 @@
                 <input type="text"
                        id="code"
                        name="code"
+                       required
                        inputmode="numeric"
                        pattern="[0-9]{6}"
                        maxlength="6"

@@ -19,16 +19,6 @@
         </div>
     @endif
 
-    @if($errors->any())
-        <div class="p-4 bg-red-900 border-l-4 border-red-500 text-red-200 rounded" role="alert" aria-live="polite">
-            <ul class="list-disc list-inside space-y-1">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
-
     {{-- Authentication Bypass Warning --}}
     @if($isAuthBypassed && !$user)
         <div class="bg-yellow-900/30 border border-yellow-700/50 rounded-lg p-6">
