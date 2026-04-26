@@ -472,9 +472,9 @@ PROMPT;
     private function buildPanelDependenciesSection(?array $allowedTools = null): ?string
     {
         // Only include if panel tools are allowed
-        // null = all tools allowed, otherwise check for tool-create or tool-update
+        // null = all tools allowed, otherwise check for tool-extract or tool-push
         if ($allowedTools !== null) {
-            $panelToolsAllowed = in_array('tool-create', $allowedTools) || in_array('tool-update', $allowedTools);
+            $panelToolsAllowed = in_array('tool-extract', $allowedTools) || in_array('tool-push', $allowedTools);
             if (!$panelToolsAllowed) {
                 return null;
             }
