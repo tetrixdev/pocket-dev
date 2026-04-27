@@ -328,10 +328,13 @@ CLI;
                 if ($newType === PocketTool::TYPE_SCRIPT && empty($tool->script) && !file_exists("{$directory}/script.sh")) {
                     return ToolResult::error("Cannot change type to 'script': script.sh is required but not found in {$directory}/ and no existing script is stored.");
                 }
-                // Null out the old type's primary content to prevent stale data
+                // Null out the old type's primary content to prevent stale data.
+                // Also flag panel-only files to be skipped during file processing below,
+                // otherwise they'd be re-read from disk and undo this cleanup.
                 if ($newType === PocketTool::TYPE_SCRIPT) {
                     $tool->blade_template = null;
                     $tool->panel_dependencies = null;
+                    $skipPanelOnlyFiles = true;
                 } elseif ($newType === PocketTool::TYPE_PANEL) {
                     $tool->script = null;
                 }
@@ -343,6 +346,10 @@ CLI;
                 $warnings[] = "Note: slug in meta.json ('{$meta['slug']}') differs from target tool slug ('{$tool->slug}'). Slug changes are not supported via push.";
             }
         }
+
+        // When changing type to script, skip panel-only files (template, dependencies)
+        // so stale data from the old type isn't re-read from disk.
+        $skipPanelOnlyFiles = $skipPanelOnlyFiles ?? false;
 
         // Track which files were found for diagnostic output
         $filesChecked = [];
@@ -379,9 +386,9 @@ CLI;
             }
         }
 
-        // Update blade_template
+        // Update blade_template (skip if type was just changed to script — panel-only file)
         $templatePath = "{$directory}/template.blade.php";
-        if (file_exists($templatePath)) {
+        if (file_exists($templatePath) && !$skipPanelOnlyFiles) {
             $filesChecked[] = $templatePath;
             $content = file_get_contents($templatePath);
             if ($tool->type === PocketTool::TYPE_PANEL && empty(trim($content))) {
@@ -407,9 +414,9 @@ CLI;
             }
         }
 
-        // Update panel_dependencies
+        // Update panel_dependencies (skip if type was just changed to script — panel-only file)
         $depsPath = "{$directory}/dependencies.json";
-        if (file_exists($depsPath)) {
+        if (file_exists($depsPath) && !$skipPanelOnlyFiles) {
             $filesChecked[] = $depsPath;
             $depsContent = file_get_contents($depsPath);
             $deps = json_decode($depsContent, true);
@@ -563,7 +570,7 @@ CLI;
                 return ToolResult::error("script.sh is required for type=script. File not found in {$directory}/");
             }
             if (empty(trim($script))) {
-                return ToolResult::error('script.sh must not be empty for type=script');
+                return ToolResult::error('script.sh must not be empty for script-type tools');
             }
         }
         if ($type === PocketTool::TYPE_PANEL) {
@@ -571,7 +578,7 @@ CLI;
                 return ToolResult::error("template.blade.php is required for type=panel. File not found in {$directory}/");
             }
             if (empty(trim($bladeTemplate))) {
-                return ToolResult::error('template.blade.php must not be empty for type=panel');
+                return ToolResult::error('template.blade.php must not be empty for panel-type tools');
             }
         }
 
