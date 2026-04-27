@@ -329,7 +329,7 @@ CLI;
                     return ToolResult::error("Cannot change type to 'script': script.sh is required but not found in {$directory}/ and no existing script is stored.");
                 }
                 // Null out the old type's primary content to prevent stale data.
-                // Also flag panel-only files to be skipped during file processing below,
+                // Also flag old-type files to be skipped during file processing below,
                 // otherwise they'd be re-read from disk and undo this cleanup.
                 if ($newType === PocketTool::TYPE_SCRIPT) {
                     $tool->blade_template = null;
@@ -337,6 +337,7 @@ CLI;
                     $skipPanelOnlyFiles = true;
                 } elseif ($newType === PocketTool::TYPE_PANEL) {
                     $tool->script = null;
+                    $skipScriptOnlyFiles = true;
                 }
                 $tool->type = $newType;
                 $changes[] = 'meta.json (type)';
@@ -347,9 +348,10 @@ CLI;
             }
         }
 
-        // When changing type to script, skip panel-only files (template, dependencies)
-        // so stale data from the old type isn't re-read from disk.
+        // When changing type, skip files belonging to the old type so stale data
+        // from the old type isn't re-read from disk and undoing the cleanup above.
         $skipPanelOnlyFiles = $skipPanelOnlyFiles ?? false;
+        $skipScriptOnlyFiles = $skipScriptOnlyFiles ?? false;
 
         // Track which files were found for diagnostic output
         $filesChecked = [];
@@ -400,9 +402,9 @@ CLI;
             }
         }
 
-        // Update script
+        // Update script (skip if type was just changed to panel — script-only file)
         $scriptPath = "{$directory}/script.sh";
-        if (file_exists($scriptPath)) {
+        if (file_exists($scriptPath) && !$skipScriptOnlyFiles) {
             $filesChecked[] = $scriptPath;
             $content = file_get_contents($scriptPath);
             if ($tool->type === PocketTool::TYPE_SCRIPT && empty(trim($content))) {
