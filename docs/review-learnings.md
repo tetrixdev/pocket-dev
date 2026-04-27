@@ -78,3 +78,8 @@ Decisions made during code reviews that should not be re-flagged. Each entry doc
 - **Scope:** `www/app/Tools/ToolExtractTool.php`, `www/app/Tools/ToolPushTool.php`
 - **Finding:** The new `ToolExtractTool` and `ToolPushTool` classes lack the `$apiExamples` property that other tool classes define, meaning API consumers receive tool instructions without usage examples.
 - **Resolution:** These tools are only ever used by the AI agent, not by separate API consumers. There is no distinct "API consumer vs CLI user" distinction — the AI uses the CLI commands. The `$instructions` property provides sufficient guidance, and the `$apiExamples` property adds no practical value for these tools.
+
+## BL-001 — PHP (bool) cast on meta.json enabled field treats string "false" as true
+- **Scope:** `www/app/Tools/ToolPushTool.php`
+- **Finding:** PHP (bool) cast on meta.json enabled field treats string "false" as true. When `$meta['enabled']` is the JSON string `"false"`, `(bool)"false"` evaluates to `true` in PHP, so the tool would be enabled instead of disabled. The same applies to the create path where the raw value is passed to Eloquent, whose boolean cast also uses PHP's (bool).
+- **Resolution:** Acceptable because `json_decode` converts JSON booleans to proper PHP booleans. The edge case requires writing invalid JSON semantics (quoting a boolean as a string). In the standard workflow, `tool:extract` always generates correct JSON booleans. Both create and update paths produce identical results since Eloquent's boolean cast also uses PHP (bool).

@@ -253,6 +253,10 @@ CLI;
             return ToolResult::error('slug is required');
         }
 
+        if (!preg_match('/^[a-z0-9-]+$/', $slug) || strlen($slug) > 64) {
+            return ToolResult::error('slug must contain only lowercase letters, numbers, and hyphens (max 64 characters)');
+        }
+
         $directory = $input['directory'] ?? "/tmp/pocketdev/tools/{$slug}";
         $directory = rtrim($directory, '/');
 
@@ -268,6 +272,9 @@ CLI;
             $meta = json_decode($metaContent, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return ToolResult::error("Invalid JSON in meta.json: " . json_last_error_msg());
+            }
+            if ($meta !== null && !is_array($meta)) {
+                return ToolResult::error("meta.json must contain a JSON object, not a scalar value");
             }
         }
 
@@ -320,6 +327,13 @@ CLI;
                 }
                 if ($newType === PocketTool::TYPE_SCRIPT && empty($tool->script) && !file_exists("{$directory}/script.sh")) {
                     return ToolResult::error("Cannot change type to 'script': script.sh is required but not found in {$directory}/ and no existing script is stored.");
+                }
+                // Null out the old type's primary content to prevent stale data
+                if ($newType === PocketTool::TYPE_SCRIPT) {
+                    $tool->blade_template = null;
+                    $tool->panel_dependencies = null;
+                } elseif ($newType === PocketTool::TYPE_PANEL) {
+                    $tool->script = null;
                 }
                 $tool->type = $newType;
                 $changes[] = 'meta.json (type)';
@@ -435,8 +449,9 @@ CLI;
         try {
             $tool->save();
 
+            $typeLabel = $tool->type === PocketTool::TYPE_PANEL ? 'panel' : 'tool';
             $output = [
-                "Updated tool: {$tool->name} ({$tool->slug})",
+                "Updated {$typeLabel}: {$tool->name} ({$tool->slug})",
                 "",
                 "ID: {$tool->id}",
                 "Type: {$tool->type}",
@@ -543,11 +558,21 @@ CLI;
         }
 
         // Type-specific validation
-        if ($type === PocketTool::TYPE_SCRIPT && empty($script)) {
-            return ToolResult::error('script.sh is required for type=script');
+        if ($type === PocketTool::TYPE_SCRIPT) {
+            if ($script === null) {
+                return ToolResult::error("script.sh is required for type=script. File not found in {$directory}/");
+            }
+            if (empty(trim($script))) {
+                return ToolResult::error('script.sh must not be empty for type=script');
+            }
         }
-        if ($type === PocketTool::TYPE_PANEL && empty($bladeTemplate)) {
-            return ToolResult::error('template.blade.php is required for type=panel');
+        if ($type === PocketTool::TYPE_PANEL) {
+            if ($bladeTemplate === null) {
+                return ToolResult::error("template.blade.php is required for type=panel. File not found in {$directory}/");
+            }
+            if (empty(trim($bladeTemplate))) {
+                return ToolResult::error('template.blade.php must not be empty for type=panel');
+            }
         }
 
         try {
