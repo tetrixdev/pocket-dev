@@ -10,7 +10,7 @@ class ToolExtractCommand extends Command
 {
     protected $signature = 'tool:extract
         {slug : The slug of the tool to extract}
-        {--output= : Output directory path (default: /tmp/pocketdev/tools/{slug}/)}';
+        {--directory= : Output directory path (default: /tmp/pocketdev/tools/{slug}/)}';
 
     protected $description = 'Extract a tool to a local directory for editing';
 
@@ -22,8 +22,8 @@ class ToolExtractCommand extends Command
             'slug' => $this->argument('slug'),
         ];
 
-        if ($this->option('output') !== null) {
-            $input['output'] = $this->option('output');
+        if ($this->option('directory') !== null) {
+            $input['directory'] = $this->option('directory');
         }
 
         $context = new ExecutionContext(getcwd() ?: '/var/www');

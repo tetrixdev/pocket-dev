@@ -22,7 +22,7 @@ class ToolExtractTool extends Tool
                 'type' => 'string',
                 'description' => 'The slug of the tool to extract.',
             ],
-            'output' => [
+            'directory' => [
                 'type' => 'string',
                 'description' => 'Output directory path. Default: /tmp/pocketdev/tools/{slug}/',
             ],
@@ -64,7 +64,7 @@ INSTRUCTIONS;
 pd tool:extract my-tool
 
 # Extract to a custom directory
-pd tool:extract my-tool --output=/tmp/my-workspace/my-tool
+pd tool:extract my-tool --directory=/tmp/my-workspace/my-tool
 ```
 CLI;
 
@@ -82,7 +82,7 @@ CLI;
             return ToolResult::error("Tool '{$slug}' not found");
         }
 
-        $outputDir = $input['output'] ?? "/tmp/pocketdev/tools/{$slug}";
+        $outputDir = $input['directory'] ?? "/tmp/pocketdev/tools/{$slug}";
         $outputDir = rtrim($outputDir, '/');
 
         // Create directory
@@ -145,7 +145,12 @@ CLI;
         }
 
         $output[] = "";
-        $output[] = "Edit the files, then push back with: pd tool:push {$slug}";
+        $isCustomDirectory = isset($input['directory']);
+        if ($isCustomDirectory) {
+            $output[] = "Edit the files, then push back with: pd tool:push {$slug} --directory={$outputDir}";
+        } else {
+            $output[] = "Edit the files, then push back with: pd tool:push {$slug}";
+        }
 
         return ToolResult::success(implode("\n", $output));
     }

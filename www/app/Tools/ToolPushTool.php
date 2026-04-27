@@ -289,83 +289,147 @@ CLI;
         }
 
         $changes = [];
+        $warnings = [];
 
         // Update metadata fields from meta.json
         if ($meta) {
             if (isset($meta['name']) && $meta['name'] !== $tool->name) {
                 $tool->name = $meta['name'];
-                $changes[] = 'name';
+                $changes[] = 'meta.json (name)';
             }
             if (isset($meta['description']) && $meta['description'] !== $tool->description) {
                 $tool->description = $meta['description'];
-                $changes[] = 'description';
+                $changes[] = 'meta.json (description)';
             }
             if (isset($meta['category']) && $meta['category'] !== $tool->category) {
                 $tool->category = $meta['category'];
-                $changes[] = 'category';
+                $changes[] = 'meta.json (category)';
+            }
+            if (isset($meta['enabled']) && (bool)$meta['enabled'] !== (bool)$tool->enabled) {
+                $tool->enabled = (bool)$meta['enabled'];
+                $changes[] = 'meta.json (enabled)';
+            }
+            if (isset($meta['type']) && $meta['type'] !== $tool->type) {
+                $newType = $meta['type'];
+                if (!in_array($newType, [PocketTool::TYPE_SCRIPT, PocketTool::TYPE_PANEL])) {
+                    return ToolResult::error('type must be "script" or "panel" in meta.json');
+                }
+                // Validate the new type's required file exists
+                if ($newType === PocketTool::TYPE_PANEL && empty($tool->blade_template) && !file_exists("{$directory}/template.blade.php")) {
+                    return ToolResult::error("Cannot change type to 'panel': template.blade.php is required but not found in {$directory}/ and no existing template is stored.");
+                }
+                if ($newType === PocketTool::TYPE_SCRIPT && empty($tool->script) && !file_exists("{$directory}/script.sh")) {
+                    return ToolResult::error("Cannot change type to 'script': script.sh is required but not found in {$directory}/ and no existing script is stored.");
+                }
+                $tool->type = $newType;
+                $changes[] = 'meta.json (type)';
+            }
+            // Warn if slug in meta.json differs from the target tool slug
+            if (isset($meta['slug']) && $meta['slug'] !== $tool->slug) {
+                $warnings[] = "Note: slug in meta.json ('{$meta['slug']}') differs from target tool slug ('{$tool->slug}'). Slug changes are not supported via push.";
             }
         }
+
+        // Track which files were found for diagnostic output
+        $filesChecked = [];
 
         // Update system_prompt
         $systemPromptPath = "{$directory}/system_prompt.md";
         if (file_exists($systemPromptPath)) {
+            $filesChecked[] = $systemPromptPath;
             $content = file_get_contents($systemPromptPath);
+            if (empty(trim($content))) {
+                return ToolResult::error("system_prompt.md must not be empty");
+            }
             if ($content !== $tool->system_prompt) {
                 $tool->system_prompt = $content;
-                $changes[] = 'system_prompt';
+                $changes[] = 'system_prompt.md';
             }
         }
 
         // Update input_schema
         $schemaPath = "{$directory}/input_schema.json";
         if (file_exists($schemaPath)) {
+            $filesChecked[] = $schemaPath;
             $schemaContent = file_get_contents($schemaPath);
             $schema = json_decode($schemaContent, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return ToolResult::error("Invalid JSON in input_schema.json: " . json_last_error_msg());
             }
+            if ($schema !== null && !is_array($schema)) {
+                return ToolResult::error("input_schema.json must contain a JSON object, not a scalar value");
+            }
             if ($schema !== $tool->input_schema) {
                 $tool->input_schema = $schema;
-                $changes[] = 'input_schema';
+                $changes[] = 'input_schema.json';
             }
         }
 
         // Update blade_template
         $templatePath = "{$directory}/template.blade.php";
         if (file_exists($templatePath)) {
+            $filesChecked[] = $templatePath;
             $content = file_get_contents($templatePath);
+            if ($tool->type === PocketTool::TYPE_PANEL && empty(trim($content))) {
+                return ToolResult::error("template.blade.php must not be empty for panel-type tools");
+            }
             if ($content !== $tool->blade_template) {
                 $tool->blade_template = $content;
-                $changes[] = 'blade_template';
+                $changes[] = 'template.blade.php';
             }
         }
 
         // Update script
         $scriptPath = "{$directory}/script.sh";
         if (file_exists($scriptPath)) {
+            $filesChecked[] = $scriptPath;
             $content = file_get_contents($scriptPath);
+            if ($tool->type === PocketTool::TYPE_SCRIPT && empty(trim($content))) {
+                return ToolResult::error("script.sh must not be empty for script-type tools");
+            }
             if ($content !== $tool->script) {
                 $tool->script = $content;
-                $changes[] = 'script';
+                $changes[] = 'script.sh';
             }
         }
 
         // Update panel_dependencies
         $depsPath = "{$directory}/dependencies.json";
         if (file_exists($depsPath)) {
+            $filesChecked[] = $depsPath;
             $depsContent = file_get_contents($depsPath);
             $deps = json_decode($depsContent, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return ToolResult::error("Invalid JSON in dependencies.json: " . json_last_error_msg());
             }
+            if ($deps !== null && !is_array($deps)) {
+                return ToolResult::error("dependencies.json must contain a JSON array, not a scalar value");
+            }
             if ($deps !== $tool->panel_dependencies) {
                 $tool->panel_dependencies = $deps;
-                $changes[] = 'panel_dependencies';
+                $changes[] = 'dependencies.json';
             }
         }
 
         if (empty($changes)) {
-            return ToolResult::success("No changes detected for '{$tool->name}' ({$tool->slug}).");
+            $output = ["No changes detected for '{$tool->name}' ({$tool->slug})."];
+            if (!empty($filesChecked)) {
+                $output[] = "";
+                $output[] = "Checked files (all match current values):";
+                foreach ($filesChecked as $file) {
+                    $output[] = "  - {$file}";
+                }
+            } else {
+                $output[] = "";
+                $output[] = "No files found in {$directory}/ besides meta.json.";
+            }
+            if (!empty($warnings)) {
+                $output[] = "";
+                foreach ($warnings as $warning) {
+                    $output[] = $warning;
+                }
+            }
+            return ToolResult::success(implode("\n", $output));
         }
 
         try {
@@ -374,8 +438,19 @@ CLI;
             $output = [
                 "Updated tool: {$tool->name} ({$tool->slug})",
                 "",
+                "ID: {$tool->id}",
+                "Type: {$tool->type}",
+                "Enabled: " . ($tool->enabled ? 'yes' : 'no'),
+                "",
                 "Changed: " . implode(', ', $changes),
             ];
+
+            if (!empty($warnings)) {
+                $output[] = "";
+                foreach ($warnings as $warning) {
+                    $output[] = $warning;
+                }
+            }
 
             return ToolResult::success(implode("\n", $output));
         } catch (\Exception $e) {
@@ -409,6 +484,9 @@ CLI;
             return ToolResult::error("system_prompt.md is required to create a new tool. File not found in {$directory}/");
         }
         $systemPrompt = file_get_contents($systemPromptPath);
+        if (empty(trim($systemPrompt))) {
+            return ToolResult::error("system_prompt.md must not be empty");
+        }
 
         // Validate type
         if (!in_array($type, [PocketTool::TYPE_SCRIPT, PocketTool::TYPE_PANEL])) {
@@ -446,6 +524,9 @@ CLI;
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return ToolResult::error("Invalid JSON in input_schema.json: " . json_last_error_msg());
             }
+            if ($inputSchema !== null && !is_array($inputSchema)) {
+                return ToolResult::error("input_schema.json must contain a JSON object, not a scalar value");
+            }
         }
 
         $panelDependencies = null;
@@ -455,6 +536,9 @@ CLI;
             $panelDependencies = json_decode($depsContent, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 return ToolResult::error("Invalid JSON in dependencies.json: " . json_last_error_msg());
+            }
+            if ($panelDependencies !== null && !is_array($panelDependencies)) {
+                return ToolResult::error("dependencies.json must contain a JSON array, not a scalar value");
             }
         }
 

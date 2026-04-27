@@ -928,11 +928,13 @@ PocketDev has two types of panels:
 
 ### User Panels (Database-stored)
 
-Created via `tool:create` command with `type=panel`. Stored in `pocket_tools` table.
+Created via `tool:push` command with `type=panel` in `meta.json`. Stored in `pocket_tools` table.
 
 ```php
-// User creates panel via AI
-pd tool:create --slug=my-panel --type=panel --blade-template='...'
+// User creates panel via AI (extract/push workflow)
+// 1. Create files in /tmp/pocketdev/tools/my-panel/
+// 2. Push to create:
+pd tool:push my-panel
 
 // Stored in pocket_tools table with:
 // - type = 'panel'
@@ -1326,19 +1328,15 @@ function handleToolResult(result) {
 
 ---
 
-### Panel CRUD: Bundled with Tool Commands
+### Panel CRUD: Extract/Push Workflow
 
-Panels are tools with `type=panel`. Use existing tool commands with type flag:
+Panels are tools with `type=panel`. Use the extract/push workflow:
 
 ```bash
-# Create panel
-php artisan tool:create \
-    --slug=file-explorer \
-    --name="File Explorer" \
-    --type=panel \
-    --blade-template="$(cat template.blade.php)" \
-    --script="$(cat peek.sh)" \
-    --system-prompt="Opens interactive file explorer..."
+# Create panel (set up files first)
+mkdir -p /tmp/pocketdev/tools/file-explorer
+# Create meta.json, system_prompt.md, template.blade.php, script.sh
+php artisan tool:push file-explorer
 
 # List all (shows type)
 php artisan tool:list
@@ -1347,18 +1345,17 @@ php artisan tool:list
 php artisan tool:list --type=panel
 php artisan tool:list --type=script
 
-# Update panel template
-php artisan tool:update --slug=file-explorer --blade-template="..."
-
-# Show details
-php artisan tool:show --slug=file-explorer --include-script --include-template
+# Extract panel for editing
+php artisan tool:extract file-explorer
+# Edit files in /tmp/pocketdev/tools/file-explorer/
+php artisan tool:push file-explorer
 ```
 
-**Changes to existing tool commands:**
-- Add `--type` parameter (default: 'script')
-- Add `--blade-template` parameter
-- For `type=panel`: both `--script` (peek) and `--blade-template` required
-- Display shows type in listings
+**Extract/push workflow:**
+- `tool:extract` downloads tool components as separate files (meta.json, system_prompt.md, template.blade.php, script.sh, etc.)
+- Edit individual files with surgical changes
+- `tool:push` uploads changes back, validating and detecting diffs
+- For `type=panel`: `template.blade.php` required, `script.sh` optional (for peek/actions)
 
 ---
 
