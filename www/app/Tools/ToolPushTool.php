@@ -140,6 +140,8 @@ For script-based panels, the action is handled by running the script with env va
 - `PANEL_PARAMS` - JSON-encoded params (sanitize before use!)
 - `PANEL_STATE` - JSON-encoded current state
 
+**Script JSON output:** Output `{ "data": {...} }` (and/or `html`, `error`). The controller wraps your output with `ok: true` automatically — do not include `ok` in your script output.
+
 ## input_schema Best Practices
 
 Always include descriptions - these appear in the tool's parameter documentation:
@@ -156,6 +158,13 @@ Always include descriptions - these appear in the tool's parameter documentation
 
 ## Panel Actions (Advanced)
 
+**Action response format:**
+The action endpoint returns `{ ok, html, data, state, error }`:
+- `data` — structured JSON results (most common — use this for data)
+- `html` — rendered HTML fragments (for visual content like file trees, diffs)
+- `error` — error message string (always display this on failure)
+- `state` — server-side only (do not read client-side)
+
 **Panel template pattern for actions:**
 ```blade
 <div x-data="{
@@ -169,7 +178,9 @@ Always include descriptions - these appear in the tool's parameter documentation
         });
         const result = await response.json();
         if (result.ok) {
-            // Use result.html, result.data, or result.state
+            // Use result.data (structured) or result.html (rendered)
+        } else {
+            this.error = result.error || 'Action failed';
         }
     }
 }">
