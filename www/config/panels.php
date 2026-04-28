@@ -99,7 +99,7 @@ CSS,
     | Documentation Examples
     |--------------------------------------------------------------------------
     |
-    | Example code snippets included in the tool:create system prompt.
+    | Example code snippets included in the tool:push system prompt.
     |
     */
     'examples' => [

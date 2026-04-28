@@ -202,11 +202,10 @@ class PocketTool extends Model
             'memory-query' => 'memory:query',
             'memory-update' => 'memory:update',
             'memory-delete' => 'memory:delete',
-            'tool-create' => 'tool:create',
-            'tool-update' => 'tool:update',
+            'tool-extract' => 'tool:extract',
+            'tool-push' => 'tool:push',
             'tool-delete' => 'tool:delete',
             'tool-list' => 'tool:list',
-            'tool-show' => 'tool:show',
             'tool-run' => 'tool:run',
         ];
 

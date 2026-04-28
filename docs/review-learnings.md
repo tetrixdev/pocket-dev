@@ -68,3 +68,18 @@ Decisions made during code reviews that should not be re-flagged. Each entry doc
 - **Scope:** `www/resources/views/auth/security.blade.php`
 - **Finding:** When a user enters an incorrect password in a security settings modal (logout other sessions, regenerate recovery codes, disable auth) and submits, the page reloads with the modal closed. The validation error appears in the global error container at the top of the page, disconnected from the modal where the action was taken.
 - **Resolution:** This is a common pattern in server-rendered modal forms. Fixing it would require either keeping the modal open on reload via a flash variable + Alpine.js state binding, or using AJAX form submission. Both add complexity for an edge case (incorrect password). The error message text is clear enough for the user to understand what happened.
+
+## SEC-001 — No path validation on extract/push output directories
+- **Scope:** `www/app/Tools/ToolExtractTool.php`, `www/app/Tools/ToolPushTool.php`
+- **Finding:** The extract and push tools accept arbitrary output/directory paths without path validation or sandboxing. The `ExecutionContext::isPathAllowed()` method is deprecated and always returns true.
+- **Resolution:** A PocketDev user is already all-powerful within the container — they can use bash tools directly to write files anywhere on the filesystem. Adding path validation to individual tool commands provides no meaningful security improvement since the same user can bypass it through other available tools. The Docker container itself is the security boundary.
+
+## ARCH-008 — Missing $apiExamples property on new tool classes
+- **Scope:** `www/app/Tools/ToolExtractTool.php`, `www/app/Tools/ToolPushTool.php`
+- **Finding:** The new `ToolExtractTool` and `ToolPushTool` classes lack the `$apiExamples` property that other tool classes define, meaning API consumers receive tool instructions without usage examples.
+- **Resolution:** These tools are only ever used by the AI agent, not by separate API consumers. There is no distinct "API consumer vs CLI user" distinction — the AI uses the CLI commands. The `$instructions` property provides sufficient guidance, and the `$apiExamples` property adds no practical value for these tools.
+
+## BL-001 — PHP (bool) cast on meta.json enabled field treats string "false" as true
+- **Scope:** `www/app/Tools/ToolPushTool.php`
+- **Finding:** PHP (bool) cast on meta.json enabled field treats string "false" as true. When `$meta['enabled']` is the JSON string `"false"`, `(bool)"false"` evaluates to `true` in PHP, so the tool would be enabled instead of disabled. The same applies to the create path where the raw value is passed to Eloquent, whose boolean cast also uses PHP's (bool).
+- **Resolution:** Acceptable because `json_decode` converts JSON booleans to proper PHP booleans. The edge case requires writing invalid JSON semantics (quoting a boolean as a string). In the standard workflow, `tool:extract` always generates correct JSON booleans. Both create and update paths produce identical results since Eloquent's boolean cast also uses PHP (bool).

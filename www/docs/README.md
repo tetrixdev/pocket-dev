@@ -87,7 +87,7 @@ See [memory-system.md](memory-system.md) for details.
 │  └──────────────┘  └──────────────┘  └──────────────┘           │
 │  ┌──────────────────────────────────────────────────┐           │
 │  │              PHP Tool Classes                     │           │
-│  │  MemoryQuery, MemoryCreate, ToolCreate, etc.     │           │
+│  │  MemoryQuery, MemoryCreate, ToolExtract, etc.    │           │
 │  └──────────────────────────────────────────────────┘           │
 ├─────────────────────────────────────────────────────────────────┤
 │                     Memory System                                │

@@ -80,11 +80,10 @@
       - **Tasks:** Define shared prompt (meta-instructions for system_prompts)
       - **Comments:** _None yet_
       - **Tools:**
-        - [ ] `tool:create` — `ToolCreateTool.php`
-        - [ ] `tool:update` — `ToolUpdateTool.php`
+        - [ ] `tool:extract` — `ToolExtractTool.php`
+        - [ ] `tool:push` — `ToolPushTool.php`
         - [ ] `tool:delete` — `ToolDeleteTool.php`
         - [ ] `tool:list` — `ToolListTool.php`
-        - [ ] `tool:show` — `ToolShowTool.php`
         - [ ] `tool:run` — `ToolRunTool.php`
 
     - [ ] **2.6 System** — group prompt + tool instructions
