@@ -12,6 +12,10 @@ set -e
 TARGET_UID="${PD_TARGET_UID:-1000}"
 TARGET_GID="${PD_TARGET_GID:-1000}"
 
+# Ensure PD_QUEUE_WORKERS is exported so supervisord can read %(ENV_PD_QUEUE_WORKERS)s.
+# compose.yml passes this in; this default guards against manual `docker run` without it.
+export PD_QUEUE_WORKERS="${PD_QUEUE_WORKERS:-20}"
+
 echo "Starting queue container initialization..."
 
 # =============================================================================
@@ -229,8 +233,9 @@ for f in /tmp/supervisord.log /tmp/supervisord.pid /tmp/supervisor.sock; do
 done
 
 # Ensure queue worker log files are writable by TARGET_USER
-# Supervisor creates 20 workers (00-19) with stdout and stderr logs each
-for i in $(seq -f '%02g' 0 19); do
+# Worker count is controlled by PD_QUEUE_WORKERS (default 20). Pre-touch up to 30
+# slots so ownership is set correctly even if numprocs is changed at runtime.
+for i in $(seq -f '%02g' 0 29); do
     for f in "/tmp/queue-worker-${i}.log" "/tmp/queue-worker-${i}-error.log"; do
         if [ -L "$f" ]; then
             echo "WARN: $f is a symlink; removing before recreation" >&2
@@ -239,6 +244,16 @@ for i in $(seq -f '%02g' 0 19); do
         touch "$f" 2>/dev/null || true
         chown "${TARGET_UID}:33" "$f" 2>/dev/null || true
     done
+done
+
+# Ensure scheduler log files are writable by TARGET_USER
+for f in /tmp/scheduler.log /tmp/scheduler-error.log; do
+    if [ -L "$f" ]; then
+        echo "WARN: $f is a symlink; removing before recreation" >&2
+        rm -f "$f" 2>/dev/null || true
+    fi
+    touch "$f" 2>/dev/null || true
+    chown "${TARGET_UID}:33" "$f" 2>/dev/null || true
 done
 
 # Set group-writable umask so www-data (in appgroup) can edit files created by appuser
