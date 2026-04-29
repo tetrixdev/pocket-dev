@@ -26,7 +26,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('setup.process') }}" class="space-y-6">
+        <form method="POST" action="{{ route('setup.provider.process') }}" class="space-y-6">
             @csrf
 
             {{-- Provider Selection --}}

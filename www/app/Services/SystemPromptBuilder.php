@@ -598,14 +598,14 @@ PROMPT;
     /**
      * Build panel dependencies section from config.
      * This is shown once in the system prompt for panel creation/update reference.
-     * Only included if tool-create or tool-update is allowed (or all tools allowed).
+     * Only included if tool-extract or tool-push is allowed (or all tools allowed).
      */
     private function buildPanelDependenciesSection(?array $allowedTools = null): ?string
     {
         // Only include if panel tools are allowed
-        // null = all tools allowed, otherwise check for tool-create or tool-update
+        // null = all tools allowed, otherwise check for tool-extract or tool-push
         if ($allowedTools !== null) {
-            $panelToolsAllowed = in_array('tool-create', $allowedTools) || in_array('tool-update', $allowedTools);
+            $panelToolsAllowed = in_array('tool-extract', $allowedTools) || in_array('tool-push', $allowedTools);
             if (!$panelToolsAllowed) {
                 return null;
             }
@@ -634,7 +634,7 @@ PROMPT;
         }
 
         $doc .= "## Additional Dependencies\n\n";
-        $doc .= "Panels can load extra CDN libraries via `panel_dependencies` in `tool:create` or `tool:update`.\n";
+        $doc .= "Panels can load extra CDN libraries via a `dependencies.json` file, then pushed via `tool:push`.\n";
         $doc .= "Each entry is an object with `type` (\"script\" or \"stylesheet\") and `url`.\n";
         $doc .= "Optional keys: `defer` (boolean), `crossorigin` (string), `integrity` (string, SRI hash for stylesheets).\n\n";
         $doc .= "Example:\n```json\n[{\"type\": \"script\", \"url\": \"https://cdn.jsdelivr.net/npm/chart.js\", \"defer\": true}]\n```\n\n";

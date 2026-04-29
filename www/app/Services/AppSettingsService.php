@@ -265,6 +265,41 @@ class AppSettingsService
         $this->set('setup_complete', true);
     }
 
+    // =========================================================================
+    // Authentication Bypass Settings
+    // =========================================================================
+
+    /**
+     * Check if authentication is permanently bypassed.
+     * When true, the app runs without requiring user login and
+     * the setup screen won't be shown on startup.
+     *
+     * Note: Temporary bypass (session-only) is handled via session
+     * storage, not this database setting.
+     */
+    public function isAuthBypassPermanent(): bool
+    {
+        return (bool) $this->get('auth_bypass_permanent', false);
+    }
+
+    /**
+     * Set permanent auth bypass (user chose "don't ask again")
+     */
+    public function setAuthBypassPermanent(bool $permanent): AppSetting
+    {
+        Log::info('Auth bypass permanent setting changed', ['permanent' => $permanent]);
+        return $this->set('auth_bypass_permanent', $permanent);
+    }
+
+    /**
+     * Clear auth bypass settings (when user sets up authentication)
+     */
+    public function clearAuthBypass(): void
+    {
+        $this->delete('auth_bypass_permanent');
+        Log::info('Auth bypass settings cleared');
+    }
+
     /**
      * Check if any AI provider is configured
      */

@@ -45,6 +45,59 @@ class PanelController extends Controller
         $headTags = $this->buildPanelHeadTags($allDeps);
         $tailwindTheme = $config['tailwind_theme'];
         $baseCss = $config['base_css'];
+        $csrfToken = e(csrf_token());
+
+        // CSRF fetch wrapper — panels render in isolated iframes that do NOT
+        // load the main Vite bundle, so the wrapper in resources/js/bootstrap.js
+        // never runs here. Inline an equivalent so any panel `fetch()` against
+        // a same-origin mutating endpoint (`/api/panel/{id}/action` etc.) gets
+        // the session's CSRF token attached.
+        //
+        // Runs synchronously in <head> before any panel scripts so it's installed
+        // before panels issue their first request.
+        $csrfWrapperScript = <<<'CSRF'
+<script>
+(function() {
+    // Panels run in srcdoc iframes: window.location.href is "about:srcdoc",
+    // which breaks `new URL(path, window.location.href)`. We can't rely on
+    // the usual same-origin check. Every panel fetch targets a relative
+    // /api/panel/... path on the parent origin — so treat absolute-path
+    // URLs as same-origin and skip everything else (scheme-qualified URLs
+    // or protocol-relative //host/... won't get a CSRF token, which is the
+    // safe default).
+    const originalFetch = window.fetch.bind(window);
+    const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+    const isSameOriginPath = (url) => {
+        if (typeof url !== 'string') return false;
+        return url.startsWith('/') && !url.startsWith('//');
+    };
+
+    const readCsrfToken = () =>
+        document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+    window.fetch = (input, init) => {
+        init = init || {};
+        const request = input instanceof Request ? input : null;
+        const url = request ? request.url : input;
+        const method = (init.method || (request && request.method) || 'GET').toUpperCase();
+
+        if (!isSameOriginPath(url) || !mutatingMethods.has(method)) {
+            return originalFetch(input, init);
+        }
+
+        const headers = new Headers(init.headers || (request && request.headers) || {});
+        if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+        if (!headers.has('X-CSRF-TOKEN')) {
+            const token = readCsrfToken();
+            if (token) headers.set('X-CSRF-TOKEN', token);
+        }
+
+        return originalFetch(input, { ...init, headers });
+    };
+})();
+</script>
+CSRF;
 
         // Swipe detection script for cross-iframe communication
         // This enables swipe-to-switch-tabs when swiping inside panel iframes
@@ -164,6 +217,8 @@ SWIPE;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{$csrfToken}">
+{$csrfWrapperScript}
 {$headTags}
     <style type="text/tailwindcss">
 {$tailwindTheme}

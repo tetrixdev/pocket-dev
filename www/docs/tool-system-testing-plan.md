@@ -52,30 +52,30 @@ These tests can be run entirely through the terminal.
 | LIST-005 | Filter by provider (claude_code) | `php artisan tool:list --provider=claude_code --json` | Should exclude file_ops tools (14 tools) |
 | LIST-006 | Filter by provider (anthropic) | `php artisan tool:list --provider=anthropic --json` | Should include all 20 tools |
 
-### 1.4 Tool Show Command Tests
+### 1.4 Tool Extract Command Tests
 
 | Test ID | Description | Command | Expected Result |
 |---------|-------------|---------|-----------------|
-| SHOW-001 | Show memory-create details | `php artisan tool:show --slug=memory-create` | JSON with tool details, source=pocketdev |
-| SHOW-002 | Show bash tool details | `php artisan tool:show --slug=bash` | JSON with tool details, category=file_ops |
-| SHOW-003 | Show non-existent tool | `php artisan tool:show --slug=non-existent` | Error: Tool not found |
+| EXTR-001 | Extract existing user tool | `php artisan tool:extract test-tool` | JSON with extracted files list in /tmp/pocketdev/tools/test-tool/ |
+| EXTR-002 | Extract to custom directory | `php artisan tool:extract test-tool --directory=/tmp/custom-dir` | JSON with extracted files in /tmp/custom-dir/, push instructions include --directory flag |
+| EXTR-003 | Extract non-existent tool | `php artisan tool:extract non-existent` | Error: Tool not found |
 
-### 1.5 Tool Create/Update/Delete Tests (User Tools)
+### 1.5 Tool Extract/Push/Delete Tests (User Tools)
 
 | Test ID | Description | Command | Expected Result |
 |---------|-------------|---------|-----------------|
-| CRUD-001 | Create user tool | `php artisan tool:create --slug=test-tool --name="Test Tool" --description="A test tool" --system_prompt="Use test-tool to test things" --script='#!/bin/bash\necho "{\"status\": \"ok\"}"'` | Success, returns tool ID |
-| CRUD-002 | Verify user tool created | `php artisan tool:show --slug=test-tool` | JSON with source=user |
-| CRUD-003 | Update user tool | `php artisan tool:update --slug=test-tool --name="Updated Test Tool"` | Success, shows changes |
+| CRUD-001 | Create user tool via push | Set up files in /tmp/pocketdev/tools/test-tool/ (meta.json + system_prompt.md + script.sh), then `php artisan tool:push test-tool` | Success, returns tool ID |
+| CRUD-002 | Verify user tool created | `php artisan tool:list --user --json` | JSON listing includes test-tool with source=user |
+| CRUD-003 | Extract and update user tool | `php artisan tool:extract test-tool`, edit files, then `php artisan tool:push test-tool` | Success, shows changed files |
 | CRUD-004 | Run user tool | `php artisan tool:run test-tool` | JSON output: `{"status": "ok"}` |
 | CRUD-005 | Delete user tool | `php artisan tool:delete --slug=test-tool` | Success message |
-| CRUD-006 | Verify deletion | `php artisan tool:show --slug=test-tool` | Error: Tool not found |
+| CRUD-006 | Verify deletion | `php artisan tool:extract test-tool` | Error: Tool not found |
 
 ### 1.6 PocketDev Tool Protection Tests
 
 | Test ID | Description | Command | Expected Result |
 |---------|-------------|---------|-----------------|
-| PROT-001 | Cannot update PocketDev tool | `php artisan tool:update --slug=memory-create --name="Hacked"` | Error: Cannot modify PocketDev tool |
+| PROT-001 | Cannot update PocketDev tool via push | `php artisan tool:push memory-create` (with files in default dir) | Error: Cannot modify PocketDev tool |
 | PROT-002 | Cannot delete PocketDev tool | `php artisan tool:delete --slug=memory-create` | Error: Cannot delete PocketDev tool |
 | PROT-003 | Cannot run PocketDev tool directly | `php artisan tool:run memory-create` | Error: Use php artisan memory:create instead |
 
@@ -138,7 +138,7 @@ These tests require interaction with the web UI or cannot be automated.
 
 | Test ID | Description | Steps | Expected Result |
 |---------|-------------|-------|-----------------|
-| CC-001 | System prompt includes PocketDev tools | 1. Start a Claude Code conversation<br>2. Check the appended system prompt | Should include memory:create, memory:query, tool:create instructions |
+| CC-001 | System prompt includes PocketDev tools | 1. Start a Claude Code conversation<br>2. Check the appended system prompt | Should include memory:create, memory:query, tool:extract, tool:push instructions |
 | CC-002 | System prompt excludes file ops | Same as above | Should NOT include pocketdev-bash, pocketdev-read instructions |
 | CC-003 | Memory tools work in Claude Code | 1. Start conversation<br>2. Ask: "List available memory structures using memory:query" | Claude Code should run: `php artisan memory:query --sql="SELECT * FROM memory_structures"` |
 | CC-004 | Tool management works | 1. Ask: "Create a custom tool that shows the current date"<br>2. Ask: "Run the new tool" | Should successfully create and run the tool |
@@ -204,19 +204,22 @@ php artisan tool:list --json | head -5
 php artisan tool:list --category=memory --json
 php artisan tool:list --provider=claude_code --json
 
-# Show Tests
-php artisan tool:show --slug=memory-create
-php artisan tool:show --slug=pocketdev-bash
-
-# CRUD Tests
-php artisan tool:create --slug=test-tool --name="Test Tool" --description="Test" --system_prompt="Test prompt" --script='#!/bin/bash
-echo "test"'
-php artisan tool:show --slug=test-tool
+# Extract/Push CRUD Tests
+# 1. Create tool files
+mkdir -p /tmp/pocketdev/tools/test-tool
+echo '{"slug":"test-tool","name":"Test Tool","description":"Test","type":"script","category":"custom"}' > /tmp/pocketdev/tools/test-tool/meta.json
+echo 'Use test-tool to test things.' > /tmp/pocketdev/tools/test-tool/system_prompt.md
+printf '#!/bin/bash\necho "test"' > /tmp/pocketdev/tools/test-tool/script.sh
+# 2. Push to create
+php artisan tool:push test-tool
+# 3. Extract and verify
+php artisan tool:extract test-tool
+# 4. Run the tool
 php artisan tool:run test-tool
+# 5. Delete the tool
 php artisan tool:delete --slug=test-tool
 
 # Protection Tests
-php artisan tool:update --slug=memory-create --name="Hacked" 2>&1 || echo "PASS: Update blocked"
 php artisan tool:delete --slug=memory-create 2>&1 || echo "PASS: Delete blocked"
 
 # ToolSelector Tests
@@ -251,7 +254,7 @@ php artisan tinker --execute="echo count(app(App\Services\ToolSelector::class)->
 - [ ] SEED-004:
 - [ ] SEED-005:
 - [ ] LIST-001 through LIST-006:
-- [ ] SHOW-001 through SHOW-003:
+- [ ] EXTR-001 through EXTR-003:
 - [ ] CRUD-001 through CRUD-006:
 - [ ] PROT-001 through PROT-003:
 - [ ] MEM-001 through MEM-003:

@@ -113,11 +113,10 @@ These work with ALL providers including Claude Code:
 
 | Tool | Artisan Command |
 |------|-----------------|
-| Tool Create | `tool:create` |
-| Tool Update | `tool:update` |
+| Tool Extract | `tool:extract` |
+| Tool Push | `tool:push` |
 | Tool Delete | `tool:delete` |
 | Tool List | `tool:list` |
-| Tool Show | `tool:show` |
 | Tool Run | `tool:run` |
 
 #### 5. User Tools
@@ -400,12 +399,13 @@ class MyTool extends Tool
 
 ### User Tools (Database)
 
-1. **Creation**: Via `tool:create` command or AI
+1. **Creation**: Via `tool:push` command or AI (creates files in `/tmp/pocketdev/tools/{slug}/`, then pushes)
 2. **Storage**: Script stored in `pocket_tools.script`
 3. **Wrapping**: `UserTool` class wraps `PocketTool` model
 4. **Execution**: Via `tool:run <slug>` (writes to temp file, executes)
-5. **Modification**: Via `tool:update` command
-6. **Deletion**: Via `tool:delete` command
+5. **Extraction**: Via `tool:extract` command (downloads to local files for editing)
+6. **Modification**: Via `tool:push` command (pushes local file changes back)
+7. **Deletion**: Via `tool:delete` command
 
 ---
 
