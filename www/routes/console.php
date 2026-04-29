@@ -58,3 +58,19 @@ Schedule::command('conversation:backfill-embeddings')
     ->daily()
     ->withoutOverlapping()
     ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Orphaned Process Cleanup
+|--------------------------------------------------------------------------
+|
+| Kill long-running Node/Chrome processes that were started by AI sessions
+| and left behind after the session ended (re-parented to PID 1).
+| Runs every 30 minutes, only targets processes older than 30 min.
+|
+*/
+
+Schedule::command('processes:cleanup-orphaned')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();

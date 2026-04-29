@@ -136,6 +136,9 @@ services:
       - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
       # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
       - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
+      # Number of parallel queue workers. Default: 20 for servers.
+      # Set to 8 in your .env for local/WSL use to save ~1.2 GB idle RAM.
+      - PD_QUEUE_WORKERS=${PD_QUEUE_WORKERS:-20}
     volumes:
       - ./www:/var/www
       - .env:/var/www/.env
