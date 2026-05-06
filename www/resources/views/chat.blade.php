@@ -420,6 +420,13 @@
 
             // Simple modal back button support
             // Pushes ONE history entry when first modal opens, closes ALL modals on back
+            //
+            // IMPORTANT — Modal-to-modal transitions (close A, open B) require both
+            // state changes to happen synchronously in the same handler, before any
+            // await/nextTick/rAF. Alpine batches x-effect callbacks via microtask, so
+            // opened() can cancel the deferred history.back() timer set by closed().
+            // If the open is deferred (behind await/nextTick/rAF), the timer fires
+            // first and closes the new modal.
             Alpine.store('modalBackButton', {
                 count: 0,
                 _initialized: false,
@@ -438,6 +445,11 @@
                             // Back button pressed - close all modals
                             window.dispatchEvent(new CustomEvent('close-all-modals'));
                             this.count = 0;
+                            // Cancel any pending deferred history.back() to prevent double navigation
+                            if (this._closeTimer) {
+                                clearTimeout(this._closeTimer);
+                                this._closeTimer = null;
+                            }
                         }
                     });
                 },
