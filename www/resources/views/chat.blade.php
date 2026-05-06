@@ -401,6 +401,7 @@
                 count: 0,
                 _initialized: false,
                 _handledBackNavigation: false,  // Flag to prevent chatApp from also handling
+                _closeTimer: null,  // Deferred history.back() timer for modal transitions
 
                 init() {
                     if (this._initialized) return;
@@ -419,10 +420,15 @@
                 },
 
                 opened() {
+                    // Cancel any pending history.back() from a closing modal (modal-to-modal transition)
+                    if (this._closeTimer) {
+                        clearTimeout(this._closeTimer);
+                        this._closeTimer = null;
+                    }
                     const wasZero = this.count === 0;
                     this.count++;
-                    if (wasZero) {
-                        // First modal - push one history entry as buffer
+                    if (wasZero && !history.state?.modalOpen) {
+                        // First modal and no existing history entry - push one as buffer
                         history.pushState({ modalOpen: true }, '');
                     }
                 },
@@ -431,8 +437,15 @@
                     if (this.count > 0) {
                         this.count--;
                         if (this.count === 0 && history.state?.modalOpen) {
-                            // Last modal closed via UI - clean up history entry
-                            history.back();
+                            // Defer history.back() to allow modal transitions (close one, open another)
+                            // If opened() is called before this fires, the timer is cancelled
+                            this._closeTimer = setTimeout(() => {
+                                this._closeTimer = null;
+                                if (this.count === 0 && history.state?.modalOpen) {
+                                    // Last modal truly closed - clean up history entry
+                                    history.back();
+                                }
+                            }, 0);
                         }
                     }
                 }
