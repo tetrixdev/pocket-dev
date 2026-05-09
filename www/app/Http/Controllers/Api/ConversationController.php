@@ -297,17 +297,6 @@ class ConversationController extends Controller
             ], 409);
         }
 
-        // Initialize stream state BEFORE cleanup to prevent race condition
-        // This ensures clients won't see 'not_found' after cleanup and before job starts
-        RequestFlowLogger::log('controller.stream.initializing', 'Initializing stream state in Redis');
-        $this->streamManager->startStream($conversation->uuid, [
-            'model' => $conversation->model,
-            'provider' => $conversation->provider_type,
-        ]);
-        // Note: startStream() already clears old events inside its MULTI/EXEC transaction
-        RequestFlowLogger::log('controller.stream.redis_initialized', 'Stream state initialized');
-
-
         // Detect /compact slash command for Claude Code CLI conversations.
         // When triggered, the job bypasses the normal turn and sends /compact to the CLI directly.
         // Must be checked BEFORE startStream() to avoid leaving an orphaned stream state on error.
@@ -342,7 +331,7 @@ class ConversationController extends Controller
         ProcessConversationStream::dispatch(
             $conversation->uuid,
             $validated['prompt'],
-            [] // Options no longer needed for reasoning - stored on conversation
+            $jobOptions
         );
         RequestFlowLogger::log('controller.stream.job_dispatched', 'Job dispatched to queue');
 
