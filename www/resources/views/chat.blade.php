@@ -47,6 +47,7 @@
                     stack: [],
                     loading: false,
                     copied: false,
+                    copiedPath: false,
 
                     // Edit mode state
                     editing: false,
@@ -282,6 +283,17 @@
                         if (history.state?.filePreview) {
                             // Go back through all preview history entries
                             history.go(-depth);
+                        }
+                    },
+
+                    async copyPath() {
+                        if (!this.path) return;
+                        try {
+                            await navigator.clipboard.writeText(this.path);
+                            this.copiedPath = true;
+                            setTimeout(() => { this.copiedPath = false; }, 1500);
+                        } catch (err) {
+                            console.error('Copy path failed:', err);
                         }
                     },
 
