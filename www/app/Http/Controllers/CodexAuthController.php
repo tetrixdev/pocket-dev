@@ -85,7 +85,7 @@ class CodexAuthController extends Controller
 
             // Save the file
             file_put_contents($this->credentialsPath, json_encode($data, JSON_PRETTY_PRINT));
-            chmod($this->credentialsPath, 0660);
+            chmod($this->credentialsPath, 0600);
 
             Log::info("[Codex Auth] Credentials saved from JSON input");
 
