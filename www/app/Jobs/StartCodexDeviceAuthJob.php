@@ -49,10 +49,18 @@ class StartCodexDeviceAuthJob implements ShouldQueue
             unlink($logFile);
         }
 
-        // Start device auth in background, redirect stdout+stderr to log file
+        // Start device auth in background, redirect stdout+stderr to log file.
+        // Capture the PID so we can kill the process on failure/timeout.
         $cmd = 'nohup ' . escapeshellarg($codexPath) . ' login --device-auth > '
-            . escapeshellarg($logFile) . ' 2>&1 &';
-        exec($cmd);
+            . escapeshellarg($logFile) . ' 2>&1 & echo $!';
+        $pidOutput = [];
+        exec($cmd, $pidOutput);
+        $pid = isset($pidOutput[0]) ? (int) trim($pidOutput[0]) : null;
+
+        if ($pid) {
+            // Store PID alongside the initial starting state so cleanup paths can kill it
+            Cache::put('codex_device_auth_pid', $pid, 1020);
+        }
 
         // Poll log file for URL and code (up to 30 seconds)
         $verificationUrl = null;
@@ -97,6 +105,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
         if (!$verificationUrl || !$userCode) {
             $rawLog = file_exists($logFile) ? file_get_contents($logFile) : '(empty)';
             Log::error('[Codex Device Auth] Could not parse URL/code', ['log' => $rawLog]);
+            $this->killBackgroundProcess();
             $this->failWithError(
                 'Could not get device code from Codex. Ensure Codex is properly installed and try again.'
             );
@@ -129,6 +138,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
                     Log::info('[Codex Device Auth] Authentication successful');
 
                     Cache::put('codex_device_auth', ['status' => 'authenticated'], 120);
+                    Cache::forget('codex_device_auth_pid');
 
                     // Create default Codex agent for all workspaces
                     $this->createDefaultAgents();
@@ -145,6 +155,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
 
         // Timed out without authentication
         Log::warning('[Codex Device Auth] Session expired without authentication');
+        $this->killBackgroundProcess();
         Cache::put('codex_device_auth', ['status' => 'expired'], 120);
 
         if (file_exists($logFile)) {
@@ -181,6 +192,27 @@ class StartCodexDeviceAuthJob implements ShouldQueue
         }
 
         return null;
+    }
+
+    /**
+     * Kill the background codex process started by this job, if a PID was recorded.
+     * Attempts POSIX process-group kill first, falls back to shell kill.
+     */
+    private function killBackgroundProcess(): void
+    {
+        $pid = Cache::pull('codex_device_auth_pid');
+        if (!$pid) {
+            return;
+        }
+
+        Log::info('[Codex Device Auth] Killing background process', ['pid' => $pid]);
+
+        if (function_exists('posix_kill')) {
+            // Send SIGTERM to the process group so child processes are also terminated
+            posix_kill(-$pid, SIGTERM);
+        } else {
+            exec('kill -TERM -- -' . (int) $pid . ' 2>/dev/null || kill -TERM ' . (int) $pid . ' 2>/dev/null');
+        }
     }
 
     /**

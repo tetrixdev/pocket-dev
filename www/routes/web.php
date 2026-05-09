@@ -137,9 +137,13 @@ Route::middleware(['auth', 'throttle:10,1'])->group(function () {
     Route::delete("/codex/auth/logout", [CodexAuthController::class, "logout"])->name("codex.auth.logout");
     // Inline device auth flow (no terminal/sudo required)
     Route::post("/codex/auth/device-start", [CodexAuthController::class, "startDeviceAuth"])->name("codex.auth.deviceStart");
-    Route::get("/codex/auth/device-status", [CodexAuthController::class, "deviceStatus"])->name("codex.auth.deviceStatus");
     // Serve the local-run upload script (pre-filled with this instance's URL)
     Route::get("/codex/auth/upload-script", [CodexAuthController::class, "downloadScript"])->name("codex.auth.downloadScript");
+});
+// Device-status is polled every 2.5 s by the frontend — give it a higher throttle
+// so it never hits the 10 req/min limit used by mutation routes.
+Route::middleware(['auth', 'throttle:120,1'])->group(function () {
+    Route::get("/codex/auth/device-status", [CodexAuthController::class, "deviceStatus"])->name("codex.auth.deviceStatus");
 });
 
 // Chat - Multi-provider conversation interface

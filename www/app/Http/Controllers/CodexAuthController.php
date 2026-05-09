@@ -265,11 +265,18 @@ class CodexAuthController extends Controller
             return response('Failed to read upload script', 500);
         }
 
-        // Pre-fill the PocketDev URL so the user doesn't have to type it
+        // Pre-fill the PocketDev URL so the user doesn't have to type it.
+        // Use escapeshellarg() to neutralise any special shell characters in the URL
+        // before embedding it as the default value in the shell variable assignment.
         $instanceUrl = rtrim(url('/'), '/');
+        $escapedUrl = escapeshellarg($instanceUrl);
+        // Strip the outer single-quotes added by escapeshellarg — the URL will be
+        // placed inside double-quotes in the shell script, so we only need the
+        // inner content with single-quotes escaped (i.e. ' → '\'').
+        $safeUrl = substr($escapedUrl, 1, -1);
         $script = str_replace(
             'PD_URL="${1:-${POCKETDEV_URL:-}}"',
-            'PD_URL="${1:-${POCKETDEV_URL:-' . $instanceUrl . '}}"',
+            'PD_URL="${1:-${POCKETDEV_URL:-' . $safeUrl . '}}"',
             $script
         );
 
@@ -287,8 +294,11 @@ class CodexAuthController extends Controller
      */
     public function startDeviceAuth(): JsonResponse
     {
-        // Already authenticated — no need to start a new session
-        if (file_exists($this->credentialsPath)) {
+        // Already authenticated with valid, non-expired credentials — no need to start a new session.
+        // We check getAuthenticationStatus() rather than mere file existence so that users with
+        // stale/expired/malformed auth.json can still trigger device auth to re-authenticate.
+        $currentStatus = $this->getAuthenticationStatus();
+        if ($currentStatus['authenticated'] ?? false) {
             return response()->json([
                 'success' => false,
                 'error' => 'Already authenticated. Logout first if you want to switch accounts.',
