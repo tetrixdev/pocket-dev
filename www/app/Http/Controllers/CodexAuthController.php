@@ -305,6 +305,13 @@ class CodexAuthController extends Controller
             ], 400);
         }
 
+        // Remove stale/expired/malformed auth.json before starting a new device-auth flow.
+        // Without this, the job and deviceStatus() would see the leftover file and
+        // immediately report "authenticated" with the old (invalid) credentials.
+        if (file_exists($this->credentialsPath)) {
+            @unlink($this->credentialsPath);
+        }
+
         // Check if there's already an active session in progress
         $existing = Cache::get('codex_device_auth');
         if ($existing && in_array($existing['status'], ['starting', 'ready'], true)) {
