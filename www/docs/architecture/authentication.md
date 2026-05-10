@@ -52,6 +52,20 @@ All `/settings/security/*` mutation routes are `auth`-gated and `throttle:10,1`-
 
 Any action that rotates recovery codes (first-time 2FA enrollment, regenerate, reset TOTP) stashes the new codes in `session('pending_2fa_commit')` and redirects to `/settings/security/recovery-codes`. The user sees the codes, must explicitly acknowledge them, and only then is the user record updated. This prevents account lockouts where 2FA is enabled but the user never saw their codes.
 
+## Middleware: Authenticate (bypass-aware `auth`)
+
+The custom `Authenticate` middleware (`app/Http/Middleware/Authenticate.php`) overrides Laravel's built-in `auth` middleware alias (registered in `bootstrap/app.php`). It extends `Illuminate\Auth\Middleware\Authenticate` with one addition: before checking `Auth::check()`, it honours PocketDev's bypass modes.
+
+### Why This Exists
+
+Several routes apply `auth` as defense-in-depth (system management, Claude/Codex auth uploads, security settings mutations). Without the bypass-aware override, users operating in auth-bypass mode would be rejected by these routes — `EnsureSetupComplete` lets them through, but the standard `auth` middleware sees no logged-in user and redirects to `/login`.
+
+### Check Order
+
+1. **Permanent bypass** (`auth_bypass_permanent = true`) — allow through
+2. **Session bypass** (`auth_bypass_session` in session) — allow through
+3. **Delegate to parent** — standard `Auth::check()` against the given guard(s)
+
 ## Middleware: EnsureSetupComplete
 
 The `EnsureSetupComplete` middleware (`app/Http/Middleware/EnsureSetupComplete.php`) protects both web and API routes.

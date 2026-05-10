@@ -25,6 +25,13 @@ return Application::configure(basePath: dirname(__DIR__))
             '192.168.0.0/16',  // Private network range
         ]);
 
+        // Override the default 'auth' middleware with our bypass-aware version
+        // so that routes using `auth` as defense-in-depth don't reject users
+        // who are operating in auth-bypass mode (permanent or session).
+        $middleware->alias([
+            'auth' => \App\Http\Middleware\Authenticate::class,
+        ]);
+
         // Redirect to setup wizard if not complete (web routes)
         // Note: API routes are now in web.php under /api prefix, so they get
         // full web middleware (session, CSRF, cookies) automatically.
