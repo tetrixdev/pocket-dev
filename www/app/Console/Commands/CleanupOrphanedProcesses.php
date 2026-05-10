@@ -72,6 +72,7 @@ class CleanupOrphanedProcesses extends Command
         $now      = time();
         $killed   = 0;
         $skipped  = 0;
+        $tooYoung = 0;
 
         if ($dryRun) {
             $this->info('[DRY RUN] No processes will be killed.');
@@ -150,16 +151,27 @@ class CleanupOrphanedProcesses extends Command
                 continue;
             }
 
-            // Field 22 (0-indexed: 21) in /proc/pid/stat is starttime in clock ticks since boot
-            $fields = explode(' ', $stat);
-            if (count($fields) < 22) {
+            // Field 22 (0-indexed: 21) in /proc/pid/stat is starttime in clock ticks since boot.
+            // The comm field (field 2) is wrapped in parentheses and may contain spaces, so
+            // splitting the whole string by spaces gives wrong field indices for such processes.
+            // Instead, find the last ')' and split only the trailing portion.
+            $closeParen = strrpos($stat, ')');
+            if ($closeParen === false) {
                 continue;
             }
-            $startTicks = (int) $fields[21];
+            $afterComm = trim(substr($stat, $closeParen + 1));
+            $fields    = array_values(array_filter(explode(' ', $afterComm)));
+            // After stripping pid and comm, remaining fields are 0-indexed from state (field 3).
+            // starttime is original field 22, so index = 22 - 3 = 19 in the remaining array.
+            if (count($fields) < 20) {
+                continue;
+            }
+            $startTicks = (int) $fields[19];
             $processAgeSeconds = $uptime - ($startTicks / $clockTick);
 
             if ($processAgeSeconds < $minAge) {
                 // Too young — may be a legitimately started process
+                $tooYoung++;
                 continue;
             }
 
@@ -176,9 +188,13 @@ class CleanupOrphanedProcesses extends Command
             $terminated = @posix_kill($pid, SIGTERM);
             if ($terminated) {
                 usleep(200_000); // 200 ms grace
-                // Check if still alive, then SIGKILL
+                // Re-verify cmdline before SIGKILL — the PID could be reused after SIGTERM
+                // freed it, meaning a different process now occupies the same slot.
                 if (is_readable("/proc/{$pid}")) {
-                    @posix_kill($pid, SIGKILL);
+                    $currentCmdline = trim(str_replace("\0", ' ', @file_get_contents("/proc/{$pid}/cmdline") ?: ''));
+                    if ($currentCmdline === $cmdline) {
+                        @posix_kill($pid, SIGKILL);
+                    }
                 }
                 $killed++;
                 $this->line("  Killed PID {$pid} (age {$ageMin}m): {$preview}");
@@ -191,8 +207,8 @@ class CleanupOrphanedProcesses extends Command
         }
 
         $summary = $dryRun
-            ? "Dry run complete — {$killed} would be killed, {$skipped} excluded."
-            : "Cleanup complete — killed: {$killed}, excluded by safety rules: {$skipped}.";
+            ? "Dry run complete — {$killed} would be killed, {$skipped} excluded by safety rules, {$tooYoung} too young."
+            : "Cleanup complete — killed: {$killed}, excluded by safety rules: {$skipped}, too young: {$tooYoung}.";
 
         $this->info($summary);
         Log::info('CleanupOrphanedProcesses: ' . $summary);

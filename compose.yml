@@ -147,7 +147,7 @@ services:
     entrypoint: ["/queue-entrypoint.sh"]
     # Command removed - supervisord in entrypoint manages multiple workers
     healthcheck:
-      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | awk 'BEGIN{ok=1;count=0} /^queue-worker_/ {count++; if ($2 != \"RUNNING\") ok=0} /^scheduler/ {if ($2 != \"RUNNING\") ok=0} END{if (count==0) ok=0; exit !ok}'"]
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | awk 'BEGIN{ok=1;count=0;sched=0} /^queue-worker_/ {count++; if ($2 != \"RUNNING\") ok=0} /^scheduler/ {sched++; if ($2 != \"RUNNING\") ok=0} END{if (count==0) ok=0; if (sched==0) ok=0; exit !ok}'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -164,7 +164,8 @@ services:
       # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
       - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
       # Number of parallel queue workers. Default: 20 for servers.
-      # Set to 8 in your .env for local/WSL use to save ~1.2 GB idle RAM.
+      # Set to 8 in your .env for local/WSL use to save ~750 MB idle RAM (~320 MB vs ~1 GB).
+      # See .env.example for full memory breakdown.
       - PD_QUEUE_WORKERS=${PD_QUEUE_WORKERS:-20}
     volumes:
       - ./www:/var/www

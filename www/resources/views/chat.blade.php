@@ -6008,6 +6008,7 @@
                 formatDuration(startedAt, finishedAt) {
                     if (!startedAt || !finishedAt) return '';
                     const ms = new Date(finishedAt) - new Date(startedAt);
+                    if (isNaN(ms) || ms < 0) return '';
                     if (ms < 1000) return '<1s';
                     const totalSeconds = Math.floor(ms / 1000);
                     if (totalSeconds < 60) return totalSeconds + 's';
