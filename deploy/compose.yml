@@ -94,9 +94,9 @@ services:
     restart: unless-stopped
     working_dir: /var/www
     entrypoint: ["/queue-entrypoint.sh"]
-    # Supervisor manages 10 parallel queue workers (configured in image)
+    # Supervisor manages queue workers and the Laravel scheduler (configured in image)
     healthcheck:
-      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | awk 'BEGIN{ok=1;count=0} /^queue-worker_/ {count++; if ($2 != \"RUNNING\") ok=0} /^scheduler/ {if ($2 != \"RUNNING\") ok=0} END{if (count==0) ok=0; exit !ok}'"]
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | awk 'BEGIN{ok=1;count=0;sched=0} /^queue-worker_/ {count++; if ($2 != \"RUNNING\") ok=0} /^scheduler/ {sched++; if ($2 != \"RUNNING\") ok=0} END{if (count==0) ok=0; if (sched==0) ok=0; exit !ok}'"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -110,6 +110,8 @@ services:
       - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
       # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
       - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
+      # Number of parallel queue workers (default: 20). Set lower in .env to save RAM.
+      - PD_QUEUE_WORKERS=${PD_QUEUE_WORKERS:-20}
     volumes:
       - .env:/var/www/.env
       - user-data:/home/appuser
