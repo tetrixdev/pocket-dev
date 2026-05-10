@@ -194,15 +194,15 @@ class CleanupOrphanedProcesses extends Command
                     $currentCmdline = trim(str_replace("\0", ' ', @file_get_contents("/proc/{$pid}/cmdline") ?: ''));
                     if ($currentCmdline === $cmdline) {
                         @posix_kill($pid, SIGKILL);
+                        $killed++;
+                        $this->line("  Killed PID {$pid} (age {$ageMin}m): {$preview}");
+                        Log::info('CleanupOrphanedProcesses: killed orphaned process', [
+                            'pid'     => $pid,
+                            'age_min' => $ageMin,
+                            'cmdline' => $preview,
+                        ]);
                     }
                 }
-                $killed++;
-                $this->line("  Killed PID {$pid} (age {$ageMin}m): {$preview}");
-                Log::info('CleanupOrphanedProcesses: killed orphaned process', [
-                    'pid'     => $pid,
-                    'age_min' => $ageMin,
-                    'cmdline' => $preview,
-                ]);
             }
         }
 
