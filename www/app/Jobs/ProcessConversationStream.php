@@ -416,6 +416,13 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 continue;
             }
 
+            // Heartbeat events are infrastructure-only: touch conversation and skip
+            // (not published to frontend, not tracked in content blocks)
+            if ($event->type === StreamEvent::HEARTBEAT) {
+                $conversation->touch();
+                continue;
+            }
+
             // Publish other events to Redis for frontend
             $streamManager->appendEvent($this->conversationUuid, $event);
 
@@ -426,6 +433,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     $contentBlocks[$event->blockIndex] = [
                         'type' => 'thinking',
                         'thinking' => '',
+                        'started_at' => now()->toIso8601String(),
                     ];
                     break;
 
@@ -441,10 +449,17 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     }
                     break;
 
+                case StreamEvent::THINKING_STOP:
+                    if (isset($contentBlocks[$event->blockIndex])) {
+                        $contentBlocks[$event->blockIndex]['finished_at'] = now()->toIso8601String();
+                    }
+                    break;
+
                 case StreamEvent::TEXT_START:
                     $contentBlocks[$event->blockIndex] = [
                         'type' => 'text',
                         'text' => '',
+                        'started_at' => now()->toIso8601String(),
                     ];
                     break;
 
@@ -454,12 +469,19 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     }
                     break;
 
+                case StreamEvent::TEXT_STOP:
+                    if (isset($contentBlocks[$event->blockIndex])) {
+                        $contentBlocks[$event->blockIndex]['finished_at'] = now()->toIso8601String();
+                    }
+                    break;
+
                 case StreamEvent::TOOL_USE_START:
                     $contentBlocks[$event->blockIndex] = [
                         'type' => 'tool_use',
                         'id' => $event->metadata['tool_id'],
                         'name' => $event->metadata['tool_name'],
                         'input' => new \stdClass(),
+                        'started_at' => now()->toIso8601String(),
                     ];
                     $currentToolInput[$event->blockIndex] = '';
                     break;
@@ -493,6 +515,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                             $input = new \stdClass();
                         }
                         $contentBlocks[$event->blockIndex]['input'] = $input;
+                        $contentBlocks[$event->blockIndex]['finished_at'] = now()->toIso8601String();
                         $pendingToolUses[] = $contentBlocks[$event->blockIndex];
                         Log::channel('api')->info('ProcessConversationStream: Tool use completed', [
                             'block_index' => $event->blockIndex,
