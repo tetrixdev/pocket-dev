@@ -416,6 +416,26 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 continue;
             }
 
+            // Heartbeat events are infrastructure-only: touch conversation and skip
+            // (not published to frontend, not tracked in content blocks)
+            if ($event->type === StreamEvent::HEARTBEAT) {
+                $conversation->touch();
+                continue;
+            }
+
+            // Attach server-side timestamps to block start/stop events before publishing.
+            // The frontend uses these instead of new Date() so durations are accurate
+            // on page refresh (replayed events carry the original server time, not client arrival).
+            $blockTimestamp = null;
+            if (in_array($event->type, [
+                StreamEvent::THINKING_START, StreamEvent::TEXT_START, StreamEvent::TOOL_USE_START,
+                StreamEvent::THINKING_STOP,  StreamEvent::TEXT_STOP,  StreamEvent::TOOL_USE_STOP,
+            ])) {
+                $blockTimestamp = now()->toIso8601String();
+                $tsKey = str_ends_with($event->type, '_start') ? 'started_at' : 'finished_at';
+                $event->metadata = array_merge($event->metadata ?? [], [$tsKey => $blockTimestamp]);
+            }
+
             // Publish other events to Redis for frontend
             $streamManager->appendEvent($this->conversationUuid, $event);
 
@@ -426,6 +446,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     $contentBlocks[$event->blockIndex] = [
                         'type' => 'thinking',
                         'thinking' => '',
+                        'started_at' => $blockTimestamp,
                     ];
                     break;
 
@@ -441,10 +462,17 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     }
                     break;
 
+                case StreamEvent::THINKING_STOP:
+                    if (isset($contentBlocks[$event->blockIndex])) {
+                        $contentBlocks[$event->blockIndex]['finished_at'] = $blockTimestamp;
+                    }
+                    break;
+
                 case StreamEvent::TEXT_START:
                     $contentBlocks[$event->blockIndex] = [
                         'type' => 'text',
                         'text' => '',
+                        'started_at' => $blockTimestamp,
                     ];
                     break;
 
@@ -454,12 +482,19 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                     }
                     break;
 
+                case StreamEvent::TEXT_STOP:
+                    if (isset($contentBlocks[$event->blockIndex])) {
+                        $contentBlocks[$event->blockIndex]['finished_at'] = $blockTimestamp;
+                    }
+                    break;
+
                 case StreamEvent::TOOL_USE_START:
                     $contentBlocks[$event->blockIndex] = [
                         'type' => 'tool_use',
                         'id' => $event->metadata['tool_id'],
                         'name' => $event->metadata['tool_name'],
                         'input' => new \stdClass(),
+                        'started_at' => $blockTimestamp,
                     ];
                     $currentToolInput[$event->blockIndex] = '';
                     break;
@@ -493,6 +528,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                             $input = new \stdClass();
                         }
                         $contentBlocks[$event->blockIndex]['input'] = $input;
+                        $contentBlocks[$event->blockIndex]['finished_at'] = $blockTimestamp;
                         $pendingToolUses[] = $contentBlocks[$event->blockIndex];
                         Log::channel('api')->info('ProcessConversationStream: Tool use completed', [
                             'block_index' => $event->blockIndex,

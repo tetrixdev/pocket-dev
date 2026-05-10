@@ -83,3 +83,60 @@ Decisions made during code reviews that should not be re-flagged. Each entry doc
 - **Scope:** `www/app/Tools/ToolPushTool.php`
 - **Finding:** PHP (bool) cast on meta.json enabled field treats string "false" as true. When `$meta['enabled']` is the JSON string `"false"`, `(bool)"false"` evaluates to `true` in PHP, so the tool would be enabled instead of disabled. The same applies to the create path where the raw value is passed to Eloquent, whose boolean cast also uses PHP's (bool).
 - **Resolution:** Acceptable because `json_decode` converts JSON booleans to proper PHP booleans. The edge case requires writing invalid JSON semantics (quoting a boolean as a string). In the standard workflow, `tool:extract` always generates correct JSON booleans. Both create and update paths produce identical results since Eloquent's boolean cast also uses PHP (bool).
+
+---
+
+## PR-320/SEC-001 — Markdown rendered by marked.js without DOMPurify sanitization
+- **Scope:** `www/resources/js/` (chat/message rendering)
+- **Finding:** AI-generated markdown is passed directly to `marked.js` and rendered via `innerHTML`/`x-html` without HTML sanitization. A malicious or compromised model response containing `<script>` tags or event handlers would execute on the application origin.
+- **Resolution:** Real concern tracked for a dedicated security follow-up PR. Out of scope for the queue memory leak fix PR. Will be addressed with DOMPurify or a sandboxed rendering approach in a separate change.
+
+## PR-320/UX-001 — Tool block duration badge shows input-streaming time, not tool execution time
+- **Scope:** `www/resources/views/components/chat/tool-block.blade.php`
+- **Finding:** The duration badge on tool blocks shows the time from when the AI started streaming tool input to when it finished — i.e., the model's token generation time, not the actual tool execution time.
+- **Resolution:** Intentional by design. The block represents the AI's tool invocation phase (input generation). Downstream tool execution is a separate concern. Do not re-flag this.
+
+## PR-320/BL-009 — --max-jobs=500 worker restart threshold lacks documented workload justification
+- **Scope:** `docker-laravel/shared/supervisor/queue-workers.conf`
+- **Finding:** The `--max-jobs=500` threshold is a bare number with no comment explaining how it was calibrated to the actual workload.
+- **Resolution:** Deliberately conservative starting threshold. No measured job-rate data is available to justify a different value. A comment noting this was added to .env.example. Do not re-flag without workload data.
+
+## PR-320/BL-010 — --memory=256 tracks PHP heap only, not child process OS memory
+- **Scope:** `docker-laravel/shared/supervisor/queue-workers.conf`
+- **Finding:** The `--memory=256` worker restart limit tracks PHP heap growth only. Workers that spawn long-lived child processes (Claude Code CLI) can stay under 256 MB PHP heap while their children consume gigabytes.
+- **Resolution:** This is a known limitation of Laravel's `--memory` flag — it only measures the PHP process heap. The `CleanupOrphanedProcesses` command introduced in this PR is the intended solution for child process memory leaks. Do not re-flag; the two mechanisms are complementary.
+
+## PR-320/ARCH-003 — Heartbeat interval hardcoded as bare literal 60 in AbstractCliProvider
+- **Scope:** `www/app/Services/Providers/AbstractCliProvider.php`
+- **Finding:** The 60-second heartbeat interval is a bare integer literal, inconsistent with the named timeout constants used elsewhere in the same class.
+- **Resolution:** Noted, not prioritised. The literal is local to a single method. Do not re-flag as a blocking issue.
+
+## PR-320/CONS-006 — Duration badge uses text-gray-500 in assistant-message but text-gray-600 in thinking/tool blocks
+- **Scope:** `www/resources/views/components/chat/`
+- **Finding:** Minor colour inconsistency in the duration badge across the three block components.
+- **Resolution:** Noted, not prioritised. Visual difference is negligible. Do not re-flag.
+
+## PR-320/CONS-007 — PD_QUEUE_WORKERS commented out in .env.example
+- **Scope:** `.env.example`
+- **Finding:** `PD_QUEUE_WORKERS` is the only variable that is commented out in `.env.example`, inconsistent with other variables.
+- **Resolution:** Intentional. `PD_QUEUE_WORKERS` is an opt-in override for users on resource-constrained machines. Commenting it out signals it is not required. Do not re-flag.
+
+## PR-320/EFF-002 — PD_QUEUE_WORKERS default value encoded in three separate files
+- **Scope:** `compose.yml`, `docker-laravel/local/php/queue-entrypoint.sh`, `docker-laravel/production/php/queue-entrypoint.sh`
+- **Finding:** The default worker count of 20 is duplicated across three files with no single source of truth.
+- **Resolution:** No change planned. The duplication is small and intentional — each location serves as a fallback in a different context. Re-syncing when the value changes is low effort.
+
+## PR-320/ARCH-012 — queue-workers.conf filename misleading now that it also manages the scheduler
+- **Scope:** `docker-laravel/shared/supervisor/queue-workers.conf`
+- **Finding:** The file was renamed conceptually (now manages scheduler too) but the filename still says `queue-workers`.
+- **Resolution:** Renaming the file requires updating references in the entrypoint scripts and documentation. Out of scope for this PR. Do not re-flag.
+
+## PR-320/EFF-008 — Custom Authenticate middleware issues a redundant DB query
+- **Scope:** `www/app/Http/Middleware/Authenticate.php`
+- **Finding:** The custom `Authenticate` middleware calls `User::count()` which duplicates a query already performed by `EnsureSetupComplete`. Pre-existing issue, not introduced by this PR.
+- **Resolution:** Pre-existing pattern, out of scope. Will be addressed if/when the middleware stack is refactored. Do not re-flag on future PRs unless they touch the middleware layer.
+
+## PR-320/EFF-006 — Duration badge Blade template duplicated across three chat block components
+- **Scope:** `www/resources/views/components/chat/`
+- **Finding:** The timestamp/duration badge template (started_at display, formatDuration badge) is copy-pasted verbatim into assistant-message, thinking-block, and tool-block components with no shared Blade partial.
+- **Resolution:** Not a priority. The three components serve slightly different purposes and the duplication is small (6 lines each). Can be extracted to a shared partial if a fourth block type is added. Do not re-flag as a blocking issue.

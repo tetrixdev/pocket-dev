@@ -696,6 +696,8 @@ export function createStreamStore(callbacks) {
                         role: 'thinking',
                         content: '',
                         timestamp: state.startedAt || new Date().toISOString(),
+                        startedAt: event.metadata?.started_at ?? new Date().toISOString(),
+                        finishedAt: null,
                         collapsed: false
                     });
                     callbacks.scrollToBottom();
@@ -727,7 +729,10 @@ export function createStreamStore(callbacks) {
                     const blockIdx = event.block_index ?? state.currentThinkingBlock;
                     const block = state.thinkingBlocks[blockIdx];
                     if (block) {
-                        messageStore.updateMessage(block.msgIndex, { collapsed: true });
+                        messageStore.updateMessage(block.msgIndex, {
+                            collapsed: true,
+                            finishedAt: event.metadata?.finished_at ?? new Date().toISOString(),
+                        });
                     }
                     break;
                 }
@@ -758,6 +763,8 @@ export function createStreamStore(callbacks) {
                         role: 'assistant',
                         content: '',
                         timestamp: state.startedAt || new Date().toISOString(),
+                        startedAt: event.metadata?.started_at ?? new Date().toISOString(),
+                        finishedAt: null,
                         collapsed: false
                     });
                     callbacks.scrollToBottom();
@@ -776,7 +783,11 @@ export function createStreamStore(callbacks) {
                 }
 
                 case 'text_stop':
-                    // Text block complete
+                    if (state.textMsgIndex >= 0) {
+                        messageStore.updateMessage(state.textMsgIndex, {
+                            finishedAt: event.metadata?.finished_at ?? new Date().toISOString(),
+                        });
+                    }
                     break;
 
                 case 'tool_use_start': {
@@ -810,6 +821,8 @@ export function createStreamStore(callbacks) {
                         toolResult: null,
                         content: '',
                         timestamp: state.startedAt || new Date().toISOString(),
+                        startedAt: event.metadata?.started_at ?? new Date().toISOString(),
+                        finishedAt: null,
                         collapsed: false
                     });
                     callbacks.scrollToBottom();
@@ -833,7 +846,10 @@ export function createStreamStore(callbacks) {
                 case 'tool_use_stop': {
                     state.toolInProgress = false;
                     if (state.toolMsgIndex >= 0) {
-                        messageStore.updateMessage(state.toolMsgIndex, { collapsed: true });
+                        messageStore.updateMessage(state.toolMsgIndex, {
+                            collapsed: true,
+                            finishedAt: event.metadata?.finished_at ?? new Date().toISOString(),
+                        });
                         state.toolMsgIndex = -1;
                         state.toolInput = '';
                     }

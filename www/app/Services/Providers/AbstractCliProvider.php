@@ -430,6 +430,7 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             $lastOutputTime = microtime(true);
             $timedOut = false;
             $loopIterations = 0;
+            $lastHeartbeatTime = microtime(true);
 
             while (true) {
                 $status = proc_get_status($process);
@@ -541,6 +542,16 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
                         $this->getProviderType() . " process timed out after {$timeout}s in {$phase} phase"
                     );
                     break;
+                }
+
+                // Time-based heartbeat: yield a heartbeat event every 60s regardless of
+                // whether any data events are coming in. This keeps the conversation's
+                // updated_at fresh during long quiet periods (e.g. sub-agent/Task execution)
+                // and prevents CleanupStaleConversations from killing active conversations.
+                $now = microtime(true);
+                if ($now - $lastHeartbeatTime >= 60) {
+                    yield StreamEvent::heartbeat();
+                    $lastHeartbeatTime = $now;
                 }
 
                 usleep(1000); // 1ms sleep to prevent CPU spinning
