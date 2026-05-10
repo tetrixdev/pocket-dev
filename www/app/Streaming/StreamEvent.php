@@ -28,6 +28,7 @@ class StreamEvent
     public const CONTEXT_COMPACTED = 'context_compacted';
     public const COMPACTION_SUMMARY = 'compaction_summary';
     public const SCREEN_CREATED = 'screen_created';
+    public const HEARTBEAT = 'heartbeat';
 
     /**
      * Unique event ID for reliable event tracking.
@@ -207,6 +208,18 @@ class StreamEvent
             'pre_tokens' => $metadata['pre_tokens'] ?? null,
             'trigger' => $metadata['trigger'] ?? 'auto',
         ]);
+    }
+
+    /**
+     * Create a heartbeat event.
+     *
+     * Yielded periodically by CLI providers during quiet periods (e.g. long tool execution)
+     * to keep the conversation's updated_at fresh and prevent CleanupStaleConversations
+     * from killing active conversations.
+     */
+    public static function heartbeat(): self
+    {
+        return new self(self::HEARTBEAT);
     }
 
     /**

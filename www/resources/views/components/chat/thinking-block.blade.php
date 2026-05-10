@@ -8,7 +8,12 @@
                 {{-- Icon (desktop only) --}}
                 <x-icon.lightbulb class="hidden md:block w-4 h-4 text-purple-400" />
                 <span class="text-xs md:text-sm font-semibold text-purple-300">Thinking</span>
-                <span class="text-xs text-gray-500" x-text="formatTimestamp(msg.timestamp)"></span>
+                <span class="text-xs text-gray-500"
+                      x-text="formatTimestamp(msg.finishedAt || msg.startedAt || msg.timestamp)"
+                      :title="msg.startedAt && msg.finishedAt ? formatTimestamp(msg.startedAt) + ' → ' + formatTimestamp(msg.finishedAt) + ' (' + formatDuration(msg.startedAt, msg.finishedAt) + ')' : ''"></span>
+                <template x-if="msg.startedAt && msg.finishedAt">
+                    <span class="text-xs text-gray-600" x-text="formatDuration(msg.startedAt, msg.finishedAt)"></span>
+                </template>
                 <button @click.stop="copyMessageContent(msg)" class="text-gray-500 hover:text-purple-300 transition-colors flex items-center" title="Copy thinking">
                     <template x-if="copiedMessageId !== msg.id">
                         <i class="fa-regular fa-copy text-xs"></i>
