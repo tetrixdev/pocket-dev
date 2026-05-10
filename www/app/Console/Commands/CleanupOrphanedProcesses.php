@@ -77,6 +77,14 @@ class CleanupOrphanedProcesses extends Command
             $this->info('[DRY RUN] No processes will be killed.');
         }
 
+        // Read /proc/uptime once before the scan loop — avoids one syscall per candidate process
+        $uptime = (float) explode(' ', @file_get_contents('/proc/uptime') ?: '0')[0];
+
+        // Clock ticks per second — used to convert /proc/pid/stat starttime to seconds.
+        // posix_sysconf(_SC_CLK_TCK) reads the actual kernel value; falls back to 100 Hz
+        // (the Linux default) if the POSIX extension is unavailable.
+        $clockTick = function_exists('posix_sysconf') ? (posix_sysconf(POSIX_SC_CLK_TCK) ?: 100) : 100;
+
         // Iterate all /proc/<pid> entries
         foreach (glob('/proc/[0-9]*', GLOB_ONLYDIR) as $procDir) {
             $pid = (int) basename($procDir);
@@ -148,10 +156,6 @@ class CleanupOrphanedProcesses extends Command
                 continue;
             }
             $startTicks = (int) $fields[21];
-            $clockTick  = 100; // sysconf(_SC_CLK_TCK) — nearly always 100 on Linux
-
-            // /proc/uptime gives seconds since boot
-            $uptime = (float) explode(' ', @file_get_contents('/proc/uptime') ?: '0')[0];
             $processAgeSeconds = $uptime - ($startTicks / $clockTick);
 
             if ($processAgeSeconds < $minAge) {
@@ -164,6 +168,7 @@ class CleanupOrphanedProcesses extends Command
 
             if ($dryRun) {
                 $this->line("  [DRY RUN] Would kill PID {$pid} (age {$ageMin}m): {$preview}");
+                $killed++;
                 continue;
             }
 
