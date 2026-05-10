@@ -696,7 +696,7 @@ export function createStreamStore(callbacks) {
                         role: 'thinking',
                         content: '',
                         timestamp: state.startedAt || new Date().toISOString(),
-                        startedAt: new Date().toISOString(),
+                        startedAt: event.metadata?.started_at ?? new Date().toISOString(),
                         finishedAt: null,
                         collapsed: false
                     });
@@ -731,7 +731,7 @@ export function createStreamStore(callbacks) {
                     if (block) {
                         messageStore.updateMessage(block.msgIndex, {
                             collapsed: true,
-                            finishedAt: new Date().toISOString(),
+                            finishedAt: event.metadata?.finished_at ?? new Date().toISOString(),
                         });
                     }
                     break;
@@ -763,7 +763,7 @@ export function createStreamStore(callbacks) {
                         role: 'assistant',
                         content: '',
                         timestamp: state.startedAt || new Date().toISOString(),
-                        startedAt: new Date().toISOString(),
+                        startedAt: event.metadata?.started_at ?? new Date().toISOString(),
                         finishedAt: null,
                         collapsed: false
                     });
@@ -785,7 +785,7 @@ export function createStreamStore(callbacks) {
                 case 'text_stop':
                     if (state.textMsgIndex >= 0) {
                         messageStore.updateMessage(state.textMsgIndex, {
-                            finishedAt: new Date().toISOString(),
+                            finishedAt: event.metadata?.finished_at ?? new Date().toISOString(),
                         });
                     }
                     break;
@@ -821,7 +821,7 @@ export function createStreamStore(callbacks) {
                         toolResult: null,
                         content: '',
                         timestamp: state.startedAt || new Date().toISOString(),
-                        startedAt: new Date().toISOString(),
+                        startedAt: event.metadata?.started_at ?? new Date().toISOString(),
                         finishedAt: null,
                         collapsed: false
                     });
@@ -848,7 +848,7 @@ export function createStreamStore(callbacks) {
                     if (state.toolMsgIndex >= 0) {
                         messageStore.updateMessage(state.toolMsgIndex, {
                             collapsed: true,
-                            finishedAt: new Date().toISOString(),
+                            finishedAt: event.metadata?.finished_at ?? new Date().toISOString(),
                         });
                         state.toolMsgIndex = -1;
                         state.toolInput = '';

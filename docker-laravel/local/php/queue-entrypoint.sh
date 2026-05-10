@@ -13,9 +13,42 @@ TARGET_GID="${PD_TARGET_GID:-1000}"
 
 # Ensure PD_QUEUE_WORKERS is exported so supervisord can read %(ENV_PD_QUEUE_WORKERS)s.
 # compose.yml passes this in; this default guards against manual `docker run` without it.
+# Fall back to 20 for non-numeric values or values below 1 (e.g. PD_QUEUE_WORKERS=0).
 export PD_QUEUE_WORKERS="${PD_QUEUE_WORKERS:-20}"
+if ! [[ "$PD_QUEUE_WORKERS" =~ ^[0-9]+$ ]] || [ "$PD_QUEUE_WORKERS" -lt 1 ]; then
+    echo "WARN: PD_QUEUE_WORKERS='$PD_QUEUE_WORKERS' is invalid; falling back to 20" >&2
+    export PD_QUEUE_WORKERS=20
+fi
 
 echo "Starting queue container initialization..."
+
+# =============================================================================
+# USER SETUP (cross-group ownership model)
+# =============================================================================
+# appuser: primary group www-data (33), secondary group TARGET_GID (for host)
+# This enables file access between appuser and www-data processes.
+
+# Ensure appgroup exists with TARGET_GID (for host file access)
+if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
+    groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
+fi
+
+# Create a user for TARGET_UID if it doesn't exist (needed for group membership)
+# Cross-group ownership: primary group www-data (33), secondary group TARGET_GID (for host)
+if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
+    if getent passwd appuser > /dev/null 2>&1; then
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash "appuser_$TARGET_UID" 2>/dev/null || true
+    else
+        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
+    fi
+fi
+
+# Get the actual username for TARGET_UID (fail if creation failed)
+TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
+if [ -z "$TARGET_USER" ]; then
+    echo "FATAL: Failed to create or find user for UID $TARGET_UID" >&2
+    exit 1
+fi
 
 # =============================================================================
 # PRIVILEGED SECTION - Runs as root
@@ -23,7 +56,7 @@ echo "Starting queue container initialization..."
 
 # Set up Docker socket access for TARGET_UID
 if [ -n "$PD_DOCKER_GID" ]; then
-    echo "🐳 Setting up Docker socket access for UID $TARGET_UID..."
+    echo "🐳 Setting up Docker socket access for $TARGET_USER..."
 
     # Create the docker group with the host's GID if it doesn't exist
     if ! getent group "$PD_DOCKER_GID" > /dev/null 2>&1; then
@@ -36,23 +69,9 @@ if [ -n "$PD_DOCKER_GID" ]; then
         DOCKER_GROUP_NAME="hostdocker_runtime"
     fi
 
-    # Ensure appgroup exists with TARGET_GID (for host file access)
-    if ! getent group "$TARGET_GID" > /dev/null 2>&1; then
-        groupadd -g "$TARGET_GID" appgroup 2>/dev/null || true
-    fi
-
-    # Create a user for TARGET_UID if it doesn't exist (needed for group membership)
-    # Cross-group ownership: primary group www-data (33), secondary group TARGET_GID (for host)
-    if ! getent passwd "$TARGET_UID" > /dev/null 2>&1; then
-        useradd -u "$TARGET_UID" -g 33 -G "$TARGET_GID" -d /home/appuser -s /bin/bash appuser 2>/dev/null || true
-    fi
-
-    # Get the username for TARGET_UID and add to docker group
-    TARGET_USER=$(getent passwd "$TARGET_UID" | cut -d: -f1)
-    if [ -n "$TARGET_USER" ]; then
-        usermod -aG "$DOCKER_GROUP_NAME" "$TARGET_USER" 2>/dev/null || true
-        echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
-    fi
+    # Add TARGET_USER to docker group
+    usermod -aG "$DOCKER_GROUP_NAME" "$TARGET_USER" 2>/dev/null || true
+    echo "  ✅ Added $TARGET_USER to group $DOCKER_GROUP_NAME (GID $PD_DOCKER_GID)"
 
     # Ensure docker socket has correct group ownership
     if [ -S /var/run/docker.sock ]; then
@@ -167,7 +186,7 @@ fi
 # DROP PRIVILEGES AND START WORKERS
 # =============================================================================
 
-echo "Starting supervisord as appuser..."
+echo "Starting supervisord as $TARGET_USER..."
 
 # Ensure stdout/stderr are writable by the target user
 # This is needed because supervisor logs to /dev/stdout and /dev/stderr
@@ -216,4 +235,4 @@ umask 002
 # Use exec to replace this shell with supervisord (proper signal handling)
 # gosu with username (not UID:GID) properly initializes supplementary groups
 # This is critical for docker socket access via hostdocker_runtime group
-exec gosu appuser /usr/bin/supervisord -c /etc/supervisor/conf.d/queue-workers.conf
+exec gosu "$TARGET_USER" /usr/bin/supervisord -c /etc/supervisor/conf.d/queue-workers.conf

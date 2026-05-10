@@ -14,7 +14,12 @@ TARGET_GID="${PD_TARGET_GID:-1000}"
 
 # Ensure PD_QUEUE_WORKERS is exported so supervisord can read %(ENV_PD_QUEUE_WORKERS)s.
 # compose.yml passes this in; this default guards against manual `docker run` without it.
+# Fall back to 20 for non-numeric values or values below 1 (e.g. PD_QUEUE_WORKERS=0).
 export PD_QUEUE_WORKERS="${PD_QUEUE_WORKERS:-20}"
+if ! [[ "$PD_QUEUE_WORKERS" =~ ^[0-9]+$ ]] || [ "$PD_QUEUE_WORKERS" -lt 1 ]; then
+    echo "WARN: PD_QUEUE_WORKERS='$PD_QUEUE_WORKERS' is invalid; falling back to 20" >&2
+    export PD_QUEUE_WORKERS=20
+fi
 
 echo "Starting queue container initialization..."
 
