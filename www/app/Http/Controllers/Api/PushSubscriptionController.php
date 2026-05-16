@@ -133,7 +133,7 @@ class PushSubscriptionController extends Controller
             return response()->json(['error' => 'No subscriptions found'], 404);
         }
 
-        \App\Jobs\SendPushNotification::dispatchSync(
+        \App\Jobs\SendPushNotification::dispatch(
             userId: $userId,
             title: 'Test notificatie',
             body: 'Push notificaties werken!',
