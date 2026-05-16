@@ -381,7 +381,7 @@
         function copyCmd(btn, text) {
             navigator.clipboard.writeText(text).then(() => {
                 const orig = btn.textContent;
-                btn.textContent = '✓ Gekopieerd!';
+                btn.textContent = '✓ Copied!';
                 btn.classList.add('bg-green-700', 'text-green-200');
                 btn.classList.remove('bg-gray-700', 'text-gray-300');
                 setTimeout(() => {

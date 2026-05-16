@@ -173,6 +173,9 @@ class SubAgentRunner
             'subagent_task_id' => $task->id,
         ]);
 
+        // Mark as processing before dispatch to prevent premature idle detection
+        $conversation->startProcessing();
+
         ProcessConversationStream::dispatch($conversation->uuid, $prompt);
 
         Log::info('SubAgentRunner: conversation resumed', [
