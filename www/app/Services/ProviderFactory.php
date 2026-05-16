@@ -6,6 +6,7 @@ use App\Contracts\AIProviderInterface;
 use App\Services\Providers\AnthropicProvider;
 use App\Services\Providers\ClaudeCodeProvider;
 use App\Services\Providers\CodexProvider;
+use App\Services\Providers\CursorAgentProvider;
 use App\Services\Providers\OpenAICompatibleProvider;
 use App\Services\Providers\OpenAIProvider;
 use InvalidArgumentException;
@@ -21,6 +22,7 @@ class ProviderFactory
         'openai' => OpenAIProvider::class,
         'claude_code' => ClaudeCodeProvider::class,
         'codex' => CodexProvider::class,
+        'cursor_agent' => CursorAgentProvider::class,
         'openai_compatible' => OpenAICompatibleProvider::class,
     ];
 

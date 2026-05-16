@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Codex Authentication</title>
+    <title>Cursor Agent Authentication</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.15.8/dist/cdn.min.js"></script>
 </head>
@@ -13,8 +13,9 @@
         <div class="max-w-3xl w-full space-y-6">
             <!-- Header -->
             <div class="text-center">
-                <h1 class="text-3xl font-bold mb-2">OpenAI Codex Authentication</h1>
-                <p class="text-gray-400">Manage your ChatGPT subscription or API key</p>
+                <h1 class="text-3xl font-bold mb-2">Cursor Agent Authentication</h1>
+                <p class="text-gray-400">Manage your Cursor Pro/Business subscription</p>
+                <span class="inline-block mt-2 px-2 py-0.5 bg-yellow-700/40 text-yellow-300 text-xs rounded-full">Experimental</span>
             </div>
 
             <!-- Status Card -->
@@ -34,9 +35,9 @@
                                     <p><strong>Method:</strong> API Key</p>
                                     <p><strong>Key:</strong> {{ $status["key_preview"] }}</p>
                                 @elseif($status["auth_type"] === "subscription")
-                                    <p><strong>Method:</strong> ChatGPT Subscription</p>
-                                    @if($status["expires_at"])
-                                        <p><strong>Expires:</strong> {{ $status["expires_at"] }} ({{ $status["days_until_expiry"] }} days)</p>
+                                    <p><strong>Method:</strong> Cursor Subscription</p>
+                                    @if(!empty($status["email"]))
+                                        <p><strong>Account:</strong> {{ $status["email"] }}</p>
                                     @endif
                                 @endif
                             </div>
@@ -65,33 +66,33 @@
 
                 <!-- Tabs -->
                 <div class="flex space-x-2 mb-6 border-b border-gray-700">
-                    <button onclick="switchTab('device')" id="tab-device" class="tab-btn px-4 py-2 -mb-px border-b-2 border-blue-500 text-blue-400">
+                    <button onclick="switchTab('browser')" id="tab-browser" class="tab-btn px-4 py-2 -mb-px border-b-2 border-blue-500 text-blue-400">
                         Via PocketDev UI
                     </button>
                     <button onclick="switchTab('laptop')" id="tab-laptop" class="tab-btn px-4 py-2 -mb-px border-b-2 border-transparent text-gray-400 hover:text-gray-300">
                         Via laptop / SSH
                     </button>
-                    <button onclick="switchTab('json')" id="tab-json" class="tab-btn px-4 py-2 -mb-px border-b-2 border-transparent text-gray-400 hover:text-gray-300">
+                    <button onclick="switchTab('apikey')" id="tab-apikey" class="tab-btn px-4 py-2 -mb-px border-b-2 border-transparent text-gray-400 hover:text-gray-300">
                         API Key
                     </button>
                 </div>
 
-                <!-- Inline Device Auth Tab (Subscription) -->
-                <div id="content-device" class="tab-content" x-data="codexDeviceAuth()">
+                <!-- Browser Auth Tab (Subscription) -->
+                <div id="content-browser" class="tab-content" x-data="cursorBrowserAuth()">
 
                     <!-- Idle state: show start button -->
                     <div x-show="state === 'idle'">
                         <p class="text-gray-300 mb-2">
-                            Sign in with your ChatGPT subscription (Plus, Pro, Team, Edu, or Enterprise).
+                            Sign in with your Cursor Pro or Business subscription.
                         </p>
                         <p class="text-sm text-gray-400 mb-6">
-                            Works on any device — no terminal, no Docker commands needed.
+                            Opens a Cursor login page. No terminal needed.
                         </p>
                         <button
                             @click="startAuth()"
                             class="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors"
                         >
-                            Login with ChatGPT
+                            Login with Cursor
                         </button>
                     </div>
 
@@ -101,18 +102,18 @@
                             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
                             <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
                         </svg>
-                        <p class="text-gray-400">Connecting to OpenAI...</p>
+                        <p class="text-gray-400">Connecting to Cursor...</p>
                     </div>
 
-                    <!-- Ready state: show URL and code -->
+                    <!-- Ready state: show auth URL -->
                     <div x-show="state === 'ready'" style="display:none">
                         <p class="text-gray-300 mb-6 text-sm">
-                            Open the link below on your phone or another browser window, then enter the code when prompted.
+                            Open the link below to sign in with your Cursor account.
                         </p>
 
-                        <!-- Step 1: URL -->
+                        <!-- Auth URL -->
                         <div class="mb-6">
-                            <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 1 — Open this link</p>
+                            <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Open this link to authenticate</p>
                             <div class="flex items-center gap-3 bg-gray-900 rounded-lg p-3 border border-gray-700">
                                 <span class="text-blue-400 text-sm font-mono flex-1 truncate" x-text="verificationUrl"></span>
                                 <a
@@ -121,32 +122,14 @@
                                     rel="noopener noreferrer"
                                     class="flex-shrink-0 px-3 py-1.5 rounded text-sm bg-gray-700 hover:bg-gray-600 text-gray-300 transition-all"
                                     title="Open in new tab"
-                                >↗ Open</a>
+                                >Open</a>
                                 <button
                                     @click="copyUrl()"
                                     class="flex-shrink-0 px-3 py-1.5 rounded text-sm transition-all"
                                     :class="urlCopied ? 'bg-green-700 text-green-200' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'"
                                 >
-                                    <span x-show="!urlCopied">📋 Copy</span>
-                                    <span x-show="urlCopied">✓ Copied!</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- Step 2: Code -->
-                        <div class="mb-6">
-                            <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 2 — Enter this code</p>
-                            <div class="flex items-center gap-4">
-                                <div class="bg-gray-900 border border-gray-600 rounded-lg px-6 py-4">
-                                    <span class="text-3xl font-mono font-bold tracking-widest text-white" x-text="userCode"></span>
-                                </div>
-                                <button
-                                    @click="copyCode()"
-                                    class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
-                                    :class="codeCopied ? 'bg-green-700 text-green-200' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'"
-                                >
-                                    <span x-show="!codeCopied">📋 Copy code</span>
-                                    <span x-show="codeCopied">✓ Copied!</span>
+                                    <span x-show="!urlCopied">Copy</span>
+                                    <span x-show="urlCopied">Copied!</span>
                                 </button>
                             </div>
                         </div>
@@ -157,16 +140,16 @@
                                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
                                 <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
                             </svg>
-                            <span>Waiting for authentication…</span>
+                            <span>Waiting for authentication...</span>
                             <span class="text-gray-500">(expires in <span class="font-mono" x-text="countdown"></span>)</span>
                         </div>
                     </div>
 
                     <!-- Authenticated! -->
                     <div x-show="state === 'authenticated'" style="display:none" class="text-center py-8">
-                        <div class="text-5xl mb-4">✅</div>
+                        <div class="text-5xl mb-4">&#x2705;</div>
                         <p class="text-green-400 font-semibold text-lg mb-2">Successfully authenticated!</p>
-                        <p class="text-gray-400 text-sm mb-6">Your ChatGPT subscription is now connected to PocketDev.</p>
+                        <p class="text-gray-400 text-sm mb-6">Your Cursor subscription is now connected to PocketDev.</p>
                         <button
                             onclick="window.location.reload()"
                             class="px-6 py-3 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition-colors"
@@ -179,46 +162,34 @@
                     <div x-show="state === 'expired' || state === 'failed'" style="display:none">
                         <div class="bg-red-900/30 border border-red-700 rounded-lg p-4 mb-4">
                             <p class="text-red-400 font-semibold mb-1">
-                                <span x-show="state === 'expired'">Code expired</span>
+                                <span x-show="state === 'expired'">Session expired</span>
                                 <span x-show="state === 'failed'">Authentication failed</span>
                             </p>
-                            <p class="text-red-300 text-sm" x-text="error || (state === 'expired' ? 'The code expired before authentication completed.' : 'Please try again.')"></p>
+                            <p class="text-red-300 text-sm" x-text="error || (state === 'expired' ? 'The session expired before authentication completed.' : 'Please try again.')"></p>
                         </div>
-                        <div class="flex gap-3 flex-wrap mb-6">
-                            <button
-                                @click="reset(); startAuth()"
-                                class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors text-sm"
-                            >
-                                Try again
-                            </button>
-                        </div>
-                        <!-- Org restriction help -->
-                        <div class="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4 text-sm">
-                            <p class="text-yellow-400 font-semibold mb-1">💡 Seeing the error "contact your workspace administrator"?</p>
-                            <p class="text-yellow-200/70 mb-3">
-                                Your OpenAI organization has disabled device auth. Use the <strong class="text-white">Via laptop / SSH</strong> tab instead —
-                                two copy-paste commands that work without that restriction.
-                            </p>
-                            <button onclick="switchTab('laptop')" class="px-4 py-1.5 bg-yellow-700/60 hover:bg-yellow-700 rounded text-xs font-medium text-yellow-100 transition-colors">
-                                Go to "Via laptop / SSH" →
-                            </button>
-                        </div>
+                        <button
+                            @click="reset(); startAuth()"
+                            class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold transition-colors text-sm"
+                        >
+                            Try again
+                        </button>
                     </div>
                 </div>
 
                 <!-- Via laptop / SSH tab -->
                 @php
                     $pdUrl = url('/');
-                    $linux1 = 'npm install -g @openai/codex && codex login';
-                    $linux2 = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Done!'";
-                    $linuxAll = "npm install -g @openai/codex && codex login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.codex/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/api/codex/auth/upload' -H 'Content-Type: application/json' -d @- && echo '✓ Done!'";
-                    $win1 = 'npm install -g @openai/codex; codex login';
-                    $win2 = "\$auth = (Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body \$body; Write-Host '✓ Done!'";
-                    $winAll = "npm install -g @openai/codex; codex login; \$auth = (Get-Content \"\$env:USERPROFILE\\.codex\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/api/codex/auth/upload' -Method Post -ContentType 'application/json' -Body \$body; Write-Host '✓ Done!'";
+                    $apiUploadUrl = "{$pdUrl}/api/cursor/auth/upload";
+                    $linux1 = 'curl -fsSL https://cursor.com/install | bash && agent login';
+                    $linux2 = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.config/cursor/auth.json')).read()}))\" | curl -s -X POST '{$apiUploadUrl}' -H 'Content-Type: application/json' -d @- && echo 'Done!'";
+                    $linuxAll = "curl -fsSL https://cursor.com/install | bash && agent login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.config/cursor/auth.json')).read()}))\" | curl -s -X POST '{$apiUploadUrl}' -H 'Content-Type: application/json' -d @- && echo 'Done!'";
+                    $win1 = 'irm https://cursor.com/install | iex; agent login';
+                    $win2 = "\$auth = (Get-Content \"\$env:APPDATA\\Cursor\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$apiUploadUrl}' -Method Post -ContentType 'application/json' -Body \$body; Write-Host 'Done!'";
+                    $winAll = "irm https://cursor.com/install | iex; agent login; \$auth = (Get-Content \"\$env:APPDATA\\Cursor\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$apiUploadUrl}' -Method Post -ContentType 'application/json' -Body \$body; Write-Host 'Done!'";
                 @endphp
                 <div id="content-laptop" class="tab-content hidden" x-data="{ os: 'linux' }">
                     <p class="text-gray-300 mb-1">Run these commands on your <strong class="text-white">laptop, desktop, or via SSH</strong>.</p>
-                    <p class="text-sm text-gray-400 mb-4">Always works — no org restrictions, no device auth required.</p>
+                    <p class="text-sm text-gray-400 mb-4">Install the Cursor Agent CLI, log in, then upload credentials to PocketDev.</p>
 
                     <!-- OS toggle -->
                     <div class="flex gap-2 mb-6">
@@ -226,36 +197,36 @@
                             @click="os = 'linux'"
                             :class="os === 'linux' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'"
                             class="px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
-                        >🐧 Linux / macOS</button>
+                        >Linux / macOS</button>
                         <button
                             @click="os = 'windows'"
                             :class="os === 'windows' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-400 hover:bg-gray-600'"
                             class="px-4 py-1.5 rounded-full text-sm font-medium transition-colors"
-                        >🪟 Windows (PowerShell)</button>
+                        >Windows (PowerShell)</button>
                     </div>
 
                     <!-- Step 1 -->
                     <div class="mb-5">
-                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 1 — Install Codex and log in</p>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 1 - Install Cursor Agent and log in</p>
                         <div class="flex items-center gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
                             <code class="text-green-400 text-sm flex-1 select-all" x-text="os === 'linux' ? {{ json_encode($linux1) }} : {{ json_encode($win1) }}"></code>
                             <button
                                 @click="copyCmd($el, os === 'linux' ? {{ json_encode($linux1) }} : {{ json_encode($win1) }})"
                                 class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all"
-                            >📋 Copy</button>
+                            >Copy</button>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1.5">This opens a browser to sign in with your ChatGPT account.</p>
+                        <p class="text-xs text-gray-500 mt-1.5">This opens a browser to sign in with your Cursor account.</p>
                     </div>
 
                     <!-- Step 2 -->
                     <div class="mb-5">
-                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 2 — Upload auth.json to PocketDev</p>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">Step 2 - Upload auth.json to PocketDev</p>
                         <div class="flex items-start gap-2 bg-gray-900 rounded-lg border border-gray-700 p-3">
                             <code class="text-green-400 text-sm flex-1 break-all select-all" x-text="os === 'linux' ? {{ json_encode($linux2) }} : {{ json_encode($win2) }}"></code>
                             <button
                                 @click="copyCmd($el, os === 'linux' ? {{ json_encode($linux2) }} : {{ json_encode($win2) }})"
                                 class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all mt-0.5"
-                            >📋 Copy</button>
+                            >Copy</button>
                         </div>
                         <p class="text-xs text-gray-500 mt-1.5">Run step 2 only after you complete sign-in in step 1.</p>
                     </div>
@@ -268,50 +239,25 @@
                             <button
                                 @click="copyCmd($el, os === 'linux' ? {{ json_encode($linuxAll) }} : {{ json_encode($winAll) }})"
                                 class="flex-shrink-0 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-sm transition-all mt-0.5"
-                            >📋 Copy</button>
+                            >Copy</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Upload script / Manual tab -->
-                <div id="content-json" class="tab-content hidden">
+                <!-- API Key tab -->
+                <div id="content-apikey" class="tab-content hidden">
+                    <div class="mb-4">
+                        <p class="text-gray-300 font-medium mb-1">Cursor API Key</p>
+                        <p class="text-sm text-gray-400 mb-3">
+                            Use a Cursor API key for pay-per-use access. This uses API billing, not your subscription credits.
+                        </p>
+                    </div>
 
-                    <!-- Option A: one-liner script (recommended) -->
+                    <!-- File upload / paste -->
                     <div class="mb-6">
-                        <p class="text-gray-300 font-medium mb-1">Option A — Automatic (recommended)</p>
+                        <p class="text-gray-300 font-medium mb-1">Upload auth.json</p>
                         <p class="text-sm text-gray-400 mb-3">
-                            Run this command on your <strong class="text-white">laptop or desktop</strong> with a browser.
-                            The script installs Codex, runs <code class="text-green-400">codex login</code>, and
-                            uploads <code class="text-green-400">auth.json</code> to PocketDev automatically.
-                        </p>
-                        <div class="relative group">
-                            <div class="bg-gray-900 rounded-lg border border-gray-700 p-3 font-mono text-sm text-green-400 overflow-x-auto pr-24">
-                                bash &lt;(curl -sL {{ route('codex.auth.downloadScript') }})
-                            </div>
-                            <button
-                                onclick="copyScriptCmd(this)"
-                                class="absolute right-2 top-2 px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300 transition-all"
-                            >📋 Copy</button>
-                        </div>
-                        <p class="text-xs text-gray-500 mt-2">
-                            Works on macOS and Linux. Requires Node.js/npm.
-                            Add your Basic Auth credentials if needed:
-                            <code class="text-gray-400">bash &lt;(curl ...) https://user:pass@{{ request()->getHost() }}</code>
-                        </p>
-                    </div>
-
-                    <div class="flex items-center gap-3 my-4">
-                        <div class="flex-1 border-t border-gray-700"></div>
-                        <span class="text-xs text-gray-500">or manual</span>
-                        <div class="flex-1 border-t border-gray-700"></div>
-                    </div>
-
-                    <!-- Option B: file upload or manual paste -->
-                    <div>
-                        <p class="text-gray-300 font-medium mb-1">Option B — Upload or paste file</p>
-                        <p class="text-sm text-gray-400 mb-3">
-                            Run <code class="text-green-400">codex login</code> on a machine with a browser.
-                            Then select the <code class="text-green-400">auth.json</code> file, or paste the contents below.
+                            Or paste the contents of your <code class="text-green-400">auth.json</code> file from your local machine.
                         </p>
                         <form id="json-form" class="space-y-3">
                             <!-- File picker -->
@@ -323,22 +269,27 @@
                                 </label>
                                 <span id="file-name" class="text-xs text-gray-500">No file selected</span>
                             </div>
-                            <!-- Path hints with copy buttons -->
+                            <!-- Path hints -->
                             <div class="bg-gray-900/60 rounded-lg border border-gray-700/50 p-3 space-y-2">
                                 <p class="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">File location</p>
                                 <div class="flex items-center gap-2">
-                                    <span class="text-xs text-gray-500 w-24 shrink-0">🪟 Windows</span>
-                                    <code class="text-xs text-gray-300 flex-1">%USERPROFILE%\.codex\auth.json</code>
-                                    <button type="button" onclick="copyCmd(this, '%USERPROFILE%\\.codex\\auth.json')" class="text-xs px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded transition-all">📋</button>
+                                    <span class="text-xs text-gray-500 w-24 shrink-0">Windows</span>
+                                    <code class="text-xs text-gray-300 flex-1">%APPDATA%\Cursor\auth.json</code>
+                                    <button type="button" onclick="copyCmd(this, '%APPDATA%\\Cursor\\auth.json')" class="text-xs px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded transition-all">Copy</button>
                                 </div>
                                 <div class="flex items-center gap-2">
-                                    <span class="text-xs text-gray-500 w-24 shrink-0">🐧 macOS/Linux</span>
-                                    <code class="text-xs text-gray-300 flex-1">~/.codex/auth.json</code>
-                                    <button type="button" onclick="copyCmd(this, '~/.codex/auth.json')" class="text-xs px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded transition-all">📋</button>
+                                    <span class="text-xs text-gray-500 w-24 shrink-0">macOS</span>
+                                    <code class="text-xs text-gray-300 flex-1">~/.cursor/auth.json</code>
+                                    <button type="button" onclick="copyCmd(this, '~/.cursor/auth.json')" class="text-xs px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded transition-all">Copy</button>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-gray-500 w-24 shrink-0">Linux</span>
+                                    <code class="text-xs text-gray-300 flex-1">~/.config/cursor/auth.json</code>
+                                    <button type="button" onclick="copyCmd(this, '~/.config/cursor/auth.json')" class="text-xs px-2 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-400 rounded transition-all">Copy</button>
                                 </div>
                             </div>
-                            <!-- Textarea (filled by file picker, or paste manually) -->
-                            <textarea id="json-input" rows="4" placeholder='{"OPENAI_API_KEY": "sk-proj-..."}'
+                            <!-- Textarea -->
+                            <textarea id="json-input" rows="4" placeholder='{"accessToken": "...", "refreshToken": "..."}'
                                 class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm font-mono focus:outline-none focus:border-blue-500"></textarea>
                             <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded">
                                 Save
@@ -351,12 +302,12 @@
 
             <!-- Info block -->
             <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 text-sm">
-                <h3 class="font-semibold mb-2">About Codex Authentication:</h3>
+                <h3 class="font-semibold mb-2">About Cursor Agent Authentication:</h3>
                 <ul class="list-disc list-inside space-y-1 text-gray-300">
-                    <li><strong>Subscription:</strong> Uses your ChatGPT Plus/Pro/Team subscription (recommended)</li>
-                    <li><strong>API Key:</strong> Pay-per-use via OpenAI API</li>
-                    <li>Credentials are stored at: <code class="text-blue-400">~/.codex/auth.json</code></li>
-                    <li>Both methods work with Codex CLI features</li>
+                    <li><strong>Subscription:</strong> Uses your Cursor Pro/Business subscription (recommended)</li>
+                    <li><strong>API Key:</strong> Pay-per-use via Cursor API</li>
+                    <li>Access 100+ models including Claude Opus 4.7, GPT-5.5, Grok 4.3, and Gemini 3.1 Pro</li>
+                    <li>Credentials are stored at: <code class="text-blue-400">~/.config/cursor/auth.json</code> (Linux)</li>
                 </ul>
             </div>
             @endif
@@ -376,12 +327,11 @@
     </div>
 
     <script>
-        // ── Copy script command ────────────────────────────────────────────────────
-        // Generic copy-with-feedback for any button
+        // ── Copy helper ───────────────────────────────────────────────────────────
         function copyCmd(btn, text) {
             navigator.clipboard.writeText(text).then(() => {
                 const orig = btn.textContent;
-                btn.textContent = '✓ Copied!';
+                btn.textContent = 'Copied!';
                 btn.classList.add('bg-green-700', 'text-green-200');
                 btn.classList.remove('bg-gray-700', 'text-gray-300');
                 setTimeout(() => {
@@ -390,12 +340,6 @@
                     btn.classList.add('bg-gray-700', 'text-gray-300');
                 }, 2000);
             });
-        }
-
-        function copyScriptCmd(btn) {
-            const text = btn.previousElementSibling.textContent.trim()
-                .replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-            copyCmd(btn, text);
         }
 
         // ── Tab switching ──────────────────────────────────────────────────────────
@@ -411,7 +355,7 @@
             activeTab.classList.add('border-blue-500', 'text-blue-400');
         }
 
-        // ── File picker → textarea ────────────────────────────────────────────────
+        // ── File picker -> textarea ────────────────────────────────────────────────
         document.getElementById('json-file')?.addEventListener('change', function (e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -423,15 +367,13 @@
             reader.readAsText(file, 'UTF-8');
         });
 
-        // ── Device auth Alpine component ───────────────────────────────────────────
-        function codexDeviceAuth() {
+        // ── Browser auth Alpine component ──────────────────────────────────────────
+        function cursorBrowserAuth() {
             return {
                 state: 'idle',   // idle | starting | ready | authenticated | expired | failed
                 verificationUrl: '',
-                userCode: '',
                 expiresIn: 900,
                 urlCopied: false,
-                codeCopied: false,
                 error: '',
                 _pollTimer: null,
                 _countdownTimer: null,
@@ -452,7 +394,7 @@
                     this.error = '';
 
                     try {
-                        const res = await fetch('{{ route('codex.auth.deviceStart') }}', {
+                        const res = await fetch('{{ route("cursor.auth.browserStart") }}', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -482,11 +424,11 @@
 
                 async checkStatus() {
                     try {
-                        const res = await fetch('{{ route('codex.auth.deviceStatus') }}');
+                        const res = await fetch('{{ route("cursor.auth.browserStatus") }}');
                         const data = await res.json();
                         this._applyStatus(data);
                     } catch (e) {
-                        // Network error — keep polling silently
+                        // Network error - keep polling silently
                     }
                 },
 
@@ -496,12 +438,10 @@
                     if (status === 'ready' && this.state !== 'ready') {
                         this.state = 'ready';
                         this.verificationUrl = data.verification_url || '';
-                        this.userCode = data.user_code || '';
                         this.expiresIn = data.expires_in ?? 900;
                         this._startCountdown();
                         if (!this._pollTimer) this._startPolling();
                     } else if (status === 'ready') {
-                        // Already showing — sync expiry
                         if (data.expires_in !== undefined) this.expiresIn = data.expires_in;
                     } else if (status === 'authenticated') {
                         this.state = 'authenticated';
@@ -517,7 +457,6 @@
                         this.state = 'starting';
                         this._startPolling();
                     }
-                    // 'none': nothing to do (still idle)
                 },
 
                 _startCountdown() {
@@ -541,11 +480,9 @@
                     this._stopTimers();
                     this.state = 'idle';
                     this.verificationUrl = '';
-                    this.userCode = '';
                     this.expiresIn = 900;
                     this.error = '';
                     this.urlCopied = false;
-                    this.codeCopied = false;
                 },
 
                 async copyUrl() {
@@ -555,18 +492,10 @@
                         setTimeout(() => { this.urlCopied = false; }, 2000);
                     } catch (e) {}
                 },
-
-                async copyCode() {
-                    try {
-                        await navigator.clipboard.writeText(this.userCode);
-                        this.codeCopied = true;
-                        setTimeout(() => { this.codeCopied = false; }, 2000);
-                    } catch (e) {}
-                },
             };
         }
 
-        // ── JSON (API Key) form ────────────────────────────────────────────────────
+        // ── JSON (upload/paste) form ──────────────────────────────────────────────
         document.getElementById('json-form')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const jsonInput = document.getElementById('json-input').value;
@@ -577,7 +506,7 @@
             }
 
             try {
-                const response = await fetch('{{ url('/codex/auth/upload-json') }}', {
+                const response = await fetch('{{ url("/cursor/auth/upload-json") }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -606,7 +535,7 @@
             }
 
             try {
-                const response = await fetch('{{ url('/codex/auth/logout') }}', {
+                const response = await fetch('{{ url("/cursor/auth/logout") }}', {
                     method: 'DELETE',
                     headers: {
                         'Content-Type': 'application/json',

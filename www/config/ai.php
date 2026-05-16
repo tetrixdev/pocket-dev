@@ -7,7 +7,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | This option controls the default AI provider used for conversations.
-    | Supported: "anthropic", "openai", "openai_compatible", "claude_code", "codex"
+    | Supported: "anthropic", "openai", "openai_compatible", "claude_code", "codex", "cursor_agent"
     |
     */
 
@@ -58,6 +58,14 @@ return [
             'default_model' => 'gpt-5.3-codex',
             // Codex refreshes subscription tokens every 8 days by default.
             'token_refresh_days' => env('PD_CODEX_TOKEN_REFRESH_DAYS', 8),
+        ],
+
+        'cursor_agent' => [
+            // No API key needed by default - uses Cursor subscription via browser login
+            // API key fallback stored in database (AppSettingsService)
+            'default_model' => 'auto',
+            // Log all streaming deltas (very verbose, for debugging stream issues)
+            'verbose_logging' => env('PD_CURSOR_AGENT_VERBOSE_LOGGING', false),
         ],
 
         'openai_compatible' => [
@@ -134,6 +142,15 @@ return [
                 ['value' => 'medium', 'name' => 'Medium', 'description' => 'Balanced reasoning'],
                 ['value' => 'high', 'name' => 'High', 'description' => 'Thorough reasoning'],
                 ['value' => 'xhigh', 'name' => 'Extra High', 'description' => 'Maximum reasoning depth'],
+            ],
+        ],
+
+        // Cursor Agent: Reasoning is baked into model IDs (e.g. claude-opus-4-7-thinking-high).
+        // No separate reasoning config needed - users select the appropriate model variant.
+        // Placeholder config for UI consistency.
+        'cursor_agent' => [
+            'levels' => [
+                ['name' => 'Default', 'thinking_tokens' => 0],
             ],
         ],
 
@@ -437,6 +454,128 @@ return [
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 32768,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+        ],
+
+        // Cursor Agent models (via CLI)
+        // Pricing is null since Cursor Agent uses subscription credits
+        // Reasoning is baked into model IDs (e.g. -thinking-high, -xhigh)
+        // Source: `agent models` command output
+        'cursor_agent' => [
+            // Auto model (required for free/hobby plans, works on all plans)
+            [
+                'model_id'                      => 'auto',
+                'display_name'                  => 'Auto (Recommended)',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            // Claude models (via Cursor - requires Pro/Business plan)
+            [
+                'model_id'                      => 'claude-opus-4-7-thinking-high',
+                'display_name'                  => 'Opus 4.7 Thinking',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 128000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            [
+                'model_id'                      => 'claude-opus-4-7-high',
+                'display_name'                  => 'Opus 4.7',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 128000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            [
+                'model_id'                      => 'claude-4.6-sonnet-medium',
+                'display_name'                  => 'Sonnet 4.6',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            [
+                'model_id'                      => 'claude-4.5-sonnet',
+                'display_name'                  => 'Sonnet 4.5',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            // GPT models (via Cursor)
+            [
+                'model_id'                      => 'gpt-5.5-medium',
+                'display_name'                  => 'GPT-5.5',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            [
+                'model_id'                      => 'gpt-5.4-medium',
+                'display_name'                  => 'GPT-5.4',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            // Other providers (via Cursor)
+            [
+                'model_id'                      => 'grok-4.3',
+                'display_name'                  => 'Grok 4.3',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            [
+                'model_id'                      => 'gemini-3.1-pro',
+                'display_name'                  => 'Gemini 3.1 Pro',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            // Default fast model
+            [
+                'model_id'                      => 'composer-2-fast',
+                'display_name'                  => 'Composer 2 Fast',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
                 'input_price_per_million'       => null,
                 'output_price_per_million'      => null,
                 'cache_write_price_per_million' => null,

@@ -138,7 +138,7 @@ class SystemPackageCommand extends Command
                     'status' => 'failed',
                     'error' => $hotInstallResult['error'],
                 ],
-                'is_error' => false,
+                'is_error' => true,
             ]);
         }
 
@@ -222,7 +222,7 @@ class SystemPackageCommand extends Command
                 'install_script' => $package->install_script,
                 'status' => $package->status,
             ],
-            'is_error' => false,
+            'is_error' => $package->status === SystemPackage::STATUS_FAILED,
         ]);
 
         return Command::SUCCESS;

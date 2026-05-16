@@ -356,7 +356,7 @@ class VersionService
         }
 
         // Sanitize branch name
-        if (!preg_match('#^[a-zA-Z0-9/_.\-]+$#', $branch)) {
+        if (!preg_match('#^[a-zA-Z0-9/_.\-]+$#', $branch) || str_starts_with($branch, '-')) {
             return ['success' => false, 'error' => 'Invalid branch name'];
         }
 

@@ -96,7 +96,7 @@ class SystemPromptBuilder
         }
 
         // 3b. Available agents section (for SubAgent tool)
-        if ($agentsSection = $this->buildAvailableAgentsSection($workspace)) {
+        if ($agentsSection = $this->buildAvailableAgentsSection($agent, $workspace)) {
             $sections[] = $agentsSection;
         }
 
@@ -482,16 +482,30 @@ PROMPT;
      * Build the Available Agents section for the SubAgent tool.
      * Only included when agents exist in the workspace.
      */
-    private function buildAvailableAgentsSection(?Workspace $workspace): ?string
+    private function buildAvailableAgentsSection(?Agent $callerAgent, ?Workspace $workspace): ?string
     {
         if (!$workspace) {
             return null;
         }
 
-        $agents = Agent::where('workspace_id', $workspace->id)
+        // Don't show agents section if caller cannot call subagents
+        if ($callerAgent && !$callerAgent->can_call_subagents) {
+            return null;
+        }
+
+        $query = Agent::where('workspace_id', $workspace->id)
             ->where('enabled', true)
-            ->orderBy('name')
-            ->get(['slug', 'name', 'provider', 'model', 'description']);
+            ->orderBy('name');
+
+        // Filter by allowlist if the caller has one configured
+        if ($callerAgent) {
+            $allowlist = $callerAgent->allowed_subagents;
+            if (!empty($allowlist)) {
+                $query->whereIn('id', $allowlist);
+            }
+        }
+
+        $agents = $query->get(['slug', 'name', 'provider', 'model', 'description']);
 
         if ($agents->isEmpty()) {
             return null;
