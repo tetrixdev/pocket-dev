@@ -1350,6 +1350,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
     private function dispatchPushNotification(Conversation $conversation, string $status, \Carbon\Carbon $jobStartedAt): void
     {
         try {
+            // Skip subagent conversations (they have no screen/session)
+            if (!$conversation->screen) {
+                return;
+            }
+
             // Check if any push subscriptions exist (quick check to avoid unnecessary work)
             if (\App\Models\PushSubscription::count() === 0) {
                 return;
