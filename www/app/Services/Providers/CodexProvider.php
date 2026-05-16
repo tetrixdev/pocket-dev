@@ -389,6 +389,23 @@ class CodexProvider extends AbstractCliProvider
                     yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, 'Bash');
                     yield StreamEvent::toolUseDelta($state['blockIndex'], json_encode(['command' => $command]));
                     $state['toolUseStarted'] = true;
+                } elseif ($itemType === 'web_search') {
+                    // Close any open text/thinking blocks before web search
+                    if ($state['textStarted']) {
+                        yield StreamEvent::textStop($state['blockIndex']);
+                        $state['textStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+                    if ($state['thinkingStarted']) {
+                        yield StreamEvent::thinkingStop($state['blockIndex']);
+                        $state['thinkingStarted'] = false;
+                        $state['blockIndex']++;
+                    }
+
+                    $toolId = $item['id'] ?? 'ws_' . $state['blockIndex'];
+                    yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, 'WebSearch');
+                    yield StreamEvent::toolUseDelta($state['blockIndex'], json_encode(['query' => 'Searching...']));
+                    $state['toolUseStarted'] = true;
                 }
                 break;
 
@@ -446,6 +463,37 @@ class CodexProvider extends AbstractCliProvider
                         $state['toolUseStarted'] = false;
                     }
                     yield StreamEvent::toolResult($toolId, $output, $exitCode !== 0);
+                    $state['blockIndex']++;
+                } elseif ($itemType === 'web_search') {
+                    // Web search completed with query and results
+                    $toolId = $item['id'] ?? 'ws_' . $state['blockIndex'];
+                    $query = $item['query'] ?? '';
+                    $action = $item['action'] ?? [];
+                    $queries = $action['queries'] ?? [$query];
+
+                    // If item.started was missed, emit toolUseStart now
+                    if (!$state['toolUseStarted']) {
+                        if ($state['textStarted']) {
+                            yield StreamEvent::textStop($state['blockIndex']);
+                            $state['textStarted'] = false;
+                            $state['blockIndex']++;
+                        }
+                        if ($state['thinkingStarted']) {
+                            yield StreamEvent::thinkingStop($state['blockIndex']);
+                            $state['thinkingStarted'] = false;
+                            $state['blockIndex']++;
+                        }
+                        yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, 'WebSearch');
+                    }
+
+                    // Update the tool input with the actual query
+                    yield StreamEvent::toolUseDelta($state['blockIndex'], json_encode([
+                        'query' => $query,
+                        'queries' => $queries,
+                    ]));
+                    yield StreamEvent::toolUseStop($state['blockIndex']);
+                    $state['toolUseStarted'] = false;
+                    yield StreamEvent::toolResult($toolId, 'Web search completed: ' . $query, false);
                     $state['blockIndex']++;
                 }
                 break;
