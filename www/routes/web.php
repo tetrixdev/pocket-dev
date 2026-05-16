@@ -142,6 +142,10 @@ Route::middleware(['auth', 'throttle:10,1'])->group(function () {
 Route::get("/cursor/auth", [CursorAuthController::class, "index"])->name("cursor.auth");
 Route::get("/cursor/auth/status", [CursorAuthController::class, "status"])->name("cursor.auth.status");
 Route::get("/cursor/auth/browser-status", [CursorAuthController::class, "browserAuthStatus"])->name("cursor.auth.browserStatus");
+// CSRF-exempt upload route for terminal curl (no session/cookies available)
+Route::post("/api/cursor/auth/upload", [CursorAuthController::class, "uploadJson"])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
+    ->name("cursor.auth.apiUpload");
 // Cursor auth mutation routes (require authentication + throttle)
 Route::middleware(['auth', 'throttle:10,1'])->group(function () {
     Route::post("/cursor/auth/upload-json", [CursorAuthController::class, "uploadJson"])->name("cursor.auth.uploadJson");

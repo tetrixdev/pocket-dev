@@ -179,12 +179,13 @@
                 <!-- Via laptop / SSH tab -->
                 @php
                     $pdUrl = url('/');
+                    $apiUploadUrl = "{$pdUrl}/api/cursor/auth/upload";
                     $linux1 = 'curl -fsSL https://cursor.com/install | bash && agent login';
-                    $linux2 = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.config/cursor/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/cursor/auth/upload-json' -H 'Content-Type: application/json' -H 'X-CSRF-TOKEN: {{ csrf_token() }}' -d @- && echo 'Done!'";
-                    $linuxAll = "curl -fsSL https://cursor.com/install | bash && agent login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.config/cursor/auth.json')).read()}))\" | curl -s -X POST '{$pdUrl}/cursor/auth/upload-json' -H 'Content-Type: application/json' -H 'X-CSRF-TOKEN: {{ csrf_token() }}' -d @- && echo 'Done!'";
+                    $linux2 = "python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.config/cursor/auth.json')).read()}))\" | curl -s -X POST '{$apiUploadUrl}' -H 'Content-Type: application/json' -d @- && echo 'Done!'";
+                    $linuxAll = "curl -fsSL https://cursor.com/install | bash && agent login && python3 -c \"import json,os; print(json.dumps({'json': open(os.path.expanduser('~/.config/cursor/auth.json')).read()}))\" | curl -s -X POST '{$apiUploadUrl}' -H 'Content-Type: application/json' -d @- && echo 'Done!'";
                     $win1 = 'irm https://cursor.com/install | iex; agent login';
-                    $win2 = "\$auth = (Get-Content \"\$env:APPDATA\\Cursor\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/cursor/auth/upload-json' -Method Post -ContentType 'application/json' -Body \$body; Write-Host 'Done!'";
-                    $winAll = "irm https://cursor.com/install | iex; agent login; \$auth = (Get-Content \"\$env:APPDATA\\Cursor\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$pdUrl}/cursor/auth/upload-json' -Method Post -ContentType 'application/json' -Body \$body; Write-Host 'Done!'";
+                    $win2 = "\$auth = (Get-Content \"\$env:APPDATA\\Cursor\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$apiUploadUrl}' -Method Post -ContentType 'application/json' -Body \$body; Write-Host 'Done!'";
+                    $winAll = "irm https://cursor.com/install | iex; agent login; \$auth = (Get-Content \"\$env:APPDATA\\Cursor\\auth.json\" -Raw -Encoding UTF8).Trim(); \$body = [System.Text.Encoding]::UTF8.GetBytes('{\"json\":' + (\$auth | ConvertTo-Json -Compress) + '}'); Invoke-RestMethod -Uri '{$apiUploadUrl}' -Method Post -ContentType 'application/json' -Body \$body; Write-Host 'Done!'";
                 @endphp
                 <div id="content-laptop" class="tab-content hidden" x-data="{ os: 'linux' }">
                     <p class="text-gray-300 mb-1">Run these commands on your <strong class="text-white">laptop, desktop, or via SSH</strong>.</p>
