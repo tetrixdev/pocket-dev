@@ -75,10 +75,13 @@ class CursorAuthController extends Controller
             // Create directory if it does not exist
             $dir = dirname($this->credentialsPath);
             if (!is_dir($dir)) {
-                mkdir($dir, 0755, true);
+                mkdir($dir, 0770, true);
+            } else {
+                // Ensure existing directory is group-writable (appuser + www-data)
+                chmod($dir, 0770);
             }
 
-            // Save the file
+            // Save the file with group read/write (appuser owns, www-data in group)
             file_put_contents($this->credentialsPath, json_encode($data, JSON_PRETTY_PRINT));
             chmod($this->credentialsPath, 0660);
 
