@@ -78,9 +78,14 @@ class PushSubscriptionController extends Controller
     /**
      * Remove a specific subscription by ID (from settings device list).
      */
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
-        $subscription = PushSubscription::findOrFail($id);
+        $user = $request->user() ?? \App\Models\User::first();
+
+        $subscription = PushSubscription::where('id', $id)
+            ->where('user_id', $user?->id)
+            ->firstOrFail();
+
         $subscription->delete();
 
         return response()->json(['deleted' => true]);
@@ -151,15 +156,15 @@ class PushSubscriptionController extends Controller
     public function saveSettings(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'notify_on_complete' => 'boolean',
-            'notify_on_failure' => 'boolean',
-            'min_duration_seconds' => 'integer|min:0|max:3600',
+            'notify_on_complete' => 'required|boolean',
+            'notify_on_failure' => 'required|boolean',
+            'min_duration_seconds' => 'required|integer|min:0|max:3600',
         ]);
 
         Setting::setMany([
-            'push.notify_on_complete' => $validated['notify_on_complete'] ?? true,
-            'push.notify_on_failure' => $validated['notify_on_failure'] ?? true,
-            'push.min_duration_seconds' => $validated['min_duration_seconds'] ?? 5,
+            'push.notify_on_complete' => $validated['notify_on_complete'],
+            'push.notify_on_failure' => $validated['notify_on_failure'],
+            'push.min_duration_seconds' => $validated['min_duration_seconds'],
         ]);
 
         return response()->json(['saved' => true]);

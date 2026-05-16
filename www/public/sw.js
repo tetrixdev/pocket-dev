@@ -6,12 +6,16 @@
  */
 
 self.addEventListener('push', (event) => {
-    const data = event.data?.json() ?? {};
+    let data = {};
+    try {
+        data = event.data?.json() ?? {};
+    } catch (e) {
+        // Malformed payload, use defaults
+    }
 
     const options = {
         body: data.body ?? 'Task completed',
         icon: '/favicon.ico',
-        badge: '/badge-72.png',
         data: { url: data.url ?? '/' },
         tag: data.tag ?? 'pocketdev-complete',
         renotify: true,

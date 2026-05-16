@@ -302,13 +302,19 @@ function notificationSettings() {
 
         async removeDevice(id) {
             try {
-                await fetch(`/api/push/subscriptions/${id}`, {
+                const response = await fetch(`/api/push/subscriptions/${id}`, {
                     method: 'DELETE',
                     credentials: 'same-origin',
                     headers: {
                         'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
                     },
                 });
+
+                if (!response.ok) {
+                    this.error = 'Failed to remove device';
+                    return;
+                }
+
                 this.devices = this.devices.filter(d => d.id !== id);
 
                 // Re-check if current browser is still subscribed
@@ -335,7 +341,7 @@ function notificationSettings() {
 
         async saveSettings() {
             try {
-                await fetch('/api/push/settings', {
+                const response = await fetch('/api/push/settings', {
                     method: 'POST',
                     credentials: 'same-origin',
                     headers: {
@@ -344,8 +350,12 @@ function notificationSettings() {
                     },
                     body: JSON.stringify(this.settings),
                 });
+
+                if (!response.ok) {
+                    this.error = 'Failed to save settings';
+                }
             } catch (e) {
-                // Silent fail for settings save
+                this.error = 'Failed to save settings';
             }
         },
 

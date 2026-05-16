@@ -1365,11 +1365,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 return;
             }
 
-            // Check minimum duration threshold
+            // Check minimum duration threshold (use created_at as job start time)
             $minDuration = (int) \App\Models\Setting::get('push.min_duration_seconds', 5);
-            if ($minDuration > 0 && $conversation->last_activity_at) {
-                $startedAt = $conversation->updated_at ?? $conversation->created_at;
-                $duration = now()->diffInSeconds($startedAt);
+            if ($minDuration > 0) {
+                $duration = now()->diffInSeconds($conversation->created_at);
                 if ($duration < $minDuration) {
                     return;
                 }
@@ -1378,15 +1377,18 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $title = $status === 'completed' ? 'Agent klaar' : 'Agent gefaald';
             $body = $conversation->title ?? ($status === 'completed' ? 'Taak voltooid' : 'Taak mislukt');
 
+            $sessionId = $conversation->screen?->session_id;
+            $url = $sessionId ? "/session/{$sessionId}" : '/';
+
             SendPushNotification::dispatch(
                 userId: $user->id,
                 title: $title,
                 body: $body,
-                url: "/session/{$conversation->screen?->session_id}",
+                url: $url,
             );
         } catch (\Throwable $e) {
             // Never let push notification errors affect the main flow
-            Log::debug('Push notification dispatch failed', ['error' => $e->getMessage()]);
+            Log::warning('Push notification dispatch failed', ['error' => $e->getMessage()]);
         }
     }
 }

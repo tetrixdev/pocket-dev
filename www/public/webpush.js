@@ -56,9 +56,9 @@ const PocketDevPush = {
             throw new Error('Push notifications are not supported in this browser');
         }
 
-        // Register service worker
-        const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-        await navigator.serviceWorker.ready;
+        // Register service worker and wait for it to be active
+        await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        const registration = await navigator.serviceWorker.ready;
 
         // Request permission
         const permission = await Notification.requestPermission();
@@ -149,6 +149,10 @@ const PocketDevPush = {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
             },
         });
+
+        if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}`);
+        }
 
         return await response.json();
     },
