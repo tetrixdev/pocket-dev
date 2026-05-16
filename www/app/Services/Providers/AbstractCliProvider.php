@@ -317,8 +317,11 @@ abstract class AbstractCliProvider implements AIProviderInterface, HasNativeSess
             return;
         }
 
-        $latestMessage = $options['override_user_message'] ?? $this->getLatestUserMessage($conversation);
-        if ($latestMessage === null) {
+        $overrideMessage = $options['override_user_message'] ?? null;
+        $latestMessage = is_string($overrideMessage)
+            ? $overrideMessage
+            : $this->getLatestUserMessage($conversation);
+        if (!is_string($latestMessage) || trim($latestMessage) === '') {
             yield StreamEvent::error('No user message found in conversation');
             return;
         }
