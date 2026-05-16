@@ -50,6 +50,29 @@
                 </div>
             </div>
 
+            {{-- Cursor Agent (CLI) --}}
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="font-medium text-white">
+                            Cursor Agent (CLI)
+                            <span class="ml-2 px-1.5 py-0.5 bg-yellow-900/50 border border-yellow-700/50 text-yellow-400 text-xs rounded">Beta</span>
+                        </h3>
+                        <p class="text-sm text-gray-400">Uses your Cursor Pro/Business subscription via browser login</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        @if($hasCursorAgent)
+                            <span class="text-green-400 text-sm">Authenticated</span>
+                        @else
+                            <span class="text-gray-500 text-sm">Not configured</span>
+                        @endif
+                        <a href="{{ route('cursor.auth') }}" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded">
+                            {{ $hasCursorAgent ? 'Manage' : 'Set up' }}
+                        </a>
+                    </div>
+                </div>
+            </div>
+
             {{-- Anthropic API --}}
             <div class="bg-gray-800 rounded-lg p-4">
                 <div class="flex items-center justify-between mb-3">
