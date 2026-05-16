@@ -271,6 +271,9 @@ Route::get("/config/backup/download/{filename}", [\App\Http\Controllers\BackupCo
 Route::delete("/config/backup/{filename}", [\App\Http\Controllers\BackupController::class, "delete"])->name("config.backup.delete");
 Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::class, "restore"])->name("config.backup.restore");
 
+// Usage dashboard
+Route::get("/config/usage", [ConfigController::class, "showUsage"])->name("config.usage");
+
 // System management (available in both environments)
 // GET is accessible without explicit auth (EnsureSetupComplete handles it),
 // but mutation routes require auth middleware as defense-in-depth.
@@ -336,6 +339,19 @@ Route::prefix('api')->group(function () {
 
     Route::get('pricing', [PricingController::class, 'index']);
     Route::get('pricing/{modelId}', [PricingController::class, 'show']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Usage Dashboard Routes
+    |--------------------------------------------------------------------------
+    |
+    | Token usage aggregation and provider rate limit data.
+    |
+    */
+
+    Route::get('usage/summary', [\App\Http\Controllers\Api\UsageDashboardController::class, 'summary']);
+    Route::get('usage/claude-limits', [\App\Http\Controllers\Api\UsageDashboardController::class, 'claudeLimits']);
+    Route::get('usage/cursor-limits', [\App\Http\Controllers\Api\UsageDashboardController::class, 'cursorLimits']);
 
     /*
     |--------------------------------------------------------------------------
