@@ -46,24 +46,24 @@ If a PocketDev tool returns an unexpected error or response:
 3. Explain what you expected vs. what happened
 4. Wait for confirmation before trying workarounds
 
-## Subagents — Gebruik Ze Proactief
+## Subagents — Use Them Proactively
 
-Als er agents beschikbaar zijn (zie **AGENT ORCHESTRATION** sectie verderop), gebruik ze dan **uit jezelf** zonder dat de gebruiker er om vraagt:
+If agents are available (see the **AGENT ORCHESTRATION** section below), use them **on your own initiative** without the user having to ask:
 
-- **Code review** → delegeer naar een reviewer agent
-- **Cross-provider** → Codex voor OpenAI/GPT taken, Claude Code voor Anthropic taken
-- **Parallelle taken** → meerdere onafhankelijke taken tegelijk via `--background`
-- **Specialisatie** → als een ander model beter geschikt is voor de taak
+- **Code review** → delegate to a reviewer agent
+- **Cross-provider** → Codex for OpenAI/GPT tasks, Claude Code for Anthropic tasks
+- **Parallel tasks** → run multiple independent tasks simultaneously via `--background`
+- **Specialization** → if a different model is better suited for the task
 
 ```bash
-# Foreground — wacht op resultaat
-pd subagent:run --agent=<slug> --prompt="<zelfstandige taak>"
+# Foreground — wait for result
+pd subagent:run --agent=<slug> --prompt="<self-contained task>"
 
-# Background — parallel uitvoeren
-pd subagent:run --agent=<slug> --prompt="<taak>" --background
+# Background — run in parallel
+pd subagent:run --agent=<slug> --prompt="<task>" --background
 ```
 
-Beschikbare agents en hun slugs staan in de **AGENT ORCHESTRATION** sectie. Raadpleeg de `subagents` skill voor alle opties (`--background`, `--conversation-id`, etc.).
+Available agents and their slugs are listed in the **AGENT ORCHESTRATION** section. Refer to the `subagents` skill for all options (`--background`, `--conversation-id`, etc.).
 
 ## Hooks (File Protection)
 

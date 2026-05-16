@@ -2756,6 +2756,7 @@
                         'openai': 'bg-green-500',
                         'claude_code': 'bg-purple-500',
                         'codex': 'bg-blue-500',
+                        'cursor_agent': 'bg-indigo-500',
                         'openai_compatible': 'bg-teal-500'
                     };
                     return colors[providerKey] || 'bg-gray-500';

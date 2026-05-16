@@ -456,7 +456,6 @@ class CursorAgentProvider extends AbstractCliProvider
             // Format: {"tool_call": {"shellToolCall": {..., "description": "..."}, ...}}
             $toolCall = $data['tool_call'] ?? [];
             $toolName = 'unknown';
-            $description = '';
             $inputJson = '{}';
 
             foreach ($toolCall as $key => $value) {
@@ -464,7 +463,6 @@ class CursorAgentProvider extends AbstractCliProvider
                     // Convert camelCase key to readable name (e.g., shellToolCall -> shell)
                     $toolName = str_replace('ToolCall', '', $key);
                     $toolName = str_replace('toolCall', '', $toolName) ?: $key;
-                    $description = $value['description'] ?? '';
 
                     // Extract relevant args for display
                     $args = $value['args'] ?? $value;

@@ -74,10 +74,10 @@ class ToolRegistry
      * and permitted for the given caller.
      *
      * Rules:
-     * - If no caller: inject all opted-in agents across all workspaces (e.g. CLI context)
-     * - If caller has can_call_subagents = false: inject nothing
-     * - If caller has allowed_subagents (non-null array): inject only those agent IDs
-     * - Otherwise: inject all opted-in agents in the same workspace as the caller
+     * - If no caller: return no agents (empty array)
+     * - If caller has can_call_subagents = false: return no agents
+     * - If caller has allowed_subagents (non-null array): return only those agent IDs
+     * - Otherwise: return all opted-in agents in the same workspace as the caller
      *
      * @return array<string, AgentTool>
      */
@@ -288,8 +288,13 @@ class ToolRegistry
         $workspace = $context->getWorkspace();
         $callerAgent = $context->getAgent();
 
+        // Security: require caller and workspace context for agent tools
+        if ($callerAgent === null || $workspace === null) {
+            return ToolResult::error("Agent tools require a caller agent and workspace context.");
+        }
+
         // Security: caller must have sub-agent calling enabled
-        if ($callerAgent !== null && ! $callerAgent->can_call_subagents) {
+        if (! $callerAgent->can_call_subagents) {
             return ToolResult::error("This agent is not permitted to call other agents.");
         }
 

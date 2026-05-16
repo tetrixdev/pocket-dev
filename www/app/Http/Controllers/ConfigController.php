@@ -2496,6 +2496,10 @@ class ConfigController extends Controller
      */
     public function switchBranch(Request $request, VersionService $versionService)
     {
+        if (!app()->environment('local')) {
+            abort(403, 'Branch switching is only available in local development.');
+        }
+
         $branch = $request->input('branch');
 
         if (empty($branch)) {
