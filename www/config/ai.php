@@ -145,12 +145,17 @@ return [
             ],
         ],
 
-        // Cursor Agent: Reasoning is baked into model IDs (e.g. claude-opus-4-7-thinking-high).
-        // No separate reasoning config needed - users select the appropriate model variant.
-        // Placeholder config for UI consistency.
+        // Cursor Agent: Reasoning effort is baked into model IDs.
+        // The provider resolves base model + effort level into the correct model ID.
+        // E.g. base "claude-opus-4-7" + effort "high" → "claude-opus-4-7-thinking-high"
         'cursor_agent' => [
-            'levels' => [
-                ['name' => 'Default', 'thinking_tokens' => 0],
+            'effort_levels' => [
+                ['value' => 'none', 'name' => 'None', 'description' => 'No thinking (fastest)'],
+                ['value' => 'low', 'name' => 'Low', 'description' => 'Quick reasoning'],
+                ['value' => 'medium', 'name' => 'Medium', 'description' => 'Balanced reasoning'],
+                ['value' => 'high', 'name' => 'High', 'description' => 'Thorough reasoning'],
+                ['value' => 'xhigh', 'name' => 'Extra High', 'description' => 'Extended reasoning'],
+                ['value' => 'max', 'name' => 'Maximum', 'description' => 'Maximum reasoning depth'],
             ],
         ],
 
@@ -462,14 +467,24 @@ return [
         ],
 
         // Cursor Agent models (via CLI)
-        // Pricing is null since Cursor Agent uses subscription credits
-        // Reasoning is baked into model IDs (e.g. -thinking-high, -xhigh)
+        // Pricing is null since Cursor Agent uses subscription credits.
+        // Models are stored as BASE models; the provider resolves effort level into
+        // the final model ID at runtime (e.g. "claude-opus-4-7" + effort "high" → "claude-opus-4-7-thinking-high").
+        //
+        // effort_variants defines how to construct the final model ID:
+        //   type: 'prefix_thinking' → {base}-thinking-{level}  (opus 4.7 pattern)
+        //   type: 'suffix_thinking' → {base}-{level}-thinking  (opus 4.6/4.5 pattern)
+        //   type: 'toggle_thinking' → {base}-thinking           (sonnet 4.5/4 pattern, thinking on/off only)
+        //   type: 'suffix'          → {base}-{level}            (GPT pattern)
+        //   null                    → no effort control          (auto, grok, etc.)
+        //
         // Source: `agent models` command output
         'cursor_agent' => [
             // Auto model (required for free/hobby plans, works on all plans)
             [
                 'model_id'                      => 'auto',
                 'display_name'                  => 'Auto (Recommended)',
+                'effort_variants'               => null,
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,
@@ -478,10 +493,19 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million'  => null,
             ],
-            // Claude models (via Cursor - requires Pro/Business plan)
+
+            // Claude Opus 4.7 — full effort range with thinking variants
+            // Thinking: claude-opus-4-7-thinking-{low|medium|high|xhigh|max}
+            // Non-thinking: claude-opus-4-7-{low|medium|high|xhigh|max}
             [
-                'model_id'                      => 'claude-opus-4-7-thinking-high',
-                'display_name'                  => 'Opus 4.7 Thinking',
+                'model_id'                      => 'claude-opus-4-7',
+                'display_name'                  => 'Claude Opus 4.7',
+                'effort_variants'               => [
+                    'type' => 'prefix_thinking',
+                    'levels' => ['low', 'medium', 'high', 'xhigh', 'max'],
+                    'default' => 'high',
+                    'non_thinking_default' => 'xhigh',
+                ],
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 128000,
@@ -490,9 +514,18 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million'  => null,
             ],
+
+            // Claude 4.6 Opus — high/max with thinking suffix
+            // Thinking: claude-4.6-opus-{high|max}-thinking
+            // Non-thinking: claude-4.6-opus-{high|max}
             [
-                'model_id'                      => 'claude-opus-4-7-high',
-                'display_name'                  => 'Opus 4.7',
+                'model_id'                      => 'claude-4.6-opus',
+                'display_name'                  => 'Claude Opus 4.6',
+                'effort_variants'               => [
+                    'type' => 'suffix_thinking',
+                    'levels' => ['high', 'max'],
+                    'default' => 'high',
+                ],
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 128000,
@@ -501,9 +534,18 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million'  => null,
             ],
+
+            // Claude 4.6 Sonnet — medium only, thinking toggle
+            // Thinking: claude-4.6-sonnet-medium-thinking
+            // Non-thinking: claude-4.6-sonnet-medium
             [
-                'model_id'                      => 'claude-4.6-sonnet-medium',
-                'display_name'                  => 'Sonnet 4.6',
+                'model_id'                      => 'claude-4.6-sonnet',
+                'display_name'                  => 'Claude Sonnet 4.6',
+                'effort_variants'               => [
+                    'type' => 'suffix_thinking',
+                    'levels' => ['medium'],
+                    'default' => 'medium',
+                ],
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,
@@ -512,9 +554,14 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million'  => null,
             ],
+
+            // Claude 4.5 Sonnet — thinking on/off only
             [
                 'model_id'                      => 'claude-4.5-sonnet',
-                'display_name'                  => 'Sonnet 4.5',
+                'display_name'                  => 'Claude Sonnet 4.5',
+                'effort_variants'               => [
+                    'type' => 'toggle_thinking',
+                ],
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,
@@ -523,10 +570,18 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million'  => null,
             ],
-            // GPT models (via Cursor)
+
+            // GPT-5.5 — full effort range
+            // gpt-5.5-{none|low|medium|high|extra-high}
             [
-                'model_id'                      => 'gpt-5.5-medium',
+                'model_id'                      => 'gpt-5.5',
                 'display_name'                  => 'GPT-5.5',
+                'effort_variants'               => [
+                    'type' => 'suffix',
+                    'levels' => ['none', 'low', 'medium', 'high', 'extra-high'],
+                    'default' => 'medium',
+                    'level_map' => ['xhigh' => 'extra-high'],
+                ],
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,
@@ -535,9 +590,16 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million'  => null,
             ],
+
+            // GPT-5.4 — low/medium/high/xhigh
             [
-                'model_id'                      => 'gpt-5.4-medium',
+                'model_id'                      => 'gpt-5.4',
                 'display_name'                  => 'GPT-5.4',
+                'effort_variants'               => [
+                    'type' => 'suffix',
+                    'levels' => ['low', 'medium', 'high', 'xhigh'],
+                    'default' => 'medium',
+                ],
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,
@@ -546,10 +608,50 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million'  => null,
             ],
-            // Other providers (via Cursor)
+
+            // GPT-5.3 Codex — low/default/high/xhigh
+            [
+                'model_id'                      => 'gpt-5.3-codex',
+                'display_name'                  => 'GPT-5.3 Codex',
+                'effort_variants'               => [
+                    'type' => 'suffix',
+                    'levels' => ['low', 'medium', 'high', 'xhigh'],
+                    'default' => 'medium',
+                    'level_map' => ['medium' => ''],
+                ],
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+
+            // GPT-5.2 — low/medium/high/xhigh
+            [
+                'model_id'                      => 'gpt-5.2',
+                'display_name'                  => 'GPT-5.2',
+                'effort_variants'               => [
+                    'type' => 'suffix',
+                    'levels' => ['low', 'medium', 'high', 'xhigh'],
+                    'default' => 'medium',
+                    'level_map' => ['medium' => ''],
+                ],
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+
+            // Other providers (no effort control)
             [
                 'model_id'                      => 'grok-4.3',
                 'display_name'                  => 'Grok 4.3',
+                'effort_variants'               => null,
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,
@@ -561,6 +663,7 @@ return [
             [
                 'model_id'                      => 'gemini-3.1-pro',
                 'display_name'                  => 'Gemini 3.1 Pro',
+                'effort_variants'               => null,
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,
@@ -569,10 +672,10 @@ return [
                 'cache_write_price_per_million' => null,
                 'cache_read_price_per_million'  => null,
             ],
-            // Default fast model
             [
                 'model_id'                      => 'composer-2-fast',
                 'display_name'                  => 'Composer 2 Fast',
+                'effort_variants'               => null,
                 'context_window'                => 200000,
                 'max_context_window'            => 200000,
                 'max_output_tokens'             => 64000,

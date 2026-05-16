@@ -383,6 +383,25 @@
                     <p class="text-xs text-gray-400 mt-1">Controls reasoning depth for Codex models</p>
                 </div>
 
+                <!-- Cursor Agent Reasoning Effort -->
+                <div x-show="provider === 'cursor_agent'" x-cloak>
+                    <label for="cursor_agent_reasoning_effort" class="block text-sm font-medium mb-2">Reasoning Effort</label>
+                    <select
+                        id="cursor_agent_reasoning_effort"
+                        name="cursor_agent_reasoning_effort"
+                        class="w-full px-3 py-2 bg-gray-800 text-white border border-gray-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                        @php $currentCursorEffort = old('cursor_agent_reasoning_effort', ($agent->reasoning_config['effort'] ?? null) ?? ($sourceAgent->reasoning_config['effort'] ?? 'high')); @endphp
+                        <option value="none" {{ $currentCursorEffort === 'none' ? 'selected' : '' }}>None (no thinking)</option>
+                        <option value="low" {{ $currentCursorEffort === 'low' ? 'selected' : '' }}>Low</option>
+                        <option value="medium" {{ $currentCursorEffort === 'medium' ? 'selected' : '' }}>Medium</option>
+                        <option value="high" {{ $currentCursorEffort === 'high' ? 'selected' : '' }}>High</option>
+                        <option value="xhigh" {{ $currentCursorEffort === 'xhigh' ? 'selected' : '' }}>Extra High</option>
+                        <option value="max" {{ $currentCursorEffort === 'max' ? 'selected' : '' }}>Maximum</option>
+                    </select>
+                    <p class="text-xs text-gray-400 mt-1">Controls reasoning depth (encoded in model name sent to CLI)</p>
+                </div>
+
                 <!-- Response Level -->
                 <div>
                     <label for="response_level" class="block text-sm font-medium mb-2">Response Level</label>

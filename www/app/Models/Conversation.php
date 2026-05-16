@@ -313,7 +313,7 @@ class Conversation extends Model
             'openai_compatible' => array_merge(['effort' => 'none'], $config),
             'claude_code' => array_merge(['thinking_tokens' => 0], $config),
             'codex' => array_merge(['effort' => 'medium'], $config),
-            'cursor_agent' => array_merge(['thinking_tokens' => 0], $config),
+            'cursor_agent' => array_merge(['effort' => 'high'], $config),
             default => $config,
         };
     }

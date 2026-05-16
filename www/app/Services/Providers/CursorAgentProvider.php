@@ -141,7 +141,14 @@ class CursorAgentProvider extends AbstractCliProvider
         Conversation $conversation,
         array $options
     ): string {
-        $model = $conversation->model ?? config('ai.providers.cursor_agent.default_model', 'auto');
+        $baseModel = $conversation->model ?? config('ai.providers.cursor_agent.default_model', 'auto');
+
+        // Resolve base model + effort level into the final model ID
+        // E.g. "claude-opus-4-7" + effort "high" → "claude-opus-4-7-thinking-high"
+        $reasoningConfig = $conversation->getReasoningConfig();
+        $effort = $reasoningConfig['effort'] ?? 'high';
+        $modelConfig = $this->getModelConfig($baseModel);
+        $resolvedModel = $this->resolveModelId($baseModel, $effort, $modelConfig);
 
         // Sync MCP servers from Claude Code config to Cursor config
         $workingDir = $conversation->working_directory ?? '/workspace';
@@ -164,7 +171,7 @@ class CursorAgentProvider extends AbstractCliProvider
             $agentBin,
             '-p',
             '--output-format', 'stream-json',
-            '--model', escapeshellarg($model),
+            '--model', escapeshellarg($resolvedModel),
             '--force',
             '--trust',
             '--approve-mcps',
@@ -310,6 +317,87 @@ class CursorAgentProvider extends AbstractCliProvider
             'input_tokens' => $state['inputTokens'],
             'output_tokens' => $state['outputTokens'],
         ];
+    }
+
+    // ========================================================================
+    // Model ID Resolution (effort level → model name)
+    // ========================================================================
+
+    /**
+     * Look up the model config from ai.php by base model ID.
+     */
+    private function getModelConfig(string $baseModelId): array
+    {
+        $models = config('ai.models.cursor_agent', []);
+        foreach ($models as $model) {
+            if (($model['model_id'] ?? '') === $baseModelId) {
+                return $model;
+            }
+        }
+        // Unknown model, treat as no effort control
+        return ['model_id' => $baseModelId, 'effort_variants' => null];
+    }
+
+    /**
+     * Resolve a base model + effort level into the actual model ID for the CLI.
+     *
+     * Cursor Agent bakes effort/thinking into the model name. This method maps:
+     *   prefix_thinking: claude-opus-4-7 + high   → claude-opus-4-7-thinking-high
+     *   prefix_thinking: claude-opus-4-7 + none   → claude-opus-4-7-xhigh (non-thinking)
+     *   suffix_thinking: claude-4.6-opus + high   → claude-4.6-opus-high-thinking
+     *   suffix_thinking: claude-4.6-opus + none   → claude-4.6-opus-high (no thinking suffix)
+     *   toggle_thinking: claude-4.5-sonnet + high → claude-4.5-sonnet-thinking
+     *   toggle_thinking: claude-4.5-sonnet + none → claude-4.5-sonnet
+     *   suffix:          gpt-5.5 + medium         → gpt-5.5-medium
+     *   null:            auto                     → auto
+     */
+    private function resolveModelId(string $baseModel, string $effort, array $modelConfig): string
+    {
+        $variants = $modelConfig['effort_variants'] ?? null;
+
+        // No effort variants — return base model as-is
+        if ($variants === null) {
+            return $baseModel;
+        }
+
+        $type = $variants['type'] ?? 'suffix';
+        $availableLevels = $variants['levels'] ?? [];
+        $default = $variants['default'] ?? ($availableLevels[0] ?? 'medium');
+
+        // Map effort names that differ between our UI and Cursor's model names
+        // E.g. our "xhigh" → Cursor's "extra-high" for GPT-5.5
+        $levelMap = $variants['level_map'] ?? [];
+        $mappedEffort = $levelMap[$effort] ?? $effort;
+
+        // Validate effort is available for this model; fall back to default
+        if ($effort !== 'none' && !in_array($effort, $availableLevels) && !isset($levelMap[$effort])) {
+            $effort = $default;
+            $mappedEffort = $levelMap[$effort] ?? $effort;
+        }
+
+        return match ($type) {
+            // Opus 4.7 pattern: {base}-thinking-{level} or {base}-{level}
+            'prefix_thinking' => $effort === 'none'
+                ? $baseModel . '-' . ($variants['non_thinking_default'] ?? $default)
+                : $baseModel . '-thinking-' . $mappedEffort,
+
+            // Opus 4.6/4.5 pattern: {base}-{level}-thinking or {base}-{level}
+            'suffix_thinking' => $effort === 'none'
+                ? $baseModel . '-' . $default
+                : $baseModel . '-' . $mappedEffort . '-thinking',
+
+            // Sonnet 4.5/4 pattern: {base}-thinking or {base} (on/off only)
+            'toggle_thinking' => $effort === 'none'
+                ? $baseModel
+                : $baseModel . '-thinking',
+
+            // GPT pattern: {base}-{level}
+            'suffix' => $mappedEffort === ''
+                ? $baseModel                            // level_map maps to '' (base model is default)
+                : $baseModel . '-' . $mappedEffort,
+
+            default => $baseModel,
+        };
     }
 
     /**
