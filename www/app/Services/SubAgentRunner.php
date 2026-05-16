@@ -146,11 +146,12 @@ class SubAgentRunner
         ?string $workspaceId,
     ): ToolResult {
         $conversation = Conversation::where('uuid', $conversationId)
+            ->where('agent_id', $agent->id)
             ->when($workspaceId, fn($q) => $q->where('workspace_id', $workspaceId))
             ->first();
 
         if (!$conversation) {
-            return ToolResult::error("Conversation '{$conversationId}' not found or not accessible.");
+            return ToolResult::error("Conversation '{$conversationId}' not found, not accessible, or belongs to a different agent.");
         }
 
         if ($conversation->status === Conversation::STATUS_PROCESSING) {

@@ -12,6 +12,7 @@ use App\Tools\Tool;
 use App\Tools\UserTool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -461,7 +462,12 @@ class ConfigController extends Controller
                 'expose_as_tool' => 'nullable|boolean',
                 'can_call_subagents' => 'nullable|boolean',
                 'allowed_subagents' => 'nullable|array',
-                'allowed_subagents.*' => 'uuid|exists:agents,id',
+                'allowed_subagents.*' => [
+                    'uuid',
+                    Rule::exists('agents', 'id')
+                        ->where('expose_as_tool', true)
+                        ->where('workspace_id', $request->input('workspace_id')),
+                ],
             ]);
 
             // Check for duplicate slug within workspace
@@ -585,7 +591,12 @@ class ConfigController extends Controller
                 'expose_as_tool' => 'nullable|boolean',
                 'can_call_subagents' => 'nullable|boolean',
                 'allowed_subagents' => 'nullable|array',
-                'allowed_subagents.*' => 'uuid|exists:agents,id',
+                'allowed_subagents.*' => [
+                    'uuid',
+                    Rule::exists('agents', 'id')
+                        ->where('expose_as_tool', true)
+                        ->where('workspace_id', $agent->workspace_id),
+                ],
             ]);
 
             // Check for duplicate slug within workspace (excluding current agent)

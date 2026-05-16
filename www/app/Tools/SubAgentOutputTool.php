@@ -83,7 +83,10 @@ API;
         }
 
         // Verify task ownership: only the parent conversation can read output
-        if ($context->conversationUuid && $task->parent_conversation_uuid !== $context->conversationUuid) {
+        if (!$context->conversationUuid) {
+            return ToolResult::error("Cannot verify task ownership without a conversation context.");
+        }
+        if ($task->parent_conversation_uuid !== $context->conversationUuid) {
             return ToolResult::error("Task '{$taskId}' was not spawned by this conversation.");
         }
 
