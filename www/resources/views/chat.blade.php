@@ -2722,7 +2722,7 @@
 
                 get availableProviderKeys() {
                     const providers = new Set(this.availableAgents.map(a => a.provider));
-                    return ['anthropic', 'openai', 'claude_code', 'codex', 'openai_compatible'].filter(p => providers.has(p));
+                    return ['anthropic', 'openai', 'claude_code', 'codex', 'cursor_agent', 'openai_compatible'].filter(p => providers.has(p));
                 },
 
                 agentsForProvider(providerKey) {
@@ -2735,6 +2735,7 @@
                         'openai': 'OpenAI',
                         'claude_code': 'Claude Code',
                         'codex': 'Codex',
+                        'cursor_agent': 'Cursor Agent',
                         'openai_compatible': 'OpenAI Compatible'
                     };
                     return names[providerKey] || providerKey;
