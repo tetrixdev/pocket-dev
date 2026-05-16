@@ -303,9 +303,7 @@ class ToolRegistry
             ->where('enabled', true)
             ->where('expose_as_tool', true);
 
-        if ($workspace) {
-            $query->where('workspace_id', $workspace->id);
-        }
+        $query->where('workspace_id', $workspace->id);
 
         $agent = $query->first();
 
@@ -314,16 +312,14 @@ class ToolRegistry
         }
 
         // Check allowlist
-        if ($callerAgent !== null) {
-            $allowlist = $callerAgent->allowed_subagents;
-            if (!empty($allowlist) && !in_array($agent->id, $allowlist, true)) {
-                return ToolResult::error("Agent '{$agent->name}' is not in this agent's allowed sub-agents list.");
-            }
+        $allowlist = $callerAgent->allowed_subagents;
+        if (!empty($allowlist) && !in_array($agent->id, $allowlist, true)) {
+            return ToolResult::error("Agent '{$agent->name}' is not in this agent's allowed sub-agents list.");
+        }
 
-            // Prevent self-call
-            if ($callerAgent->id === $agent->id) {
-                return ToolResult::error("An agent cannot call itself as a sub-agent.");
-            }
+        // Prevent self-call
+        if ($callerAgent->id === $agent->id) {
+            return ToolResult::error("An agent cannot call itself as a sub-agent.");
         }
 
         try {

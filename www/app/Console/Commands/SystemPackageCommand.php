@@ -385,7 +385,8 @@ class SystemPackageCommand extends Command
         $package->update(['status' => SystemPackage::STATUS_INSTALLING]);
 
         // Install in the queue container (where Claude Code and MCP servers run)
-        $containers = ['pocket-dev-queue', 'pocket-dev-php'];
+        $projectName = config('pocketdev.project_name', 'pocket-dev');
+        $containers = [$projectName . '-queue', $projectName . '-php'];
         $lastError = null;
         $queueSuccess = false;
 
