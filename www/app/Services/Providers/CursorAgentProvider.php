@@ -369,6 +369,17 @@ class CursorAgentProvider extends AbstractCliProvider
         $levelMap = $variants['level_map'] ?? [];
         $mappedEffort = $levelMap[$effort] ?? $effort;
 
+        // For suffix-only models (GPT), 'none' means use the lowest available level
+        // since these models don't have a separate non-thinking variant
+        if ($effort === 'none' && $type === 'suffix') {
+            if (in_array('none', $availableLevels)) {
+                $mappedEffort = $levelMap['none'] ?? 'none';
+            } else {
+                $effort = $availableLevels[0] ?? $default;
+                $mappedEffort = $levelMap[$effort] ?? $effort;
+            }
+        }
+
         // Validate effort is available for this model; fall back to default
         if ($effort !== 'none' && !in_array($effort, $availableLevels) && !isset($levelMap[$effort])) {
             $effort = $default;
