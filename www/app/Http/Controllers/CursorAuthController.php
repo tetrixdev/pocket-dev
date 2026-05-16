@@ -76,14 +76,14 @@ class CursorAuthController extends Controller
             $dir = dirname($this->credentialsPath);
             if (!is_dir($dir)) {
                 mkdir($dir, 0770, true);
-            } else {
-                // Ensure existing directory is group-writable (appuser + www-data)
-                chmod($dir, 0770);
             }
 
-            // Save the file with group read/write (appuser owns, www-data in group)
+            // Save the file
             file_put_contents($this->credentialsPath, json_encode($data, JSON_PRETTY_PRINT));
-            chmod($this->credentialsPath, 0660);
+
+            // Try to set group-writable permissions (non-fatal if we're not the owner)
+            @chmod($dir, 0770);
+            @chmod($this->credentialsPath, 0660);
 
             Log::info("[Cursor Auth] Credentials saved from JSON input");
 
