@@ -141,7 +141,7 @@ class CursorAgentProvider extends AbstractCliProvider
         Conversation $conversation,
         array $options
     ): string {
-        $model = $conversation->model ?? config('ai.providers.cursor_agent.default_model', 'claude-4.6-sonnet-medium');
+        $model = $conversation->model ?? config('ai.providers.cursor_agent.default_model', 'auto');
 
         // Sync MCP servers from Claude Code config to Cursor config
         $workingDir = $conversation->working_directory ?? '/workspace';
@@ -203,7 +203,6 @@ class CursorAgentProvider extends AbstractCliProvider
             'currentToolUse' => null,
             'sessionId' => null,
             'totalCost' => null,
-            'gotStreamEvents' => false,
             'inputTokens' => 0,
             'outputTokens' => 0,
         ];
@@ -217,6 +216,7 @@ class CursorAgentProvider extends AbstractCliProvider
     protected function classifyEventForTimeout(array $parsedData): array
     {
         $peekType = $parsedData['type'] ?? '';
+        $subtype = $parsedData['subtype'] ?? '';
 
         // Tool progress heartbeats
         if ($peekType === 'tool_progress') {
@@ -226,23 +226,30 @@ class CursorAgentProvider extends AbstractCliProvider
         $phase = null;
         $resetsTimer = true;
 
-        if ($peekType === 'stream_event') {
-            $event = $parsedData['event'] ?? [];
-            $streamEventType = is_array($event) ? ($event['type'] ?? '') : '';
-            if ($streamEventType === 'content_block_delta') {
+        switch ($peekType) {
+            case 'thinking':
                 $phase = 'streaming';
-            }
-        } elseif ($peekType === 'assistant') {
-            $message = is_array($parsedData['message'] ?? null) ? $parsedData['message'] : [];
-            $stopReason = $message['stop_reason'] ?? null;
-            if ($stopReason === 'tool_use') {
-                $phase = 'tool_execution';
-            }
-        } elseif ($peekType === 'user') {
-            $phase = 'pending_response';
-        } elseif ($peekType === 'result') {
-            // Result indicates completion
-            $phase = 'streaming';
+                break;
+
+            case 'tool_call':
+                $phase = ($subtype === 'started') ? 'tool_execution' : 'pending_response';
+                break;
+
+            case 'assistant':
+                $phase = 'streaming';
+                break;
+
+            case 'user':
+                $phase = 'pending_response';
+                break;
+
+            case 'result':
+                $phase = 'streaming';
+                break;
+
+            case 'system':
+                $phase = 'initial';
+                break;
         }
 
         return ['phase' => $phase, 'resetsTimer' => $resetsTimer, 'shouldSkip' => false];
@@ -310,87 +317,61 @@ class CursorAgentProvider extends AbstractCliProvider
     /**
      * Parse a JSONL line and yield StreamEvents.
      *
-     * Start with Claude Code compatible parser since Cursor's stream-json format
-     * is expected to be similar. Unknown events are logged and skipped defensively.
-     *
-     * Known event types (based on Claude Code stream-json):
+     * Cursor Agent uses a different stream format than Claude Code:
+     * - system/init: Session init with session_id, model
      * - user: User message echo
-     * - assistant: Assistant message (with content blocks)
-     * - result: Final result with session_id, cost, etc.
-     * - stream_event: Streaming deltas (content_block_start/delta/stop, message_start/delta/stop)
-     * - system: System events (compaction, etc.)
+     * - thinking/delta: Thinking text delta (streaming)
+     * - thinking/completed: Thinking block done
+     * - tool_call/started: Tool execution started (with tool details)
+     * - tool_call/completed: Tool execution completed (with output)
+     * - assistant: Full assistant message (with content blocks)
+     * - result: Final result with session_id, usage stats
+     * - error: Error message
      */
     protected function parseJsonLine(string $line, array &$state, ?array $preDecoded = null): Generator
     {
         $data = $preDecoded ?? json_decode($line, true);
 
         if (!is_array($data)) {
-            Log::channel('api')->debug('CursorAgentProvider: Failed to parse JSON line', [
-                'line' => substr($line, 0, 200),
-            ]);
+            // Cursor Agent may emit non-JSON lines (e.g., "S: Named models unavailable...")
+            // Skip them gracefully instead of logging as errors
+            $trimmed = trim($line);
+            if ($trimmed !== '' && !str_starts_with($trimmed, '{')) {
+                Log::channel('api')->debug('CursorAgentProvider: Non-JSON line from CLI', [
+                    'line' => substr($trimmed, 0, 200),
+                ]);
+            }
             return;
         }
 
         $type = $data['type'] ?? '';
 
         switch ($type) {
+            case 'system':
+                // Init event: capture session_id
+                if (isset($data['session_id'])) {
+                    $state['sessionId'] = $data['session_id'];
+                }
+                break;
+
             case 'user':
                 // User message echo, nothing to emit to frontend
                 break;
 
+            case 'thinking':
+                yield from $this->parseThinkingEvent($data, $state);
+                break;
+
+            case 'tool_call':
+                yield from $this->parseToolCallEvent($data, $state);
+                break;
+
             case 'assistant':
-                if (!$state['gotStreamEvents']) {
-                    yield from $this->parseAssistantMessage($data, $state);
-                }
+                yield from $this->parseAssistantMessage($data, $state);
                 break;
 
             case 'result':
-                if (isset($data['session_id'])) {
-                    $state['sessionId'] = $data['session_id'];
-                }
-                // Also check for chat_id (Cursor-specific)
-                if (isset($data['chat_id'])) {
-                    $state['sessionId'] = $data['chat_id'];
-                }
-                if (isset($data['total_cost_usd'])) {
-                    $state['totalCost'] = (float) $data['total_cost_usd'];
-                }
-                Log::channel('api')->info('CursorAgentProvider: Result received', [
-                    'subtype' => $data['subtype'] ?? 'unknown',
-                    'is_error' => $data['is_error'] ?? false,
-                    'session_id' => $state['sessionId'],
-                ]);
-
-                if (!empty($data['is_error'])) {
-                    $errorMsg = $data['result'] ?? null;
-                    if (is_array($errorMsg)) {
-                        $errorMsg = json_encode($errorMsg);
-                    }
-                    if (($errorMsg === null || $errorMsg === '') && !empty($data['errors']) && is_array($data['errors'])) {
-                        $firstError = $data['errors'][0] ?? null;
-                        $errorMsg = is_array($firstError) ? json_encode($firstError) : $firstError;
-                    }
-                    if ($errorMsg === null || $errorMsg === '') {
-                        $errorMsg = 'Cursor Agent error: ' . ($data['subtype'] ?? 'unknown error');
-                    }
-                    $errorMsg = is_string($errorMsg) ? $errorMsg : (string) $errorMsg;
-
-                    Log::channel('api')->error('CursorAgentProvider: CLI returned error result', [
-                        'error_message' => $errorMsg,
-                    ]);
-                    yield StreamEvent::error($errorMsg);
-                }
-                break;
-
-            case 'stream_event':
-                $state['gotStreamEvents'] = true;
-                yield from $this->parseStreamEvent($data, $state);
-                break;
-
-            case 'system':
-                if (isset($data['session_id'])) {
-                    $state['sessionId'] = $data['session_id'];
-                }
+                yield from $this->parseResultEvent($data, $state);
                 break;
 
             case 'error':
@@ -406,136 +387,166 @@ class CursorAgentProvider extends AbstractCliProvider
         }
     }
 
-    private function parseStreamEvent(array $data, array &$state): Generator
+    /**
+     * Handle thinking events (thinking/delta, thinking/completed).
+     */
+    private function parseThinkingEvent(array $data, array &$state): Generator
     {
-        $event = $data['event'] ?? [];
-        if (!is_array($event)) {
-            Log::channel('api')->debug('CursorAgentProvider: Non-array event in stream_event');
-            return;
-        }
-        $eventType = $event['type'] ?? '';
+        $subtype = $data['subtype'] ?? '';
 
-        switch ($eventType) {
-            case 'content_block_start':
-                $contentBlock = $event['content_block'] ?? [];
-                $blockType = $contentBlock['type'] ?? '';
-
-                if ($blockType === 'thinking') {
-                    if ($state['textStarted']) {
-                        yield StreamEvent::textStop($state['blockIndex']);
-                        $state['textStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-                    if (!$state['thinkingStarted']) {
-                        yield StreamEvent::thinkingStart($state['blockIndex']);
-                        $state['thinkingStarted'] = true;
-                    }
-                } elseif ($blockType === 'tool_use') {
-                    if ($state['textStarted']) {
-                        yield StreamEvent::textStop($state['blockIndex']);
-                        $state['textStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-                    if ($state['thinkingStarted']) {
-                        yield StreamEvent::thinkingStop($state['blockIndex']);
-                        $state['thinkingStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-                    $toolId = $contentBlock['id'] ?? 'tool_' . $state['blockIndex'];
-                    $toolName = $contentBlock['name'] ?? 'unknown';
-                    $state['currentToolUse'] = [
-                        'id' => $toolId,
-                        'name' => $toolName,
-                        'inputJson' => '',
-                    ];
-                    yield StreamEvent::toolUseStart($state['blockIndex'], $toolId, $toolName);
-                } elseif ($blockType === 'text') {
-                    if ($state['thinkingStarted']) {
-                        yield StreamEvent::thinkingStop($state['blockIndex']);
-                        $state['thinkingStarted'] = false;
-                        $state['blockIndex']++;
-                    }
-                    if (!$state['textStarted']) {
-                        yield StreamEvent::textStart($state['blockIndex']);
-                        $state['textStarted'] = true;
-                    }
-                }
-                break;
-
-            case 'content_block_delta':
-                $delta = $event['delta'] ?? [];
-                $deltaType = $delta['type'] ?? '';
-
-                if ($deltaType === 'thinking_delta') {
-                    $thinking = $delta['thinking'] ?? '';
-                    if ($thinking !== '') {
-                        if (!$state['thinkingStarted']) {
-                            yield StreamEvent::thinkingStart($state['blockIndex']);
-                            $state['thinkingStarted'] = true;
-                        }
-                        yield StreamEvent::thinkingDelta($state['blockIndex'], $thinking);
-                    }
-                } elseif ($deltaType === 'text_delta') {
-                    $text = $delta['text'] ?? '';
-                    if ($text !== '') {
-                        if (!$state['textStarted']) {
-                            yield StreamEvent::textStart($state['blockIndex']);
-                            $state['textStarted'] = true;
-                        }
-                        yield StreamEvent::textDelta($state['blockIndex'], $text);
-                    }
-                } elseif ($deltaType === 'input_json_delta') {
-                    $partialJson = $delta['partial_json'] ?? '';
-                    if ($partialJson !== '' && $state['currentToolUse'] !== null) {
-                        $state['currentToolUse']['inputJson'] .= $partialJson;
-                        yield StreamEvent::toolUseDelta($state['blockIndex'], $partialJson);
-                    }
-                } elseif ($deltaType === 'signature_delta') {
-                    $signature = $delta['signature'] ?? '';
-                    if ($signature !== '') {
-                        yield StreamEvent::thinkingSignature($state['blockIndex'], $signature);
-                    }
-                }
-                break;
-
-            case 'content_block_stop':
-                if ($state['thinkingStarted']) {
-                    yield StreamEvent::thinkingStop($state['blockIndex']);
-                    $state['thinkingStarted'] = false;
-                    $state['blockIndex']++;
-                } elseif ($state['textStarted']) {
+        if ($subtype === 'delta') {
+            $text = $data['text'] ?? '';
+            if ($text !== '') {
+                // Close text block if open (thinking comes before text)
+                if ($state['textStarted']) {
                     yield StreamEvent::textStop($state['blockIndex']);
                     $state['textStarted'] = false;
                     $state['blockIndex']++;
-                } elseif ($state['currentToolUse'] !== null) {
-                    yield StreamEvent::toolUseStop($state['blockIndex']);
-                    $state['currentToolUse'] = null;
-                    $state['blockIndex']++;
                 }
-                break;
-
-            case 'message_start':
-            case 'message_delta':
-                $message = $event['message'] ?? [];
-                $usage = $message['usage'] ?? [];
-                if (!empty($usage)) {
-                    $state['inputTokens'] = ($usage['input_tokens'] ?? 0)
-                        + ($usage['cache_creation_input_tokens'] ?? 0)
-                        + ($usage['cache_read_input_tokens'] ?? 0);
-                    $state['outputTokens'] = $usage['output_tokens'] ?? 0;
+                if (!$state['thinkingStarted']) {
+                    yield StreamEvent::thinkingStart($state['blockIndex']);
+                    $state['thinkingStarted'] = true;
                 }
-                break;
-
-            case 'message_stop':
-                break;
-
-            default:
-                Log::channel('api')->debug('CursorAgentProvider: Unknown stream event type', [
-                    'event_type' => $eventType,
-                ]);
+                yield StreamEvent::thinkingDelta($state['blockIndex'], $text);
+            }
+        } elseif ($subtype === 'completed') {
+            if ($state['thinkingStarted']) {
+                yield StreamEvent::thinkingStop($state['blockIndex']);
+                $state['thinkingStarted'] = false;
+                $state['blockIndex']++;
+            }
         }
     }
 
+    /**
+     * Handle tool_call events (tool_call/started, tool_call/completed).
+     */
+    private function parseToolCallEvent(array $data, array &$state): Generator
+    {
+        $subtype = $data['subtype'] ?? '';
+        $callId = $data['call_id'] ?? ('tool_' . $state['blockIndex']);
+
+        if ($subtype === 'started') {
+            // Close any open text/thinking blocks
+            if ($state['textStarted']) {
+                yield StreamEvent::textStop($state['blockIndex']);
+                $state['textStarted'] = false;
+                $state['blockIndex']++;
+            }
+            if ($state['thinkingStarted']) {
+                yield StreamEvent::thinkingStop($state['blockIndex']);
+                $state['thinkingStarted'] = false;
+                $state['blockIndex']++;
+            }
+
+            // Determine tool name from the tool_call structure
+            // Format: {"tool_call": {"shellToolCall": {..., "description": "..."}, ...}}
+            $toolCall = $data['tool_call'] ?? [];
+            $toolName = 'unknown';
+            $description = '';
+            $inputJson = '{}';
+
+            foreach ($toolCall as $key => $value) {
+                if (is_array($value)) {
+                    // Convert camelCase key to readable name (e.g., shellToolCall -> shell)
+                    $toolName = str_replace('ToolCall', '', $key);
+                    $toolName = str_replace('toolCall', '', $toolName) ?: $key;
+                    $description = $value['description'] ?? '';
+
+                    // Extract relevant args for display
+                    $args = $value['args'] ?? $value;
+                    // Remove internal fields, keep user-visible ones
+                    unset($args['toolCallId'], $args['skipApproval'], $args['simpleCommands'],
+                          $args['hasInputRedirect'], $args['hasOutputRedirect'], $args['parsingResult'],
+                          $args['fileOutputThresholdBytes'], $args['isBackground'], $args['timeoutBehavior'],
+                          $args['hardTimeout'], $args['closeStdin']);
+                    $inputJson = json_encode($args);
+                    break;
+                }
+            }
+
+            $state['currentToolUse'] = [
+                'id' => $callId,
+                'name' => $toolName,
+            ];
+
+            yield StreamEvent::toolUseStart($state['blockIndex'], $callId, $toolName);
+            yield StreamEvent::toolUseDelta($state['blockIndex'], $inputJson);
+
+        } elseif ($subtype === 'completed') {
+            // Tool completed with output
+            if ($state['currentToolUse'] !== null) {
+                yield StreamEvent::toolUseStop($state['blockIndex']);
+                $state['currentToolUse'] = null;
+                $state['blockIndex']++;
+            }
+
+            // Emit tool result
+            $output = $data['output'] ?? '';
+            if (is_array($output)) {
+                $output = json_encode($output);
+            }
+            yield StreamEvent::toolResult($callId, (string) $output, false);
+        }
+    }
+
+    /**
+     * Handle result event with usage stats.
+     */
+    private function parseResultEvent(array $data, array &$state): Generator
+    {
+        if (isset($data['session_id'])) {
+            $state['sessionId'] = $data['session_id'];
+        }
+        if (isset($data['chat_id'])) {
+            $state['sessionId'] = $data['chat_id'];
+        }
+
+        // Extract usage (Cursor uses camelCase: inputTokens, outputTokens)
+        $usage = $data['usage'] ?? [];
+        if (!empty($usage)) {
+            $state['inputTokens'] = ($usage['inputTokens'] ?? $usage['input_tokens'] ?? 0)
+                + ($usage['cacheReadTokens'] ?? $usage['cache_read_input_tokens'] ?? 0)
+                + ($usage['cacheWriteTokens'] ?? $usage['cache_creation_input_tokens'] ?? 0);
+            $state['outputTokens'] = $usage['outputTokens'] ?? $usage['output_tokens'] ?? 0;
+        }
+
+        if (isset($data['total_cost_usd'])) {
+            $state['totalCost'] = (float) $data['total_cost_usd'];
+        }
+
+        Log::channel('api')->info('CursorAgentProvider: Result received', [
+            'subtype' => $data['subtype'] ?? 'unknown',
+            'is_error' => $data['is_error'] ?? false,
+            'session_id' => $state['sessionId'],
+            'duration_ms' => $data['duration_ms'] ?? null,
+        ]);
+
+        if (!empty($data['is_error'])) {
+            $errorMsg = $data['result'] ?? null;
+            if (is_array($errorMsg)) {
+                $errorMsg = json_encode($errorMsg);
+            }
+            if (($errorMsg === null || $errorMsg === '') && !empty($data['errors']) && is_array($data['errors'])) {
+                $firstError = $data['errors'][0] ?? null;
+                $errorMsg = is_array($firstError) ? json_encode($firstError) : $firstError;
+            }
+            if ($errorMsg === null || $errorMsg === '') {
+                $errorMsg = 'Cursor Agent error: ' . ($data['subtype'] ?? 'unknown error');
+            }
+            $errorMsg = is_string($errorMsg) ? $errorMsg : (string) $errorMsg;
+
+            Log::channel('api')->error('CursorAgentProvider: CLI returned error result', [
+                'error_message' => $errorMsg,
+            ]);
+            yield StreamEvent::error($errorMsg);
+        }
+    }
+
+    /**
+     * Parse assistant message with content blocks.
+     * Handles text, thinking, tool_use, and tool_result blocks.
+     */
     private function parseAssistantMessage(array $data, array &$state): Generator
     {
         $message = $data['message'] ?? [];
@@ -552,6 +563,12 @@ class CursorAgentProvider extends AbstractCliProvider
 
             switch ($blockType) {
                 case 'text':
+                    // Close thinking if open
+                    if ($state['thinkingStarted']) {
+                        yield StreamEvent::thinkingStop($state['blockIndex']);
+                        $state['thinkingStarted'] = false;
+                        $state['blockIndex']++;
+                    }
                     if (!$state['textStarted']) {
                         yield StreamEvent::textStart($state['blockIndex']);
                         $state['textStarted'] = true;
@@ -563,12 +580,12 @@ class CursorAgentProvider extends AbstractCliProvider
                     break;
 
                 case 'thinking':
+                    if ($state['textStarted']) {
+                        yield StreamEvent::textStop($state['blockIndex']);
+                        $state['textStarted'] = false;
+                        $state['blockIndex']++;
+                    }
                     if (!$state['thinkingStarted']) {
-                        if ($state['textStarted']) {
-                            yield StreamEvent::textStop($state['blockIndex']);
-                            $state['textStarted'] = false;
-                            $state['blockIndex']++;
-                        }
                         yield StreamEvent::thinkingStart($state['blockIndex']);
                         $state['thinkingStarted'] = true;
                     }

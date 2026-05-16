@@ -63,7 +63,7 @@ return [
         'cursor_agent' => [
             // No API key needed by default - uses Cursor subscription via browser login
             // API key fallback stored in database (AppSettingsService)
-            'default_model' => 'claude-4.6-sonnet-medium',
+            'default_model' => 'auto',
             // Log all streaming deltas (very verbose, for debugging stream issues)
             'verbose_logging' => env('PD_CURSOR_AGENT_VERBOSE_LOGGING', false),
         ],
@@ -466,7 +466,19 @@ return [
         // Reasoning is baked into model IDs (e.g. -thinking-high, -xhigh)
         // Source: `agent models` command output
         'cursor_agent' => [
-            // Claude models (via Cursor)
+            // Auto model (required for free/hobby plans, works on all plans)
+            [
+                'model_id'                      => 'auto',
+                'display_name'                  => 'Auto (Recommended)',
+                'context_window'                => 200000,
+                'max_context_window'            => 200000,
+                'max_output_tokens'             => 64000,
+                'input_price_per_million'       => null,
+                'output_price_per_million'      => null,
+                'cache_write_price_per_million' => null,
+                'cache_read_price_per_million'  => null,
+            ],
+            // Claude models (via Cursor - requires Pro/Business plan)
             [
                 'model_id'                      => 'claude-opus-4-7-thinking-high',
                 'display_name'                  => 'Opus 4.7 Thinking',
