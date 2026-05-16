@@ -222,12 +222,8 @@ class AgentController extends Controller
             $defaultAgent = Agent::enabled()->defaultFor($provider)->first();
 
             $providers[$provider] = [
-                'name' => match ($provider) {
-                    Agent::PROVIDER_ANTHROPIC => 'Anthropic',
-                    Agent::PROVIDER_OPENAI => 'OpenAI',
-                    Agent::PROVIDER_CLAUDE_CODE => 'Claude Code',
-                    default => ucfirst($provider),
-                },
+                'name' => Provider::tryFrom($provider)?->label()
+                    ?? ucwords(str_replace('_', ' ', $provider)),
                 'has_agents' => $hasAgents,
                 'default_agent_id' => $defaultAgent?->id,
                 'default_agent_name' => $defaultAgent?->name,

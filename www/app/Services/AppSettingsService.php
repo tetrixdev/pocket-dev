@@ -300,6 +300,45 @@ class AppSettingsService
         Log::info('Auth bypass settings cleared');
     }
 
+    // =========================================================================
+    // Cursor Agent Settings
+    // =========================================================================
+
+    /**
+     * Get Cursor Agent API key (fallback for non-subscription usage)
+     */
+    public function getCursorAgentApiKey(): ?string
+    {
+        return $this->get('cursor_agent_api_key');
+    }
+
+    /**
+     * Set Cursor Agent API key
+     */
+    public function setCursorAgentApiKey(?string $apiKey): AppSetting
+    {
+        Log::info('Cursor Agent API key updated');
+        return $this->set('cursor_agent_api_key', $apiKey);
+    }
+
+    /**
+     * Check if Cursor Agent API key is configured
+     */
+    public function hasCursorAgentApiKey(): bool
+    {
+        $key = $this->getCursorAgentApiKey();
+        return !empty($key);
+    }
+
+    /**
+     * Delete Cursor Agent API key
+     */
+    public function deleteCursorAgentApiKey(): bool
+    {
+        Log::info('Cursor Agent API key deleted');
+        return $this->delete('cursor_agent_api_key');
+    }
+
     /**
      * Check if any AI provider is configured
      */
@@ -309,6 +348,7 @@ class AppSettingsService
             || $this->hasOpenAiApiKey()
             || $this->isClaudeCodeAuthenticated()
             || $this->isCodexAuthenticated()
+            || $this->isCursorAgentAuthenticated()
             || $this->hasOpenAiCompatibleBaseUrl();
     }
 
@@ -330,6 +370,16 @@ class AppSettingsService
         $home = getenv('HOME') ?: '/home/appuser';
         $credentialsFile = $home . '/.codex/auth.json';
         return file_exists($credentialsFile);
+    }
+
+    /**
+     * Check if Cursor Agent CLI is authenticated
+     */
+    public function isCursorAgentAuthenticated(): bool
+    {
+        $home = getenv('HOME') ?: '/home/appuser';
+        $credentialsFile = $home . '/.config/cursor/auth.json';
+        return file_exists($credentialsFile) || $this->hasCursorAgentApiKey();
     }
 
     // =========================================================================
