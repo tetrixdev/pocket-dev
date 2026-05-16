@@ -2316,6 +2316,19 @@ class ConfigController extends Controller
     // =========================================================================
 
     /**
+     * Show usage dashboard page
+     */
+    public function showUsage(Request $request)
+    {
+        $request->session()->put('config_last_section', 'usage');
+
+        return view('config.usage', [
+            'hasClaudeToken' => app(\App\Services\ClaudeCodeUsageService::class)->hasValidToken(),
+            'hasCursorCredentials' => app(\App\Services\CursorUsageService::class)->hasCredentials(),
+        ]);
+    }
+
+    /**
      * Show system management page
      */
     public function showSystem(Request $request, VersionService $versionService)
