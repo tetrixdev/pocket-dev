@@ -2372,6 +2372,13 @@ class ConfigController extends Controller
     /**
      * Show usage dashboard page
      */
+    public function showNotifications(Request $request)
+    {
+        $request->session()->put('config_last_section', 'notifications');
+
+        return view('config.notifications');
+    }
+
     public function showUsage(Request $request)
     {
         $request->session()->put('config_last_section', 'usage');

@@ -154,6 +154,9 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 // Dispatch async embedding job (runs after lock released)
                 RequestFlowLogger::log('job.handle.dispatching_embeddings', 'Dispatching embeddings job');
                 GenerateConversationEmbeddings::dispatch($conversation);
+
+                // Send push notification if enabled
+                $this->dispatchPushNotification($conversation, 'completed');
             }
 
             RequestFlowLogger::endRequest('success');
@@ -169,6 +172,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             // $conversation may not be defined if firstOrFail() threw
             if (isset($conversation)) {
                 $conversation->markFailed();
+                $this->dispatchPushNotification($conversation, 'failed');
             }
             $streamManager->failStream($this->conversationUuid, $e->getMessage());
             RequestFlowLogger::endRequest('failed');
@@ -1337,5 +1341,52 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
 
         return collect($content)
             ->contains(fn($block) => ($block['type'] ?? '') === 'text');
+    }
+
+    /**
+     * Dispatch a push notification if conditions are met.
+     */
+    private function dispatchPushNotification(Conversation $conversation, string $status): void
+    {
+        try {
+            $user = \App\Models\User::first();
+            if (!$user) {
+                return;
+            }
+
+            // Check if any push subscriptions exist (quick check to avoid unnecessary work)
+            if (\App\Models\PushSubscription::where('user_id', $user->id)->count() === 0) {
+                return;
+            }
+
+            // Check notification settings
+            $settingKey = $status === 'completed' ? 'push.notify_on_complete' : 'push.notify_on_failure';
+            if (!\App\Models\Setting::get($settingKey, true)) {
+                return;
+            }
+
+            // Check minimum duration threshold
+            $minDuration = (int) \App\Models\Setting::get('push.min_duration_seconds', 5);
+            if ($minDuration > 0 && $conversation->last_activity_at) {
+                $startedAt = $conversation->updated_at ?? $conversation->created_at;
+                $duration = now()->diffInSeconds($startedAt);
+                if ($duration < $minDuration) {
+                    return;
+                }
+            }
+
+            $title = $status === 'completed' ? 'Agent klaar' : 'Agent gefaald';
+            $body = $conversation->title ?? ($status === 'completed' ? 'Taak voltooid' : 'Taak mislukt');
+
+            SendPushNotification::dispatch(
+                userId: $user->id,
+                title: $title,
+                body: $body,
+                url: "/session/{$conversation->screen?->session_id}",
+            );
+        } catch (\Throwable $e) {
+            // Never let push notification errors affect the main flow
+            Log::debug('Push notification dispatch failed', ['error' => $e->getMessage()]);
+        }
     }
 }

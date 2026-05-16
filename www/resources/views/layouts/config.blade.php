@@ -207,6 +207,14 @@
                     </a>
                 </div>
 
+                <!-- Notifications -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.notifications') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.notifications' ? 'active' : '' }}">
+                        🔔 Notifications
+                    </a>
+                </div>
+
                 <!-- Usage Dashboard -->
                 <div class="border-b border-gray-700">
                     <a href="{{ route('config.usage') }}"
@@ -448,6 +456,15 @@
                    @click="showMobileDrawer = false"
                    class="category-button w-full block {{ Route::currentRouteName() == 'config.backup' ? 'active' : '' }}">
                     💾 Backup
+                </a>
+            </div>
+
+            <!-- Notifications -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.notifications') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.notifications' ? 'active' : '' }}">
+                    🔔 Notifications
                 </a>
             </div>
 

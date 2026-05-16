@@ -10,6 +10,7 @@
         "laravel/fortify": "^1.36",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
+        "minishlink/web-push": "^10.0",
         "predis/predis": "^3.3"
     },
     "require-dev": {

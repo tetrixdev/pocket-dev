@@ -271,6 +271,9 @@ Route::get("/config/backup/download/{filename}", [\App\Http\Controllers\BackupCo
 Route::delete("/config/backup/{filename}", [\App\Http\Controllers\BackupController::class, "delete"])->name("config.backup.delete");
 Route::post("/config/backup/restore", [\App\Http\Controllers\BackupController::class, "restore"])->name("config.backup.restore");
 
+// Notifications
+Route::get("/config/notifications", [ConfigController::class, "showNotifications"])->name("config.notifications");
+
 // Usage dashboard
 Route::get("/config/usage", [ConfigController::class, "showUsage"])->name("config.usage");
 
@@ -409,6 +412,26 @@ Route::prefix('api')->group(function () {
     Route::prefix('settings')->group(function () {
         Route::get('chat-defaults', [SettingsController::class, 'chatDefaults']);
         Route::post('chat-defaults', [SettingsController::class, 'updateChatDefaults']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Push Notification Routes
+    |--------------------------------------------------------------------------
+    |
+    | Web Push subscription management and notification settings.
+    |
+    */
+
+    Route::prefix('push')->group(function () {
+        Route::get('vapid-key', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'vapidKey']);
+        Route::post('subscribe', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'subscribe']);
+        Route::post('unsubscribe', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'unsubscribe']);
+        Route::get('subscriptions', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'index']);
+        Route::delete('subscriptions/{id}', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'destroy']);
+        Route::post('test', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'test']);
+        Route::get('settings', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'getSettings']);
+        Route::post('settings', [\App\Http\Controllers\Api\PushSubscriptionController::class, 'saveSettings']);
     });
 
     /*
