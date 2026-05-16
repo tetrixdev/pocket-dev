@@ -1349,13 +1349,8 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
     private function dispatchPushNotification(Conversation $conversation, string $status): void
     {
         try {
-            $user = \App\Models\User::first();
-            if (!$user) {
-                return;
-            }
-
             // Check if any push subscriptions exist (quick check to avoid unnecessary work)
-            if (\App\Models\PushSubscription::where('user_id', $user->id)->count() === 0) {
+            if (\App\Models\PushSubscription::count() === 0) {
                 return;
             }
 
@@ -1380,8 +1375,11 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             $sessionId = $conversation->screen?->session_id;
             $url = $sessionId ? "/session/{$sessionId}" : '/';
 
+            // userId is nullable — in no-auth mode sends to all subscriptions
+            $userId = \App\Models\User::first()?->id;
+
             SendPushNotification::dispatch(
-                userId: $user->id,
+                userId: $userId,
                 title: $title,
                 body: $body,
                 url: $url,

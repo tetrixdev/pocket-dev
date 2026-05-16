@@ -11,6 +11,14 @@ use Illuminate\Http\Request;
 class PushSubscriptionController extends Controller
 {
     /**
+     * Get the current user ID, or null in no-auth mode.
+     */
+    private function getUserId(Request $request): ?int
+    {
+        return $request->user()?->id ?? \App\Models\User::first()?->id;
+    }
+
+    /**
      * Return the VAPID public key for frontend subscription.
      */
     public function vapidKey(): JsonResponse
@@ -28,6 +36,7 @@ class PushSubscriptionController extends Controller
 
     /**
      * Store a push subscription (upsert on endpoint).
+     * Works in both auth and no-auth mode.
      */
     public function subscribe(Request $request): JsonResponse
     {
@@ -37,16 +46,10 @@ class PushSubscriptionController extends Controller
             'auth_token' => 'required|string|max:512',
         ]);
 
-        $user = $request->user() ?? \App\Models\User::first();
-
-        if (!$user) {
-            return response()->json(['error' => 'No user found'], 401);
-        }
-
         $subscription = PushSubscription::updateOrCreate(
             ['endpoint' => $validated['endpoint']],
             [
-                'user_id' => $user->id,
+                'user_id' => $this->getUserId($request),
                 'public_key' => $validated['public_key'],
                 'auth_token' => $validated['auth_token'],
                 'user_agent' => $request->userAgent(),
@@ -80,12 +83,15 @@ class PushSubscriptionController extends Controller
      */
     public function destroy(Request $request, int $id): JsonResponse
     {
-        $user = $request->user() ?? \App\Models\User::first();
+        $userId = $this->getUserId($request);
 
-        $subscription = PushSubscription::where('id', $id)
-            ->where('user_id', $user?->id)
-            ->firstOrFail();
+        // Scope to current user if authenticated, otherwise allow any
+        $query = PushSubscription::where('id', $id);
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
 
+        $subscription = $query->firstOrFail();
         $subscription->delete();
 
         return response()->json(['deleted' => true]);
@@ -96,13 +102,14 @@ class PushSubscriptionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user() ?? \App\Models\User::first();
+        $userId = $this->getUserId($request);
 
-        if (!$user) {
-            return response()->json(['subscriptions' => []]);
+        $query = PushSubscription::query();
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
         }
 
-        $subscriptions = PushSubscription::where('user_id', $user->id)
+        $subscriptions = $query
             ->orderByDesc('updated_at')
             ->get(['id', 'endpoint', 'user_agent', 'created_at', 'updated_at']);
 
@@ -114,20 +121,20 @@ class PushSubscriptionController extends Controller
      */
     public function test(Request $request): JsonResponse
     {
-        $user = $request->user() ?? \App\Models\User::first();
+        $userId = $this->getUserId($request);
 
-        if (!$user) {
-            return response()->json(['error' => 'No user found'], 401);
+        $query = PushSubscription::query();
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
         }
-
-        $count = PushSubscription::where('user_id', $user->id)->count();
+        $count = $query->count();
 
         if ($count === 0) {
             return response()->json(['error' => 'No subscriptions found'], 404);
         }
 
-        \App\Jobs\SendPushNotification::dispatch(
-            userId: $user->id,
+        \App\Jobs\SendPushNotification::dispatchSync(
+            userId: $userId,
             title: 'Test notificatie',
             body: 'Push notificaties werken!',
             url: '/',

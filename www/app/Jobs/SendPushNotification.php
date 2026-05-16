@@ -20,7 +20,7 @@ class SendPushNotification implements ShouldQueue
     public int $timeout = 30;
 
     public function __construct(
-        public int $userId,
+        public ?int $userId,
         public string $title,
         public string $body,
         public string $url = '/',
@@ -28,7 +28,11 @@ class SendPushNotification implements ShouldQueue
 
     public function handle(): void
     {
-        $subscriptions = PushSubscription::where('user_id', $this->userId)->get();
+        $query = PushSubscription::query();
+        if ($this->userId !== null) {
+            $query->where('user_id', $this->userId);
+        }
+        $subscriptions = $query->get();
 
         if ($subscriptions->isEmpty()) {
             return;
