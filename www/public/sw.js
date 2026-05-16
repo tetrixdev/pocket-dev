@@ -38,9 +38,12 @@ self.addEventListener('notificationclick', (event) => {
             // Try to focus an existing PocketDev tab
             for (const client of clientList) {
                 if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-                    client.focus();
-                    client.navigate(fullUrl);
-                    return;
+                    return client.focus().then(() => {
+                        if ('navigate' in client) {
+                            return client.navigate(fullUrl);
+                        }
+                        return clients.openWindow(fullUrl);
+                    });
                 }
             }
             // No existing tab found, open a new one

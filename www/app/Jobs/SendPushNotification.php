@@ -78,11 +78,11 @@ class SendPushNotification implements ShouldQueue
             if ($report->isSubscriptionExpired()) {
                 PushSubscription::where('endpoint', $report->getEndpoint())->delete();
                 Log::info('SendPushNotification: Removed expired subscription', [
-                    'endpoint' => $report->getEndpoint(),
+                    'endpoint_hash' => substr(hash('sha256', $report->getEndpoint()), 0, 12),
                 ]);
             } elseif (!$report->isSuccess()) {
                 Log::warning('SendPushNotification: Push failed', [
-                    'endpoint' => $report->getEndpoint(),
+                    'endpoint_hash' => substr(hash('sha256', $report->getEndpoint()), 0, 12),
                     'reason' => $report->getReason(),
                     'status' => $report->getHTTPCode(),
                 ]);

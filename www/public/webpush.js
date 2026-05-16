@@ -124,7 +124,7 @@ const PocketDevPush = {
         await subscription.unsubscribe();
 
         // Remove from backend
-        await fetch('/api/push/unsubscribe', {
+        const response = await fetch('/api/push/unsubscribe', {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -133,6 +133,10 @@ const PocketDevPush = {
             },
             body: JSON.stringify({ endpoint: subscription.endpoint }),
         });
+
+        if (!response.ok) {
+            throw new Error('Failed to remove subscription on server');
+        }
 
         return true;
     },

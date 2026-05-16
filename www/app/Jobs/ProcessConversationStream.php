@@ -63,6 +63,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
         SystemPromptBuilder $systemPromptBuilder,
         ModelRepository $modelRepository,
     ): void {
+        $jobStartedAt = now();
         RequestFlowLogger::startJob($this->conversationUuid, 'ProcessConversationStream');
         RequestFlowLogger::log('job.handle.start', 'Job handler started', [
             'prompt_length' => strlen($this->prompt),
@@ -156,7 +157,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 GenerateConversationEmbeddings::dispatch($conversation);
 
                 // Send push notification if enabled
-                $this->dispatchPushNotification($conversation, 'completed');
+                $this->dispatchPushNotification($conversation, 'completed', $jobStartedAt);
             }
 
             RequestFlowLogger::endRequest('success');
@@ -172,7 +173,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
             // $conversation may not be defined if firstOrFail() threw
             if (isset($conversation)) {
                 $conversation->markFailed();
-                $this->dispatchPushNotification($conversation, 'failed');
+                $this->dispatchPushNotification($conversation, 'failed', $jobStartedAt);
             }
             $streamManager->failStream($this->conversationUuid, $e->getMessage());
             RequestFlowLogger::endRequest('failed');
@@ -1346,7 +1347,7 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
     /**
      * Dispatch a push notification if conditions are met.
      */
-    private function dispatchPushNotification(Conversation $conversation, string $status): void
+    private function dispatchPushNotification(Conversation $conversation, string $status, \Carbon\Carbon $jobStartedAt): void
     {
         try {
             // Check if any push subscriptions exist (quick check to avoid unnecessary work)
@@ -1360,10 +1361,10 @@ class ProcessConversationStream implements ShouldQueue, ShouldBeUniqueUntilProce
                 return;
             }
 
-            // Check minimum duration threshold (use created_at as job start time)
+            // Check minimum duration threshold (use actual job run time, not conversation age)
             $minDuration = (int) \App\Models\Setting::get('push.min_duration_seconds', 5);
             if ($minDuration > 0) {
-                $duration = now()->diffInSeconds($conversation->created_at);
+                $duration = now()->diffInSeconds($jobStartedAt);
                 if ($duration < $minDuration) {
                     return;
                 }
