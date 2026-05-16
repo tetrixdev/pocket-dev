@@ -34,7 +34,7 @@
                   :class="countdown <= 5 ? 'text-amber-400' : 'text-gray-500'" x-text="countdown + 's'"></span>
 
             <button @click="refresh()" class="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition"
-                    :disabled="loading">
+                    :disabled="loading" type="button" aria-label="Refresh usage data" title="Refresh usage data">
                 <i class="fa-solid fa-arrows-rotate" :class="loading && 'animate-spin'"></i>
             </button>
         </div>
@@ -318,13 +318,13 @@
             <template x-if="filterProvider">
                 <span class="text-xs bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                     <span x-text="providerName(filterProvider)"></span>
-                    <button @click="filterProvider = null; refresh()" class="hover:text-white">&times;</button>
+                    <button @click="filterProvider = null; refresh()" class="hover:text-white" type="button" aria-label="Clear provider filter">&times;</button>
                 </span>
             </template>
             <template x-if="filterModel">
                 <span class="text-xs bg-purple-900/30 text-purple-300 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                     <span x-text="filterModel"></span>
-                    <button @click="filterModel = null; refresh()" class="hover:text-white">&times;</button>
+                    <button @click="filterModel = null; refresh()" class="hover:text-white" type="button" aria-label="Clear model filter">&times;</button>
                 </span>
             </template>
             <button @click="filterProvider = null; filterModel = null; refresh()" class="text-xs text-gray-500 hover:text-gray-300 ml-1">Clear all</button>
@@ -354,6 +354,7 @@ function usageDashboard() {
         autoRefreshValue: '30',
         countdown: 30,
         _timer: null,
+        _refreshInFlight: false,
 
         // Chart
         chart: null,
@@ -419,6 +420,8 @@ function usageDashboard() {
         // ============================================================
 
         async refresh() {
+            if (this._refreshInFlight) return;
+            this._refreshInFlight = true;
             if (!this.summary) this.loading = true;
             const interval = parseInt(this.autoRefreshValue);
             this.countdown = interval || 30;
@@ -428,20 +431,28 @@ function usageDashboard() {
                 if (this.filterProvider) url += '&provider=' + this.filterProvider;
                 if (this.filterModel) url += '&model=' + encodeURIComponent(this.filterModel);
 
-                const [s, l, c] = await Promise.all([
-                    fetch(url).then(r => r.json()),
-                    fetch('/api/usage/claude-limits').then(r => r.json()),
-                    fetch('/api/usage/cursor-limits').then(r => r.json()),
+                const fetchJson = async (endpoint) => {
+                    const res = await fetch(endpoint);
+                    if (!res.ok) throw new Error(`HTTP ${res.status} from ${endpoint}`);
+                    return res.json();
+                };
+
+                const [s, l, c] = await Promise.allSettled([
+                    fetchJson(url),
+                    fetchJson('/api/usage/claude-limits'),
+                    fetchJson('/api/usage/cursor-limits'),
                 ]);
-                this.summary = s;
-                this.limits = l;
-                this.cursorData = c;
+
+                if (s.status === 'fulfilled') this.summary = s.value;
+                this.limits = l.status === 'fulfilled' ? l.value : { available: false, reason: 'fetch_failed' };
+                this.cursorData = c.status === 'fulfilled' ? c.value : { available: false, reason: 'fetch_failed' };
             } catch (e) {
                 console.error('Usage refresh failed:', e);
+            } finally {
+                this.loading = false;
+                this._refreshInFlight = false;
+                this.$nextTick(() => this.renderChart());
             }
-
-            this.loading = false;
-            this.$nextTick(() => this.renderChart());
         },
 
         // ============================================================

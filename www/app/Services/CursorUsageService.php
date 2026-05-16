@@ -29,12 +29,13 @@ class CursorUsageService
      */
     public function getUsage(): ?array
     {
-        return Cache::remember('cursor_usage', self::CACHE_TTL, function () {
-            $session = $this->getSessionToken();
-            if (!$session) {
-                return null;
-            }
+        // Check credentials before caching to avoid locking out null for 5 min
+        $session = $this->getSessionToken();
+        if (!$session) {
+            return null;
+        }
 
+        return Cache::remember('cursor_usage', self::CACHE_TTL, function () use ($session) {
             try {
                 $response = Http::withHeaders([
                         'Cookie' => 'WorkosCursorSessionToken=' . $session['token'],
@@ -62,12 +63,12 @@ class CursorUsageService
      */
     public function getSubscription(): ?array
     {
-        return Cache::remember('cursor_subscription', self::CACHE_TTL, function () {
-            $session = $this->getSessionToken();
-            if (!$session) {
-                return null;
-            }
+        $session = $this->getSessionToken();
+        if (!$session) {
+            return null;
+        }
 
+        return Cache::remember('cursor_subscription', self::CACHE_TTL, function () use ($session) {
             try {
                 $response = Http::withHeaders([
                         'Cookie' => 'WorkosCursorSessionToken=' . $session['token'],

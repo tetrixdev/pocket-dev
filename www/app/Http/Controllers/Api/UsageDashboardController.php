@@ -250,8 +250,8 @@ class UsageDashboardController extends Controller
     {
         return ($in / 1_000_000) * $p['input']
              + ($out / 1_000_000) * $p['output']
-             + ($cw / 1_000_000) * ($p['cacheWrite'] ?: 0)
-             + ($cr / 1_000_000) * ($p['cacheRead'] ?: 0);
+             + ($cw / 1_000_000) * ($p['cacheWrite'] ?? 0)
+             + ($cr / 1_000_000) * ($p['cacheRead'] ?? 0);
     }
 
     private function getModelDisplayName(string $modelId): string

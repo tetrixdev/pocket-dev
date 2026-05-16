@@ -33,17 +33,13 @@ class ClaudeCodeUsageService
      */
     public function getUtilization(): ?array
     {
-        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL, function () {
-            $creds = $this->readCredentials();
+        // Check credentials before caching to avoid locking out null for 5 min
+        $creds = $this->readCredentials();
+        if (!$creds || $creds['expiresAt'] < intval(now()->getPreciseTimestamp(3))) {
+            return null;
+        }
 
-            if (!$creds) {
-                return null;
-            }
-
-            if ($creds['expiresAt'] < intval(now()->getPreciseTimestamp(3))) {
-                return null;
-            }
-
+        return Cache::remember(self::CACHE_KEY, self::CACHE_TTL, function () use ($creds) {
             try {
                 $response = Http::withToken($creds['accessToken'])
                     ->withHeaders([
