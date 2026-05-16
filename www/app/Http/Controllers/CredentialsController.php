@@ -142,7 +142,7 @@ class CredentialsController extends Controller
 
         try {
             $validated = $request->validate([
-                'provider' => 'required|in:claude_code,codex,anthropic,openai,openai_compatible',
+                'provider' => 'required|in:claude_code,codex,cursor_agent,anthropic,openai,openai_compatible',
                 'anthropic_api_key' => 'required_if:provider,anthropic|nullable|string',
                 'openai_api_key' => 'required_if:provider,openai|nullable|string',
                 'openai_compatible_base_url' => 'required_if:provider,openai_compatible|nullable|url',
@@ -178,6 +178,13 @@ class CredentialsController extends Controller
                     return redirect()->back()
                         ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'openai_compatible_api_key', 'git_token']))
                         ->with('error', 'Codex is not authenticated. Please run the command shown above in your terminal, complete the device auth flow, then click "Verify & Continue".');
+                }
+            } elseif ($validated['provider'] === 'cursor_agent') {
+                // Verify Cursor Agent authentication
+                if (!$this->settings->isCursorAgentAuthenticated()) {
+                    return redirect()->back()
+                        ->withInput($request->except(['anthropic_api_key', 'openai_api_key', 'openai_compatible_api_key', 'git_token']))
+                        ->with('error', 'Cursor Agent is not authenticated. Please complete the browser login flow, then click "Verify & Continue".');
                 }
             } elseif ($validated['provider'] === 'anthropic' && !empty($validated['anthropic_api_key'])) {
                 $this->settings->setAnthropicApiKey($validated['anthropic_api_key']);
