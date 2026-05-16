@@ -147,8 +147,20 @@ class CursorAgentProvider extends AbstractCliProvider
         $workingDir = $conversation->working_directory ?? '/workspace';
         $this->syncMcpServersFromClaudeCode($workingDir);
 
+        // Ensure ~/.cursor directories are writable by www-data (queue worker)
+        // The agent CLI creates project-specific state dirs under ~/.cursor/projects/
+        $home = getenv('HOME') ?: '/home/appuser';
+        $this->ensureCursorDirectories($home);
+
+        // Use absolute path because the queue worker's PATH may not include ~/.local/bin
+        $agentBin = $home . '/.local/bin/agent';
+        if (!file_exists($agentBin)) {
+            // Fallback to which
+            $agentBin = trim(shell_exec('which agent 2>/dev/null') ?? '') ?: 'agent';
+        }
+
         $parts = [
-            'agent',
+            $agentBin,
             '-p',
             '--output-format', 'stream-json',
             '--model', escapeshellarg($model),
@@ -624,6 +636,33 @@ class CursorAgentProvider extends AbstractCliProvider
                     $isError = $block['is_error'] ?? false;
                     yield StreamEvent::toolResult($toolId, $resultContent, $isError);
                     break;
+            }
+        }
+    }
+
+    // ========================================================================
+    // Directory setup
+    // ========================================================================
+
+    /**
+     * Ensure Cursor CLI directories exist and are writable by the www-data group.
+     * The agent CLI creates project-specific state under ~/.cursor/projects/
+     * and chat history under ~/.cursor/chats/, which need group write access
+     * when the queue worker (www-data) runs the CLI.
+     */
+    private function ensureCursorDirectories(string $home): void
+    {
+        $dirs = [
+            $home . '/.cursor',
+            $home . '/.cursor/projects',
+            $home . '/.cursor/chats',
+        ];
+
+        foreach ($dirs as $dir) {
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0770, true);
+            } elseif (!is_writable($dir)) {
+                @chmod($dir, 0770);
             }
         }
     }
