@@ -69,11 +69,24 @@
                             </template>
                         </button>
 
-                        {{-- Download button - desktop only, show for text files, binary files, AND images --}}
+                        {{-- Copy path button - always show (even on error, path is still valid) --}}
+                        <button @click="$store.filePreview.copyPath()"
+                                class="p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
+                                title="Copy path"
+                                x-show="!$store.filePreview.loading">
+                            <template x-if="!$store.filePreview.copiedPath">
+                                <i class="fa-solid fa-link"></i>
+                            </template>
+                            <template x-if="$store.filePreview.copiedPath">
+                                <i class="fa-solid fa-check text-green-400"></i>
+                            </template>
+                        </button>
+
+                        {{-- Download button - always show when path is known, even for binary/too_large/error files --}}
                         <button @click="$store.filePreview.downloadFile()"
                                 class="hidden md:inline-flex p-2 text-gray-400 hover:text-white transition-colors rounded hover:bg-gray-700"
                                 title="Download file"
-                                x-show="!$store.filePreview.loading && $store.filePreview.readable">
+                                x-show="!$store.filePreview.loading && $store.filePreview.stack.at(-1)?.path">
                             <i class="fa-solid fa-download"></i>
                         </button>
 
