@@ -156,7 +156,8 @@ class CursorAgentProvider extends AbstractCliProvider
         $agentBin = $home . '/.local/bin/agent';
         if (!file_exists($agentBin)) {
             // Fallback to which
-            $agentBin = trim(shell_exec('which agent 2>/dev/null') ?? '') ?: 'agent';
+            $whichResult = shell_exec('which agent 2>/dev/null');
+            $agentBin = ($whichResult !== null ? trim($whichResult) : '') ?: 'agent';
         }
 
         $parts = [
