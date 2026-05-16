@@ -219,10 +219,32 @@ function notificationSettings() {
             this.permission = window.PocketDevPush?.getPermissionStatus() ?? 'unsupported';
             this.browserName = this.detectBrowser();
 
-            // Check current subscription status
+            // Check current subscription status against both browser AND server
             if (this.supported) {
-                const status = await window.PocketDevPush.getSubscriptionStatus();
-                this.subscribed = status.subscribed;
+                const browserStatus = await window.PocketDevPush.getSubscriptionStatus();
+
+                if (browserStatus.subscribed) {
+                    // Browser has a subscription — verify server knows about it too
+                    const serverResponse = await fetch('/api/push/subscriptions', { credentials: 'same-origin' });
+                    const serverData = await serverResponse.json();
+                    const serverEndpoints = (serverData.subscriptions || []).map(s => s.endpoint);
+                    const serverKnows = serverEndpoints.includes(browserStatus.endpoint);
+
+                    if (serverKnows) {
+                        this.subscribed = true;
+                    } else {
+                        // Browser is subscribed but server doesn't know — re-register
+                        try {
+                            await window.PocketDevPush.subscribe();
+                            this.subscribed = true;
+                        } catch (e) {
+                            this.subscribed = false;
+                            this.error = 'Browser subscription exists but server sync failed: ' + e.message;
+                        }
+                    }
+                } else {
+                    this.subscribed = false;
+                }
             }
 
             // Load devices list
