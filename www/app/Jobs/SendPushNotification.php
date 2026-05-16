@@ -38,9 +38,9 @@ class SendPushNotification implements ShouldQueue
             return;
         }
 
-        $vapid = config('webpush.vapid');
+        $vapid = config('webpush.vapid', []);
 
-        if (!$vapid['public_key'] || !$vapid['private_key']) {
+        if (empty($vapid['public_key']) || empty($vapid['private_key'])) {
             Log::warning('SendPushNotification: VAPID keys not configured');
             return;
         }
