@@ -297,6 +297,25 @@ class ConversationController extends Controller
             ], 409);
         }
 
+        // Detect /compact slash command for Claude Code CLI conversations.
+        // When triggered, the job bypasses the normal turn and sends /compact to the CLI directly.
+        // Must be checked BEFORE startStream() to avoid leaving an orphaned stream state on error.
+        $jobOptions = [];
+        $isCompactCommand = $conversation->provider_type === 'claude_code'
+            && strtolower(trim($validated['prompt'])) === '/compact';
+
+        if ($isCompactCommand) {
+            if (empty($conversation->provider_session_id)) {
+                RequestFlowLogger::log('controller.stream.compact_no_session', '/compact requires an active session');
+                RequestFlowLogger::endRequest('error');
+                return response()->json([
+                    'success' => false,
+                    'error' => '/compact requires an active Claude Code session. Send a message first to start one.',
+                ], 422);
+            }
+            $jobOptions['is_compact_command'] = true;
+        }
+
         // Initialize stream state BEFORE cleanup to prevent race condition
         // This ensures clients won't see 'not_found' after cleanup and before job starts
         RequestFlowLogger::log('controller.stream.initializing', 'Initializing stream state in Redis');
@@ -312,7 +331,7 @@ class ConversationController extends Controller
         ProcessConversationStream::dispatch(
             $conversation->uuid,
             $validated['prompt'],
-            [] // Options no longer needed for reasoning - stored on conversation
+            $jobOptions
         );
         RequestFlowLogger::log('controller.stream.job_dispatched', 'Job dispatched to queue');
 
