@@ -86,6 +86,23 @@ class UsageDashboardController extends Controller
                 return $row;
             });
 
+            // Distinct conversation rows per bucket — used to count conversations
+            // correctly at the rollup level (a conversation active across multiple
+            // days/models must not be counted more than once).
+            $convRows = DB::table('messages as m')
+                ->join('conversations as c', 'm.conversation_id', '=', 'c.id')
+                ->whereIn('c.provider_type', ['claude_code', 'codex', 'cursor_agent'])
+                ->where('m.created_at', '>=', now()->subDays($days))
+                ->whereNotNull('m.input_tokens')
+                ->selectRaw("
+                    c.provider_type,
+                    COALESCE(m.model, 'unknown') as model,
+                    DATE(m.created_at) as date,
+                    c.id as conversation_id
+                ")
+                ->distinct()
+                ->get();
+
             // Build by_day: array with provider_type, model, date (for chart)
             $byDay = $rows->map(fn ($r) => [
                 'provider_type' => $r->provider_type,
@@ -102,17 +119,20 @@ class UsageDashboardController extends Controller
             // Build per-model summary keyed by model name
             $byModel = [];
             $grouped = $rows->groupBy('model');
+            $convByModel = $convRows->groupBy('model');
             $today = now()->toDateString();
-            $weekAgo = now()->subDays(7)->toDateString();
+            // "week" = today plus the prior 6 days (7 days inclusive).
+            $weekAgo = now()->subDays(6)->toDateString();
 
             foreach ($grouped as $modelId => $group) {
                 $first = $group->first();
+                $convGroup = $convByModel->get($modelId, collect());
                 $byModel[$modelId] = [
                     'provider' => $first->provider_type,
                     'display_name' => $this->getModelDisplayName($modelId),
-                    'today' => $this->buildPeriodStats($group->where('date', $today)),
-                    'week' => $this->buildPeriodStats($group->where('date', '>=', $weekAgo)),
-                    'total' => $this->buildPeriodStats($group),
+                    'today' => $this->buildPeriodStats($group->where('date', $today), $convGroup->where('date', $today)),
+                    'week' => $this->buildPeriodStats($group->where('date', '>=', $weekAgo), $convGroup->where('date', '>=', $weekAgo)),
+                    'total' => $this->buildPeriodStats($group, $convGroup),
                 ];
             }
 
@@ -121,25 +141,28 @@ class UsageDashboardController extends Controller
 
             foreach (['claude_code', 'codex', 'cursor_agent'] as $provider) {
                 $pr = $rows->where('provider_type', $provider);
+                $cr = $convRows->where('provider_type', $provider);
                 $byProvider[$provider] = [
-                    'today' => $this->buildPeriodStats($pr->where('date', $today)),
-                    'week' => $this->buildPeriodStats($pr->where('date', '>=', $weekAgo)),
-                    'total' => $this->buildPeriodStats($pr),
+                    'today' => $this->buildPeriodStats($pr->where('date', $today), $cr->where('date', $today)),
+                    'week' => $this->buildPeriodStats($pr->where('date', '>=', $weekAgo), $cr->where('date', '>=', $weekAgo)),
+                    'total' => $this->buildPeriodStats($pr, $cr),
                 ];
             }
 
             // Grand totals
             $allToday = $rows->where('date', $today);
             $allWeek = $rows->where('date', '>=', $weekAgo);
+            $convToday = $convRows->where('date', $today);
+            $convWeek = $convRows->where('date', '>=', $weekAgo);
 
             return [
                 'by_day' => $byDay,
                 'by_model' => $byModel,
                 'by_provider' => $byProvider,
                 'totals' => [
-                    'today' => $this->buildPeriodStats($allToday),
-                    'week' => $this->buildPeriodStats($allWeek),
-                    'total' => $this->buildPeriodStats($rows),
+                    'today' => $this->buildPeriodStats($allToday, $convToday),
+                    'week' => $this->buildPeriodStats($allWeek, $convWeek),
+                    'total' => $this->buildPeriodStats($rows, $convRows),
                 ],
             ];
         });
@@ -201,7 +224,11 @@ class UsageDashboardController extends Controller
     // Helpers
     // -------------------------------------------------------------------------
 
-    private function buildPeriodStats($rows): array
+    /**
+     * @param  \Illuminate\Support\Collection  $rows      Aggregated token rows for the period.
+     * @param  \Illuminate\Support\Collection  $convRows  Distinct conversation rows for the period.
+     */
+    private function buildPeriodStats($rows, $convRows): array
     {
         $input = (int) $rows->sum('input_tokens');
         $output = (int) $rows->sum('output_tokens');
@@ -212,7 +239,9 @@ class UsageDashboardController extends Controller
             'total_tokens' => $input + $output,
             'cache_creation_tokens' => (int) $rows->sum('cache_creation_tokens'),
             'cache_read_tokens' => (int) $rows->sum('cache_read_tokens'),
-            'conversations' => (int) $rows->sum('conversations'),
+            // Count distinct conversations across the whole period so a conversation
+            // spanning multiple days/models is not counted more than once.
+            'conversations' => $convRows->pluck('conversation_id')->unique()->count(),
             'api_equiv_cost' => round((float) $rows->sum('api_equiv_cost'), 2),
         ];
     }

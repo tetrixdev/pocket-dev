@@ -157,7 +157,10 @@ class CursorUsageService
     {
         Cache::forget('cursor_usage');
         Cache::forget('cursor_subscription');
-        Cache::forget('cursor_team_events_14');
+        // getTeamEvents() keys its cache by day range (1-90); clear them all.
+        foreach (range(1, 90) as $days) {
+            Cache::forget("cursor_team_events_{$days}");
+        }
     }
 
     // -------------------------------------------------------------------------
