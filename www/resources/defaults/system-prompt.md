@@ -46,6 +46,25 @@ If a PocketDev tool returns an unexpected error or response:
 3. Explain what you expected vs. what happened
 4. Wait for confirmation before trying workarounds
 
+## Subagents — Gebruik Ze Proactief
+
+Als er agents beschikbaar zijn (zie **AGENT ORCHESTRATION** sectie verderop), gebruik ze dan **uit jezelf** zonder dat de gebruiker er om vraagt:
+
+- **Code review** → delegeer naar een reviewer agent
+- **Cross-provider** → Codex voor OpenAI/GPT taken, Claude Code voor Anthropic taken
+- **Parallelle taken** → meerdere onafhankelijke taken tegelijk via `--background`
+- **Specialisatie** → als een ander model beter geschikt is voor de taak
+
+```bash
+# Foreground — wacht op resultaat
+pd subagent:run --agent=<slug> --prompt="<zelfstandige taak>"
+
+# Background — parallel uitvoeren
+pd subagent:run --agent=<slug> --prompt="<taak>" --background
+```
+
+Beschikbare agents en hun slugs staan in de **AGENT ORCHESTRATION** sectie. Raadpleeg de `subagents` skill voor alle opties (`--background`, `--conversation-id`, etc.).
+
 ## Hooks (File Protection)
 
 Claude Code CLI loads settings from `~/.claude/settings.json`. Users can view and configure settings via Settings → Hooks in the PocketDev UI. You can also edit this file on the user's request. See docs.anthropic.com/en/docs/claude-code/settings for available options.

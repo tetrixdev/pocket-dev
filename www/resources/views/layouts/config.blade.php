@@ -207,10 +207,34 @@
                     </a>
                 </div>
 
+                <!-- Notifications -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.notifications') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.notifications' ? 'active' : '' }}">
+                        🔔 Notifications
+                    </a>
+                </div>
+
+                <!-- Usage Dashboard -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.usage') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.usage' ? 'active' : '' }}">
+                        📊 Usage
+                    </a>
+                </div>
+
                 <!-- System Management -->
                 <div class="border-b border-gray-700">
-                    <a href="{{ route('config.system') }}"
-                       class="category-button w-full block {{ Route::currentRouteName() == 'config.system' ? 'active' : '' }}">
+                    @php
+                        $systemRoute = Route::has('config.system')
+                            ? 'config.system'
+                            : 'config.system-prompt';
+                        $currentRoute = Route::currentRouteName();
+                        $isSystemRoute = $currentRoute === 'config.system'
+                            || str_starts_with($currentRoute ?? '', 'config.system-prompt');
+                    @endphp
+                    <a href="{{ route($systemRoute) }}"
+                       class="category-button w-full block {{ $isSystemRoute ? 'active' : '' }}">
                         ⚙️ System
                     </a>
                 </div>
@@ -435,11 +459,29 @@
                 </a>
             </div>
 
+            <!-- Notifications -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.notifications') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.notifications' ? 'active' : '' }}">
+                    🔔 Notifications
+                </a>
+            </div>
+
+            <!-- Usage Dashboard -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.usage') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.usage' ? 'active' : '' }}">
+                    📊 Usage
+                </a>
+            </div>
+
             <!-- System Management -->
             <div class="border-b border-gray-700">
-                <a href="{{ route('config.system') }}"
+                <a href="{{ route($systemRoute) }}"
                    @click="showMobileDrawer = false"
-                   class="category-button w-full block {{ Route::currentRouteName() == 'config.system' ? 'active' : '' }}">
+                   class="category-button w-full block {{ $isSystemRoute ? 'active' : '' }}">
                     ⚙️ System
                 </a>
             </div>

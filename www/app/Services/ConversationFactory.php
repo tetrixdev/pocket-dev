@@ -7,6 +7,7 @@ use App\Models\Conversation;
 use App\Models\Screen;
 use App\Models\Session;
 use App\Models\Workspace;
+use App\Services\ModelRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -193,26 +194,24 @@ class ConversationFactory
 
     /**
      * Initialize the context window size from the provider.
-     * If the conversation's agent has extended_context enabled and the model
-     * supports a larger window (e.g. Claude 4.6 → 1M), use the max window.
+     * For agents with extended_context (1M support), uses max_context_window instead.
      */
     private function initializeContextWindow(Conversation $conversation): void
     {
         try {
-            $provider = $this->providerFactory->make($conversation->provider_type);
-            $contextWindow = $provider->getContextWindow($conversation->model);
-
-            // Use extended context window if agent has the toggle on and model supports it
-            if ($conversation->agent_id) {
-                $agent = Agent::find($conversation->agent_id);
-                if ($agent?->extended_context) {
-                    $maxWindow = $this->models->getMaxContextWindow($conversation->model);
-                    if ($maxWindow > $contextWindow) {
-                        $contextWindow = $maxWindow;
-                    }
+            // For 1M context agents, use max_context_window (e.g. 1,000,000)
+            // instead of the standard context_window (e.g. 200,000)
+            $conversation->loadMissing('agent');
+            if ($conversation->agent?->extended_context) {
+                $maxContextWindow = $this->models->getMaxContextWindow($conversation->model);
+                if ($maxContextWindow > 0) {
+                    $conversation->update(['context_window_size' => $maxContextWindow]);
+                    return;
                 }
             }
 
+            $provider = $this->providerFactory->make($conversation->provider_type);
+            $contextWindow = $provider->getContextWindow($conversation->model);
             $conversation->update(['context_window_size' => $contextWindow]);
         } catch (\Exception $e) {
             Log::warning('Failed to initialize context window', [

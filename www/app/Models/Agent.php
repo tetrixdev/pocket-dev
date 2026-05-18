@@ -28,6 +28,10 @@ class Agent extends Model
     public const PROVIDER_CLAUDE_CODE = 'claude_code';
     /** @deprecated Use Provider::Codex->value instead */
     public const PROVIDER_CODEX = 'codex';
+    /** @deprecated Use Provider::CursorAgent->value instead */
+    public const PROVIDER_CURSOR_AGENT = 'cursor_agent';
+    /** @deprecated Use Provider::OpenAICompatible->value instead */
+    public const PROVIDER_OPENAI_COMPATIBLE = 'openai_compatible';
 
     protected $fillable = [
         'workspace_id',
@@ -45,6 +49,9 @@ class Agent extends Model
         'is_default',
         'enabled',
         'extended_context',
+        'expose_as_tool',
+        'can_call_subagents',
+        'allowed_subagents',
     ];
 
     protected $casts = [
@@ -56,6 +63,9 @@ class Agent extends Model
         'extended_context' => 'boolean',
         'reasoning_config' => 'array',
         'response_level' => 'integer',
+        'expose_as_tool' => 'boolean',
+        'can_call_subagents' => 'boolean',
+        'allowed_subagents' => 'array',
     ];
 
     protected static function boot(): void
@@ -231,6 +241,7 @@ class Agent extends Model
             Provider::OpenAICompatible->value => $config['effort'] ?? 'none',
             Provider::ClaudeCode->value => $config['thinking_tokens'] ?? 0,
             Provider::Codex->value => $config['effort'] ?? 'minimal',
+            Provider::CursorAgent->value => $config['effort'] ?? 'high',
             default => null,
         };
     }
@@ -260,6 +271,10 @@ class Agent extends Model
             ),
             Provider::Codex->value => array_merge(
                 ['type' => 'codex', 'effort' => 'minimal'],
+                $config
+            ),
+            Provider::CursorAgent->value => array_merge(
+                ['type' => 'cursor_agent', 'effort' => 'high'],
                 $config
             ),
             default => ['type' => 'none'],
