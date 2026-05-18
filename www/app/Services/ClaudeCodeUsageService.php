@@ -87,18 +87,13 @@ class ClaudeCodeUsageService
         }
 
         try {
-            // Try direct read first (works if file is group-readable by www-data)
+            // Try direct read first (works if file is group-readable)
             $contents = @file_get_contents(self::CREDENTIALS_PATH);
 
-            // If direct read fails (permission denied), try via shell as appuser
-            if ($contents === false) {
-                $contents = @shell_exec('cat ' . escapeshellarg(self::CREDENTIALS_PATH) . ' 2>/dev/null');
-            }
-
-            if (!$contents) {
-                // Auto-fix: try to add group-read permission (file group is www-data)
-                @shell_exec('chmod g+r ' . escapeshellarg(self::CREDENTIALS_PATH) . ' 2>/dev/null');
-                $contents = @file_get_contents(self::CREDENTIALS_PATH);
+            // If permission denied, use SUID helper binary (always runs as root)
+            // Install via: pd system:package add --name="read-claude-creds" ...
+            if ($contents === false && is_executable('/usr/local/bin/read-claude-creds')) {
+                $contents = @shell_exec('/usr/local/bin/read-claude-creds 2>/dev/null');
             }
 
             if (!$contents) {
