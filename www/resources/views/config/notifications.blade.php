@@ -7,21 +7,16 @@
 @endpush
 
 @section('content')
-<div x-data="notificationSettings()" x-init="init()" class="space-y-6 max-w-3xl">
-    {{-- Header --}}
-    <div>
-        <h1 class="text-2xl font-bold text-white mb-1">Notifications</h1>
-        <p class="text-gray-400 text-sm">Get notified when an agent completes a task, even with the browser closed.</p>
-    </div>
+<div x-data="notificationSettings()" x-init="init()" class="space-y-8">
 
     {{-- Browser Support Check --}}
     <template x-if="!supported">
         <div class="bg-red-900/40 border border-red-700 rounded-lg p-4">
-            <div class="flex items-center gap-3">
-                <i class="fa-solid fa-triangle-exclamation text-red-400"></i>
+            <div class="flex items-start gap-3">
+                <i class="fa-solid fa-triangle-exclamation text-red-400 mt-0.5"></i>
                 <div>
-                    <p class="text-red-200 font-medium">Push notifications not supported</p>
-                    <p class="text-red-300 text-sm mt-1">This browser does not support the Web Push API. Use Chrome, Edge, or Firefox for push notification support.</p>
+                    <p class="text-red-200 font-medium text-sm">Push notifications not supported</p>
+                    <p class="text-red-300 text-xs mt-1">This browser does not support the Web Push API. Use Chrome, Edge, or Firefox.</p>
                 </div>
             </div>
         </div>
@@ -30,117 +25,117 @@
     {{-- Permission Denied Warning --}}
     <template x-if="supported && permission === 'denied'">
         <div class="bg-amber-900/40 border border-amber-700 rounded-lg p-4">
-            <div class="flex items-center gap-3">
-                <i class="fa-solid fa-bell-slash text-amber-400"></i>
+            <div class="flex items-start gap-3">
+                <i class="fa-solid fa-bell-slash text-amber-400 mt-0.5"></i>
                 <div>
-                    <p class="text-amber-200 font-medium">Notifications blocked</p>
-                    <p class="text-amber-300 text-sm mt-1">You previously blocked notifications for this site. To enable them, click the lock icon in your browser's address bar and allow notifications.</p>
+                    <p class="text-amber-200 font-medium text-sm">Notifications blocked</p>
+                    <p class="text-amber-300 text-xs mt-1">Click the lock icon in your browser's address bar to allow notifications.</p>
                 </div>
             </div>
         </div>
     </template>
 
-    {{-- Main Section: Enable/Disable --}}
+    {{-- This Browser --}}
     <template x-if="supported && permission !== 'denied'">
-        <section class="bg-gray-800 rounded-lg p-5 space-y-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-lg font-semibold text-white">This browser</h2>
-                    <p class="text-gray-400 text-sm mt-0.5" x-text="browserName"></p>
+        <section>
+            <h2 class="text-lg font-semibold mb-4 text-gray-200">This browser</h2>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="font-medium text-white" x-text="browserName"></h3>
+                        <div class="flex items-center gap-2 mt-1">
+                            <span class="w-1.5 h-1.5 rounded-full" :class="subscribed ? 'bg-green-400' : 'bg-gray-500'"></span>
+                            <span class="text-sm" :class="subscribed ? 'text-green-400' : 'text-gray-500'" x-text="subscribed ? 'Active' : 'Inactive'"></span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <template x-if="subscribed">
+                            <button
+                                @click="doTest()"
+                                :disabled="testing"
+                                class="px-3 py-1.5 text-sm text-gray-300 hover:text-white border border-gray-600 hover:border-gray-500 rounded transition-colors disabled:opacity-50"
+                            >
+                                <span x-text="testing ? 'Sending...' : 'Test'"></span>
+                            </button>
+                        </template>
+                        <button
+                            @click="subscribed ? doUnsubscribe() : doSubscribe()"
+                            :disabled="loading"
+                            class="px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50"
+                            :class="subscribed
+                                ? 'text-gray-300 hover:text-white border border-gray-600 hover:border-red-500 hover:text-red-400'
+                                : 'bg-blue-600 hover:bg-blue-700 text-white'"
+                        >
+                            <template x-if="loading">
+                                <span class="flex items-center gap-2">
+                                    <svg class="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                                        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                                    </svg>
+                                    <span>...</span>
+                                </span>
+                            </template>
+                            <template x-if="!loading">
+                                <span x-text="subscribed ? 'Disable' : 'Enable'"></span>
+                            </template>
+                        </button>
+                    </div>
                 </div>
 
-                {{-- Subscribe/Unsubscribe Button --}}
-                <button
-                    @click="subscribed ? doUnsubscribe() : doSubscribe()"
-                    :disabled="loading"
-                    class="px-4 py-2 rounded text-sm font-medium transition-colors disabled:opacity-50"
-                    :class="subscribed
-                        ? 'bg-red-600 hover:bg-red-700 text-white'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white'"
-                >
-                    <template x-if="loading">
-                        <span class="flex items-center gap-2">
-                            <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
-                                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                            </svg>
-                            <span x-text="subscribed ? 'Disabling...' : 'Enabling...'"></span>
-                        </span>
-                    </template>
-                    <template x-if="!loading">
-                        <span x-text="subscribed ? 'Disable notifications' : 'Enable notifications'"></span>
-                    </template>
-                </button>
+                {{-- Error / Success messages --}}
+                <template x-if="error">
+                    <div class="mt-3 bg-red-900/30 border border-red-800 rounded p-2.5 text-xs text-red-300">
+                        <span x-text="error"></span>
+                    </div>
+                </template>
+                <template x-if="success">
+                    <div class="mt-3 bg-green-900/30 border border-green-800 rounded p-2.5 text-xs text-green-300">
+                        <span x-text="success"></span>
+                    </div>
+                </template>
             </div>
-
-            {{-- Status indicator --}}
-            <div class="flex items-center gap-2 text-sm">
-                <span class="w-2 h-2 rounded-full" :class="subscribed ? 'bg-green-500' : 'bg-gray-500'"></span>
-                <span :class="subscribed ? 'text-green-300' : 'text-gray-400'" x-text="subscribed ? 'Active — you will receive push notifications' : 'Inactive — no notifications from this browser'"></span>
-            </div>
-
-            {{-- Test button --}}
-            <template x-if="subscribed">
-                <button
-                    @click="doTest()"
-                    :disabled="testing"
-                    class="text-sm text-blue-400 hover:text-blue-300 underline underline-offset-2 disabled:opacity-50"
-                >
-                    <span x-text="testing ? 'Sending...' : 'Send test notification'"></span>
-                </button>
-            </template>
-
-            {{-- Error display --}}
-            <template x-if="error">
-                <div class="bg-red-900/30 border border-red-800 rounded p-3 text-sm text-red-300">
-                    <span x-text="error"></span>
-                </div>
-            </template>
-
-            {{-- Success display --}}
-            <template x-if="success">
-                <div class="bg-green-900/30 border border-green-800 rounded p-3 text-sm text-green-300">
-                    <span x-text="success"></span>
-                </div>
-            </template>
         </section>
     </template>
 
     {{-- Registered Devices --}}
-    <section class="bg-gray-800 rounded-lg p-5 space-y-4">
-        <h2 class="text-lg font-semibold text-white">Registered devices</h2>
-        <p class="text-gray-400 text-sm">All browsers and devices that will receive notifications.</p>
+    <section>
+        <h2 class="text-lg font-semibold mb-4 text-gray-200">Registered devices</h2>
+        <p class="text-sm text-gray-400 mb-4">All browsers and devices that will receive notifications.</p>
 
         <template x-if="devicesLoading">
-            <div class="flex items-center gap-2 text-gray-400 text-sm py-4">
-                <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
-                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-                </svg>
-                Loading...
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="flex items-center gap-2 text-gray-400 text-sm">
+                    <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" opacity="0.25"/>
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                    </svg>
+                    Loading...
+                </div>
             </div>
         </template>
 
         <template x-if="!devicesLoading && devices.length === 0">
-            <p class="text-gray-500 text-sm py-4">No devices registered yet.</p>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <p class="text-gray-500 text-sm">No devices registered yet.</p>
+            </div>
         </template>
 
         <template x-if="!devicesLoading && devices.length > 0">
-            <div class="divide-y divide-gray-700">
+            <div class="space-y-2">
                 <template x-for="device in devices" :key="device.id">
-                    <div class="flex items-center justify-between py-3">
+                    <div class="bg-gray-800 rounded-lg p-4 flex items-center justify-between">
                         <div class="min-w-0 flex-1">
-                            <p class="text-sm text-white truncate" x-text="formatUserAgent(device.user_agent)"></p>
+                            <h3 class="font-medium text-white text-sm" x-text="formatUserAgent(device.user_agent)"></h3>
                             <p class="text-xs text-gray-500 mt-0.5">
                                 Registered <span x-text="formatDate(device.created_at)"></span>
                             </p>
                         </div>
                         <button
                             @click="removeDevice(device.id)"
-                            class="ml-3 text-gray-400 hover:text-red-400 transition-colors p-1"
+                            class="ml-4 text-gray-500 hover:text-red-400 transition-colors p-1.5"
                             title="Remove device"
                         >
-                            <i class="fa-solid fa-trash-can text-sm"></i>
+                            <i class="fa-solid fa-trash-can text-xs"></i>
                         </button>
                     </div>
                 </template>
@@ -148,44 +143,52 @@
         </template>
     </section>
 
-    {{-- Notification Events Configuration --}}
-    <section class="bg-gray-800 rounded-lg p-5 space-y-4">
-        <h2 class="text-lg font-semibold text-white">When to notify</h2>
-        <p class="text-gray-400 text-sm">Choose which events trigger a push notification.</p>
+    {{-- When to Notify --}}
+    <section>
+        <h2 class="text-lg font-semibold mb-4 text-gray-200">When to notify</h2>
+        <p class="text-sm text-gray-400 mb-4">Choose which events trigger a push notification.</p>
 
-        <div class="space-y-3">
-            <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" x-model="settings.notify_on_complete" @change="saveSettings()"
-                       class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500">
-                <div>
-                    <span class="text-sm text-white">Agent completed</span>
-                    <p class="text-xs text-gray-500">When a conversation finishes processing</p>
+        <div class="space-y-2">
+            <div class="bg-gray-800 rounded-lg p-4">
+                <label class="flex items-center justify-between cursor-pointer">
+                    <div>
+                        <span class="text-sm font-medium text-white">Agent completed</span>
+                        <p class="text-xs text-gray-400 mt-0.5">When a conversation finishes processing</p>
+                    </div>
+                    <input type="checkbox" x-model="settings.notify_on_complete" @change="saveSettings()"
+                           class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                </label>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg p-4">
+                <label class="flex items-center justify-between cursor-pointer">
+                    <div>
+                        <span class="text-sm font-medium text-white">Agent failed</span>
+                        <p class="text-xs text-gray-400 mt-0.5">When a conversation fails or errors out</p>
+                    </div>
+                    <input type="checkbox" x-model="settings.notify_on_failure" @change="saveSettings()"
+                           class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500 focus:ring-offset-0">
+                </label>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <label for="min_duration" class="text-sm font-medium text-white">Minimum duration</label>
+                        <p class="text-xs text-gray-400 mt-0.5">Only notify if the task took longer than this (seconds). Set to 0 to always notify.</p>
+                    </div>
+                    <input id="min_duration" type="number" min="0" step="1" x-model.number="settings.min_duration_seconds" @change="saveSettings()"
+                           class="w-20 px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-white text-center focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                 </div>
-            </label>
-
-            <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" x-model="settings.notify_on_failure" @change="saveSettings()"
-                       class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-600 focus:ring-blue-500">
-                <div>
-                    <span class="text-sm text-white">Agent failed</span>
-                    <p class="text-xs text-gray-500">When a conversation fails or errors out</p>
-                </div>
-            </label>
-
-            <div class="pt-2">
-                <label class="block text-sm text-gray-300 mb-1">Minimum duration (seconds)</label>
-                <p class="text-xs text-gray-500 mb-2">Only notify if the task took longer than this. Set to 0 to always notify.</p>
-                <input type="number" min="0" step="1" x-model.number="settings.min_duration_seconds" @change="saveSettings()"
-                       class="w-24 px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
             </div>
         </div>
     </section>
 
     {{-- How it works --}}
-    <section class="bg-gray-800/50 rounded-lg p-5">
-        <h3 class="text-sm font-medium text-gray-300 mb-2">How it works</h3>
+    <section>
+        <h2 class="text-sm font-medium mb-2 text-gray-400">How it works</h2>
         <ul class="text-xs text-gray-500 space-y-1 list-disc list-inside">
-            <li>Uses the Web Push API — no app installation needed</li>
+            <li>Uses the Web Push API, no app installation needed</li>
             <li>Works on Chrome, Edge, and Firefox (desktop and Android)</li>
             <li>Each browser subscribes independently</li>
             <li>Notifications are sent even when the browser tab is closed</li>
@@ -214,17 +217,14 @@ function notificationSettings() {
         },
 
         async init() {
-            // Check browser support
             this.supported = window.PocketDevPush?.isSupported() ?? false;
             this.permission = window.PocketDevPush?.getPermissionStatus() ?? 'unsupported';
             this.browserName = this.detectBrowser();
 
-            // Check current subscription status against both browser AND server
             if (this.supported) {
                 const browserStatus = await window.PocketDevPush.getSubscriptionStatus();
 
                 if (browserStatus.subscribed) {
-                    // Browser has a subscription — verify server knows about it too
                     const serverResponse = await fetch('/api/push/subscriptions', { credentials: 'same-origin' });
                     const serverData = await serverResponse.json();
                     const serverEndpoints = (serverData.subscriptions || []).map(s => s.endpoint);
@@ -233,7 +233,6 @@ function notificationSettings() {
                     if (serverKnows) {
                         this.subscribed = true;
                     } else {
-                        // Browser is subscribed but server doesn't know — re-register
                         try {
                             await window.PocketDevPush.subscribe();
                             this.subscribed = true;
@@ -247,10 +246,7 @@ function notificationSettings() {
                 }
             }
 
-            // Load devices list
             this.loadDevices();
-
-            // Load notification settings
             this.loadSettings();
         },
 
@@ -258,7 +254,6 @@ function notificationSettings() {
             this.loading = true;
             this.error = null;
             this.success = null;
-
             try {
                 await window.PocketDevPush.subscribe();
                 this.subscribed = true;
@@ -277,7 +272,6 @@ function notificationSettings() {
             this.loading = true;
             this.error = null;
             this.success = null;
-
             try {
                 await window.PocketDevPush.unsubscribe();
                 this.subscribed = false;
@@ -294,7 +288,6 @@ function notificationSettings() {
             this.testing = true;
             this.error = null;
             this.success = null;
-
             try {
                 const result = await window.PocketDevPush.sendTest();
                 if (result.error) {
@@ -339,7 +332,6 @@ function notificationSettings() {
 
                 this.devices = this.devices.filter(d => d.id !== id);
 
-                // Re-check if current browser is still subscribed
                 if (this.supported) {
                     const status = await window.PocketDevPush.getSubscriptionStatus();
                     this.subscribed = status.subscribed;
@@ -356,9 +348,7 @@ function notificationSettings() {
                     const data = await response.json();
                     this.settings = { ...this.settings, ...data };
                 }
-            } catch (e) {
-                // Use defaults
-            }
+            } catch (e) { /* Use defaults */ }
         },
 
         async saveSettings() {
@@ -372,7 +362,6 @@ function notificationSettings() {
                     },
                     body: JSON.stringify(this.settings),
                 });
-
                 if (!response.ok) {
                     this.error = 'Failed to save settings';
                 }
@@ -413,7 +402,6 @@ function notificationSettings() {
             const now = new Date();
             const diffMs = now - date;
             const diffDays = Math.floor(diffMs / 86400000);
-
             if (diffDays === 0) return 'today';
             if (diffDays === 1) return 'yesterday';
             if (diffDays < 30) return `${diffDays} days ago`;
