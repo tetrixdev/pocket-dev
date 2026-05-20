@@ -152,16 +152,20 @@ class CodexProvider extends AbstractCliProvider
         $parts[] = '-C';
         $parts[] = escapeshellarg($workingDir);
 
-        // Add system prompt via .pocketdev-system-prompt.md in the working directory
-        // Codex reads this file via project_doc_fallback_filenames and appends to context
-        // Using a hidden dotfile avoids collisions with user files
+        // Add system prompt via a unique hidden file in the working directory.
+        // Codex reads this file via project_doc_fallback_filenames and appends to context.
         if (!empty($options['system'])) {
+            $this->systemPromptFile = '.pocketdev-system-prompt-' . uniqid('', true) . '.md';
             $this->writePocketDevInstructionsFile($workingDir, $options['system']);
             $parts[] = '-c';
-            $parts[] = escapeshellarg('project_doc_fallback_filenames=[".pocketdev-system-prompt.md"]');
+            $parts[] = escapeshellarg(
+                'project_doc_fallback_filenames=["' . $this->systemPromptFile . '"]'
+            );
             // Increase max bytes for system prompt (default is 32KB, PocketDev prompt is ~108KB)
             $parts[] = '-c';
             $parts[] = escapeshellarg('project_doc_max_bytes=' . self::PROJECT_DOC_MAX_BYTES);
+        } else {
+            $this->systemPromptFile = null;
         }
 
         // Resume existing session (must come AFTER options, BEFORE prompt)
@@ -710,19 +714,18 @@ class CodexProvider extends AbstractCliProvider
     // ========================================================================
 
     /**
-     * Write system prompt to .pocketdev-system-prompt.md in the working directory.
+     * Write the per-run system prompt file in the working directory.
      * Codex reads this via project_doc_fallback_filenames config.
      *
      * Filename choice: uses a hidden dotfile with a specific prefix to minimise
-     * the chance of colliding with user files. The old name (POCKETDEV-SYSTEM.md)
-     * was a visible file that could realistically clash with user content.
-     * Users should add ".pocketdev-system-prompt.md" to their .gitignore.
+     * the chance of colliding with user files.
      *
      * @throws \RuntimeException if content exceeds PROJECT_DOC_MAX_BYTES
      */
     private function writePocketDevInstructionsFile(string $workingDir, string $content): void
     {
-        $file = rtrim($workingDir, '/') . '/.pocketdev-system-prompt.md';
+        $filename = $this->systemPromptFile ?? '.pocketdev-system-prompt.md';
+        $file = rtrim($workingDir, '/') . '/' . $filename;
         $contentBytes = strlen($content);
 
         // Check if system prompt exceeds the configured limit
@@ -775,10 +778,16 @@ class CodexProvider extends AbstractCliProvider
      */
     private function cleanupPocketDevInstructionsFile(string $workingDir): void
     {
-        $file = rtrim($workingDir, '/') . '/.pocketdev-system-prompt.md';
+        if ($this->systemPromptFile === null) {
+            return;
+        }
+
+        $file = rtrim($workingDir, '/') . '/' . $this->systemPromptFile;
 
         if (file_exists($file)) {
             @unlink($file);
         }
+
+        $this->systemPromptFile = null;
     }
 }
