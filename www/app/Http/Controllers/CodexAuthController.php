@@ -2,17 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\CodexAgentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class CodexAuthController extends Controller
 {
     protected string $credentialsPath;
+    protected CodexAgentService $codexAgentService;
 
-    public function __construct()
+    public function __construct(CodexAgentService $codexAgentService)
     {
+        $this->codexAgentService = $codexAgentService;
+
         // Credentials path - use HOME environment variable from PHP-FPM process
         $home = getenv('HOME') ?: '/home/appuser';
         $this->credentialsPath = "{$home}/.codex/auth.json";
@@ -86,7 +93,7 @@ class CodexAuthController extends Controller
             // Create default agent for all workspaces that don't have one
             $workspaces = \App\Models\Workspace::all();
             foreach ($workspaces as $workspace) {
-                $this->ensureDefaultAgentExists($workspace->id);
+                $this->codexAgentService->ensureDefaultAgentExists($workspace->id);
             }
 
             return response()->json([
@@ -243,6 +250,193 @@ class CodexAuthController extends Controller
     }
 
     /**
+     * Serve the local upload script with this instance's URL pre-filled.
+     * Users can pipe it directly: bash <(curl -s https://pocketdev/codex/auth/upload-script)
+     */
+    public function downloadScript(): Response
+    {
+        $scriptPath = public_path('scripts/codex-auth.sh');
+        if (!file_exists($scriptPath) || !is_readable($scriptPath)) {
+            Log::error('[Codex Auth] Upload script missing or unreadable', ['path' => $scriptPath]);
+            return response('Upload script not found', 404);
+        }
+
+        $script = file_get_contents($scriptPath);
+        if ($script === false) {
+            Log::error('[Codex Auth] Failed to read upload script', ['path' => $scriptPath]);
+            return response('Failed to read upload script', 500);
+        }
+
+        // Pre-fill the PocketDev URL so the user doesn't have to type it.
+        // Use escapeshellarg() to neutralise any special shell characters in the URL
+        // before embedding it as the default value in the shell variable assignment.
+        $instanceUrl = rtrim(url('/'), '/');
+        $escapedUrl = escapeshellarg($instanceUrl);
+        // Strip the outer single-quotes added by escapeshellarg — the URL will be
+        // placed inside double-quotes in the shell script, so we only need the
+        // inner content with single-quotes escaped (i.e. ' → '\'').
+        $safeUrl = substr($escapedUrl, 1, -1);
+        $script = str_replace(
+            'PD_URL="${1:-${POCKETDEV_URL:-}}"',
+            'PD_URL="${1:-${POCKETDEV_URL:-' . $safeUrl . '}}"',
+            $script
+        );
+
+        return response($script, 200, [
+            'Content-Type' => 'text/plain; charset=utf-8',
+            'Content-Disposition' => 'inline; filename="codex-auth.sh"',
+            'Cache-Control' => 'no-store',
+        ]);
+    }
+
+    /**
+     * Start device auth flow — dispatches a background job that runs codex login.
+     * The job parses the URL/code from codex output and stores them in cache.
+     * Frontend polls deviceStatus() to get the URL and code to show the user.
+     */
+    public function startDeviceAuth(Request $request): JsonResponse
+    {
+        $flowId = $this->resolveRequestedFlowId($request) ?? (string) Str::uuid();
+        $cacheKey = $this->deviceAuthCacheKey($flowId);
+        $pidCacheKey = $this->deviceAuthPidCacheKey($flowId);
+
+        // Already authenticated with valid, non-expired credentials — no need to start a new session.
+        // We check getAuthenticationStatus() rather than mere file existence so that users with
+        // stale/expired/malformed auth.json can still trigger device auth to re-authenticate.
+        $currentStatus = $this->getAuthenticationStatus();
+        if ($currentStatus['authenticated'] ?? false) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Already authenticated. Logout first if you want to switch accounts.',
+            ], 400);
+        }
+
+        // Remove stale/expired/malformed auth.json before starting a new device-auth flow.
+        // Without this, the job and deviceStatus() would see the leftover file and
+        // immediately report "authenticated" with the old (invalid) credentials.
+        if (file_exists($this->credentialsPath)) {
+            @unlink($this->credentialsPath);
+        }
+
+        // Check if there's already an active session in progress
+        $existing = Cache::get($cacheKey);
+        if ($existing && in_array($existing['status'], ['starting', 'ready'], true)) {
+            $expiresAt = $existing['expires_at'] ?? 0;
+            if ($expiresAt > time()) {
+                return response()->json([
+                    'success' => true,
+                    'flow_id' => $flowId,
+                    'status' => $existing['status'],
+                    'verification_url' => $existing['verification_url'] ?? null,
+                    'user_code' => $existing['user_code'] ?? null,
+                    'expires_in' => max(0, $expiresAt - time()),
+                ]);
+            }
+        }
+
+        // Store initial "starting" state so the polling endpoint can respond immediately
+        Cache::put($cacheKey, [
+            'status' => 'starting',
+            'started_at' => time(),
+            'expires_at' => time() + 960,
+        ], 960);
+
+        // Dispatch the long-running job to the queue container
+        \App\Jobs\StartCodexDeviceAuthJob::dispatch($cacheKey, $pidCacheKey);
+
+        Log::info('[Codex Device Auth] Job dispatched');
+
+        return response()->json([
+            'success' => true,
+            'flow_id' => $flowId,
+            'status' => 'starting',
+        ]);
+    }
+
+    /**
+     * Return the current device auth session status.
+     * Frontend polls this every 2-3 seconds after calling startDeviceAuth().
+     */
+    public function deviceStatus(Request $request): JsonResponse
+    {
+        $flowId = $this->resolveRequestedFlowId($request);
+        $cacheKey = $flowId ? $this->deviceAuthCacheKey($flowId) : null;
+        $pidCacheKey = $flowId ? $this->deviceAuthPidCacheKey($flowId) : null;
+
+        // Auth.json already exists — authentication complete
+        if (file_exists($this->credentialsPath)) {
+            if ($cacheKey) {
+                Cache::forget($cacheKey);
+            }
+            if ($pidCacheKey) {
+                Cache::forget($pidCacheKey);
+            }
+
+            return response()->json([
+                'success' => true,
+                'flow_id' => $flowId,
+                'status' => 'authenticated',
+            ]);
+        }
+
+        if (!$cacheKey) {
+            return response()->json(['success' => true, 'status' => 'none']);
+        }
+
+        $session = Cache::get($cacheKey);
+
+        if (!$session) {
+            return response()->json(['success' => true, 'flow_id' => $flowId, 'status' => 'none']);
+        }
+
+        // Check expiry
+        if (($session['expires_at'] ?? 0) <= time()) {
+            Cache::forget($cacheKey);
+            return response()->json(['success' => true, 'flow_id' => $flowId, 'status' => 'expired']);
+        }
+
+        // Propagate job-reported "authenticated" status even if auth.json isn't visible here
+        if ($session['status'] === 'authenticated') {
+            return response()->json([
+                'success' => true,
+                'flow_id' => $flowId,
+                'status' => 'authenticated',
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'flow_id' => $flowId,
+            'status' => $session['status'],
+            'verification_url' => $session['verification_url'] ?? null,
+            'user_code' => $session['user_code'] ?? null,
+            'expires_in' => max(0, ($session['expires_at'] ?? 0) - time()),
+            'error' => $session['error'] ?? null,
+        ]);
+    }
+
+    private function resolveRequestedFlowId(Request $request): ?string
+    {
+        $flowId = $request->input('flow_id');
+
+        if (!is_string($flowId) || $flowId === '') {
+            return null;
+        }
+
+        return Str::isUuid($flowId) ? $flowId : null;
+    }
+
+    private function deviceAuthCacheKey(string $flowId): string
+    {
+        return 'codex_device_auth:flow:' . $flowId;
+    }
+
+    private function deviceAuthPidCacheKey(string $flowId): string
+    {
+        return 'codex_device_auth_pid:flow:' . $flowId;
+    }
+
+    /**
      * Ensure a default Codex agent exists for the given workspace.
      *
      * Called after successful authentication to create a default agent
@@ -253,46 +447,6 @@ class CodexAuthController extends Controller
      */
     public function ensureDefaultAgentExists(string $workspaceId): ?\App\Models\Agent
     {
-        // Check if a default Codex agent already exists
-        $existing = \App\Models\Agent::where('workspace_id', $workspaceId)
-            ->where('provider', 'codex')
-            ->where('is_default', true)
-            ->first();
-
-        if ($existing) {
-            return $existing;
-        }
-
-        // Check if ANY Codex agent exists
-        $anyCodex = \App\Models\Agent::where('workspace_id', $workspaceId)
-            ->where('provider', 'codex')
-            ->first();
-
-        if ($anyCodex) {
-            return $anyCodex;
-        }
-
-        // Create default agent
-        try {
-            return \App\Models\Agent::create([
-                'workspace_id' => $workspaceId,
-                'name' => 'Codex',
-                'slug' => 'codex-default',
-                'description' => 'Default Codex agent',
-                'provider' => 'codex',
-                'model' => config('ai.providers.codex.default_model', 'gpt-5.3-codex'),
-                'reasoning_config' => ['effort' => 'medium'],
-                'response_level' => 1,
-                'enabled' => true,
-                'is_default' => true,
-                'inherit_workspace_tools' => true,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('[Codex Auth] Failed to create default agent', [
-                'workspace_id' => $workspaceId,
-                'error' => $e->getMessage(),
-            ]);
-            return null;
-        }
+        return $this->codexAgentService->ensureDefaultAgentExists($workspaceId);
     }
 }
