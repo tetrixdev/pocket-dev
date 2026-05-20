@@ -427,6 +427,7 @@
         function codexDeviceAuth() {
             return {
                 state: 'idle',   // idle | starting | ready | authenticated | expired | failed
+                flowId: null,
                 verificationUrl: '',
                 userCode: '',
                 expiresIn: 900,
@@ -443,6 +444,7 @@
                 },
 
                 async init() {
+                    this.flowId = window.sessionStorage.getItem('codexDeviceAuthFlowId');
                     // Resume any session already in progress (e.g. after page reload)
                     await this.checkStatus();
                 },
@@ -457,7 +459,8 @@
                             headers: {
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                            }
+                            },
+                            body: JSON.stringify({ flow_id: this.flowId })
                         });
                         const data = await res.json();
 
@@ -482,7 +485,12 @@
 
                 async checkStatus() {
                     try {
-                        const res = await fetch('{{ route('codex.auth.deviceStatus') }}');
+                        const url = new URL('{{ route('codex.auth.deviceStatus') }}', window.location.origin);
+                        if (this.flowId) {
+                            url.searchParams.set('flow_id', this.flowId);
+                        }
+
+                        const res = await fetch(url.toString());
                         const data = await res.json();
                         this._applyStatus(data);
                     } catch (e) {
@@ -492,6 +500,7 @@
 
                 _applyStatus(data) {
                     const status = data.status;
+                    if (data.flow_id) this._setFlowId(data.flow_id);
 
                     if (status === 'ready' && this.state !== 'ready') {
                         this.state = 'ready';
@@ -505,13 +514,16 @@
                         if (data.expires_in !== undefined) this.expiresIn = data.expires_in;
                     } else if (status === 'authenticated') {
                         this.state = 'authenticated';
+                        this._clearFlowId();
                         this._stopTimers();
                     } else if (status === 'failed') {
                         this.state = 'failed';
                         this.error = data.error || 'Authentication failed';
+                        this._clearFlowId();
                         this._stopTimers();
                     } else if (status === 'expired') {
                         this.state = 'expired';
+                        this._clearFlowId();
                         this._stopTimers();
                     } else if (status === 'starting' && this.state === 'idle') {
                         this.state = 'starting';
@@ -537,8 +549,19 @@
                     if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
                 },
 
+                _setFlowId(flowId) {
+                    this.flowId = flowId;
+                    window.sessionStorage.setItem('codexDeviceAuthFlowId', flowId);
+                },
+
+                _clearFlowId() {
+                    this.flowId = null;
+                    window.sessionStorage.removeItem('codexDeviceAuthFlowId');
+                },
+
                 reset() {
                     this._stopTimers();
+                    this._clearFlowId();
                     this.state = 'idle';
                     this.verificationUrl = '';
                     this.userCode = '';

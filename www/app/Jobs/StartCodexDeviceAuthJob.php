@@ -15,6 +15,12 @@ class StartCodexDeviceAuthJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public function __construct(
+        private string $cacheKey,
+        private string $pidCacheKey
+    ) {
+    }
+
     /**
      * Allow the job to run for up to 16 minutes (device code window is 15 min).
      */
@@ -59,7 +65,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
 
         if ($pid) {
             // Store PID alongside the initial starting state so cleanup paths can kill it
-            Cache::put('codex_device_auth_pid', $pid, 1020);
+            Cache::put($this->pidCacheKey, $pid, 1020);
         }
 
         // Poll log file for URL and code (up to 30 seconds)
@@ -119,7 +125,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
             'code' => $userCode,
         ]);
 
-        Cache::put('codex_device_auth', [
+        Cache::put($this->cacheKey, [
             'status' => 'ready',
             'verification_url' => $verificationUrl,
             'user_code' => $userCode,
@@ -137,8 +143,8 @@ class StartCodexDeviceAuthJob implements ShouldQueue
                 if ($data && (isset($data['tokens']['access_token']) || isset($data['OPENAI_API_KEY']))) {
                     Log::info('[Codex Device Auth] Authentication successful');
 
-                    Cache::put('codex_device_auth', ['status' => 'authenticated'], 120);
-                    Cache::forget('codex_device_auth_pid');
+                    Cache::put($this->cacheKey, ['status' => 'authenticated'], 120);
+                    Cache::forget($this->pidCacheKey);
 
                     // Create default Codex agent for all workspaces
                     $this->createDefaultAgents();
@@ -156,7 +162,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
         // Timed out without authentication
         Log::warning('[Codex Device Auth] Session expired without authentication');
         $this->killBackgroundProcess();
-        Cache::put('codex_device_auth', ['status' => 'expired'], 120);
+        Cache::put($this->cacheKey, ['status' => 'expired'], 120);
 
         if (file_exists($logFile)) {
             unlink($logFile);
@@ -200,7 +206,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
      */
     private function killBackgroundProcess(): void
     {
-        $pid = Cache::pull('codex_device_auth_pid');
+        $pid = Cache::pull($this->pidCacheKey);
         if (!$pid) {
             return;
         }
@@ -220,7 +226,7 @@ class StartCodexDeviceAuthJob implements ShouldQueue
      */
     private function failWithError(string $error): void
     {
-        Cache::put('codex_device_auth', [
+        Cache::put($this->cacheKey, [
             'status' => 'failed',
             'error' => $error,
         ], 300);

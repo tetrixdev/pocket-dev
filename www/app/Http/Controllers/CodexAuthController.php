@@ -9,6 +9,7 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class CodexAuthController extends Controller
 {
@@ -292,8 +293,12 @@ class CodexAuthController extends Controller
      * The job parses the URL/code from codex output and stores them in cache.
      * Frontend polls deviceStatus() to get the URL and code to show the user.
      */
-    public function startDeviceAuth(): JsonResponse
+    public function startDeviceAuth(Request $request): JsonResponse
     {
+        $flowId = $this->resolveRequestedFlowId($request) ?? (string) Str::uuid();
+        $cacheKey = $this->deviceAuthCacheKey($flowId);
+        $pidCacheKey = $this->deviceAuthPidCacheKey($flowId);
+
         // Already authenticated with valid, non-expired credentials — no need to start a new session.
         // We check getAuthenticationStatus() rather than mere file existence so that users with
         // stale/expired/malformed auth.json can still trigger device auth to re-authenticate.
@@ -313,12 +318,13 @@ class CodexAuthController extends Controller
         }
 
         // Check if there's already an active session in progress
-        $existing = Cache::get('codex_device_auth');
+        $existing = Cache::get($cacheKey);
         if ($existing && in_array($existing['status'], ['starting', 'ready'], true)) {
             $expiresAt = $existing['expires_at'] ?? 0;
             if ($expiresAt > time()) {
                 return response()->json([
                     'success' => true,
+                    'flow_id' => $flowId,
                     'status' => $existing['status'],
                     'verification_url' => $existing['verification_url'] ?? null,
                     'user_code' => $existing['user_code'] ?? null,
@@ -328,19 +334,20 @@ class CodexAuthController extends Controller
         }
 
         // Store initial "starting" state so the polling endpoint can respond immediately
-        Cache::put('codex_device_auth', [
+        Cache::put($cacheKey, [
             'status' => 'starting',
             'started_at' => time(),
             'expires_at' => time() + 960,
         ], 960);
 
         // Dispatch the long-running job to the queue container
-        \App\Jobs\StartCodexDeviceAuthJob::dispatch();
+        \App\Jobs\StartCodexDeviceAuthJob::dispatch($cacheKey, $pidCacheKey);
 
         Log::info('[Codex Device Auth] Job dispatched');
 
         return response()->json([
             'success' => true,
+            'flow_id' => $flowId,
             'status' => 'starting',
         ]);
     }
@@ -349,47 +356,83 @@ class CodexAuthController extends Controller
      * Return the current device auth session status.
      * Frontend polls this every 2-3 seconds after calling startDeviceAuth().
      */
-    public function deviceStatus(): JsonResponse
+    public function deviceStatus(Request $request): JsonResponse
     {
+        $flowId = $this->resolveRequestedFlowId($request);
+        $cacheKey = $flowId ? $this->deviceAuthCacheKey($flowId) : null;
+        $pidCacheKey = $flowId ? $this->deviceAuthPidCacheKey($flowId) : null;
+
         // Auth.json already exists — authentication complete
         if (file_exists($this->credentialsPath)) {
-            // Clear any leftover session cache
-            Cache::forget('codex_device_auth');
+            if ($cacheKey) {
+                Cache::forget($cacheKey);
+            }
+            if ($pidCacheKey) {
+                Cache::forget($pidCacheKey);
+            }
 
             return response()->json([
                 'success' => true,
+                'flow_id' => $flowId,
                 'status' => 'authenticated',
             ]);
         }
 
-        $session = Cache::get('codex_device_auth');
+        if (!$cacheKey) {
+            return response()->json(['success' => true, 'status' => 'none']);
+        }
+
+        $session = Cache::get($cacheKey);
 
         if (!$session) {
-            return response()->json(['success' => true, 'status' => 'none']);
+            return response()->json(['success' => true, 'flow_id' => $flowId, 'status' => 'none']);
         }
 
         // Check expiry
         if (($session['expires_at'] ?? 0) <= time()) {
-            Cache::forget('codex_device_auth');
-            return response()->json(['success' => true, 'status' => 'expired']);
+            Cache::forget($cacheKey);
+            return response()->json(['success' => true, 'flow_id' => $flowId, 'status' => 'expired']);
         }
 
         // Propagate job-reported "authenticated" status even if auth.json isn't visible here
         if ($session['status'] === 'authenticated') {
             return response()->json([
                 'success' => true,
+                'flow_id' => $flowId,
                 'status' => 'authenticated',
             ]);
         }
 
         return response()->json([
             'success' => true,
+            'flow_id' => $flowId,
             'status' => $session['status'],
             'verification_url' => $session['verification_url'] ?? null,
             'user_code' => $session['user_code'] ?? null,
             'expires_in' => max(0, ($session['expires_at'] ?? 0) - time()),
             'error' => $session['error'] ?? null,
         ]);
+    }
+
+    private function resolveRequestedFlowId(Request $request): ?string
+    {
+        $flowId = $request->input('flow_id');
+
+        if (!is_string($flowId) || $flowId === '') {
+            return null;
+        }
+
+        return Str::isUuid($flowId) ? $flowId : null;
+    }
+
+    private function deviceAuthCacheKey(string $flowId): string
+    {
+        return 'codex_device_auth:flow:' . $flowId;
+    }
+
+    private function deviceAuthPidCacheKey(string $flowId): string
+    {
+        return 'codex_device_auth_pid:flow:' . $flowId;
     }
 
     /**
