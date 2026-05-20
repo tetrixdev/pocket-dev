@@ -56,6 +56,8 @@ return [
         'codex' => [
             // No API key needed - uses Codex CLI authentication (setup via `codex login`)
             'default_model' => 'gpt-5.3-codex',
+            // Codex refreshes subscription tokens every 8 days by default.
+            'token_refresh_days' => env('PD_CODEX_TOKEN_REFRESH_DAYS', 8),
         ],
 
         'openai_compatible' => [
@@ -127,6 +129,7 @@ return [
         // Codex: uses OpenAI-style effort levels (Codex-specific values)
         'codex' => [
             'effort_levels' => [
+                ['value' => 'none', 'name' => 'Off', 'description' => 'No reasoning (fastest)'],
                 ['value' => 'minimal', 'name' => 'Minimal', 'description' => 'Minimal reasoning (fastest)'],
                 ['value' => 'low', 'name' => 'Low', 'description' => 'Quick reasoning'],
                 ['value' => 'medium', 'name' => 'Medium', 'description' => 'Balanced reasoning'],
