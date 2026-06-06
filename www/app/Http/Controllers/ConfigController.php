@@ -8,11 +8,13 @@ use App\Models\Workspace;
 use App\Services\NativeToolService;
 use App\Services\ToolSelector;
 use App\Services\VersionService;
+use App\Tools\AgentTool;
 use App\Tools\Tool;
 use App\Tools\UserTool;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class ConfigController extends Controller
 {
@@ -361,6 +363,17 @@ class ConfigController extends Controller
     {
         $request->session()->put('config_last_section', 'agents');
 
+        $selectedWorkspaceId = $request->query('workspace_id');
+
+        $exposedAgents = collect();
+        if ($selectedWorkspaceId) {
+            $exposedAgents = Agent::where('workspace_id', $selectedWorkspaceId)
+                ->where('enabled', true)
+                ->where('expose_as_tool', true)
+                ->orderBy('name')
+                ->get(['id', 'name', 'slug']);
+        }
+
         $viewData = [
             'providers' => Agent::getProviders(),
             'modelsPerProvider' => collect(Agent::getProviders())
@@ -370,9 +383,10 @@ class ConfigController extends Controller
                 ->mapWithKeys(fn ($p) => [$p => $this->getMaxContextPerProvider($p)])
                 ->toArray(),
             'workspaces' => Workspace::orderBy('name')->get(),
-            'selectedWorkspaceId' => $request->query('workspace_id'),
+            'selectedWorkspaceId' => $selectedWorkspaceId,
             'sourceAgent' => null,
             'cloneWarnings' => null,
+            'exposedAgents' => $exposedAgents,
         ];
 
         // Handle "Create from" (cloning an existing agent)
@@ -463,6 +477,17 @@ class ConfigController extends Controller
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
                 'extended_context' => 'nullable|in:0,1',
+                'expose_as_tool' => 'nullable|boolean',
+                'can_call_subagents' => 'nullable|boolean',
+                'allowed_subagents' => 'nullable|array',
+                'allowed_subagents.*' => [
+                    'uuid',
+                    Rule::exists('agents', 'id')->where(function ($query) use ($request) {
+                        $query->where('workspace_id', $request->input('workspace_id'))
+                            ->where('enabled', true)
+                            ->where('expose_as_tool', true);
+                    }),
+                ],
             ]);
 
             // Check for duplicate slug within workspace
@@ -471,6 +496,12 @@ class ConfigController extends Controller
                 return redirect()->back()
                     ->withInput()
                     ->with('error', 'An agent with this name already exists in this workspace');
+            }
+
+            if (($validated['expose_as_tool'] ?? false) && !AgentTool::isCompatibleAgentSlug($slug)) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'This agent name produces a native tool name that is too long or contains unsupported characters. Keep the generated slug at 58 characters or fewer.');
             }
 
             // Parse inherit settings
@@ -504,6 +535,11 @@ class ConfigController extends Controller
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
                     'extended_context' => ($validated['extended_context'] ?? '1') === '1',
+                    'expose_as_tool' => $validated['expose_as_tool'] ?? false,
+                    'can_call_subagents' => (bool) ($validated['can_call_subagents'] ?? true),
+                    'allowed_subagents' => ((bool) ($validated['can_call_subagents'] ?? true) && !empty($validated['allowed_subagents']))
+                        ? $validated['allowed_subagents']
+                        : null,
                 ]);
 
                 // Sync memory schemas (only if not inheriting)
@@ -530,6 +566,15 @@ class ConfigController extends Controller
     {
         $request->session()->put('config_last_section', 'agents');
 
+        // Load other agents in this workspace that have expose_as_tool enabled
+        // (candidates for the caller-side allowed_subagents multi-select)
+        $exposedAgents = Agent::where('workspace_id', $agent->workspace_id)
+            ->where('enabled', true)
+            ->where('expose_as_tool', true)
+            ->where('id', '!=', $agent->id)
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug']);
+
         return view('config.agents.form', [
             'agent' => $agent,
             'providers' => Agent::getProviders(),
@@ -539,6 +584,7 @@ class ConfigController extends Controller
             'maxContextPerProvider' => collect(Agent::getProviders())
                 ->mapWithKeys(fn ($p) => [$p => $this->getMaxContextPerProvider($p)])
                 ->toArray(),
+            'exposedAgents' => $exposedAgents,
         ]);
     }
 
@@ -572,6 +618,18 @@ class ConfigController extends Controller
                 'is_default' => 'nullable|boolean',
                 'enabled' => 'nullable|boolean',
                 'extended_context' => 'nullable|in:0,1',
+                'expose_as_tool' => 'nullable|boolean',
+                'can_call_subagents' => 'nullable|boolean',
+                'allowed_subagents' => 'nullable|array',
+                'allowed_subagents.*' => [
+                    'uuid',
+                    Rule::exists('agents', 'id')->where(function ($query) use ($agent) {
+                        $query->where('workspace_id', $agent->workspace_id)
+                            ->where('enabled', true)
+                            ->where('expose_as_tool', true)
+                            ->where('id', '!=', $agent->id);
+                    }),
+                ],
             ]);
 
             // Check for duplicate slug within workspace (excluding current agent)
@@ -580,6 +638,12 @@ class ConfigController extends Controller
                 return redirect()->back()
                     ->withInput()
                     ->with('error', 'An agent with this name already exists in this workspace');
+            }
+
+            if (($validated['expose_as_tool'] ?? false) && !AgentTool::isCompatibleAgentSlug($slug)) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'This agent name produces a native tool name that is too long or contains unsupported characters. Keep the generated slug at 58 characters or fewer.');
             }
 
             // Parse inherit settings
@@ -613,6 +677,11 @@ class ConfigController extends Controller
                     'is_default' => $validated['is_default'] ?? false,
                     'enabled' => $validated['enabled'] ?? true,
                     'extended_context' => ($validated['extended_context'] ?? '1') === '1',
+                    'expose_as_tool' => $validated['expose_as_tool'] ?? false,
+                    'can_call_subagents' => (bool) ($validated['can_call_subagents'] ?? true),
+                    'allowed_subagents' => ((bool) ($validated['can_call_subagents'] ?? true) && !empty($validated['allowed_subagents']))
+                        ? $validated['allowed_subagents']
+                        : null,
                 ]);
 
                 // Sync memory schemas (only if not inheriting)

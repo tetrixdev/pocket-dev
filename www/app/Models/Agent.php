@@ -45,6 +45,9 @@ class Agent extends Model
         'is_default',
         'enabled',
         'extended_context',
+        'expose_as_tool',
+        'can_call_subagents',
+        'allowed_subagents',
     ];
 
     protected $casts = [
@@ -56,6 +59,9 @@ class Agent extends Model
         'extended_context' => 'boolean',
         'reasoning_config' => 'array',
         'response_level' => 'integer',
+        'expose_as_tool' => 'boolean',
+        'can_call_subagents' => 'boolean',
+        'allowed_subagents' => 'array',
     ];
 
     protected static function boot(): void
