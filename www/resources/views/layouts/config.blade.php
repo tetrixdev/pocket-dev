@@ -207,6 +207,14 @@
                     </a>
                 </div>
 
+                <!-- Usage Dashboard -->
+                <div class="border-b border-gray-700">
+                    <a href="{{ route('config.usage') }}"
+                       class="category-button w-full block {{ Route::currentRouteName() == 'config.usage' ? 'active' : '' }}">
+                        📊 Usage
+                    </a>
+                </div>
+
                 <!-- System Management -->
                 <div class="border-b border-gray-700">
                     <a href="{{ route('config.system') }}"
@@ -432,6 +440,15 @@
                    @click="showMobileDrawer = false"
                    class="category-button w-full block {{ Route::currentRouteName() == 'config.backup' ? 'active' : '' }}">
                     💾 Backup
+                </a>
+            </div>
+
+            <!-- Usage Dashboard -->
+            <div class="border-b border-gray-700">
+                <a href="{{ route('config.usage') }}"
+                   @click="showMobileDrawer = false"
+                   class="category-button w-full block {{ Route::currentRouteName() == 'config.usage' ? 'active' : '' }}">
+                    📊 Usage
                 </a>
             </div>
 
