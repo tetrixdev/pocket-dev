@@ -1,0 +1,167 @@
+# PocketDev Documentation
+
+**Last Updated**: December 2025
+
+PocketDev is a Docker-based development environment that provides a multi-provider AI chat interface (Anthropic/OpenAI/Claude Code) and web terminal access. Designed for mobile-first coding workflows.
+
+---
+
+## Quick Reference
+
+| Task | Go To |
+|------|-------|
+| Understand the system | `architecture/system-overview.md` |
+| Work on chat interface | `modules/chat/` |
+| Work on config editor | `modules/config-editor.md` |
+| Debug Claude CLI issues | `integrations/claude-cli.md` |
+| Add voice features | `integrations/openai-whisper.md` |
+| Database changes | `database/schema.md` |
+| Docker/container changes | `architecture/system-overview.md` |
+| Deploy to a server | `deployment/secure-server-setup.md` |
+| Develop PocketDev itself | `development/self-development.md` |
+
+## Topic Index
+
+What are you looking for?
+
+| Topic | Location | Notes |
+|-------|----------|-------|
+| **Conversations** | | |
+| Conversation statuses (idle/processing/failed/archived) | `database/schema.md` | See "conversations" table |
+| How messages are streamed | `modules/chat/streaming.md` | SSE, chunk handling |
+| Chat UI components | `modules/chat/README.md` | Alpine.js, Blade |
+| **Providers** | | |
+| Anthropic/OpenAI/Claude Code setup | `architecture/system-overview.md` | Provider factory |
+| Reasoning/thinking token settings | `architecture/provider-specific-reasoning-settings.md` | Per-provider config |
+| **Infrastructure** | | |
+| Container architecture | `architecture/system-overview.md` | 5 containers, networking |
+| Job queue (Redis) | `architecture/system-overview.md` | Background processing |
+| Authentication (Basic Auth, IP whitelist) | `architecture/authentication.md` | Via proxy-nginx |
+| API key storage | `architecture/authentication.md` | Encrypted in DB |
+| File permissions (PHP-FPM vs queue) | `architecture/file-permissions.md` | umask, group perms |
+| **Database** | | |
+| Full schema reference | `database/schema.md` | Tables, indexes, queries |
+| Model pricing/config | `database/schema.md` | ai_models table |
+| **Integrations** | | |
+| Claude CLI (proc_open, streaming) | `integrations/claude-cli.md` | Session management |
+| OpenAI Whisper (voice) | `integrations/openai-whisper.md` | Transcription API |
+| **Configuration** | | |
+| Environment variables | `configuration/README.md` | .env file |
+| AI provider config | `configuration/README.md` | config/ai.php |
+| **Skills** | | |
+| System skills (built-in workflows) | `architecture/system-skills.md` | Adding/updating skills |
+| Skill tag filtering | `architecture/system-skills.md` | Workspace whitelist/blacklist |
+
+---
+
+## Documentation
+
+### 🏗️ Architecture (`architecture/`)
+
+**TLDR:** Five Docker containers (php, nginx, postgres, redis, queue) connected via bridge network. On servers, external proxy-nginx handles SSL + Basic Auth + IP whitelist. PHP container runs Laravel + Claude CLI + Node.js. Redis provides caching and queue backend. Volumes share workspace and user data.
+
+**Read level:** 📖 Full read recommended - Understanding container relationships is helpful for debugging.
+
+**Contents:**
+- `system-overview.md` - Container architecture, networking, volumes, data flow
+- `authentication.md` - Basic Auth, IP whitelist, Claude credential management
+- `technology-stack.md` - Laravel, Alpine.js, Docker, key dependencies
+- `file-permissions.md` - Cross-process file permissions (PHP-FPM vs queue workers)
+- `system-skills.md` - Built-in AI workflow skills, how to add/update them
+
+### 📦 Modules (`modules/`)
+
+**TLDR:** Two main modules: Chat (web interface for Claude conversations with SSE streaming, responsive design, voice input, cost tracking) and Config Editor (CRUD for CLAUDE.md, settings.json, agents, commands, hooks, skills). Chat is complex (~1500 line Blade file), Config Editor is straightforward Laravel CRUD.
+
+**Read level:** ⚠️ TLDR insufficient - Chat module has significant complexity (streaming, session management) that requires full documentation.
+
+**Contents:**
+- `chat/` - Chat interface module (streaming, sessions, voice, cost tracking)
+- `config-editor.md` - Configuration file editor
+
+### 🔌 Integrations (`integrations/`)
+
+**TLDR:** Two external integrations: Claude CLI (wrapped via `proc_open()`, handles streaming via `--output-format stream-json`, session management via UUIDs) and OpenAI Whisper (voice transcription via `gpt-4o-transcribe` model, API key stored encrypted in database).
+
+**Read level:** ⚠️ TLDR insufficient - Claude CLI integration has complex streaming and session handling that must be understood for modifications.
+
+**Contents:**
+- `claude-cli.md` - Claude Code CLI integration details
+- `openai-whisper.md` - Voice transcription integration
+
+### 🗄️ Database (`database/`)
+
+**TLDR:** Three custom tables: `conversations` (multi-provider conversations with messages stored in DB), `app_settings` (encrypted key-value store for API keys), `ai_models` (model configuration and pricing). Plus standard Laravel tables (users, cache, jobs).
+
+**Read level:** ✅ TLDR likely sufficient - Schema is simple, use TLDR to identify relevant tables.
+
+**Contents:**
+- `schema.md` - Current database schema (NOT migration history)
+
+### ⚙️ Configuration (`configuration/`)
+
+**TLDR:** Key config files: `config/ai.php` (providers, models, thinking settings), `.env` (Docker settings, Basic Auth credentials, API keys), `nginx.conf.template` (proxy routing). Config editor allows runtime editing of Claude settings in PHP container.
+
+**Read level:** ✅ TLDR likely sufficient - Configuration is straightforward.
+
+**Contents:**
+- `README.md` - Configuration files overview
+
+### 🚀 Deployment (`deployment/`)
+
+**TLDR:** Secure deployment using Tailscale for private network access. Server is invisible to public internet - only your Tailscale-connected devices can reach it. Includes iptables firewall, automatic security updates, Docker setup.
+
+**Read level:** 📖 Full read recommended - Follow step-by-step for secure deployment.
+
+**Contents:**
+- `secure-server-setup.md` - Complete VPS deployment guide with Tailscale
+
+### 📝 Review Learnings
+
+- `review-learnings.md` - Decisions from code reviews that should not be re-flagged. Consult this before raising review findings to avoid duplicating previously accepted decisions.
+
+### 🛠️ Development (`development/`)
+
+**TLDR:** Self-development mode allows developing PocketDev using PocketDev itself. Set `HOST_PROJECT_PATH` in `.env`, then use `pocketdev` CLI to restart/rebuild containers from inside. Most code changes (PHP, Blade, JS) don't require restarts.
+
+**Read level:** ✅ TLDR likely sufficient - Simple setup and usage.
+
+**Contents:**
+- `self-development.md` - Dogfooding setup and container management
+
+---
+
+## Development Commands
+
+```bash
+# Start all containers
+docker compose up -d --build
+
+# Hard reset (after Docker changes)
+docker compose down -v && docker compose up -d --build
+
+# Frontend rebuild (after JS/CSS changes)
+docker compose up -d --force-recreate
+
+# Laravel commands
+docker compose exec pocket-dev-php php artisan migrate
+docker compose exec pocket-dev-php php artisan tinker
+
+# View logs
+docker compose logs -f pocket-dev-php
+```
+
+---
+
+## Source File Reference
+
+| Component | Primary Files |
+|-----------|---------------|
+| Provider factory | `app/Services/ProviderFactory.php` |
+| Anthropic provider | `app/Services/Providers/AnthropicProvider.php` |
+| OpenAI provider | `app/Services/Providers/OpenAIProvider.php` |
+| Claude Code provider | `app/Services/Providers/ClaudeCodeProvider.php` |
+| Conversation API | `app/Http/Controllers/Api/ConversationController.php` |
+| Chat interface | `resources/views/chat.blade.php` |
+| Config editor | `app/Http/Controllers/ConfigController.php` |
+| Docker setup | `compose.yml` |

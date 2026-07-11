@@ -1,0 +1,87 @@
+{
+  "specialist": "User Experience",
+  "findings": [
+    {
+      "id": "UX-001",
+      "topic": "User Experience",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Update success output always says 'Updated tool:' regardless of type, while create output uses type-aware labels ('Created panel:' vs 'Created tool:')",
+      "why": "Inconsistent labeling between create and update paths could confuse the AI agent (the primary user) about whether the type was correctly applied. If the user just changed type to 'panel' in meta.json and the output still says 'Updated tool:', they might doubt the change took effect, even though it did.",
+      "verify": "Compare createTool output (line 571: 'Created {$typeLabel}') with updateTool output (line 439: 'Updated tool:'). Confirm updateTool does not use the tool's type to select the label.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "UX-002",
+      "topic": "User Experience",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Slug mismatch between meta.json and push target produces a warning but still proceeds with the update, silently applying content from one tool's extracted files to a different tool",
+      "why": "If the AI extracts tool-A, then accidentally runs 'pd tool:push tool-B', all of tool-A's content gets applied to tool-B with only a warning. The warning says 'Slug changes are not supported via push' which is ambiguous - it could be read as 'the push won't work' (wrong) rather than 'the slug field won't be renamed but everything else applies' (what actually happens). This could lead to accidental data overwrite.",
+      "verify": "Check lines 327-330 of ToolPushTool.php. The warning is appended but the update continues. Determine whether a hard error or more explicit warning text would be safer here.",
+      "source": "file-review"
+    },
+    {
+      "id": "UX-003",
+      "topic": "User Experience",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Whitespace-only script.sh and template.blade.php are accepted on the create path but rejected on the update path",
+      "why": "The create path uses empty($script) and empty($bladeTemplate) which does not trim whitespace, so a file containing only spaces/newlines passes validation. The update path uses empty(trim($content)) which correctly rejects whitespace-only files. This inconsistency means a tool can be created with a whitespace-only script but cannot be updated back to the same content.",
+      "verify": "Compare create-path validation (lines 546-551, using empty($script)) with update-path validation (lines 387-389 for script.sh, using empty(trim($content))). Confirm that empty() without trim() allows whitespace-only strings.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "UX-004",
+      "topic": "User Experience",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The 'no changes' diagnostic output lists checked files but omits meta.json from the list, even when meta.json was read and compared",
+      "why": "When a user pushes changes and gets 'No changes detected', the diagnostic output shows 'Checked files (all match current values)' listing system_prompt.md, script.sh, etc. But meta.json fields are checked separately and never appear in the $filesChecked array. If a user modified only meta.json and the values happened to match, they'd see the checked-files list without meta.json, potentially thinking meta.json wasn't processed.",
+      "verify": "Check that $filesChecked (line 334) is only populated for system_prompt.md, input_schema.json, template.blade.php, script.sh, and dependencies.json. Confirm meta.json is never added to this array despite being checked in the $meta block above.",
+      "source": "file-review"
+    },
+    {
+      "id": "UX-005",
+      "topic": "User Experience",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Type validation error messages don't show the invalid value that was provided",
+      "why": "The error 'type must be \"script\" or \"panel\" in meta.json' doesn't include what value was actually provided. When debugging meta.json issues, knowing the rejected value (e.g., 'Type' vs 'type', or 'Script' vs 'script') helps the user fix the problem faster. This applies to both create (line 493) and update (line 315) paths.",
+      "verify": "Check lines 314-315 (update) and 492-493 (create) for the type validation error messages. Confirm the invalid $newType/$type value is not included in the error text.",
+      "source": "file-review"
+    },
+    {
+      "id": "UX-006",
+      "topic": "User Experience",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The 'enabled' field in meta.json uses PHP boolean casting which treats the JSON string \"false\" as true",
+      "why": "If a user writes '\"enabled\": \"false\"' in meta.json (string instead of boolean), PHP's (bool) cast treats any non-empty string as true. The tool would silently enable the tool instead of disabling it. JSON allows both boolean false and string \"false\" to be valid values, and a user might accidentally use the string form.",
+      "verify": "Check line 308 where (bool)$meta['enabled'] is used. In PHP, (bool)\"false\" === true. Determine if this edge case is worth guarding against, given that meta.json is typically generated by tool:extract with proper boolean values.",
+      "source": "file-review"
+    },
+    {
+      "id": "UX-007",
+      "topic": "User Experience",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Create-path error messages are terse compared to update-path error messages for similar validation failures",
+      "why": "The create path says 'script.sh is required for type=script' (line 547) while the update path says 'Cannot change type to script: script.sh is required but not found in {directory}/ and no existing script is stored.' (line 322). The update errors provide context about where the file should be and what was checked, while create errors just state the requirement. Users hitting create errors get less guidance on what to fix.",
+      "verify": "Compare error message detail level between createTool type-specific errors (lines 546-551) and updateTool type-change errors (lines 318-323). The update errors include the directory path and explain both file and existing-content checks.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "UX-008",
+      "topic": "User Experience",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Create-path duplicate slug error for PocketTool ('A tool with slug already exists') doesn't suggest a fix, while the PanelRegistry error does ('Choose a different slug')",
+      "why": "When creating, if a system panel has the slug the error says 'Choose a different slug' (line 499). But if a PocketTool has the slug, the error just says 'A tool with slug already exists' (line 503) without guidance. Since the latter case could mean the user should use tool:push to update instead of create, the error should guide them accordingly.",
+      "verify": "Compare error messages at lines 499 and 503. Check whether the PocketTool duplicate error should suggest using extract/push to update the existing tool.",
+      "source": "outlier-hunt"
+    }
+  ],
+  "na_files": [
+    "docs/plans/panels-and-screens.md",
+    "docs/proposals/system-prompt-optimization-tracker.md",
+    "docs/review-learnings.md",
+    "www/app/Console/Commands/ToolExtractCommand.php",
+    "www/app/Services/SystemPromptBuilder.php",
+    "www/docs/tool-system-architecture.md",
+    "www/docs/tool-system-testing-plan.md"
+  ],
+  "processing_notes": []
+}

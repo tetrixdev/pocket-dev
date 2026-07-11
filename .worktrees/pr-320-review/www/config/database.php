@@ -1,0 +1,217 @@
+<?php
+
+use Illuminate\Support\Str;
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default Database Connection Name
+    |--------------------------------------------------------------------------
+    |
+    | Here you may specify which of the database connections below you wish
+    | to use as your default connection for database operations. This is
+    | the connection which will be utilized unless another connection
+    | is explicitly specified when you execute a query / statement.
+    |
+    */
+
+    'default' => env('PD_DB_CONNECTION', 'pgsql'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Database Connections
+    |--------------------------------------------------------------------------
+    |
+    | Below are all of the database connections defined for your application.
+    | An example configuration is provided for each database system which
+    | is supported by Laravel. You're free to add / remove connections.
+    |
+    */
+
+    'connections' => [
+
+        'sqlite' => [
+            'driver' => 'sqlite',
+            'url' => env('PD_DB_URL'),
+            'database' => env('PD_DB_DATABASE', database_path('database.sqlite')),
+            'prefix' => '',
+            'foreign_key_constraints' => env('PD_DB_FOREIGN_KEYS', true),
+            'busy_timeout' => null,
+            'journal_mode' => null,
+            'synchronous' => null,
+            'transaction_mode' => 'DEFERRED',
+        ],
+
+        'mysql' => [
+            'driver' => 'mysql',
+            'url' => env('PD_DB_URL'),
+            'host' => env('PD_DB_HOST', '127.0.0.1'),
+            'port' => env('PD_DB_PORT', '3306'),
+            'database' => env('PD_DB_DATABASE', 'laravel'),
+            'username' => env('PD_DB_USERNAME', 'root'),
+            'password' => env('PD_DB_PASSWORD', ''),
+            'unix_socket' => env('PD_DB_SOCKET', ''),
+            'charset' => env('PD_DB_CHARSET', 'utf8mb4'),
+            'collation' => env('PD_DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('PD_MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        'mariadb' => [
+            'driver' => 'mariadb',
+            'url' => env('PD_DB_URL'),
+            'host' => env('PD_DB_HOST', '127.0.0.1'),
+            'port' => env('PD_DB_PORT', '3306'),
+            'database' => env('PD_DB_DATABASE', 'laravel'),
+            'username' => env('PD_DB_USERNAME', 'root'),
+            'password' => env('PD_DB_PASSWORD', ''),
+            'unix_socket' => env('PD_DB_SOCKET', ''),
+            'charset' => env('PD_DB_CHARSET', 'utf8mb4'),
+            'collation' => env('PD_DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA => env('PD_MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
+        'pgsql' => [
+            'driver' => 'pgsql',
+            'url' => env('PD_DB_URL'),
+            'host' => env('PD_DB_HOST', 'pocket-dev-postgres'),
+            'port' => env('PD_DB_PORT', '5432'),
+            'database' => env('PD_DB_DATABASE', 'pocket-dev'),
+            'username' => env('PD_DB_USERNAME', 'pocket-dev'),
+            'password' => env('PD_DB_PASSWORD', ''),
+            'charset' => env('PD_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => 'prefer',
+        ],
+
+        // Read-only connection for MemoryQueryTool
+        // This user can only SELECT from memory schema tables
+        // Note: Password fallback is intentional for development environments
+        'pgsql_readonly' => [
+            'driver' => 'pgsql',
+            'host' => env('PD_DB_HOST', 'pocket-dev-postgres'),
+            'port' => env('PD_DB_PORT', '5432'),
+            'database' => env('PD_DB_DATABASE', 'pocket-dev'),
+            'username' => env('PD_DB_READONLY_USERNAME', 'memory_readonly'),
+            'password' => env('PD_DB_READONLY_PASSWORD', 'readonly_password'), // Fallback acceptable for dev convenience
+            'charset' => env('PD_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'memory,public',
+            'sslmode' => 'prefer',
+        ],
+
+        // DDL/DML connection for memory schema operations
+        // This user can CREATE/ALTER/DROP tables in memory schema
+        // Used by memory:schema:* and memory:insert/update/delete tools
+        'pgsql_memory_ai' => [
+            'driver' => 'pgsql',
+            'host' => env('PD_DB_HOST', 'pocket-dev-postgres'),
+            'port' => env('PD_DB_PORT', '5432'),
+            'database' => env('PD_DB_DATABASE', 'pocket-dev'),
+            'username' => 'memory_ai',
+            'password' => env('PD_DB_MEMORY_AI_PASSWORD', ''),
+            'charset' => env('PD_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'memory',
+            'sslmode' => 'prefer',
+        ],
+
+        'sqlsrv' => [
+            'driver' => 'sqlsrv',
+            'url' => env('PD_DB_URL'),
+            'host' => env('PD_DB_HOST', 'localhost'),
+            'port' => env('PD_DB_PORT', '1433'),
+            'database' => env('PD_DB_DATABASE', 'laravel'),
+            'username' => env('PD_DB_USERNAME', 'root'),
+            'password' => env('PD_DB_PASSWORD', ''),
+            'charset' => env('PD_DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            // 'encrypt' => env('PD_DB_ENCRYPT', 'yes'),
+            // 'trust_server_certificate' => env('PD_DB_TRUST_SERVER_CERTIFICATE', 'false'),
+        ],
+
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Migration Repository Table
+    |--------------------------------------------------------------------------
+    |
+    | This table keeps track of all the migrations that have already run for
+    | your application. Using this information, we can determine which of
+    | the migrations on disk haven't actually been run on the database.
+    |
+    */
+
+    'migrations' => [
+        'table' => 'migrations',
+        'update_date_on_publish' => true,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Redis Databases
+    |--------------------------------------------------------------------------
+    |
+    | Redis is an open source, fast, and advanced key-value store that also
+    | provides a richer body of commands than a typical key-value system
+    | such as Memcached. You may define your connection settings here.
+    |
+    */
+
+    'redis' => [
+
+        'client' => env('PD_REDIS_CLIENT', 'predis'),
+
+        'options' => [
+            'cluster' => env('PD_REDIS_CLUSTER', 'redis'),
+            'prefix' => env('PD_REDIS_PREFIX', Str::slug((string) env('PD_APP_NAME', 'laravel')).'-database-'),
+            'persistent' => env('PD_REDIS_PERSISTENT', false),
+        ],
+
+        'default' => [
+            'url' => env('PD_REDIS_URL'),
+            'host' => env('PD_REDIS_HOST', 'pocket-dev-redis'),
+            'username' => env('PD_REDIS_USERNAME'),
+            'password' => env('PD_REDIS_PASSWORD'),
+            'port' => env('PD_REDIS_PORT', '6379'),
+            'database' => env('PD_REDIS_DB', '0'),
+            'max_retries' => env('PD_REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('PD_REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('PD_REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('PD_REDIS_BACKOFF_CAP', 1000),
+        ],
+
+        'cache' => [
+            'url' => env('PD_REDIS_URL'),
+            'host' => env('PD_REDIS_HOST', 'pocket-dev-redis'),
+            'username' => env('PD_REDIS_USERNAME'),
+            'password' => env('PD_REDIS_PASSWORD'),
+            'port' => env('PD_REDIS_PORT', '6379'),
+            'database' => env('PD_REDIS_CACHE_DB', '1'),
+            'max_retries' => env('PD_REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('PD_REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('PD_REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('PD_REDIS_BACKOFF_CAP', 1000),
+        ],
+
+    ],
+
+];

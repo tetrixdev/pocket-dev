@@ -1,0 +1,37 @@
+<?php
+
+// Set group-writable umask so both www-data (PHP-FPM) and appuser (queue workers)
+// can read/write each other's files. Both users are in appgroup.
+// Default umask 022 creates 644 files; umask 002 creates 664 files (group-writable).
+umask(0002);
+
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
+
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__.'/../routes/web.php',
+        commands: __DIR__.'/../routes/console.php',
+        health: '/up',
+    )
+    ->withMiddleware(function (Middleware $middleware): void {
+        // Trust Docker network proxies and localhost
+        // PocketDev runs behind its own proxy container and may be behind additional proxies
+        $middleware->trustProxies(at: [
+            '127.0.0.1',       // Localhost
+            '172.16.0.0/12',   // Docker networks (172.16.x.x - 172.31.x.x)
+            '10.0.0.0/8',      // Private network range (common in Docker/k8s)
+            '192.168.0.0/16',  // Private network range
+        ]);
+
+        // Redirect to setup wizard if not complete (web routes)
+        // Note: API routes are now in web.php under /api prefix, so they get
+        // full web middleware (session, CSRF, cookies) automatically.
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsureSetupComplete::class,
+        ]);
+    })
+    ->withExceptions(function (Exceptions $exceptions): void {
+        //
+    })->create();

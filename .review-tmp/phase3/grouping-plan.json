@@ -1,0 +1,41 @@
+{
+  "total_findings": 46,
+  "groups": [
+    {
+      "id": 1,
+      "name": "Enabled field boolean casting and create/update inconsistency",
+      "finding_ids": ["BL-001", "BL-007", "SEC-001", "SEC-008", "UX-006", "ARCH-004", "CONS-005"],
+      "files_to_read": ["www/app/Tools/ToolPushTool.php", "www/app/Models/PocketTool.php", "www/app/Tools/ToolExtractTool.php"]
+    },
+    {
+      "id": 2,
+      "name": "Type change handling and stale data preservation",
+      "finding_ids": ["BL-002", "BL-005", "SEC-004", "ARCH-005", "EFF-007"],
+      "files_to_read": ["www/app/Tools/ToolPushTool.php", "www/app/Tools/ToolExtractTool.php", "www/app/Http/Controllers/PanelController.php", "www/app/Models/PocketTool.php"]
+    },
+    {
+      "id": 3,
+      "name": "JSON validation for input_schema, dependencies, and meta",
+      "finding_ids": ["BL-003", "BL-004", "SEC-002", "SEC-005", "EFF-001", "CONS-007"],
+      "files_to_read": ["www/app/Tools/ToolPushTool.php", "www/app/Http/Controllers/PanelController.php", "www/app/Services/SystemPromptBuilder.php"]
+    },
+    {
+      "id": 4,
+      "name": "Create/update validation asymmetry (empty/whitespace content)",
+      "finding_ids": ["BL-006", "SEC-007", "UX-003", "ARCH-002", "CONS-004", "EFF-004", "EFF-008"],
+      "files_to_read": ["www/app/Tools/ToolPushTool.php"]
+    },
+    {
+      "id": 5,
+      "name": "Output messaging, warnings, and UX feedback",
+      "finding_ids": ["UX-001", "UX-002", "UX-004", "UX-005", "UX-007", "UX-008", "CONS-006", "EFF-002", "EFF-003", "EFF-006", "EFF-009"],
+      "files_to_read": ["www/app/Tools/ToolPushTool.php"]
+    },
+    {
+      "id": 6,
+      "name": "Structural concerns, slug validation, stale references, and ToolExtractTool",
+      "finding_ids": ["ARCH-001", "ARCH-003", "ARCH-006", "ARCH-007", "SEC-003", "SEC-006", "CONS-001", "CONS-002", "CONS-003", "EFF-005"],
+      "files_to_read": ["www/app/Tools/ToolPushTool.php", "www/app/Tools/ToolExtractTool.php", "www/config/panels.php", "www/docs/README.md", "docs/review-learnings.md", "www/app/Services/SystemPromptBuilder.php"]
+    }
+  ]
+}

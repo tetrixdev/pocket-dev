@@ -1,0 +1,87 @@
+{
+  "specialist": "Security",
+  "findings": [
+    {
+      "id": "SEC-001",
+      "topic": "Security",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Boolean casting of 'enabled' field from meta.json uses PHP's (bool) cast, which treats non-empty strings like \"false\", \"no\", \"0.0\" as true",
+      "why": "If a user or AI sets \"enabled\": \"false\" (string) in meta.json intending to disable a tool, PHP's (bool)\"false\" evaluates to true, silently enabling the tool instead. Since tools execute arbitrary code (scripts, Blade templates), unintentionally enabling a tool has security implications. The Eloquent model has 'enabled' => 'boolean' cast, but the comparison on line 308 happens before save() and uses raw PHP casting.",
+      "verify": "Check line 308: `(bool)$meta['enabled'] !== (bool)$tool->enabled`. Test with meta.json containing `\"enabled\": \"false\"` and confirm the tool gets enabled rather than disabled. Also check createTool line 565: `'enabled' => $meta['enabled'] ?? true` which passes the raw value to Eloquent (Eloquent cast may handle it differently). Compare the two code paths for consistency.",
+      "source": "file-review"
+    },
+    {
+      "id": "SEC-002",
+      "topic": "Security",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "No structural validation on dependencies.json entries before they are stored and later rendered as HTML script/link tags",
+      "why": "dependencies.json entries are validated only as 'valid JSON array' but individual entries are not checked for required 'type' and 'url' fields, or valid URL scheme. These entries are later passed to buildPanelHeadTags() which renders them as <script src=\"...\"> and <link href=\"...\"> tags. While e() escaping prevents attribute breakout, a missing 'url' field produces src=\"\" which triggers a request to the current page, and unexpected 'type' values are silently ignored. More importantly, there is no allowlist/blocklist on URL schemes (though javascript: in src/href doesn't execute, data: URIs in some contexts could be concerning).",
+      "verify": "Check buildPanelHeadTags() in PanelController.php to confirm e() escaping prevents attribute breakout (it does at line 246). Test whether a dependency with missing 'url' or 'type' fields causes any rendering issues. Check if data: URI scheme in a script src has any effect in modern browsers. Confirm whether this validation gap existed before this diff (pre-existing vs introduced).",
+      "source": "file-review"
+    },
+    {
+      "id": "SEC-003",
+      "topic": "Security",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "No slug format validation when creating a new tool via tool:push",
+      "why": "The createTool method accepts the slug directly from user input without validating its format (e.g., alphanumeric + hyphens). A slug containing path traversal characters (../) is used to construct the default directory path /tmp/pocketdev/tools/{slug}. While SEC-001 in review-learnings accepts that path validation provides no meaningful security improvement due to the Docker container boundary, the slug is also used in database lookups, system prompt injection, and as a CLI identifier. Special characters in slugs (spaces, quotes, shell metacharacters) could cause issues when the slug appears in shell commands or tool instructions displayed to the AI.",
+      "verify": "Check if slug validation exists elsewhere (e.g., in PocketTool model, migration constraints, or other tool commands). Test creating a tool with slug containing special characters like spaces, quotes, semicolons, or path traversal sequences. Check how the slug is used in system prompt building and whether it could cause prompt injection or shell escaping issues.",
+      "source": "file-review"
+    },
+    {
+      "id": "SEC-004",
+      "topic": "Security",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Type change allows switching a panel to script type while retaining the stored blade_template, and vice versa",
+      "why": "When changing type from 'panel' to 'script' (lines 320-323), the code only checks that a script exists (either stored or in directory) but does not clear the stored blade_template. The old blade_template remains in the database. If the tool is later changed back to panel type, the old template is restored without re-review. Similarly, switching from script to panel retains the old script. While not directly exploitable (the user controls all content), stale content from a previous type could be confusing and unintentionally reactivated.",
+      "verify": "Confirm that changing type from panel to script retains blade_template in the database. Check if the rendering path at PanelController.php only renders panels with type=panel, so a stale template on a script-type tool is never rendered. Check if switching back re-exposes the old template without any warning.",
+      "source": "file-review"
+    },
+    {
+      "id": "SEC-005",
+      "topic": "Security",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "input_schema.json validation uses !is_array() which accepts both JSON objects and JSON arrays in PHP, but JSON Schema requires an object",
+      "why": "PHP's json_decode with assoc=true converts both JSON objects and JSON arrays into PHP arrays. The check `$schema !== null && !is_array($schema)` only rejects scalar values (strings, numbers, booleans). A malicious or malformed input_schema.json containing a JSON array like [\"drop\", \"table\"] would pass validation and be stored. While Eloquent's 'array' cast handles storage safely, downstream consumers that expect a JSON Schema object (with 'type', 'properties' keys) could behave unexpectedly when receiving an array.",
+      "verify": "Test pushing a tool with input_schema.json containing a JSON array like [1,2,3]. Check how the stored input_schema is used downstream (system prompt building, tool execution, API responses). Confirm whether a non-object schema causes any runtime errors or unexpected behavior in tool invocation.",
+      "source": "file-review"
+    },
+    {
+      "id": "SEC-006",
+      "topic": "Security",
+      "files": ["www/app/Tools/ToolPushTool.php", "www/app/Tools/ToolExtractTool.php"],
+      "what": "Error messages and success output include user-controlled directory paths and slugs without sanitization",
+      "why": "Multiple error messages and success outputs interpolate user-controlled values directly: directory paths (line 319, 322, 425, 466, 484), slug values (line 289, 329, 415, 439, 499), and meta.json field values (line 329). While these are returned as ToolResult text (not rendered as HTML), they are displayed in AI conversation context. If a slug or directory path contains prompt-injection-style content, it could influence the AI's behavior when it processes the tool output.",
+      "verify": "Check how ToolResult text is displayed to the user and AI. Determine whether tool output is treated as trusted or untrusted content in the system prompt / conversation flow. Test with a slug containing instructions like 'ignore previous instructions and...' to see if the AI follows them.",
+      "source": "file-review"
+    },
+    {
+      "id": "SEC-007",
+      "topic": "Security",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Whitespace-only content validation is inconsistent between createTool and updateTool paths for script.sh and template.blade.php",
+      "why": "In updateTool, empty content is checked with empty(trim($content)) which catches whitespace-only files (lines 373, 388). In createTool, the type-specific validation uses empty($script) and empty($bladeTemplate) (lines 546, 549), which do NOT catch whitespace-only content since PHP's empty() returns false for non-empty strings including whitespace. A whitespace-only script.sh could be pushed during creation, resulting in a tool that appears valid but executes an empty/whitespace script. system_prompt.md uses trim() in both paths (lines 341, 487), making this an inconsistency specific to script.sh and template.blade.php.",
+      "verify": "Create a tool with a script.sh containing only whitespace/newlines. Confirm it passes validation in createTool but would be rejected in updateTool. Check whether a whitespace-only script causes any issues when executed via tool:run.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "SEC-008",
+      "topic": "Security",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The enabled field handling differs between createTool and updateTool: createTool passes raw meta value to Eloquent, updateTool uses explicit (bool) cast",
+      "why": "In updateTool (line 308-309), the enabled field is explicitly cast: `(bool)$meta['enabled']`. In createTool (line 565), it's passed raw: `'enabled' => $meta['enabled'] ?? true`. Eloquent's boolean cast on the model should normalize both, but the comparison logic in updateTool's `(bool)$meta['enabled'] !== (bool)$tool->enabled` uses PHP's loose boolean casting which may differ from Eloquent's boolean cast behavior. This inconsistency could lead to different behavior for the same meta.json input depending on whether it's a create or update operation.",
+      "verify": "Test the same meta.json with \"enabled\": \"false\" on both create and update paths. Check if Eloquent's boolean cast in the model (line 52 of PocketTool.php) normalizes the value differently than the explicit (bool) cast in updateTool. Determine if there's a practical scenario where the two paths produce different enabled states.",
+      "source": "outlier-hunt"
+    }
+  ],
+  "na_files": [
+    "docs/plans/panels-and-screens.md",
+    "docs/proposals/system-prompt-optimization-tracker.md",
+    "docs/review-learnings.md",
+    "www/app/Console/Commands/ToolExtractCommand.php",
+    "www/app/Services/SystemPromptBuilder.php",
+    "www/docs/tool-system-architecture.md",
+    "www/docs/tool-system-testing-plan.md"
+  ],
+  "processing_notes": []
+}

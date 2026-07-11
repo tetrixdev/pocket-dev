@@ -1,0 +1,76 @@
+<?php
+
+use Illuminate\Foundation\Inspiring;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
+
+Artisan::command('inspire', function () {
+    $this->comment(Inspiring::quote());
+})->purpose('Display an inspiring quote');
+
+/*
+|--------------------------------------------------------------------------
+| Memory Schema Snapshots
+|--------------------------------------------------------------------------
+|
+| Hourly snapshots of the memory schema for disaster recovery.
+| Tiered retention: hourly (24h) → 4/day (7d) → 1/day (30d)
+|
+*/
+
+Schedule::command('memory:snapshot create')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('memory:snapshot prune')
+    ->daily()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Stale Conversation Cleanup
+|--------------------------------------------------------------------------
+|
+| Cleanup conversations stuck in "processing" state (e.g., worker died).
+| Runs every minute, marks stale conversations as failed after 5 min.
+|
+*/
+
+Schedule::command('conversations:cleanup-stale')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Conversation Embedding Backfill
+|--------------------------------------------------------------------------
+|
+| Backfill turn numbers and embeddings for any conversations that may have
+| been missed (e.g., due to embedding service downtime or job failure).
+| New conversations are embedded automatically via GenerateConversationEmbeddings.
+|
+*/
+
+Schedule::command('conversation:backfill-embeddings')
+    ->daily()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+/*
+|--------------------------------------------------------------------------
+| Orphaned Process Cleanup
+|--------------------------------------------------------------------------
+|
+| Kill long-running Node/Chrome processes that were started by AI sessions
+| and left behind after the session ended (re-parented to PID 1).
+| Runs every 30 minutes, only targets processes older than 30 min.
+|
+*/
+
+Schedule::command('processes:cleanup-orphaned')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();

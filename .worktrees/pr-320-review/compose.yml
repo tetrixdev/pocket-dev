@@ -1,0 +1,185 @@
+services:
+  pocket-dev-php:
+    build:
+      context: .
+      dockerfile: docker-laravel/local/php/Dockerfile
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-php
+    restart: unless-stopped
+    working_dir: /var/www
+    # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
+    # This allows privileged operations (package install, permission fixes) before dropping privileges
+    environment:
+      - HOME=/home/appuser
+      - COMPOSER_HOME=/tmp/.composer
+      - NPM_CONFIG_CACHE=/tmp/.npm
+      - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
+      - PD_HOST_PROJECT_PATH=${PWD}
+      # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
+      - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
+      - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
+    entrypoint: ["/entrypoint.sh"]
+    ports:
+      - "${PD_VITE_PORT:-5173}:5173"
+    volumes:
+      - ./www:/var/www
+      - .env:/var/www/.env
+      - ./docker-laravel/shared/php/local.ini:/usr/local/etc/php/conf.d/local.ini
+      - ./docker-laravel/local/php/entrypoint.sh:/entrypoint.sh
+      - /var/run/docker.sock:/var/run/docker.sock
+      - user-data:/home/appuser
+      - workspace-data:/workspace
+      - pocketdev-storage:/var/www/storage/pocketdev
+      - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
+      - .:/pocketdev-source
+      - shared-tmp:/tmp
+    networks:
+      - pocket-dev
+    depends_on:
+      pocket-dev-postgres:
+        condition: service_healthy
+      pocket-dev-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  pocket-dev-nginx:
+    image: nginx:1.29-alpine
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-nginx
+    restart: unless-stopped
+    # Port binding is added via compose.override.yml:
+    # - Local mode: binds to PD_NGINX_PORT (default 80)
+    # - Server mode with proxy-nginx: no port binding, connects via main-network
+    volumes:
+      - ./www:/var/www
+      - ./docker-laravel/shared/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - pocket-dev
+    depends_on:
+      pocket-dev-php:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  pocket-dev-postgres:
+    build:
+      context: .
+      dockerfile: docker-postgres/Dockerfile
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pocket-dev
+      POSTGRES_USER: pocket-dev
+      POSTGRES_PASSWORD: "${PD_DB_PASSWORD:-laravel}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${PD_DB_PORT:-5432}:5432"
+    networks:
+      - pocket-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pocket-dev -d pocket-dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  pocket-dev-redis:
+    image: redis:7-alpine
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - pocket-dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  pocket-dev-queue:
+    build:
+      context: .
+      dockerfile: docker-laravel/local/php/Dockerfile
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-queue
+    restart: unless-stopped
+    working_dir: /var/www
+    # No 'user:' - container starts as root, entrypoint drops to TARGET_UID via gosu
+    entrypoint: ["/queue-entrypoint.sh"]
+    # Command removed - supervisord in entrypoint manages multiple workers
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | awk 'BEGIN{ok=1;count=0} /^queue-worker_/ {count++; if ($2 != \"RUNNING\") ok=0} END{if (count==0) ok=0; exit !ok}'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      - HOME=/home/appuser
+      - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
+      - PD_HOST_PROJECT_PATH=${PWD}
+      # TODO: Remove PD_ADDITIONAL_SYSTEM_PROMPT_FILE? Not used in deploy (file not baked/mounted).
+      - PD_ADDITIONAL_SYSTEM_PROMPT_FILE=${PD_ADDITIONAL_SYSTEM_PROMPT_FILE:-/pocketdev/CLAUDE.md}
+      - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
+      # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
+      - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
+      # Number of parallel queue workers. Default: 20 for servers.
+      # Set to 8 in your .env for local/WSL use to save ~1.2 GB idle RAM.
+      - PD_QUEUE_WORKERS=${PD_QUEUE_WORKERS:-20}
+    volumes:
+      - ./www:/var/www
+      - .env:/var/www/.env
+      - /var/run/docker.sock:/var/run/docker.sock
+      - user-data:/home/appuser
+      - workspace-data:/workspace
+      - .:/pocketdev-source
+      - pocketdev-storage:/var/www/storage/pocketdev
+      - ./CLAUDE.md:/pocketdev/CLAUDE.md:ro
+      - ./docker-laravel/local/php/queue-entrypoint.sh:/queue-entrypoint.sh
+      - ./docker-laravel/shared/supervisor/queue-workers.conf:/etc/supervisor/conf.d/queue-workers.conf:ro
+      - shared-tmp:/tmp
+    networks:
+      - pocket-dev
+    depends_on:
+      pocket-dev-redis:
+        condition: service_healthy
+      pocket-dev-postgres:
+        condition: service_healthy
+
+networks:
+  pocket-dev:
+    name: ${PD_PROJECT_NAME:-pocket-dev}
+    driver: bridge
+
+volumes:
+  postgres-data:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-postgres
+    driver: local
+  redis-data:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-redis
+    driver: local
+  workspace-data:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-workspace
+    driver: local
+  user-data:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-user
+    driver: local
+  pocketdev-storage:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-storage
+    driver: local
+  shared-tmp:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-shared-tmp
+    driver: local

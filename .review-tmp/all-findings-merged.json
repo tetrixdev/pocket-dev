@@ -1,0 +1,510 @@
+[
+  {
+    "id": "ARCH-001",
+    "topic": "Architecture & Design",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The updateTool method is accumulating multiple responsibilities and growing in size: meta field comparison, file I/O for 5 file types, validation, change tracking, warning collections, and output formatting.",
+    "why": "As more fields and file types are added, this method becomes harder to maintain and test in isolation. Each file type follows the same read-validate-compare-track pattern but the logic is inlined rather than abstracted, coupling all concerns together in one long method.",
+    "verify": "Read the full updateTool method and count lines/responsibilities. Check whether the method length and cyclomatic complexity have crossed a threshold where extraction into helper methods would improve readability and testability.",
+    "source": "file-review"
+  },
+  {
+    "id": "ARCH-002",
+    "topic": "Architecture & Design",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Empty content validation was added to updateTool for template.blade.php (panel-type) and script.sh (script-type), but the diff does not add equivalent empty checks in createTool for these same files.",
+    "why": "This creates an asymmetry in the API contract: updating a tool rejects empty template/script files, but creating a tool may accept them. A user could create a panel tool with an empty template.blade.php that would then be rejected if they tried to re-push it.",
+    "verify": "Read the full createTool method to check whether existing code already validates that template and script file contents are non-empty, or whether empty files are silently accepted during creation.",
+    "source": "file-review"
+  },
+  {
+    "id": "ARCH-003",
+    "topic": "Architecture & Design",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The updateTool method warns when meta.json slug differs from the target tool slug, but createTool has no equivalent warning or validation when meta.json slug differs from the directory-inferred slug argument.",
+    "why": "This is an API symmetry gap. During creation, if meta.json contains slug 'foo-bar' but the command argument is 'foo_bar', the slug in meta.json is silently ignored with no feedback. The user may believe their meta.json slug was used when it wasn't.",
+    "verify": "Read createTool to confirm that the slug parameter is used directly and meta.json slug (if present) is silently ignored. Determine whether a warning would be appropriate here for consistency with updateTool.",
+    "source": "file-review"
+  },
+  {
+    "id": "ARCH-004",
+    "topic": "Architecture & Design",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The enabled field in meta.json uses PHP (bool) coercion: (bool)$meta['enabled'] !== (bool)$tool->enabled. In PHP, (bool)\"false\" evaluates to true, meaning a JSON string value of \"false\" would enable the tool.",
+    "why": "This is a fragile API contract. JSON booleans (true/false) would work correctly, but if a user writes '\"enabled\": \"false\"' or '\"enabled\": 0' in meta.json, the behavior may surprise them. The meta.json is a user-facing file format that should have predictable parsing.",
+    "verify": "Check whether meta.json is always produced by tool:extract (which would output proper JSON booleans) or whether users might hand-author it. If always machine-generated, the risk is minimal. Also check if json_decode already provides proper PHP booleans for JSON true/false.",
+    "source": "file-review"
+  },
+  {
+    "id": "ARCH-005",
+    "topic": "Architecture & Design",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "When changing tool type via meta.json (e.g., script to panel), the now-irrelevant data (script content for a panel, template for a script) is preserved in the database rather than being cleared.",
+    "why": "This leaves stale data in the database that no longer corresponds to the tool's active type. If the type is later changed back, the old stale data would silently become active again, potentially with outdated or incompatible content.",
+    "verify": "Read the full updateTool type-change handling and confirm that the old type's primary field (script for script-type, blade_template for panel-type) is not nulled out when the type changes. Determine if this is intentional (preserving data for undo) or an oversight.",
+    "source": "file-review"
+  },
+  {
+    "id": "ARCH-006",
+    "topic": "Architecture & Design",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The updateTool has a $warnings mechanism and $filesChecked diagnostics array, but createTool has neither. The two code paths have diverging UX capabilities for the same tool.",
+    "why": "As the push command is the single entry point for both create and update, users expect consistent feedback quality. Create operations are just as likely to benefit from warnings (e.g., slug mismatch) and diagnostic output (e.g., which files were processed) as update operations.",
+    "verify": "Read createTool's output formatting and confirm it lacks warning/diagnostic mechanisms. Assess whether the create path would benefit from the same $warnings pattern used in updateTool.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "ARCH-007",
+    "topic": "Architecture & Design",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Each file type in updateTool (system_prompt.md, input_schema.json, template.blade.php, script.sh, dependencies.json) follows an identical pattern: check existence, add to filesChecked, read content, validate, compare, track change. This pattern is repeated 5 times with minor validation variations.",
+    "why": "The repetition makes it easy for validation rules to drift between file types (as seen with the create/update asymmetry). A small abstraction like a file-handler array or helper method could reduce duplication and ensure consistent treatment of all file types.",
+    "verify": "Count the repeated blocks in updateTool and assess whether a loop-based or helper-based approach would reduce code without adding unnecessary abstraction. Consider that each file type has slightly different validation (empty check vs JSON parse vs conditional-on-type).",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "BL-001",
+    "topic": "Business Logic",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The `enabled` field from meta.json is cast with PHP `(bool)` (line 308-309) which treats the string \"false\" as truthy. No validation ensures the value is actually a boolean.",
+    "why": "If a user writes `\"enabled\": \"false\"` (a JSON string) in meta.json, `(bool)\"false\"` evaluates to `true` in PHP, so the tool would be ENABLED instead of disabled. While `json_decode` handles proper JSON booleans correctly, the code silently accepts and misinterprets string values. The same issue applies in `createTool` at line 565 where `$meta['enabled'] ?? true` is passed directly to Eloquent, which also treats non-empty strings as truthy via its boolean cast.",
+    "verify": "Check if `(bool)$meta['enabled']` where `$meta['enabled']` is the string `\"false\"` would incorrectly enable a tool. Confirm whether Eloquent's boolean cast on the `enabled` attribute would also mishandle the string `\"false\"`. Assess if this edge case is realistic given that valid JSON would use unquoted `true`/`false`.",
+    "source": "file-review"
+  },
+  {
+    "id": "BL-002",
+    "topic": "Business Logic",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Type change in `updateTool` (line 312-326) does not clear the opposite type's stale file content from the database. Changing from panel to script leaves `blade_template` intact; changing from script to panel leaves `script` intact.",
+    "why": "Stale content from the previous type persists in the database. When the type-change validation checks `empty($tool->blade_template)` (line 318) or `empty($tool->script)` (line 321), it finds the stale content and treats it as valid, allowing a type change back without requiring the file to be re-provided. This could cause a tool to silently reuse an outdated template or script from before the type change. Additionally, tool extraction would extract both script.sh and template.blade.php for a tool that should only have one.",
+    "verify": "Confirm whether leaving stale opposite-type content in the database is intentional (data preservation for easy type reversal) or a gap. Check what `tool:extract` outputs for a tool that changed types - does it extract the stale file for the old type? Check if any code paths could execute the stale script/template.",
+    "source": "file-review"
+  },
+  {
+    "id": "BL-003",
+    "topic": "Business Logic",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The `input_schema.json` scalar validation at lines 359-361 (and 527-529 in createTool) uses `!is_array()` to reject scalars, but the error message says \"must contain a JSON object\". Since `json_decode($content, true)` converts BOTH JSON objects and JSON arrays into PHP arrays, the check also accepts JSON arrays like `[1, 2, 3]`.",
+    "why": "A JSON Schema must be an object (e.g., `{\"type\": \"object\", \"properties\": {...}}`), not a JSON array. But a JSON array like `[\"foo\", \"bar\"]` would pass the `!is_array()` check and be stored as the input schema. This would produce an invalid schema that fails when used for parameter validation. The error message is misleading since it claims to require an object but actually accepts arrays.",
+    "verify": "Check whether an invalid input_schema (JSON array) stored in the DB causes runtime errors when the tool is invoked and parameters are validated against it. Determine if this validation gap is worth fixing given that only the AI agent creates these files.",
+    "source": "file-review"
+  },
+  {
+    "id": "BL-004",
+    "topic": "Business Logic",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The `dependencies.json` scalar validation at lines 405-407 (and 540-542 in createTool) uses `!is_array()` to reject scalars, but the error message says \"must contain a JSON array\". Since `json_decode($content, true)` converts both JSON objects and arrays to PHP arrays, a JSON object like `{\"key\": \"value\"}` would pass validation.",
+    "why": "Panel dependencies are expected to be a JSON array of dependency objects (each with `type` and `url`). A JSON object would be stored and could cause incorrect behavior when the panel loader iterates over dependencies expecting array elements with `type` and `url` keys.",
+    "verify": "Check how `panel_dependencies` is consumed downstream. If the panel loader does `foreach ($deps as $dep)` and expects `$dep['type']` and `$dep['url']`, a JSON object would iterate over its key-value pairs differently than expected. Assess impact.",
+    "source": "file-review"
+  },
+  {
+    "id": "BL-005",
+    "topic": "Business Logic",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "In `updateTool`, when type is changed (line 324, `$tool->type = $newType`), the new type is set BEFORE file content sections execute. File validation for the old type's required content does not apply. For example, changing to panel while pushing an empty `script.sh` \u2014 the check at line 387 (`$tool->type === TYPE_SCRIPT && empty(trim($content))`) skips validation because the type is now panel, but the empty script content is still stored in the DB.",
+    "why": "An empty string gets stored as the script content for a panel tool. While `hasScript()` on the model treats empty strings as no-script (returns false via `!empty()`), this creates a data inconsistency: the DB has a non-null empty string in the `script` column rather than null. If panel tools with scripts are later expected to have valid script content (for actions/peek), the empty string could cause silent failures.",
+    "verify": "Check if storing an empty string in `script` column differs from null in any downstream code. Check if panel peek or action handling treats empty string differently from null. Determine if this scenario (type change + empty script push in same request) is realistic.",
+    "source": "file-review"
+  },
+  {
+    "id": "BL-006",
+    "topic": "Business Logic",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Empty content validation uses `empty(trim($content))` in `updateTool` (lines 341, 373, 387) but `empty($variable)` without trim in `createTool` (lines 546, 549). A whitespace-only script or template would be REJECTED during update but ACCEPTED during creation.",
+    "why": "A whitespace-only `script.sh` (e.g., containing only spaces/newlines) passes `empty($script)` (returns false in PHP for non-empty strings) during creation, storing a useless script. The same content would be rejected by `empty(trim($content))` during an update push. This inconsistency means the create and update paths enforce different validation standards for the same fields.",
+    "verify": "Confirm that `empty(' ')` returns `false` in PHP (it does \u2014 non-empty string is truthy). Check if a whitespace-only script stored via createTool would cause execution errors. Determine if this inconsistency was introduced by this PR or is pre-existing.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "BL-007",
+    "topic": "Business Logic",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The `enabled` field is handled differently between createTool and updateTool. In updateTool (line 308-310), it uses explicit `(bool)` cast and comparison. In createTool (line 565), the raw `$meta['enabled']` value is passed directly to `PocketTool::create()` relying on Eloquent's model cast. Meanwhile, `tool:extract` (ToolExtractTool line 102) writes `(bool)$tool->enabled` to meta.json.",
+    "why": "While Eloquent's boolean cast normalizes the value on read, the inconsistent handling means validation behavior differs: updateTool does an explicit bool comparison to detect changes, while createTool delegates entirely to Eloquent. If the Eloquent cast changes or if the enabled column is ever accessed without the cast, the two paths would behave differently.",
+    "verify": "Confirm that Eloquent's boolean cast on the PocketTool model (line 52 of PocketTool.php: `'enabled' => 'boolean'`) adequately handles all values that createTool might pass. Determine if the inconsistency between explicit casting in updateTool and implicit Eloquent casting in createTool is worth harmonizing.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "CONS-001",
+    "topic": "Consistency & Style",
+    "files": [
+      "www/config/panels.php"
+    ],
+    "what": "Stale reference to old 'tool:create' command name in config comment (line 102): 'Example code snippets included in the tool:create system prompt'",
+    "why": "The PR renames tool:create to tool:push but missed updating this comment. Readers of the config file will see a reference to a command that no longer exists, causing confusion.",
+    "verify": "Check www/config/panels.php line 102 for the stale 'tool:create' reference. Confirm the comment should reference 'tool:push' or 'tool:extract/push' instead.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "CONS-002",
+    "topic": "Consistency & Style",
+    "files": [
+      "www/docs/README.md"
+    ],
+    "what": "Stale reference to old 'ToolCreate' class name in ASCII architecture diagram (line 90): 'MemoryQuery, MemoryCreate, ToolCreate, etc.'",
+    "why": "The PR replaced ToolCreate/ToolUpdate/ToolShow with ToolExtract/ToolPush but missed updating this diagram. The diagram shows class names that no longer exist in the codebase.",
+    "verify": "Check www/docs/README.md line 90 for 'ToolCreate'. Confirm it should now reference 'ToolExtract, ToolPush' or similar.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "CONS-003",
+    "topic": "Consistency & Style",
+    "files": [
+      "www/app/Tools/ToolExtractTool.php",
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "New ToolExtractTool and ToolPushTool classes lack the $apiExamples property that all other tool classes in the 'tools' category define (ToolListTool, ToolDeleteTool, ToolRunTool)",
+    "why": "Every other tool class provides $apiExamples for API consumers. The new classes are outliers in this group. Note: Already accepted as ARCH-008 in docs/review-learnings.md.",
+    "verify": "Check if ARCH-008 in docs/review-learnings.md adequately covers this. If so, dismiss as already accepted.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "CONS-004",
+    "topic": "Consistency & Style",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Inconsistent error messages between createTool and updateTool for empty files: createTool says 'script.sh is required for type=script' when script.sh exists but is empty (line 547), while updateTool says 'script.sh must not be empty for script-type tools' (line 389). Same pattern for template.blade.php.",
+    "why": "The createTool message says 'required' even when the file exists but has empty content, which is misleading. The updateTool message correctly says 'must not be empty'. Users seeing 'required' when they provided the file but left it empty would be confused.",
+    "verify": "Read createTool lines 546-551 and compare to updateTool lines 373-374 and 388-389. Confirm the createTool empty() check catches both missing-file and empty-file scenarios, making the 'required' message inaccurate for the empty-file case.",
+    "source": "file-review"
+  },
+  {
+    "id": "CONS-005",
+    "topic": "Consistency & Style",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "createTool passes meta 'enabled' field without explicit bool cast ($meta['enabled'] ?? true on line 565) while updateTool explicitly casts with (bool)$meta['enabled'] on line 308",
+    "why": "Inconsistent type handling within the same class for the same field. If meta.json contains enabled: 1 (integer) or enabled: 'true' (string), the behavior could differ between create and update paths.",
+    "verify": "Compare line 565 (createTool) with line 308 (updateTool). Check if Laravel's model casting handles the bool conversion automatically, which would make this cosmetic only.",
+    "source": "file-review"
+  },
+  {
+    "id": "CONS-006",
+    "topic": "Consistency & Style",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "createTool distinguishes panels from tools in success output ('Created panel:' vs 'Created tool:' on line 569-571) but updateTool always says 'Updated tool:' regardless of type (line 439)",
+    "why": "Inconsistent output format within the same class. A user updating a panel sees 'Updated tool:' while creating a panel sees 'Created panel:'. The distinction is useful and should be applied consistently.",
+    "verify": "Compare line 569 (createTool: uses $typeLabel for 'panel' vs 'tool') with line 439 (updateTool: hardcoded 'tool'). Confirm whether the type distinction matters for user-facing output.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "CONS-007",
+    "topic": "Consistency & Style",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "meta.json validation lacks explicit array type check after json_decode (lines 266-272) while input_schema.json (line 359) and dependencies.json (line 405) both validate with !is_array() checks. A JSON scalar in meta.json would trigger a PHP TypeError at the ?array type hint instead of a graceful error.",
+    "why": "Other JSON files in the same class gracefully validate their decoded structure and return a user-friendly error message. meta.json relies on the PHP type hint, producing an unhandled TypeError (likely a 500 error) rather than a descriptive error like the sibling validations provide.",
+    "verify": "Check lines 266-272 (meta.json decode) and confirm no is_array check exists. Compare with lines 355-361 (input_schema.json) and lines 401-407 (dependencies.json) which both have explicit type checks. Test what happens when meta.json contains a JSON scalar like '42'.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "EFF-001",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Identical JSON validation pattern duplicated 4 times across createTool and updateTool for input_schema.json and dependencies.json",
+    "why": "The exact same 3-step pattern (json_decode, check json_last_error, check !is_array) is copy-pasted in createTool lines 522-529 and 535-541, and updateTool lines 354-361 and 400-407. A small private helper like validateJsonFile(path, label) could eliminate the duplication and ensure validation stays consistent if rules change.",
+    "verify": "Confirm the four JSON validation blocks are identical in structure. Assess whether a helper method would reduce maintenance burden without over-abstracting.",
+    "source": "file-review"
+  },
+  {
+    "id": "EFF-002",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The $filesChecked diagnostic output (lines 333-334, 416-425) adds ~15 lines of code for an edge case: when push detects no changes",
+    "why": "This code tracks full paths of every file checked, then enumerates them in the 'no changes' output. The AI consumer of this tool output already knows which files exist in the directory (it just created/edited them). The diagnostic value for the AI is marginal, and the simpler pre-existing 'No changes detected' message was sufficient.",
+    "verify": "Check whether the 'no changes' path is commonly hit in practice and whether the detailed file list provides actionable value to the AI agent consuming this output.",
+    "source": "file-review"
+  },
+  {
+    "id": "EFF-003",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The $warnings array mechanism (lines 292, 328-330, 426-430, 448-453) is used for only a single warning type: slug mismatch",
+    "why": "An array with iteration is over-engineered for what is currently a single possible warning. A simple nullable string $slugWarning would be more direct. If more warning types are needed in the future, an array can be introduced then.",
+    "verify": "Confirm that slug mismatch is the only warning currently added to the $warnings array. Consider whether other warning types are planned or likely.",
+    "source": "file-review"
+  },
+  {
+    "id": "EFF-004",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The system_prompt.md empty-content validation is duplicated identically in both createTool (line 487-488) and updateTool (line 341-342)",
+    "why": "Both paths check empty(trim($content)) and return the exact same error message. If the validation rule changes (e.g., minimum length), it must be updated in two places. This could be a shared validation step or private method.",
+    "verify": "Confirm both empty checks use identical logic and error messages. Assess whether consolidation is worthwhile given the overall method structure.",
+    "source": "file-review"
+  },
+  {
+    "id": "EFF-005",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolExtractTool.php"
+    ],
+    "what": "Unnecessary local variable $isCustomDirectory (line 148) is assigned once and used once immediately after",
+    "why": "The variable adds a line without improving readability. The condition `isset($input['directory'])` is already self-documenting and could be used directly in the if-statement.",
+    "verify": "Confirm $isCustomDirectory is only used once at line 149. This is a minor style issue.",
+    "source": "file-review"
+  },
+  {
+    "id": "EFF-006",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "updateTool success output includes ID, Type, and Enabled status (lines 441-443) which the AI agent already knows from the extracted meta.json",
+    "why": "When the AI pushes an update, it already has context about the tool's ID, type, and enabled state. Echoing these back adds output bulk without new information. The 'Changed' line (445) is the only truly useful new information. Compare with the simpler pre-existing output that just showed the changes list.",
+    "verify": "Assess whether the AI agent benefits from seeing ID/Type/Enabled in the push response, or whether the 'Changed' line alone is sufficient.",
+    "source": "file-review"
+  },
+  {
+    "id": "EFF-007",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Type change validation (lines 312-326) adds substantial branching for what is likely a very rare operation: changing a tool's type from script to panel or vice versa",
+    "why": "Changing type mid-lifecycle is an unusual operation. The validation checks both the directory for the required file AND the existing tool's stored data, creating multiple code paths. If this operation is expected to be rare, a simpler approach might be to require the user to delete and recreate the tool with the new type, removing this entire block.",
+    "verify": "Determine how often type changes are expected in practice. If rarely, consider whether the complexity is justified versus a simpler 'delete and recreate' workflow.",
+    "source": "file-review"
+  },
+  {
+    "id": "EFF-008",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Inconsistent emptiness validation approach between createTool and updateTool for template.blade.php and script.sh",
+    "why": "In updateTool, template.blade.php and script.sh get inline empty checks conditional on the tool type (lines 373, 387). In createTool, the same files are read without inline empty checks (lines 509-517), and emptiness is validated later as type-specific validation (lines 546-551). The split approach means the same logical validation is expressed differently in each path, making it harder to verify both paths enforce the same rules.",
+    "verify": "Compare the validation paths: updateTool checks empty(trim($content)) per-file with type condition, while createTool checks empty($script)/empty($bladeTemplate) at the end. Confirm both enforce equivalent constraints.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "EFF-009",
+    "topic": "Efficiency & Minimality",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "createTool uses dynamic typeLabel ('tool' vs 'panel') in output (line 569) while updateTool always says 'tool' (line 439)",
+    "why": "In createTool: 'Created panel: MyPanel (my-panel)'. In updateTool: 'Updated tool: MyPanel (my-panel)' even when updating a panel. This is an inconsistency in output messaging. If the distinction matters for create, it should matter for update too.",
+    "verify": "Confirm updateTool line 439 hardcodes 'tool' while createTool line 569 uses a dynamic typeLabel. Assess whether the AI agent cares about this distinction in output.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "SEC-001",
+    "topic": "Security",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Boolean casting of 'enabled' field from meta.json uses PHP's (bool) cast, which treats non-empty strings like \"false\", \"no\", \"0.0\" as true",
+    "why": "If a user or AI sets \"enabled\": \"false\" (string) in meta.json intending to disable a tool, PHP's (bool)\"false\" evaluates to true, silently enabling the tool instead. Since tools execute arbitrary code (scripts, Blade templates), unintentionally enabling a tool has security implications. The Eloquent model has 'enabled' => 'boolean' cast, but the comparison on line 308 happens before save() and uses raw PHP casting.",
+    "verify": "Check line 308: `(bool)$meta['enabled'] !== (bool)$tool->enabled`. Test with meta.json containing `\"enabled\": \"false\"` and confirm the tool gets enabled rather than disabled. Also check createTool line 565: `'enabled' => $meta['enabled'] ?? true` which passes the raw value to Eloquent (Eloquent cast may handle it differently). Compare the two code paths for consistency.",
+    "source": "file-review"
+  },
+  {
+    "id": "SEC-002",
+    "topic": "Security",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "No structural validation on dependencies.json entries before they are stored and later rendered as HTML script/link tags",
+    "why": "dependencies.json entries are validated only as 'valid JSON array' but individual entries are not checked for required 'type' and 'url' fields, or valid URL scheme. These entries are later passed to buildPanelHeadTags() which renders them as <script src=\"...\"> and <link href=\"...\"> tags. While e() escaping prevents attribute breakout, a missing 'url' field produces src=\"\" which triggers a request to the current page, and unexpected 'type' values are silently ignored. More importantly, there is no allowlist/blocklist on URL schemes (though javascript: in src/href doesn't execute, data: URIs in some contexts could be concerning).",
+    "verify": "Check buildPanelHeadTags() in PanelController.php to confirm e() escaping prevents attribute breakout (it does at line 246). Test whether a dependency with missing 'url' or 'type' fields causes any rendering issues. Check if data: URI scheme in a script src has any effect in modern browsers. Confirm whether this validation gap existed before this diff (pre-existing vs introduced).",
+    "source": "file-review"
+  },
+  {
+    "id": "SEC-003",
+    "topic": "Security",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "No slug format validation when creating a new tool via tool:push",
+    "why": "The createTool method accepts the slug directly from user input without validating its format (e.g., alphanumeric + hyphens). A slug containing path traversal characters (../) is used to construct the default directory path /tmp/pocketdev/tools/{slug}. While SEC-001 in review-learnings accepts that path validation provides no meaningful security improvement due to the Docker container boundary, the slug is also used in database lookups, system prompt injection, and as a CLI identifier. Special characters in slugs (spaces, quotes, shell metacharacters) could cause issues when the slug appears in shell commands or tool instructions displayed to the AI.",
+    "verify": "Check if slug validation exists elsewhere (e.g., in PocketTool model, migration constraints, or other tool commands). Test creating a tool with slug containing special characters like spaces, quotes, semicolons, or path traversal sequences. Check how the slug is used in system prompt building and whether it could cause prompt injection or shell escaping issues.",
+    "source": "file-review"
+  },
+  {
+    "id": "SEC-004",
+    "topic": "Security",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Type change allows switching a panel to script type while retaining the stored blade_template, and vice versa",
+    "why": "When changing type from 'panel' to 'script' (lines 320-323), the code only checks that a script exists (either stored or in directory) but does not clear the stored blade_template. The old blade_template remains in the database. If the tool is later changed back to panel type, the old template is restored without re-review. Similarly, switching from script to panel retains the old script. While not directly exploitable (the user controls all content), stale content from a previous type could be confusing and unintentionally reactivated.",
+    "verify": "Confirm that changing type from panel to script retains blade_template in the database. Check if the rendering path at PanelController.php only renders panels with type=panel, so a stale template on a script-type tool is never rendered. Check if switching back re-exposes the old template without any warning.",
+    "source": "file-review"
+  },
+  {
+    "id": "SEC-005",
+    "topic": "Security",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "input_schema.json validation uses !is_array() which accepts both JSON objects and JSON arrays in PHP, but JSON Schema requires an object",
+    "why": "PHP's json_decode with assoc=true converts both JSON objects and JSON arrays into PHP arrays. The check `$schema !== null && !is_array($schema)` only rejects scalar values (strings, numbers, booleans). A malicious or malformed input_schema.json containing a JSON array like [\"drop\", \"table\"] would pass validation and be stored. While Eloquent's 'array' cast handles storage safely, downstream consumers that expect a JSON Schema object (with 'type', 'properties' keys) could behave unexpectedly when receiving an array.",
+    "verify": "Test pushing a tool with input_schema.json containing a JSON array like [1,2,3]. Check how the stored input_schema is used downstream (system prompt building, tool execution, API responses). Confirm whether a non-object schema causes any runtime errors or unexpected behavior in tool invocation.",
+    "source": "file-review"
+  },
+  {
+    "id": "SEC-006",
+    "topic": "Security",
+    "files": [
+      "www/app/Tools/ToolPushTool.php",
+      "www/app/Tools/ToolExtractTool.php"
+    ],
+    "what": "Error messages and success output include user-controlled directory paths and slugs without sanitization",
+    "why": "Multiple error messages and success outputs interpolate user-controlled values directly: directory paths (line 319, 322, 425, 466, 484), slug values (line 289, 329, 415, 439, 499), and meta.json field values (line 329). While these are returned as ToolResult text (not rendered as HTML), they are displayed in AI conversation context. If a slug or directory path contains prompt-injection-style content, it could influence the AI's behavior when it processes the tool output.",
+    "verify": "Check how ToolResult text is displayed to the user and AI. Determine whether tool output is treated as trusted or untrusted content in the system prompt / conversation flow. Test with a slug containing instructions like 'ignore previous instructions and...' to see if the AI follows them.",
+    "source": "file-review"
+  },
+  {
+    "id": "SEC-007",
+    "topic": "Security",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Whitespace-only content validation is inconsistent between createTool and updateTool paths for script.sh and template.blade.php",
+    "why": "In updateTool, empty content is checked with empty(trim($content)) which catches whitespace-only files (lines 373, 388). In createTool, the type-specific validation uses empty($script) and empty($bladeTemplate) (lines 546, 549), which do NOT catch whitespace-only content since PHP's empty() returns false for non-empty strings including whitespace. A whitespace-only script.sh could be pushed during creation, resulting in a tool that appears valid but executes an empty/whitespace script. system_prompt.md uses trim() in both paths (lines 341, 487), making this an inconsistency specific to script.sh and template.blade.php.",
+    "verify": "Create a tool with a script.sh containing only whitespace/newlines. Confirm it passes validation in createTool but would be rejected in updateTool. Check whether a whitespace-only script causes any issues when executed via tool:run.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "SEC-008",
+    "topic": "Security",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The enabled field handling differs between createTool and updateTool: createTool passes raw meta value to Eloquent, updateTool uses explicit (bool) cast",
+    "why": "In updateTool (line 308-309), the enabled field is explicitly cast: `(bool)$meta['enabled']`. In createTool (line 565), it's passed raw: `'enabled' => $meta['enabled'] ?? true`. Eloquent's boolean cast on the model should normalize both, but the comparison logic in updateTool's `(bool)$meta['enabled'] !== (bool)$tool->enabled` uses PHP's loose boolean casting which may differ from Eloquent's boolean cast behavior. This inconsistency could lead to different behavior for the same meta.json input depending on whether it's a create or update operation.",
+    "verify": "Test the same meta.json with \"enabled\": \"false\" on both create and update paths. Check if Eloquent's boolean cast in the model (line 52 of PocketTool.php) normalizes the value differently than the explicit (bool) cast in updateTool. Determine if there's a practical scenario where the two paths produce different enabled states.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "UX-001",
+    "topic": "User Experience",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Update success output always says 'Updated tool:' regardless of type, while create output uses type-aware labels ('Created panel:' vs 'Created tool:')",
+    "why": "Inconsistent labeling between create and update paths could confuse the AI agent (the primary user) about whether the type was correctly applied. If the user just changed type to 'panel' in meta.json and the output still says 'Updated tool:', they might doubt the change took effect, even though it did.",
+    "verify": "Compare createTool output (line 571: 'Created {$typeLabel}') with updateTool output (line 439: 'Updated tool:'). Confirm updateTool does not use the tool's type to select the label.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "UX-002",
+    "topic": "User Experience",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Slug mismatch between meta.json and push target produces a warning but still proceeds with the update, silently applying content from one tool's extracted files to a different tool",
+    "why": "If the AI extracts tool-A, then accidentally runs 'pd tool:push tool-B', all of tool-A's content gets applied to tool-B with only a warning. The warning says 'Slug changes are not supported via push' which is ambiguous - it could be read as 'the push won't work' (wrong) rather than 'the slug field won't be renamed but everything else applies' (what actually happens). This could lead to accidental data overwrite.",
+    "verify": "Check lines 327-330 of ToolPushTool.php. The warning is appended but the update continues. Determine whether a hard error or more explicit warning text would be safer here.",
+    "source": "file-review"
+  },
+  {
+    "id": "UX-003",
+    "topic": "User Experience",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Whitespace-only script.sh and template.blade.php are accepted on the create path but rejected on the update path",
+    "why": "The create path uses empty($script) and empty($bladeTemplate) which does not trim whitespace, so a file containing only spaces/newlines passes validation. The update path uses empty(trim($content)) which correctly rejects whitespace-only files. This inconsistency means a tool can be created with a whitespace-only script but cannot be updated back to the same content.",
+    "verify": "Compare create-path validation (lines 546-551, using empty($script)) with update-path validation (lines 387-389 for script.sh, using empty(trim($content))). Confirm that empty() without trim() allows whitespace-only strings.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "UX-004",
+    "topic": "User Experience",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The 'no changes' diagnostic output lists checked files but omits meta.json from the list, even when meta.json was read and compared",
+    "why": "When a user pushes changes and gets 'No changes detected', the diagnostic output shows 'Checked files (all match current values)' listing system_prompt.md, script.sh, etc. But meta.json fields are checked separately and never appear in the $filesChecked array. If a user modified only meta.json and the values happened to match, they'd see the checked-files list without meta.json, potentially thinking meta.json wasn't processed.",
+    "verify": "Check that $filesChecked (line 334) is only populated for system_prompt.md, input_schema.json, template.blade.php, script.sh, and dependencies.json. Confirm meta.json is never added to this array despite being checked in the $meta block above.",
+    "source": "file-review"
+  },
+  {
+    "id": "UX-005",
+    "topic": "User Experience",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Type validation error messages don't show the invalid value that was provided",
+    "why": "The error 'type must be \"script\" or \"panel\" in meta.json' doesn't include what value was actually provided. When debugging meta.json issues, knowing the rejected value (e.g., 'Type' vs 'type', or 'Script' vs 'script') helps the user fix the problem faster. This applies to both create (line 493) and update (line 315) paths.",
+    "verify": "Check lines 314-315 (update) and 492-493 (create) for the type validation error messages. Confirm the invalid $newType/$type value is not included in the error text.",
+    "source": "file-review"
+  },
+  {
+    "id": "UX-006",
+    "topic": "User Experience",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "The 'enabled' field in meta.json uses PHP boolean casting which treats the JSON string \"false\" as true",
+    "why": "If a user writes '\"enabled\": \"false\"' in meta.json (string instead of boolean), PHP's (bool) cast treats any non-empty string as true. The tool would silently enable the tool instead of disabling it. JSON allows both boolean false and string \"false\" to be valid values, and a user might accidentally use the string form.",
+    "verify": "Check line 308 where (bool)$meta['enabled'] is used. In PHP, (bool)\"false\" === true. Determine if this edge case is worth guarding against, given that meta.json is typically generated by tool:extract with proper boolean values.",
+    "source": "file-review"
+  },
+  {
+    "id": "UX-007",
+    "topic": "User Experience",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Create-path error messages are terse compared to update-path error messages for similar validation failures",
+    "why": "The create path says 'script.sh is required for type=script' (line 547) while the update path says 'Cannot change type to script: script.sh is required but not found in {directory}/ and no existing script is stored.' (line 322). The update errors provide context about where the file should be and what was checked, while create errors just state the requirement. Users hitting create errors get less guidance on what to fix.",
+    "verify": "Compare error message detail level between createTool type-specific errors (lines 546-551) and updateTool type-change errors (lines 318-323). The update errors include the directory path and explain both file and existing-content checks.",
+    "source": "outlier-hunt"
+  },
+  {
+    "id": "UX-008",
+    "topic": "User Experience",
+    "files": [
+      "www/app/Tools/ToolPushTool.php"
+    ],
+    "what": "Create-path duplicate slug error for PocketTool ('A tool with slug already exists') doesn't suggest a fix, while the PanelRegistry error does ('Choose a different slug')",
+    "why": "When creating, if a system panel has the slug the error says 'Choose a different slug' (line 499). But if a PocketTool has the slug, the error just says 'A tool with slug already exists' (line 503) without guidance. Since the latter case could mean the user should use tool:push to update instead of create, the error should guide them accordingly.",
+    "verify": "Compare error messages at lines 499 and 503. Check whether the PocketTool duplicate error should suggest using extract/push to update the existing tool.",
+    "source": "outlier-hunt"
+  }
+]

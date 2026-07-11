@@ -1,0 +1,79 @@
+{
+  "specialist": "Business Logic",
+  "findings": [
+    {
+      "id": "BL-001",
+      "topic": "Business Logic",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The `enabled` field from meta.json is cast with PHP `(bool)` (line 308-309) which treats the string \"false\" as truthy. No validation ensures the value is actually a boolean.",
+      "why": "If a user writes `\"enabled\": \"false\"` (a JSON string) in meta.json, `(bool)\"false\"` evaluates to `true` in PHP, so the tool would be ENABLED instead of disabled. While `json_decode` handles proper JSON booleans correctly, the code silently accepts and misinterprets string values. The same issue applies in `createTool` at line 565 where `$meta['enabled'] ?? true` is passed directly to Eloquent, which also treats non-empty strings as truthy via its boolean cast.",
+      "verify": "Check if `(bool)$meta['enabled']` where `$meta['enabled']` is the string `\"false\"` would incorrectly enable a tool. Confirm whether Eloquent's boolean cast on the `enabled` attribute would also mishandle the string `\"false\"`. Assess if this edge case is realistic given that valid JSON would use unquoted `true`/`false`.",
+      "source": "file-review"
+    },
+    {
+      "id": "BL-002",
+      "topic": "Business Logic",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Type change in `updateTool` (line 312-326) does not clear the opposite type's stale file content from the database. Changing from panel to script leaves `blade_template` intact; changing from script to panel leaves `script` intact.",
+      "why": "Stale content from the previous type persists in the database. When the type-change validation checks `empty($tool->blade_template)` (line 318) or `empty($tool->script)` (line 321), it finds the stale content and treats it as valid, allowing a type change back without requiring the file to be re-provided. This could cause a tool to silently reuse an outdated template or script from before the type change. Additionally, tool extraction would extract both script.sh and template.blade.php for a tool that should only have one.",
+      "verify": "Confirm whether leaving stale opposite-type content in the database is intentional (data preservation for easy type reversal) or a gap. Check what `tool:extract` outputs for a tool that changed types - does it extract the stale file for the old type? Check if any code paths could execute the stale script/template.",
+      "source": "file-review"
+    },
+    {
+      "id": "BL-003",
+      "topic": "Business Logic",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The `input_schema.json` scalar validation at lines 359-361 (and 527-529 in createTool) uses `!is_array()` to reject scalars, but the error message says \"must contain a JSON object\". Since `json_decode($content, true)` converts BOTH JSON objects and JSON arrays into PHP arrays, the check also accepts JSON arrays like `[1, 2, 3]`.",
+      "why": "A JSON Schema must be an object (e.g., `{\"type\": \"object\", \"properties\": {...}}`), not a JSON array. But a JSON array like `[\"foo\", \"bar\"]` would pass the `!is_array()` check and be stored as the input schema. This would produce an invalid schema that fails when used for parameter validation. The error message is misleading since it claims to require an object but actually accepts arrays.",
+      "verify": "Check whether an invalid input_schema (JSON array) stored in the DB causes runtime errors when the tool is invoked and parameters are validated against it. Determine if this validation gap is worth fixing given that only the AI agent creates these files.",
+      "source": "file-review"
+    },
+    {
+      "id": "BL-004",
+      "topic": "Business Logic",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The `dependencies.json` scalar validation at lines 405-407 (and 540-542 in createTool) uses `!is_array()` to reject scalars, but the error message says \"must contain a JSON array\". Since `json_decode($content, true)` converts both JSON objects and arrays to PHP arrays, a JSON object like `{\"key\": \"value\"}` would pass validation.",
+      "why": "Panel dependencies are expected to be a JSON array of dependency objects (each with `type` and `url`). A JSON object would be stored and could cause incorrect behavior when the panel loader iterates over dependencies expecting array elements with `type` and `url` keys.",
+      "verify": "Check how `panel_dependencies` is consumed downstream. If the panel loader does `foreach ($deps as $dep)` and expects `$dep['type']` and `$dep['url']`, a JSON object would iterate over its key-value pairs differently than expected. Assess impact.",
+      "source": "file-review"
+    },
+    {
+      "id": "BL-005",
+      "topic": "Business Logic",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "In `updateTool`, when type is changed (line 324, `$tool->type = $newType`), the new type is set BEFORE file content sections execute. File validation for the old type's required content does not apply. For example, changing to panel while pushing an empty `script.sh` \u2014 the check at line 387 (`$tool->type === TYPE_SCRIPT && empty(trim($content))`) skips validation because the type is now panel, but the empty script content is still stored in the DB.",
+      "why": "An empty string gets stored as the script content for a panel tool. While `hasScript()` on the model treats empty strings as no-script (returns false via `!empty()`), this creates a data inconsistency: the DB has a non-null empty string in the `script` column rather than null. If panel tools with scripts are later expected to have valid script content (for actions/peek), the empty string could cause silent failures.",
+      "verify": "Check if storing an empty string in `script` column differs from null in any downstream code. Check if panel peek or action handling treats empty string differently from null. Determine if this scenario (type change + empty script push in same request) is realistic.",
+      "source": "file-review"
+    },
+    {
+      "id": "BL-006",
+      "topic": "Business Logic",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Empty content validation uses `empty(trim($content))` in `updateTool` (lines 341, 373, 387) but `empty($variable)` without trim in `createTool` (lines 546, 549). A whitespace-only script or template would be REJECTED during update but ACCEPTED during creation.",
+      "why": "A whitespace-only `script.sh` (e.g., containing only spaces/newlines) passes `empty($script)` (returns false in PHP for non-empty strings) during creation, storing a useless script. The same content would be rejected by `empty(trim($content))` during an update push. This inconsistency means the create and update paths enforce different validation standards for the same fields.",
+      "verify": "Confirm that `empty(' ')` returns `false` in PHP (it does \u2014 non-empty string is truthy). Check if a whitespace-only script stored via createTool would cause execution errors. Determine if this inconsistency was introduced by this PR or is pre-existing.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "BL-007",
+      "topic": "Business Logic",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The `enabled` field is handled differently between createTool and updateTool. In updateTool (line 308-310), it uses explicit `(bool)` cast and comparison. In createTool (line 565), the raw `$meta['enabled']` value is passed directly to `PocketTool::create()` relying on Eloquent's model cast. Meanwhile, `tool:extract` (ToolExtractTool line 102) writes `(bool)$tool->enabled` to meta.json.",
+      "why": "While Eloquent's boolean cast normalizes the value on read, the inconsistent handling means validation behavior differs: updateTool does an explicit bool comparison to detect changes, while createTool delegates entirely to Eloquent. If the Eloquent cast changes or if the enabled column is ever accessed without the cast, the two paths would behave differently.",
+      "verify": "Confirm that Eloquent's boolean cast on the PocketTool model (line 52 of PocketTool.php: `'enabled' => 'boolean'`) adequately handles all values that createTool might pass. Determine if the inconsistency between explicit casting in updateTool and implicit Eloquent casting in createTool is worth harmonizing.",
+      "source": "outlier-hunt"
+    }
+  ],
+  "na_files": [
+    "docs/plans/panels-and-screens.md",
+    "docs/proposals/system-prompt-optimization-tracker.md",
+    "docs/review-learnings.md",
+    "www/app/Console/Commands/ToolExtractCommand.php",
+    "www/app/Services/SystemPromptBuilder.php",
+    "www/app/Tools/ToolExtractTool.php",
+    "www/docs/tool-system-architecture.md",
+    "www/docs/tool-system-testing-plan.md"
+  ],
+  "processing_notes": []
+}

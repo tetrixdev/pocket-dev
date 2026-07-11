@@ -1,0 +1,79 @@
+{
+  "specialist": "Architecture & Design",
+  "findings": [
+    {
+      "id": "ARCH-001",
+      "topic": "Architecture & Design",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The updateTool method is accumulating multiple responsibilities and growing in size: meta field comparison, file I/O for 5 file types, validation, change tracking, warning collection, and output formatting.",
+      "why": "As more fields and file types are added, this method becomes harder to maintain and test in isolation. Each file type follows the same read-validate-compare-track pattern but the logic is inlined rather than abstracted, coupling all concerns together in one long method.",
+      "verify": "Read the full updateTool method and count lines/responsibilities. Check whether the method length and cyclomatic complexity have crossed a threshold where extraction into helper methods would improve readability and testability.",
+      "source": "file-review"
+    },
+    {
+      "id": "ARCH-002",
+      "topic": "Architecture & Design",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Empty content validation was added to updateTool for template.blade.php (panel-type) and script.sh (script-type), but the diff does not add equivalent empty checks in createTool for these same files.",
+      "why": "This creates an asymmetry in the API contract: updating a tool rejects empty template/script files, but creating a tool may accept them. A user could create a panel tool with an empty template.blade.php that would then be rejected if they tried to re-push it.",
+      "verify": "Read the full createTool method to check whether existing code already validates that template and script file contents are non-empty, or whether empty files are silently accepted during creation.",
+      "source": "file-review"
+    },
+    {
+      "id": "ARCH-003",
+      "topic": "Architecture & Design",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The updateTool method warns when meta.json slug differs from the target tool slug, but createTool has no equivalent warning or validation when meta.json slug differs from the directory-inferred slug argument.",
+      "why": "This is an API symmetry gap. During creation, if meta.json contains slug 'foo-bar' but the command argument is 'foo_bar', the slug in meta.json is silently ignored with no feedback. The user may believe their meta.json slug was used when it wasn't.",
+      "verify": "Read createTool to confirm that the slug parameter is used directly and meta.json slug (if present) is silently ignored. Determine whether a warning would be appropriate here for consistency with updateTool.",
+      "source": "file-review"
+    },
+    {
+      "id": "ARCH-004",
+      "topic": "Architecture & Design",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The enabled field in meta.json uses PHP (bool) coercion: (bool)$meta['enabled'] !== (bool)$tool->enabled. In PHP, (bool)\"false\" evaluates to true, meaning a JSON string value of \"false\" would enable the tool.",
+      "why": "This is a fragile API contract. JSON booleans (true/false) would work correctly, but if a user writes '\"enabled\": \"false\"' or '\"enabled\": 0' in meta.json, the behavior may surprise them. The meta.json is a user-facing file format that should have predictable parsing.",
+      "verify": "Check whether meta.json is always produced by tool:extract (which would output proper JSON booleans) or whether users might hand-author it. If always machine-generated, the risk is minimal. Also check if json_decode already provides proper PHP booleans for JSON true/false.",
+      "source": "file-review"
+    },
+    {
+      "id": "ARCH-005",
+      "topic": "Architecture & Design",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "When changing tool type via meta.json (e.g., script to panel), the now-irrelevant data (script content for a panel, template for a script) is preserved in the database rather than being cleared.",
+      "why": "This leaves stale data in the database that no longer corresponds to the tool's active type. If the type is later changed back, the old stale data would silently become active again, potentially with outdated or incompatible content.",
+      "verify": "Read the full updateTool type-change handling and confirm that the old type's primary field (script for script-type, blade_template for panel-type) is not nulled out when the type changes. Determine if this is intentional (preserving data for undo) or an oversight.",
+      "source": "file-review"
+    },
+    {
+      "id": "ARCH-006",
+      "topic": "Architecture & Design",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The updateTool has a $warnings mechanism and $filesChecked diagnostics array, but createTool has neither. The two code paths have diverging UX capabilities for the same tool.",
+      "why": "As the push command is the single entry point for both create and update, users expect consistent feedback quality. Create operations are just as likely to benefit from warnings (e.g., slug mismatch) and diagnostic output (e.g., which files were processed) as update operations.",
+      "verify": "Read createTool's output formatting and confirm it lacks warning/diagnostic mechanisms. Assess whether the create path would benefit from the same $warnings pattern used in updateTool.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "ARCH-007",
+      "topic": "Architecture & Design",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Each file type in updateTool (system_prompt.md, input_schema.json, template.blade.php, script.sh, dependencies.json) follows an identical pattern: check existence, add to filesChecked, read content, validate, compare, track change. This pattern is repeated 5 times with minor validation variations.",
+      "why": "The repetition makes it easy for validation rules to drift between file types (as seen with the create/update asymmetry). A small abstraction like a file-handler array or helper method could reduce duplication and ensure consistent treatment of all file types.",
+      "verify": "Count the repeated blocks in updateTool and assess whether a loop-based or helper-based approach would reduce code without adding unnecessary abstraction. Consider that each file type has slightly different validation (empty check vs JSON parse vs conditional-on-type).",
+      "source": "outlier-hunt"
+    }
+  ],
+  "na_files": [
+    "docs/plans/panels-and-screens.md",
+    "docs/proposals/system-prompt-optimization-tracker.md",
+    "docs/review-learnings.md",
+    "www/app/Console/Commands/ToolExtractCommand.php",
+    "www/app/Services/SystemPromptBuilder.php",
+    "www/app/Tools/ToolExtractTool.php",
+    "www/docs/tool-system-architecture.md",
+    "www/docs/tool-system-testing-plan.md"
+  ],
+  "processing_notes": []
+}

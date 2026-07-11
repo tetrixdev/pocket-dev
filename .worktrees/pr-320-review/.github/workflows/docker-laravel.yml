@@ -1,0 +1,116 @@
+name: PocketDev Docker Build
+
+on:
+  release:
+    types: [prereleased, released]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout the files
+
+      # Install PHP dependencies
+      - name: Install PHP dependencies
+        run: |
+          cd www
+          composer install --optimize-autoloader --no-dev
+
+      # Install Node.js dependencies and build frontend assets
+      - name: Install Node.js dependencies and build frontend assets
+        run: |
+          cd www
+          npm ci
+          npm run build
+          rm -rf node_modules
+
+      # Generate version.json for production builds
+      - name: Generate version.json
+        run: |
+          cat > www/version.json << EOF
+          {
+            "tag": "${{ github.event.release.tag_name }}",
+            "commit": "${{ github.sha }}",
+            "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "prerelease": ${{ github.event.release.prerelease }}
+          }
+          EOF
+          echo "Generated version.json:"
+          cat www/version.json
+
+      # Set up Docker Buildx for caching support
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Login to GitHub Container Registry
+      - name: Login to container registry
+        run: docker login ghcr.io --username=${{ github.actor }} --password=${{ secrets.GITHUB_TOKEN }}
+
+      # Build and push Laravel PHP application image
+      - name: Build and push pocket-dev-php image
+        run: |
+          TAGS="--tag ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }}"
+          if [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            TAGS="$TAGS --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-php:latest"
+          fi
+          docker buildx build \
+            --file docker-laravel/production/php/Dockerfile \
+            --progress plain \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-php:cache,mode=max \
+            $TAGS \
+            --push \
+            .
+
+      # Build and push Laravel Nginx image
+      - name: Build and push pocket-dev-nginx image
+        run: |
+          TAGS="--tag ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }}"
+          if [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            TAGS="$TAGS --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:latest"
+          fi
+          docker buildx build \
+            --file docker-laravel/production/nginx/Dockerfile \
+            --progress plain \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:cache,mode=max \
+            $TAGS \
+            --push \
+            .
+
+      # Build and push PostgreSQL image with extensions
+      - name: Build and push pocket-dev-postgres image
+        run: |
+          TAGS="--tag ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:${{ github.event.release.tag_name }}"
+          if [ "${{ github.event.release.prerelease }}" != "true" ]; then
+            TAGS="$TAGS --tag ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:latest"
+          fi
+          docker buildx build \
+            --file docker-postgres/Dockerfile \
+            --progress plain \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
+            --cache-to=type=registry,ref=ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:cache,mode=max \
+            $TAGS \
+            --push \
+            .
+
+      # Output image information
+      - name: Image build complete
+        run: |
+          echo "✅ Images built and pushed:"
+          echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-php:${{ github.event.release.tag_name }}"
+          echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-nginx:${{ github.event.release.tag_name }}"
+          echo "📦 ghcr.io/${{ github.repository_owner }}/pocket-dev-postgres:${{ github.event.release.tag_name }}"
+          echo ""
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "⚠️  Pre-release: 'latest' tag NOT updated"
+          else
+            echo "✅ 'latest' tag updated"
+          fi
+          echo ""
+          echo "🚀 Deploy with: cd deploy && docker-compose up -d"

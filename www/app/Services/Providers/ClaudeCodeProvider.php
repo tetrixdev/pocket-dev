@@ -18,9 +18,28 @@ use Illuminate\Support\Str;
  */
 class ClaudeCodeProvider extends AbstractCliProvider
 {
+    /**
+     * Path to the temporary system prompt file written for the current run (for cleanup).
+     * The system prompt is written to a file to avoid Linux's MAX_ARG_STRLEN (128KB) limit
+     * on individual command-line arguments when using proc_open with a shell command string.
+     */
+    private ?string $systemPromptFilePath = null;
+
     public function __construct(ModelRepository $models)
     {
         parent::__construct($models);
+    }
+
+    /**
+     * Wrap parent streamMessage to ensure system prompt temp file is cleaned up on all paths.
+     */
+    public function streamMessage(Conversation $conversation, array $options = []): Generator
+    {
+        try {
+            yield from parent::streamMessage($conversation, $options);
+        } finally {
+            $this->cleanupSystemPromptFile();
+        }
     }
 
     // ========================================================================
@@ -153,13 +172,24 @@ class ClaudeCodeProvider extends AbstractCliProvider
             $parts[] = escapeshellarg(implode(',', $allowedTools));
         }
 
-        // Add system prompt if provided
+        // Write system prompt to a temp file and use --system-prompt-file to avoid hitting
+        // Linux's MAX_ARG_STRLEN (128KB) limit when the prompt is passed inline as a shell arg.
         if (!empty($options['system'])) {
-            $parts[] = '--system-prompt';
-            $parts[] = escapeshellarg($options['system']);
+            $this->systemPromptFilePath = tempnam(sys_get_temp_dir(), 'pocketdev_prompt_');
+            file_put_contents($this->systemPromptFilePath, $options['system']);
+            $parts[] = '--system-prompt-file';
+            $parts[] = escapeshellarg($this->systemPromptFilePath);
         }
 
         return implode(' ', $parts);
+    }
+
+    private function cleanupSystemPromptFile(): void
+    {
+        if ($this->systemPromptFilePath !== null) {
+            @unlink($this->systemPromptFilePath);
+            $this->systemPromptFilePath = null;
+        }
     }
 
     protected function prepareProcessInput(string $command, string $userMessage): array

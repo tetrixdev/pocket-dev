@@ -1,0 +1,78 @@
+{
+  "specialist": "Consistency & Style",
+  "findings": [
+    {
+      "id": "CONS-001",
+      "topic": "Consistency & Style",
+      "files": ["www/config/panels.php"],
+      "what": "Stale reference to old 'tool:create' command name in config comment (line 102): 'Example code snippets included in the tool:create system prompt'",
+      "why": "The PR renames tool:create to tool:push but missed updating this comment. Readers of the config file will see a reference to a command that no longer exists, causing confusion.",
+      "verify": "Check www/config/panels.php line 102 for the stale 'tool:create' reference. Confirm the comment should reference 'tool:push' or 'tool:extract/push' instead.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "CONS-002",
+      "topic": "Consistency & Style",
+      "files": ["www/docs/README.md"],
+      "what": "Stale reference to old 'ToolCreate' class name in ASCII architecture diagram (line 90): 'MemoryQuery, MemoryCreate, ToolCreate, etc.'",
+      "why": "The PR replaced ToolCreate/ToolUpdate/ToolShow with ToolExtract/ToolPush but missed updating this diagram. The diagram shows class names that no longer exist in the codebase.",
+      "verify": "Check www/docs/README.md line 90 for 'ToolCreate'. Confirm it should now reference 'ToolExtract, ToolPush' or similar.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "CONS-003",
+      "topic": "Consistency & Style",
+      "files": ["www/app/Tools/ToolExtractTool.php", "www/app/Tools/ToolPushTool.php"],
+      "what": "New ToolExtractTool and ToolPushTool classes lack the $apiExamples property that all other tool classes in the 'tools' category define (ToolListTool, ToolDeleteTool, ToolRunTool)",
+      "why": "Every other tool class provides $apiExamples for API consumers. The new classes are outliers in this group. Note: Already accepted as ARCH-008 in docs/review-learnings.md.",
+      "verify": "Check if ARCH-008 in docs/review-learnings.md adequately covers this. If so, dismiss as already accepted.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "CONS-004",
+      "topic": "Consistency & Style",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Inconsistent error messages between createTool and updateTool for empty files: createTool says 'script.sh is required for type=script' when script.sh exists but is empty (line 547), while updateTool says 'script.sh must not be empty for script-type tools' (line 389). Same pattern for template.blade.php.",
+      "why": "The createTool message says 'required' even when the file exists but has empty content, which is misleading. The updateTool message correctly says 'must not be empty'. Users seeing 'required' when they provided the file but left it empty would be confused.",
+      "verify": "Read createTool lines 546-551 and compare to updateTool lines 373-374 and 388-389. Confirm the createTool empty() check catches both missing-file and empty-file scenarios, making the 'required' message inaccurate for the empty-file case.",
+      "source": "file-review"
+    },
+    {
+      "id": "CONS-005",
+      "topic": "Consistency & Style",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "createTool passes meta 'enabled' field without explicit bool cast ($meta['enabled'] ?? true on line 565) while updateTool explicitly casts with (bool)$meta['enabled'] on line 308",
+      "why": "Inconsistent type handling within the same class for the same field. If meta.json contains enabled: 1 (integer) or enabled: 'true' (string), the behavior could differ between create and update paths.",
+      "verify": "Compare line 565 (createTool) with line 308 (updateTool). Check if Laravel's model casting handles the bool conversion automatically, which would make this cosmetic only.",
+      "source": "file-review"
+    },
+    {
+      "id": "CONS-006",
+      "topic": "Consistency & Style",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "createTool distinguishes panels from tools in success output ('Created panel:' vs 'Created tool:' on line 569-571) but updateTool always says 'Updated tool:' regardless of type (line 439)",
+      "why": "Inconsistent output format within the same class. A user updating a panel sees 'Updated tool:' while creating a panel sees 'Created panel:'. The distinction is useful and should be applied consistently.",
+      "verify": "Compare line 569 (createTool: uses $typeLabel for 'panel' vs 'tool') with line 439 (updateTool: hardcoded 'tool'). Confirm whether the type distinction matters for user-facing output.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "CONS-007",
+      "topic": "Consistency & Style",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "meta.json validation lacks explicit array type check after json_decode (lines 266-272) while input_schema.json (line 359) and dependencies.json (line 405) both validate with !is_array() checks. A JSON scalar in meta.json would trigger a PHP TypeError at the ?array type hint instead of a graceful error.",
+      "why": "Other JSON files in the same class gracefully validate their decoded structure and return a user-friendly error message. meta.json relies on the PHP type hint, producing an unhandled TypeError (likely a 500 error) rather than a descriptive error like the sibling validations provide.",
+      "verify": "Check lines 266-272 (meta.json decode) and confirm no is_array check exists. Compare with lines 355-361 (input_schema.json) and lines 401-407 (dependencies.json) which both have explicit type checks. Test what happens when meta.json contains a JSON scalar like '42'.",
+      "source": "outlier-hunt"
+    }
+  ],
+  "na_files": [
+    "docs/plans/panels-and-screens.md",
+    "docs/proposals/system-prompt-optimization-tracker.md",
+    "docs/review-learnings.md",
+    "www/app/Console/Commands/ToolExtractCommand.php",
+    "www/app/Services/SystemPromptBuilder.php",
+    "www/docs/tool-system-architecture.md",
+    "www/docs/tool-system-testing-plan.md"
+  ],
+  "processing_notes": []
+}

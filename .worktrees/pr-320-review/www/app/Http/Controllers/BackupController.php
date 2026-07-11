@@ -1,0 +1,583 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+
+class BackupController extends Controller
+{
+    /**
+     * Directory where backups are stored
+     */
+    protected string $backupDir = 'backups';
+
+    /**
+     * Get the project name for container/volume naming
+     */
+    protected function getProjectName(): string
+    {
+        return config('pocketdev.project_name', 'pocket-dev');
+    }
+
+    /**
+     * Get logical volume keys (instance-neutral names used in backup archives)
+     * These are mapped to actual Docker volume names at backup/restore time
+     */
+    protected function getVolumeKeys(): array
+    {
+        return ['redis', 'workspace', 'user', 'storage'];
+    }
+
+    /**
+     * Map a logical volume key to the actual Docker volume name
+     */
+    protected function getVolumeName(string $key): string
+    {
+        return $this->getProjectName() . '-' . $key;
+    }
+
+    /**
+     * Show the backup management page
+     */
+    public function show(Request $request)
+    {
+        $request->session()->put('config_last_section', 'backup');
+
+        // Get existing backups
+        $backups = $this->listBackups();
+
+        // Check if user has downloaded a backup within the last 5 minutes (safety requirement before restore)
+        $downloadedAt = $request->session()->get('backup_downloaded_at');
+        $hasDownloadedBackup = $downloadedAt && (time() - $downloadedAt) < 300;
+
+        // Check for processing conversations
+        $processingCount = \App\Models\Conversation::where('status', \App\Models\Conversation::STATUS_PROCESSING)->count();
+
+        return view('config.backup', [
+            'backups' => $backups,
+            'hasDownloadedBackup' => $hasDownloadedBackup,
+            'processingCount' => $processingCount,
+        ]);
+    }
+
+    /**
+     * Create a new backup
+     */
+    public function create(Request $request)
+    {
+        try {
+            $timestamp = now()->format('Y-m-d_H-i-s');
+            $backupName = "pocketdev-backup-{$timestamp}";
+            $tempDir = "/tmp/{$backupName}";
+
+            // Ensure backup directory exists
+            $backupDir = storage_path("app/{$this->backupDir}");
+            if (!is_dir($backupDir)) {
+                if (!mkdir($backupDir, 0775, true)) {
+                    throw new \RuntimeException("Failed to create backup directory: {$backupDir}");
+                }
+            }
+
+            // Create temp directory for backup contents
+            exec("mkdir -p {$tempDir}", $output, $returnCode);
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to create temp directory');
+            }
+
+            // 1. Database dump using pg_dump
+            $this->backupDatabase($tempDir);
+
+            // 2. Backup volumes
+            $this->backupVolumes($tempDir);
+
+            // 3. Create manifest file
+            $this->createManifest($tempDir, $backupName);
+
+            // 4. Create the final archive
+            $backupPath = storage_path("app/{$this->backupDir}/{$backupName}.tar.gz");
+            exec("tar -czf \"{$backupPath}\" -C /tmp \"{$backupName}\" 2>&1", $output, $returnCode);
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to create backup archive: ' . implode("\n", $output));
+            }
+
+            // 5. Cleanup temp directory
+            exec("rm -rf \"{$tempDir}\"");
+
+            // Get file size for display
+            $fileSize = $this->formatFileSize(filesize($backupPath));
+
+            return redirect()->route('config.backup')
+                ->with('success', "Backup created successfully: {$backupName}.tar.gz ({$fileSize})");
+
+        } catch (\Exception $e) {
+            Log::error('Backup creation failed', ['error' => $e->getMessage()]);
+            // Cleanup on failure
+            if (isset($tempDir)) {
+                exec("rm -rf \"{$tempDir}\"");
+            }
+            return redirect()->route('config.backup')
+                ->with('error', 'Backup failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Download a backup file
+     */
+    public function download(Request $request, string $filename)
+    {
+        // Security: only allow .tar.gz files in our backup directory (prevent path traversal)
+        if (!str_ends_with($filename, '.tar.gz') || str_contains($filename, '..')) {
+            return redirect()->route('config.backup')
+                ->with('error', 'Invalid backup filename');
+        }
+
+        $path = storage_path("app/{$this->backupDir}/{$filename}");
+
+        if (!file_exists($path)) {
+            return redirect()->route('config.backup')
+                ->with('error', 'Backup file not found');
+        }
+
+        // Store download timestamp - restore is allowed within 5 minutes of downloading
+        $request->session()->put('backup_downloaded_at', time());
+
+        return response()->download($path);
+    }
+
+    /**
+     * Delete a backup file
+     */
+    public function delete(Request $request, string $filename)
+    {
+        // Security: validate filename BEFORE checking existence (prevent file existence inference)
+        if (!str_ends_with($filename, '.tar.gz') || str_contains($filename, '..')) {
+            return redirect()->route('config.backup')
+                ->with('error', 'Invalid backup filename');
+        }
+
+        $path = storage_path("app/{$this->backupDir}/{$filename}");
+
+        if (!file_exists($path)) {
+            return redirect()->route('config.backup')
+                ->with('error', 'Backup file not found');
+        }
+
+        unlink($path);
+
+        return redirect()->route('config.backup')
+            ->with('success', 'Backup deleted successfully');
+    }
+
+    /**
+     * Restore from an uploaded backup
+     */
+    public function restore(Request $request)
+    {
+        // Safety check: require a backup download within the last 5 minutes
+        $downloadedAt = $request->session()->get('backup_downloaded_at');
+        if (!$downloadedAt || (time() - $downloadedAt) >= 300) {
+            return redirect()->route('config.backup')
+                ->with('error', 'You must download a backup first before restoring. This ensures you have a safety copy. (Download expires after 5 minutes)');
+        }
+
+        $request->validate([
+            'backup_file' => 'required|file|mimes:gz|max:1048576', // 1GB max
+        ]);
+
+        try {
+            $file = $request->file('backup_file');
+            $tempDir = '/tmp/pocketdev-restore-' . uniqid();
+
+            // Create temp directory
+            exec("mkdir -p {$tempDir}", $output, $returnCode);
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to create temp directory');
+            }
+
+            // Move uploaded file to temp location
+            $uploadedPath = "{$tempDir}/backup.tar.gz";
+            $file->move($tempDir, 'backup.tar.gz');
+
+            // Extract archive
+            exec("tar -xzf \"{$uploadedPath}\" -C \"{$tempDir}\" 2>&1", $output, $returnCode);
+            if ($returnCode !== 0) {
+                throw new \RuntimeException('Failed to extract backup: ' . implode("\n", $output));
+            }
+
+            // Find the extracted backup directory
+            $extractedDirs = glob("{$tempDir}/pocketdev-backup-*");
+            if (empty($extractedDirs)) {
+                throw new \RuntimeException('Invalid backup archive: no backup directory found');
+            }
+            $backupDir = $extractedDirs[0];
+
+            // Verify manifest exists
+            if (!file_exists("{$backupDir}/manifest.json")) {
+                throw new \RuntimeException('Invalid backup: manifest.json not found');
+            }
+
+            $manifest = json_decode(file_get_contents("{$backupDir}/manifest.json"), true);
+            if (!$manifest || !isset($manifest['version'])) {
+                throw new \RuntimeException('Invalid backup manifest');
+            }
+
+            // 1. Restore database
+            $this->restoreDatabase($backupDir);
+
+            // 2. Restore volumes
+            $this->restoreVolumes($backupDir);
+
+            // Cleanup
+            exec("rm -rf \"{$tempDir}\"");
+
+            // 3. Restart containers to apply changes
+            $this->restartContainers();
+
+            return redirect()->route('config.backup')
+                ->with('success', 'Backup restored successfully. Containers are restarting.');
+
+        } catch (\Exception $e) {
+            Log::error('Backup restore failed', ['error' => $e->getMessage()]);
+            if (isset($tempDir)) {
+                exec("rm -rf \"{$tempDir}\"");
+            }
+            return redirect()->route('config.backup')
+                ->with('error', 'Restore failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Backup the database using pg_dump
+     */
+    protected function backupDatabase(string $tempDir): void
+    {
+        $dbName = config('database.connections.pgsql.database');
+        $dbUser = config('database.connections.pgsql.username');
+
+        $dumpFile = "{$tempDir}/database.sql";
+
+        // First verify docker is accessible
+        exec('docker --version 2>&1', $dockerCheck, $dockerReturnCode);
+        if ($dockerReturnCode !== 0) {
+            throw new \RuntimeException('Docker not accessible: ' . implode("\n", $dockerCheck));
+        }
+
+        // Use docker exec to run pg_dump in the postgres container
+        // Capture output directly then write to file (more reliable than shell redirection)
+        $postgresContainer = $this->getProjectName() . '-postgres';
+        $command = sprintf(
+            'docker exec %s pg_dump -U %s %s 2>&1',
+            escapeshellarg($postgresContainer),
+            escapeshellarg($dbUser),
+            escapeshellarg($dbName)
+        );
+
+        exec($command, $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            $errorMsg = implode("\n", $output);
+            if (empty($errorMsg)) {
+                $errorMsg = "pg_dump failed with exit code {$returnCode}";
+            }
+            throw new \RuntimeException('Database backup failed: ' . $errorMsg);
+        }
+
+        // Write output to file
+        $dumpContent = implode("\n", $output);
+        if (empty($dumpContent)) {
+            throw new \RuntimeException('Database dump is empty');
+        }
+
+        file_put_contents($dumpFile, $dumpContent);
+    }
+
+    /**
+     * Backup Docker volumes
+     * Uses logical keys in archive structure for instance-neutral backups
+     */
+    protected function backupVolumes(string $tempDir): void
+    {
+        foreach ($this->getVolumeKeys() as $key) {
+            $volumeName = $this->getVolumeName($key);
+            // Store under logical key (e.g., "redis") not instance-specific name
+            $volumeDir = "{$tempDir}/volumes/{$key}";
+            exec("mkdir -p \"{$volumeDir}\"");
+
+            // Use a temporary container to copy volume contents
+            $command = sprintf(
+                'docker run --rm -v %s:/source -v "%s":/backup alpine sh -c "cd /source && tar -cf - . | (cd /backup && tar -xf -)" 2>&1',
+                escapeshellarg($volumeName),
+                $volumeDir
+            );
+
+            exec($command, $output, $returnCode);
+            if ($returnCode !== 0) {
+                throw new \RuntimeException("Failed to backup volume {$volumeName}: " . implode("\n", $output));
+            }
+        }
+    }
+
+    /**
+     * Create backup manifest
+     * Stores logical volume keys for instance-neutral restoration
+     */
+    protected function createManifest(string $tempDir, string $backupName): void
+    {
+        $manifest = [
+            'version' => '1.1', // Bumped version for instance-neutral format
+            'name' => $backupName,
+            'created_at' => now()->toIso8601String(),
+            'pocketdev_version' => config('app.version', 'unknown'),
+            'volumes' => $this->getVolumeKeys(), // Logical keys, not instance-specific names
+            'includes_database' => true,
+        ];
+
+        file_put_contents("{$tempDir}/manifest.json", json_encode($manifest, JSON_PRETTY_PRINT));
+    }
+
+    /**
+     * Restore database from backup
+     */
+    protected function restoreDatabase(string $backupDir): void
+    {
+        $dumpFile = "{$backupDir}/database.sql";
+        if (!file_exists($dumpFile)) {
+            throw new \RuntimeException('Database dump not found in backup');
+        }
+
+        $dbName = config('database.connections.pgsql.database');
+        $dbUser = config('database.connections.pgsql.username');
+
+        // Validate db name/user contain only safe characters (alphanumeric, underscore, hyphen)
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $dbName) || !preg_match('/^[a-zA-Z0-9_-]+$/', $dbUser)) {
+            throw new \RuntimeException('Invalid database name or username');
+        }
+
+        $postgresContainer = $this->getProjectName() . '-postgres';
+
+        // Drop and recreate the database, then restore
+        // First terminate all connections
+        $terminateCmd = sprintf(
+            'docker exec %s psql -U %s -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = \'%s\' AND pid <> pg_backend_pid();" 2>&1',
+            escapeshellarg($postgresContainer),
+            $dbUser,
+            $dbName
+        );
+        exec($terminateCmd);
+
+        // Drop the database
+        $dropCmd = sprintf(
+            'docker exec %s psql -U %s -d postgres -c "DROP DATABASE IF EXISTS \\"%s\\";" 2>&1',
+            escapeshellarg($postgresContainer),
+            $dbUser,
+            $dbName
+        );
+        exec($dropCmd, $output, $returnCode);
+
+        // Create fresh database
+        $createCmd = sprintf(
+            'docker exec %s psql -U %s -d postgres -c "CREATE DATABASE \\"%s\\" OWNER \\"%s\\";" 2>&1',
+            escapeshellarg($postgresContainer),
+            $dbUser,
+            $dbName,
+            $dbUser
+        );
+        exec($createCmd, $output, $returnCode);
+        if ($returnCode !== 0) {
+            throw new \RuntimeException('Failed to create database: ' . implode("\n", $output));
+        }
+
+        // Restore the dump
+        $restoreCmd = sprintf(
+            'docker exec -i %s psql -U %s %s < "%s" 2>&1',
+            escapeshellarg($postgresContainer),
+            $dbUser,
+            $dbName,
+            $dumpFile
+        );
+        exec($restoreCmd, $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning('Database restore had warnings', ['output' => implode("\n", $output)]);
+            // Don't fail on warnings - pg_restore often has non-fatal warnings
+        }
+    }
+
+    /**
+     * Restore Docker volumes from backup
+     * Maps logical keys from backup to current instance's volume names
+     */
+    protected function restoreVolumes(string $backupDir): void
+    {
+        $volumesDir = "{$backupDir}/volumes";
+        if (!is_dir($volumesDir)) {
+            Log::warning('No volumes directory in backup');
+            return;
+        }
+
+        // Get available volume keys from this instance
+        $availableKeys = $this->getVolumeKeys();
+
+        // Try to restore each volume that exists in the backup
+        // Look for logical keys (v1.1 format) first, then fall back to legacy format
+        foreach ($availableKeys as $key) {
+            $volumeName = $this->getVolumeName($key);
+
+            // Check for logical key (new v1.1 format: "redis", "workspace", etc.)
+            $volumeBackup = "{$volumesDir}/{$key}";
+
+            // Fall back to legacy format (old v1.0 format: "pocket-dev-redis", etc.)
+            if (!is_dir($volumeBackup)) {
+                // Try common legacy prefixes
+                $legacyPaths = [
+                    "{$volumesDir}/pocket-dev-{$key}",
+                    "{$volumesDir}/{$volumeName}", // Current instance name (if same)
+                ];
+                foreach ($legacyPaths as $legacyPath) {
+                    if (is_dir($legacyPath)) {
+                        $volumeBackup = $legacyPath;
+                        Log::info("Using legacy backup path for {$key}", ['path' => $legacyPath]);
+                        break;
+                    }
+                }
+            }
+
+            if (!is_dir($volumeBackup)) {
+                Log::warning("Volume backup not found for key: {$key}");
+                continue;
+            }
+
+            // Use a temporary container to restore volume contents
+            $command = sprintf(
+                'docker run --rm -v %s:/target -v "%s":/backup alpine sh -c "rm -rf /target/* /target/.[!.]* 2>/dev/null; cd /backup && tar -cf - . | (cd /target && tar -xf -)" 2>&1',
+                escapeshellarg($volumeName),
+                $volumeBackup
+            );
+
+            exec($command, $output, $returnCode);
+            if ($returnCode !== 0) {
+                Log::warning("Failed to restore volume {$volumeName}", ['output' => implode("\n", $output)]);
+            }
+        }
+
+        // Fix ownership after restore - Alpine restores as root, but services need proper ownership
+        $this->fixVolumePermissions();
+    }
+
+    /**
+     * Fix volume permissions after restore
+     */
+    protected function fixVolumePermissions(): void
+    {
+        // Get the host user ID from config (containers run as this user)
+        // Group is always www-data (33) for cross-group ownership model
+        $userId = config('backup.user_id');
+        $groupId = 33; // www-data
+
+        if ($userId === null || $userId === '') {
+            throw new \RuntimeException('PD_USER_ID must be set in .env for volume permission fixes');
+        }
+
+        // user-data: needs host user ownership for CLI tools (Claude, Codex, etc.)
+        $userVolume = escapeshellarg($this->getVolumeName('user'));
+        exec("docker run --rm -v {$userVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning("Failed to fix user volume permissions", ['output' => implode("\n", $output)]);
+        }
+
+        // storage: needs host user ownership for Laravel
+        $storageVolume = escapeshellarg($this->getVolumeName('storage'));
+        exec("docker run --rm -v {$storageVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning("Failed to fix storage volume permissions", ['output' => implode("\n", $output)]);
+        }
+
+        // workspace: needs host user ownership
+        $workspaceVolume = escapeshellarg($this->getVolumeName('workspace'));
+        exec("docker run --rm -v {$workspaceVolume}:/data alpine chown -R {$userId}:{$groupId} /data 2>&1", $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning("Failed to fix workspace volume permissions", ['output' => implode("\n", $output)]);
+        }
+
+        // redis: needs redis user (999:999)
+        $redisVolume = escapeshellarg($this->getVolumeName('redis'));
+        exec("docker run --rm -v {$redisVolume}:/data alpine chown -R 999:999 /data 2>&1", $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning("Failed to fix redis volume permissions", ['output' => implode("\n", $output)]);
+        }
+    }
+
+    /**
+     * Restart containers after restore
+     */
+    protected function restartContainers(): void
+    {
+        $hostProjectPath = config('backup.host_project_path');
+
+        if (empty($hostProjectPath)) {
+            Log::warning('HOST_PROJECT_PATH not set, skipping container restart');
+            return;
+        }
+
+        // Spawn a helper container that survives the PHP container restart
+        $command = sprintf(
+            'docker run --rm -d ' .
+            '-v /var/run/docker.sock:/var/run/docker.sock ' .
+            '-v "%s:%s" ' .
+            '-w "%s" ' .
+            'docker:27-cli ' .
+            'docker compose up -d --force-recreate 2>&1',
+            $hostProjectPath,
+            $hostProjectPath,
+            $hostProjectPath
+        );
+
+        exec($command, $output, $returnCode);
+        if ($returnCode !== 0) {
+            Log::warning('Failed to spawn restart container', ['output' => implode("\n", $output)]);
+        }
+    }
+
+    /**
+     * List existing backups
+     */
+    protected function listBackups(): array
+    {
+        $backups = [];
+        $backupPath = storage_path("app/{$this->backupDir}");
+
+        if (!is_dir($backupPath)) {
+            return $backups;
+        }
+
+        $files = glob("{$backupPath}/*.tar.gz");
+        foreach ($files as $file) {
+            $filename = basename($file);
+            $backups[] = [
+                'filename' => $filename,
+                'size' => $this->formatFileSize(filesize($file)),
+                'created_at' => date('Y-m-d H:i:s', filemtime($file)),
+            ];
+        }
+
+        // Sort by creation date descending
+        usort($backups, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
+
+        return $backups;
+    }
+
+    /**
+     * Format file size for display
+     */
+    protected function formatFileSize(int $bytes): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $i = 0;
+        while ($bytes >= 1024 && $i < count($units) - 1) {
+            $bytes /= 1024;
+            $i++;
+        }
+        return round($bytes, 2) . ' ' . $units[$i];
+    }
+}

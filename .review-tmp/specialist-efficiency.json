@@ -1,0 +1,96 @@
+{
+  "specialist": "Efficiency & Minimality",
+  "findings": [
+    {
+      "id": "EFF-001",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Identical JSON validation pattern duplicated 4 times across createTool and updateTool for input_schema.json and dependencies.json",
+      "why": "The exact same 3-step pattern (json_decode, check json_last_error, check !is_array) is copy-pasted in createTool lines 522-529 and 535-541, and updateTool lines 354-361 and 400-407. A small private helper like validateJsonFile(path, label) could eliminate the duplication and ensure validation stays consistent if rules change.",
+      "verify": "Confirm the four JSON validation blocks are identical in structure. Assess whether a helper method would reduce maintenance burden without over-abstracting.",
+      "source": "file-review"
+    },
+    {
+      "id": "EFF-002",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The $filesChecked diagnostic output (lines 333-334, 416-425) adds ~15 lines of code for an edge case: when push detects no changes",
+      "why": "This code tracks full paths of every file checked, then enumerates them in the 'no changes' output. The AI consumer of this tool output already knows which files exist in the directory (it just created/edited them). The diagnostic value for the AI is marginal, and the simpler pre-existing 'No changes detected' message was sufficient.",
+      "verify": "Check whether the 'no changes' path is commonly hit in practice and whether the detailed file list provides actionable value to the AI agent consuming this output.",
+      "source": "file-review"
+    },
+    {
+      "id": "EFF-003",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The $warnings array mechanism (lines 292, 328-330, 426-430, 448-453) is used for only a single warning type: slug mismatch",
+      "why": "An array with iteration is over-engineered for what is currently a single possible warning. A simple nullable string $slugWarning would be more direct. If more warning types are needed in the future, an array can be introduced then.",
+      "verify": "Confirm that slug mismatch is the only warning currently added to the $warnings array. Consider whether other warning types are planned or likely.",
+      "source": "file-review"
+    },
+    {
+      "id": "EFF-004",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "The system_prompt.md empty-content validation is duplicated identically in both createTool (line 487-488) and updateTool (line 341-342)",
+      "why": "Both paths check empty(trim($content)) and return the exact same error message. If the validation rule changes (e.g., minimum length), it must be updated in two places. This could be a shared validation step or private method.",
+      "verify": "Confirm both empty checks use identical logic and error messages. Assess whether consolidation is worthwhile given the overall method structure.",
+      "source": "file-review"
+    },
+    {
+      "id": "EFF-005",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolExtractTool.php"],
+      "what": "Unnecessary local variable $isCustomDirectory (line 148) is assigned once and used once immediately after",
+      "why": "The variable adds a line without improving readability. The condition `isset($input['directory'])` is already self-documenting and could be used directly in the if-statement.",
+      "verify": "Confirm $isCustomDirectory is only used once at line 149. This is a minor style issue.",
+      "source": "file-review"
+    },
+    {
+      "id": "EFF-006",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "updateTool success output includes ID, Type, and Enabled status (lines 441-443) which the AI agent already knows from the extracted meta.json",
+      "why": "When the AI pushes an update, it already has context about the tool's ID, type, and enabled state. Echoing these back adds output bulk without new information. The 'Changed' line (445) is the only truly useful new information. Compare with the simpler pre-existing output that just showed the changes list.",
+      "verify": "Assess whether the AI agent benefits from seeing ID/Type/Enabled in the push response, or whether the 'Changed' line alone is sufficient.",
+      "source": "file-review"
+    },
+    {
+      "id": "EFF-007",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Type change validation (lines 312-326) adds substantial branching for what is likely a very rare operation: changing a tool's type from script to panel or vice versa",
+      "why": "Changing type mid-lifecycle is an unusual operation. The validation checks both the directory for the required file AND the existing tool's stored data, creating multiple code paths. If this operation is expected to be rare, a simpler approach might be to require the user to delete and recreate the tool with the new type, removing this entire block.",
+      "verify": "Determine how often type changes are expected in practice. If rarely, consider whether the complexity is justified versus a simpler 'delete and recreate' workflow.",
+      "source": "file-review"
+    },
+    {
+      "id": "EFF-008",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "Inconsistent emptiness validation approach between createTool and updateTool for template.blade.php and script.sh",
+      "why": "In updateTool, template.blade.php and script.sh get inline empty checks conditional on the tool type (lines 373, 387). In createTool, the same files are read without inline empty checks (lines 509-517), and emptiness is validated later as type-specific validation (lines 546-551). The split approach means the same logical validation is expressed differently in each path, making it harder to verify both paths enforce the same rules.",
+      "verify": "Compare the validation paths: updateTool checks empty(trim($content)) per-file with type condition, while createTool checks empty($script)/empty($bladeTemplate) at the end. Confirm both enforce equivalent constraints.",
+      "source": "outlier-hunt"
+    },
+    {
+      "id": "EFF-009",
+      "topic": "Efficiency & Minimality",
+      "files": ["www/app/Tools/ToolPushTool.php"],
+      "what": "createTool uses dynamic typeLabel ('tool' vs 'panel') in output (line 569) while updateTool always says 'tool' (line 439)",
+      "why": "In createTool: 'Created panel: MyPanel (my-panel)'. In updateTool: 'Updated tool: MyPanel (my-panel)' even when updating a panel. This is an inconsistency in output messaging. If the distinction matters for create, it should matter for update too.",
+      "verify": "Confirm updateTool line 439 hardcodes 'tool' while createTool line 569 uses a dynamic typeLabel. Assess whether the AI agent cares about this distinction in output.",
+      "source": "outlier-hunt"
+    }
+  ],
+  "na_files": [
+    "docs/plans/panels-and-screens.md",
+    "docs/proposals/system-prompt-optimization-tracker.md",
+    "docs/review-learnings.md",
+    "www/app/Console/Commands/ToolExtractCommand.php",
+    "www/app/Services/SystemPromptBuilder.php",
+    "www/docs/tool-system-architecture.md",
+    "www/docs/tool-system-testing-plan.md"
+  ],
+  "processing_notes": []
+}

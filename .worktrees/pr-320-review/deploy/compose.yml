@@ -1,0 +1,151 @@
+services:
+  pocket-dev-php:
+    image: ghcr.io/tetrixdev/pocket-dev-php:${PD_IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-php
+    restart: unless-stopped
+    working_dir: /var/www
+    environment:
+      - HOME=/home/appuser
+      - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
+      - PD_HOST_PROJECT_PATH=${PD_HOST_PROJECT_PATH:-${PWD}}
+      - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
+    volumes:
+      - .env:/var/www/.env
+      - user-data:/home/appuser
+      - workspace-data:/workspace
+      - pocketdev-storage:/var/www/storage/pocketdev
+      - shared-tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - pocket-dev
+    depends_on:
+      pocket-dev-postgres:
+        condition: service_healthy
+      pocket-dev-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  pocket-dev-nginx:
+    image: ghcr.io/tetrixdev/pocket-dev-nginx:${PD_IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-nginx
+    restart: unless-stopped
+    networks:
+      - pocket-dev
+    depends_on:
+      pocket-dev-php:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  pocket-dev-postgres:
+    # Custom postgres image with pgvector, PostGIS, and pg_trgm extensions
+    image: ghcr.io/tetrixdev/pocket-dev-postgres:${PD_IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pocket-dev
+      POSTGRES_USER: pocket-dev
+      POSTGRES_PASSWORD: "${PD_DB_PASSWORD}"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - pocket-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pocket-dev -d pocket-dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  pocket-dev-redis:
+    image: redis:7-alpine
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - pocket-dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  pocket-dev-queue:
+    image: ghcr.io/tetrixdev/pocket-dev-php:${PD_IMAGE_TAG:-latest}
+    pull_policy: always
+    container_name: ${PD_PROJECT_NAME:-pocket-dev}-queue
+    restart: unless-stopped
+    working_dir: /var/www
+    entrypoint: ["/queue-entrypoint.sh"]
+    # Supervisor manages 10 parallel queue workers (configured in image)
+    healthcheck:
+      test: ["CMD-SHELL", "supervisorctl -c /etc/supervisor/conf.d/queue-workers.conf status | awk 'BEGIN{ok=1;count=0} /^queue-worker_/ {count++; if ($2 != \"RUNNING\") ok=0} END{if (count==0) ok=0; exit !ok}'"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    environment:
+      - HOME=/home/appuser
+      - PD_TARGET_UID=${PD_USER_ID:-1000}
+      - PD_TARGET_GID=${PD_GROUP_ID:-1000}
+      - PD_HOST_PROJECT_PATH=${PD_HOST_PROJECT_PATH:-${PWD}}
+      - PD_DOCKER_GID=${PD_DOCKER_GID:-}
+      - PD_PROJECT_NAME=${PD_PROJECT_NAME:-pocket-dev}
+      # Optional: Pin Claude Code CLI to a specific version (e.g., "2.1.17")
+      - CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION:-}
+    volumes:
+      - .env:/var/www/.env
+      - user-data:/home/appuser
+      - workspace-data:/workspace
+      - pocketdev-storage:/var/www/storage/pocketdev
+      - shared-tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - pocket-dev
+    depends_on:
+      pocket-dev-redis:
+        condition: service_healthy
+      pocket-dev-postgres:
+        condition: service_healthy
+
+networks:
+  pocket-dev:
+    name: ${PD_PROJECT_NAME:-pocket-dev}
+    driver: bridge
+
+volumes:
+  postgres-data:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-postgres
+    driver: local
+  redis-data:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-redis
+    driver: local
+  workspace-data:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-workspace
+    driver: local
+  user-data:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-user
+    driver: local
+  pocketdev-storage:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-storage
+    driver: local
+  shared-tmp:
+    name: ${PD_PROJECT_NAME:-pocket-dev}-shared-tmp
+    driver: local
